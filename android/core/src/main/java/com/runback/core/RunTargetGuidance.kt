@@ -18,6 +18,7 @@ class RunTargetGuidance private constructor(
     private val paceMode: String,
     private val minBpm: Double,
     private val maxBpm: Double,
+    private val intervalMs: Long = 30_000L,
 ) {
     private data class PacePoint(val time: Long, val latitude: Double, val longitude: Double,
         val accuracy: Double, val distance: Double)
@@ -29,6 +30,10 @@ class RunTargetGuidance private constructor(
     private var outsideSince = 0L
     private var announced = false
     private var lastCueAt: Long? = null
+    private var running = false
+    private var movementAt = 0L
+
+    fun isRunning(now: Long) = running && now - movementAt in 0..MAX_FIX_AGE_MS
 
     fun wantsVoice() = output == "voice" || output == "both"
     fun wantsVibration() = output == "vibration" || output == "both"
@@ -39,6 +44,9 @@ class RunTargetGuidance private constructor(
         segmentStartElapsedMs = elapsedMs
         graceMs = if (resumed) RESUME_GRACE_MS else START_GRACE_MS
         clearExcursion()
+        lastCueAt = null
+        running = false
+        movementAt = 0L
     }
 
     private fun clearExcursion() {
@@ -53,10 +61,16 @@ class RunTargetGuidance private constructor(
         longitude: Double,
         accuracy: Double,
         elapsedMs: Long,
+        cadence: Double? = null,
     ): TargetCue? {
-        if (kind != "pace" || time <= 0 || accuracy !in 0.1..MAX_ACCURACY_M) return null
+        if (time <= 0 || accuracy !in 0.1..MAX_ACCURACY_M) {
+            running = false
+            clearExcursion()
+            return null
+        }
         val last = pacePoints.lastOrNull()
         if (last == null || time - last.time > MAX_FIX_AGE_MS || time <= last.time) {
+            running = false
             pacePoints.clear()
             pacePoints.add(PacePoint(time, latitude, longitude, accuracy, 0.0))
             clearExcursion()
@@ -65,15 +79,30 @@ class RunTargetGuidance private constructor(
         val step = RunMath.acceptedDistance(
             last.latitude, last.longitude, last.time, last.accuracy,
             latitude, longitude, time, accuracy,
-        ) ?: return null
+        ) ?: run {
+            running = false
+            pacePoints.clear()
+            clearExcursion()
+            return null
+        }
+        val speed = step / ((time - last.time) / 1000.0)
+        running = when {
+            speed < RunPhases.STOP_SPEED_MPS -> false
+            cadence != null && cadence.isFinite() && cadence >= RunPhases.RUN_CADENCE -> true
+            cadence != null && cadence.isFinite() && cadence <= RunPhases.WALK_CADENCE -> false
+            else -> speed >= RunPhases.RUN_SPEED_MPS || (running && speed > RunPhases.WALK_SPEED_MPS)
+        }
+        movementAt = time
+        if (!running) clearExcursion()
         pacePoints.add(PacePoint(time, latitude, longitude, accuracy, last.distance + step))
         while (pacePoints.size >= 3) {
             val second = pacePoints.elementAt(1)
             val newest = pacePoints.last()
-            if (newest.time - second.time >= PACE_WINDOW_MS && newest.distance - second.distance >= PACE_WINDOW_M) {
+            if (newest.time - second.time >= PACE_WINDOW_MS) {
                 pacePoints.removeFirst()
             } else break
         }
+        if (kind != "pace" || !running) return null
         val first = pacePoints.first()
         val newest = pacePoints.last()
         val windowMs = newest.time - first.time
@@ -85,10 +114,14 @@ class RunTargetGuidance private constructor(
             windowM < PACE_WINDOW_M
         ) return null
         val currentPace = windowMs / 1000.0 / (windowM / 1000.0)
+        if (currentPace > paceSecondsPerKm * 1.4) {
+            clearExcursion()
+            return null
+        }
         val direction = when {
             currentPace < paceSecondsPerKm - PACE_OUTER_TOLERANCE_SECONDS -> "too_fast"
             paceMode == "range" && currentPace > paceSecondsPerKm + PACE_OUTER_TOLERANCE_SECONDS -> "too_slow"
-            else -> "inside"
+            else -> outside.ifBlank { "inside" }
         }
         val inside = if (paceMode == "ceiling") {
             currentPace >= paceSecondsPerKm - PACE_INNER_TOLERANCE_SECONDS
@@ -98,18 +131,22 @@ class RunTargetGuidance private constructor(
         return evaluate(
             direction = if (inside) "inside" else direction,
             now = time,
-            requiredOutsideMs = PACE_OUTSIDE_MS,
-            cooldownMs = PACE_COOLDOWN_MS,
+            requiredOutsideMs = intervalMs,
+            cooldownMs = intervalMs,
             cue = if (direction == "too_fast") {
-                TargetCue("pace_too_fast", "Etwas langsamer.", false)
+                TargetCue("pace_too_fast", "langsamer", false)
             } else {
-                TargetCue("pace_too_slow", "Etwas schneller.", true)
+                TargetCue("pace_too_slow", "schneller", true)
             },
         )
     }
 
     fun onHeartRates(now: Long, elapsedMs: Long, samples: List<HeartSample>): TargetCue? {
-        if (kind != "heart_rate" || elapsedMs - segmentStartElapsedMs < graceMs) return null
+        if (kind != "heart_rate") return null
+        if (!isRunning(now) || elapsedMs - segmentStartElapsedMs < graceMs) {
+            clearExcursion()
+            return null
+        }
         val recent = samples.filter { now - it.time in 0..HEART_MAX_AGE_MS && it.bpm in 30.0..240.0 }
             .sortedByDescending { it.time }.take(5).map { it.bpm }.sorted()
         if (recent.isEmpty()) {
@@ -127,12 +164,12 @@ class RunTargetGuidance private constructor(
         return evaluate(
             direction,
             now,
-            required,
-            HEART_COOLDOWN_MS,
+            maxOf(required, intervalMs),
+            intervalMs,
             if (direction == "heart_high") {
-                TargetCue("heart_rate_high", "Puls über dem Bereich — ruhiger.", false)
+                TargetCue("heart_rate_high", "langsamer", false)
             } else {
-                TargetCue("heart_rate_low", "Puls unter dem Bereich.", true)
+                TargetCue("heart_rate_low", "schneller", true)
             },
         )
     }
@@ -145,7 +182,12 @@ class RunTargetGuidance private constructor(
         cue: TargetCue,
     ): TargetCue? {
         if (direction == "inside") {
+            val corrected = announced && outside == "too_slow" && kind == "pace" && paceMode == "range"
             clearExcursion()
+            if (corrected) {
+                lastCueAt = now
+                return TargetCue("pace_perfect", "perfekt", false)
+            }
             return null
         }
         if (outside != direction) {
@@ -155,7 +197,6 @@ class RunTargetGuidance private constructor(
             return null
         }
         if (
-            announced ||
             now - outsideSince < requiredOutsideMs ||
             lastCueAt?.let { now - it < cooldownMs } == true
         ) return null
@@ -165,18 +206,16 @@ class RunTargetGuidance private constructor(
     }
 
     companion object {
-        const val VERSION = 1
+        const val VERSION = 2
         private const val MAX_ACCURACY_M = 20.0
         private const val MAX_FIX_AGE_MS = 10_000L
-        private const val START_GRACE_MS = 90_000L
-        private const val RESUME_GRACE_MS = 60_000L
-        private const val MIN_SEGMENT_DISTANCE_M = 300.0
-        private const val PACE_WINDOW_MS = 60_000L
-        private const val PACE_WINDOW_M = 200.0
+        private const val START_GRACE_MS = 30_000L
+        private const val RESUME_GRACE_MS = 15_000L
+        private const val MIN_SEGMENT_DISTANCE_M = 50.0
+        private const val PACE_WINDOW_MS = 15_000L
+        private const val PACE_WINDOW_M = 20.0
         private const val PACE_OUTER_TOLERANCE_SECONDS = 15.0
         private const val PACE_INNER_TOLERANCE_SECONDS = 10.0
-        private const val PACE_OUTSIDE_MS = 30_000L
-        private const val PACE_COOLDOWN_MS = 60_000L
         private const val HEART_MAX_AGE_MS = 15_000L
         private const val HEART_HIGH_MARGIN = 3.0
         private const val HEART_LOW_MARGIN = 5.0
@@ -184,15 +223,18 @@ class RunTargetGuidance private constructor(
         private const val HEART_HIGH_OUTSIDE_MS = 30_000L
         private const val HEART_LOW_OUTSIDE_MS = 60_000L
         private const val HEART_LOW_EARLIEST_MS = 10 * 60_000L
-        private const val HEART_COOLDOWN_MS = 90_000L
 
         fun parse(raw: String?): RunTargetGuidance? = raw?.takeIf { it.isNotBlank() }
             ?.let { fromJson(JSONObject(it)) }
 
         fun fromJson(value: JSONObject?): RunTargetGuidance? {
-            if (value == null || value.optInt("version") != VERSION) return null
+            if (value == null || value.optInt("version") !in setOf(1, VERSION)) return null
+            RunAnnouncements.fromJson(value.optJSONObject("announcements"))
             val kind = value.optString("kind")
-            if (kind == "none") return null
+            val seconds = value.optDouble("cueIntervalSeconds", 30.0)
+            require(seconds.isFinite() && seconds % 1.0 == 0.0 && seconds in 5.0..300.0) { "Hinweisabstand wird nicht unterstützt." }
+            val interval = (seconds * 1000).toLong()
+            if (kind == "none") return RunTargetGuidance(value.toString(), kind, "voice", Double.NaN, "", Double.NaN, Double.NaN, interval)
             val output = value.optString("output")
             require(output in setOf("voice", "vibration", "both")) { "Unbekannte Ausgabe für Laufhinweise." }
             return when (kind) {
@@ -201,7 +243,7 @@ class RunTargetGuidance private constructor(
                     val mode = value.optString("mode")
                     require(pace.isFinite() && pace in 120.0..1200.0) { "Zieltempo wird nicht unterstützt." }
                     require(mode in setOf("ceiling", "range")) { "Tempoziel ist unvollständig." }
-                    RunTargetGuidance(value.toString(), kind, output, pace, mode, Double.NaN, Double.NaN)
+                    RunTargetGuidance(value.toString(), kind, output, pace, mode, Double.NaN, Double.NaN, interval)
                 }
                 "heart_rate" -> {
                     val min = value.optDouble("minBpm", Double.NaN)
@@ -209,15 +251,15 @@ class RunTargetGuidance private constructor(
                     require(min.isFinite() && max.isFinite() && min >= 40 && max <= 240 && max - min >= 5) {
                         "Pulsbereich wird nicht unterstützt."
                     }
-                    RunTargetGuidance(value.toString(), kind, output, Double.NaN, "", min, max)
+                    RunTargetGuidance(value.toString(), kind, output, Double.NaN, "", min, max, interval)
                 }
                 else -> throw IllegalArgumentException("Unbekanntes Laufziel.")
             }.also { it.reset(0L, false) }
         }
 
         /** Reine Fabriken für die zustandsbehaftete Mathematik in JVM-Tests. */
-        internal fun pace(secondsPerKm: Double, mode: String, output: String = "both") =
-            RunTargetGuidance("{}", "pace", output, secondsPerKm, mode, Double.NaN, Double.NaN)
+        internal fun pace(secondsPerKm: Double, mode: String, output: String = "both", intervalSeconds: Int = 30) =
+            RunTargetGuidance("{}", "pace", output, secondsPerKm, mode, Double.NaN, Double.NaN, intervalSeconds * 1000L)
                 .also { it.reset(0L, false) }
 
         internal fun heartRate(minBpm: Double, maxBpm: Double, output: String = "both") =

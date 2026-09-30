@@ -173,7 +173,7 @@ it('links a started planned run to its recording without claiming completion', a
     'startRun',
     'easy',
     'running',
-    '{"kind":"none","version":1}',
+    '{"kind":"none","version":2}',
   );
   expect(stored.settings.schedule?.sessions[0]).toMatchObject({
     activityId: 'recorded-run',
@@ -234,7 +234,7 @@ it('keeps the plan unlinked if recording permission is denied', async () => {
     'startRun',
     'easy',
     'running',
-    '{"kind":"none","version":1}',
+    '{"kind":"none","version":2}',
   );
 });
 

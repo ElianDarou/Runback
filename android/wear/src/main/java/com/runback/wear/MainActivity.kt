@@ -133,6 +133,8 @@ class MainActivity : Activity() {
         button("Lauf starten", true, 12) { requestStart() }
         button("Zweck · ${purposeLabel(purpose)}", false, 6) { choosePurpose() }
         button("Ziel · ${targetLabel()}", false, 6) { chooseTarget() }
+        button("Stimme & Vibration", false, 6) { chooseGuidance() }
+        button("Zwischenstände ansagen", false, 6) { chooseAnnouncements() }
         button("Läufe", false, 6) { page = "history"; render() }
         sync = text(WearSync.status, 11, muted, margin = 12)
         button("Übertragen", false, 8) {
@@ -439,7 +441,7 @@ class MainActivity : Activity() {
                 val value = match?.let { it.groupValues[1].toInt() * 60 + it.groupValues[2].toInt() }
                 if (value != null && value in 120..1200) {
                     saveTarget(JSONObject().put("kind", "pace").put("version", 1)
-                        .put("secondsPerKm", value).put("mode", "range").put("output", "both"))
+                        .put("secondsPerKm", value).put("mode", "range").put("output", target.optString("output", "both")))
                 } else invalidTarget("Gib das Tempo zum Beispiel als 5:30 ein.")
             }.show()
     }
@@ -455,14 +457,76 @@ class MainActivity : Activity() {
                 val values = input.text.toString().trim().split(Regex("[–—-]")).mapNotNull { it.trim().toIntOrNull() }
                 if (values.size == 2 && values[0] >= 40 && values[1] <= 240 && values[1] - values[0] >= 5) {
                     saveTarget(JSONObject().put("kind", "heart_rate").put("version", 1)
-                        .put("minBpm", values[0]).put("maxBpm", values[1]).put("output", "both"))
+                        .put("minBpm", values[0]).put("maxBpm", values[1]).put("output", target.optString("output", "both")))
                 } else invalidTarget("Gib den Bereich zum Beispiel als 130–150 ein.")
             }.show()
     }
     private fun saveTarget(next: JSONObject) {
+        next.put("version", 2)
+        if (!next.has("cueIntervalSeconds")) next.put("cueIntervalSeconds", target.optInt("cueIntervalSeconds", 30))
+        if (!next.has("announcements")) target.optJSONObject("announcements")?.let { next.put("announcements", JSONObject(it.toString())) }
         target = next
         store.saveSettings(store.settings().put("wearTarget", next))
         render()
+    }
+    private fun chooseGuidance() {
+        AlertDialog.Builder(this).setTitle("Stimme & Vibration")
+            .setItems(arrayOf("Hinweisabstand", "Ausgabe")) { _, index ->
+                if (index == 0) {
+                    val intervals = intArrayOf(5, 10, 15, 30, 60, 120, 300)
+                    AlertDialog.Builder(this).setTitle("Abstand in Sekunden")
+                        .setSingleChoiceItems(intervals.map { "$it Sekunden" }.toTypedArray(),
+                            intervals.indexOf(target.optInt("cueIntervalSeconds", 30))) { dialog, selected ->
+                            saveTarget(JSONObject(target.toString()).put("cueIntervalSeconds", intervals[selected]))
+                            dialog.dismiss()
+                        }.setNegativeButton("Zurück", null).show()
+                } else {
+                    val outputs = arrayOf("both", "vibration", "voice")
+                    AlertDialog.Builder(this).setTitle("Ausgabe der Hinweise")
+                        .setSingleChoiceItems(arrayOf("Vibration & Stimme", "Vibration", "Stimme"),
+                            outputs.indexOf(target.optString("output", "both"))) { dialog, selected ->
+                            saveTarget(JSONObject(target.toString()).put("output", outputs[selected]))
+                            dialog.dismiss()
+                        }.setNegativeButton("Zurück", null).show()
+                }
+            }.show()
+    }
+    private fun chooseAnnouncements() {
+        val triggers = arrayOf("off", "distance", "time")
+        AlertDialog.Builder(this).setTitle("Zwischenstände ansagen")
+            .setItems(arrayOf("Aus", "Nach Kilometern", "Nach Minuten")) { _, index ->
+                val config = target.optJSONObject("announcements")?.let { JSONObject(it.toString()) }
+                    ?: JSONObject().put("version", 1).put("interval", 1)
+                        .put("kilometer", true).put("distance", true).put("lastKilometerPace", true)
+                        .put("averagePace", true).put("heartRate", false)
+                config.put("trigger", triggers[index])
+                if (index == 0) saveTarget(JSONObject(target.toString()).put("announcements", config))
+                else editAnnouncementInterval(config)
+            }.setNegativeButton("Zurück", null).show()
+    }
+    private fun editAnnouncementInterval(config: JSONObject) {
+        val time = config.optString("trigger") == "time"
+        val input = EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+            setText(if (time) "10" else "1")
+            setSelectAllOnFocus(true)
+        }
+        AlertDialog.Builder(this).setTitle(if (time) "Abstand in Minuten" else "Abstand in Kilometern")
+            .setView(input).setNegativeButton("Zurück", null).setPositiveButton("Weiter") { _, _ ->
+                val interval = input.text.toString().replace(',', '.').toDoubleOrNull()
+                if (interval == null || !interval.isFinite() || interval < 1 || interval > if (time) 60 else 10) {
+                    invalidTarget("Wähle 1 bis 10 Kilometer oder 1 bis 60 Minuten.")
+                } else {
+                    config.put("interval", interval)
+                    val keys = arrayOf("kilometer", "distance", "lastKilometerPace", "averagePace", "heartRate")
+                    AlertDialog.Builder(this).setTitle("Wähle die Angaben")
+                        .setMultiChoiceItems(arrayOf("Kilometermarke", "Strecke", "Letzter Kilometer", "Durchschnittstempo", "Aktueller Puls"),
+                            keys.map { config.optBoolean(it) }.toBooleanArray()) { _, which, checked -> config.put(keys[which], checked) }
+                        .setNegativeButton("Zurück", null).setPositiveButton("Übernehmen") { _, _ ->
+                            saveTarget(JSONObject(target.toString()).put("announcements", config))
+                        }.show()
+                }
+            }.show()
     }
     private fun invalidTarget(message: String) {
         AlertDialog.Builder(this).setTitle("Nicht gespeichert").setMessage(message).setPositiveButton("OK", null).show()

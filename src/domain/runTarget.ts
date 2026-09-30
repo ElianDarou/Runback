@@ -1,25 +1,33 @@
 import type { RunPurpose } from './types';
+import {
+  normalizeRunAnnouncements,
+  type RunAnnouncements,
+} from './runAnnouncements';
 
-export const RUN_TARGET_VERSION = 1 as const;
+export const RUN_TARGET_VERSION = 2 as const;
 
 export type RunTargetOutput = 'voice' | 'vibration' | 'both';
 
-export type RunTarget =
-  | { kind: 'none'; version: typeof RUN_TARGET_VERSION }
+export type RunTarget = {
+  cueIntervalSeconds?: number;
+  announcements?: RunAnnouncements;
+} & (
+  | { kind: 'none'; version: 1 | typeof RUN_TARGET_VERSION }
   | {
       kind: 'pace';
-      version: typeof RUN_TARGET_VERSION;
+      version: 1 | typeof RUN_TARGET_VERSION;
       secondsPerKm: number;
       mode: 'ceiling' | 'range';
       output: RunTargetOutput;
     }
   | {
       kind: 'heart_rate';
-      version: typeof RUN_TARGET_VERSION;
+      version: 1 | typeof RUN_TARGET_VERSION;
       minBpm: number;
       maxBpm: number;
       output: RunTargetOutput;
-    };
+    }
+);
 
 export const NO_RUN_TARGET: RunTarget = {
   kind: 'none',
@@ -33,7 +41,24 @@ const validOutput = (value: unknown): value is RunTargetOutput =>
 export function normalizeRunTarget(value: unknown): RunTarget {
   if (!value || typeof value !== 'object') return NO_RUN_TARGET;
   const raw = value as Record<string, unknown>;
-  if (raw.version !== RUN_TARGET_VERSION) return NO_RUN_TARGET;
+  if (raw.version !== 1 && raw.version !== RUN_TARGET_VERSION)
+    return NO_RUN_TARGET;
+  const cueIntervalSeconds = raw.cueIntervalSeconds ?? 30;
+  if (
+    typeof cueIntervalSeconds !== 'number' ||
+    !Number.isInteger(cueIntervalSeconds) ||
+    cueIntervalSeconds < 5 ||
+    cueIntervalSeconds > 300
+  )
+    return NO_RUN_TARGET;
+  const extra = {
+    cueIntervalSeconds,
+    ...(raw.announcements === undefined
+      ? {}
+      : { announcements: normalizeRunAnnouncements(raw.announcements) }),
+  };
+  if (raw.kind === 'none')
+    return { ...NO_RUN_TARGET, version: raw.version, ...extra };
   if (raw.kind === 'pace') {
     const secondsPerKm = Number(raw.secondsPerKm);
     if (
@@ -44,8 +69,9 @@ export function normalizeRunTarget(value: unknown): RunTarget {
       validOutput(raw.output)
     ) {
       return {
+        ...extra,
         kind: 'pace',
-        version: RUN_TARGET_VERSION,
+        version: raw.version,
         secondsPerKm,
         mode: raw.mode,
         output: raw.output,
@@ -64,8 +90,9 @@ export function normalizeRunTarget(value: unknown): RunTarget {
       validOutput(raw.output)
     ) {
       return {
+        ...extra,
         kind: 'heart_rate',
-        version: RUN_TARGET_VERSION,
+        version: raw.version,
         minBpm,
         maxBpm,
         output: raw.output,

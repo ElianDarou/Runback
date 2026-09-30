@@ -9,6 +9,7 @@ import {
   type RunTarget,
   type RunTargetOutput,
 } from '../domain/runTarget';
+import { normalizeRunAnnouncements } from '../domain/runAnnouncements';
 import type { RunPurpose } from '../domain/types';
 import { nativeCall } from '../native';
 import {
@@ -65,6 +66,15 @@ export function RunTargetScreen({
   );
   const [output, setOutput] = useState<RunTargetOutput>(
     normalized.kind === 'none' ? 'both' : normalized.output,
+  );
+  const [intervalInput, setIntervalInput] = useState(
+    String(normalized.cueIntervalSeconds ?? 30),
+  );
+  const [announcements, setAnnouncements] = useState(
+    normalizeRunAnnouncements(normalized.announcements),
+  );
+  const [announcementInterval, setAnnouncementInterval] = useState(
+    String(announcements.interval),
   );
   const [heartRateAvailable, setHeartRateAvailable] = useState(false);
   const [checkingSensor, setCheckingSensor] = useState(true);
@@ -130,6 +140,33 @@ export function RunTargetScreen({
         output,
       };
     }
+    const cueIntervalSeconds = Number(intervalInput);
+    const interval = Number(announcementInterval.replace(',', '.'));
+    if (
+      !Number.isInteger(cueIntervalSeconds) ||
+      cueIntervalSeconds < 5 ||
+      cueIntervalSeconds > 300
+    ) {
+      setError('Wähle einen Hinweisabstand zwischen 5 und 300 Sekunden.');
+      return;
+    }
+    if (
+      announcements.trigger !== 'off' &&
+      (!Number.isFinite(interval) ||
+        interval < 1 ||
+        interval > (announcements.trigger === 'distance' ? 10 : 60))
+    ) {
+      setError('Wähle 1 bis 10 Kilometer oder 1 bis 60 Minuten.');
+      return;
+    }
+    next = {
+      ...next,
+      cueIntervalSeconds,
+      announcements: {
+        ...announcements,
+        interval: announcements.trigger === 'off' ? 1 : interval,
+      },
+    };
     setBusy(true);
     try {
       await onSave(next);
@@ -230,9 +267,92 @@ export function RunTargetScreen({
             onChange={setOutput}
             disabled={busy}
           />
+          <Field
+            label="Abstand in Sekunden"
+            hint="Beim Gehen und Stehen bleiben Tempohinweise stumm."
+          >
+            <Input
+              label="Hinweisabstand in Sekunden"
+              value={intervalInput}
+              onChangeText={setIntervalInput}
+              keyboardType="number-pad"
+              editable={!busy}
+            />
+          </Field>
           <Copy muted>Die Vibration kommt von dem Gerät, das aufzeichnet.</Copy>
         </Section>
       ) : null}
+      <Section title="Zwischenstände ansagen">
+        <ChipGroup
+          label="Auslöser für Durchsagen"
+          options={[
+            { value: 'off', label: 'Aus' },
+            { value: 'distance', label: 'Kilometer' },
+            { value: 'time', label: 'Minuten' },
+          ]}
+          value={announcements.trigger}
+          onChange={trigger => {
+            setAnnouncements({ ...announcements, trigger });
+            setAnnouncementInterval(trigger === 'time' ? '10' : '1');
+          }}
+          disabled={busy}
+        />
+        {announcements.trigger !== 'off' ? (
+          <>
+            <Field
+              label={
+                announcements.trigger === 'time'
+                  ? 'Abstand in Minuten'
+                  : 'Abstand in Kilometern'
+              }
+            >
+              <Input
+                label="Abstand der Durchsagen"
+                value={announcementInterval}
+                onChangeText={setAnnouncementInterval}
+                keyboardType="decimal-pad"
+                editable={!busy}
+              />
+            </Field>
+            {(
+              [
+                ['kilometer', 'Kilometermarke'],
+                ['distance', 'Zurückgelegte Strecke'],
+                ['lastKilometerPace', 'Tempo des letzten Kilometers'],
+                ['averagePace', 'Durchschnittstempo'],
+                ['heartRate', 'Aktueller Puls'],
+              ] as [
+                (
+                  | 'kilometer'
+                  | 'distance'
+                  | 'lastKilometerPace'
+                  | 'averagePace'
+                  | 'heartRate'
+                ),
+                string,
+              ][]
+            ).map(([key, label]) => (
+              <Field key={key} label={label}>
+                <ChipGroup
+                  label={label}
+                  options={[
+                    { value: 'on', label: 'An' },
+                    { value: 'off', label: 'Aus' },
+                  ]}
+                  value={announcements[key] === true ? 'on' : 'off'}
+                  disabled={busy}
+                  onChange={choice =>
+                    setAnnouncements({
+                      ...announcements,
+                      [key]: choice === 'on',
+                    })
+                  }
+                />
+              </Field>
+            ))}
+          </>
+        ) : null}
+      </Section>
       {error ? <Notice title="Prüfe deine Angabe">{error}</Notice> : null}
       <Button
         title={kind === 'none' ? 'Ohne Ziel übernehmen' : 'Ziel übernehmen'}

@@ -66,6 +66,8 @@ import { PlanList } from './PlanList';
 import { BodyMap, type BodyMapMode } from './BodyMap';
 import { SorenessCapture } from './SorenessCapture';
 import { RunTargetScreen } from './RunTargetScreen';
+import { DistanceTimes } from './DistanceTimes';
+import { distanceTime } from '../domain/distanceTimes';
 import {
   createTemplate,
   deleteTemplate,
@@ -135,6 +137,8 @@ import type { SorenessReport as CapturedSorenessReport } from '../domain/sorenes
 import type { RegionId } from '../domain/regions';
 import {
   NO_RUN_TARGET,
+  RUN_TARGET_VERSION,
+  type RunTarget,
   normalizeRunTarget,
   runTargetLabel,
   targetForPurpose,
@@ -259,12 +263,15 @@ type Page =
   | 'models'
   | 'development'
   | 'chat'
+  | 'distance-times'
+  | 'run-audio'
   | 'run-target'
   | 'features'
   | 'features-home';
 /** Wohin „‹ Zurück“ von einer Seite führt. Fehlt der Eintrag, zur Hauptseite. */
 const PARENT_PAGE: Partial<Record<Page, Page>> = {
   devices: 'settings',
+  'run-audio': 'settings',
   data: 'settings',
   models: 'settings',
   features: 'settings',
@@ -551,6 +558,9 @@ export function RunbackApp({
   const [goalPhaseInput, setGoalPhaseInput] = useState('');
   const [goalDistanceInput, setGoalDistanceInput] = useState('');
   const [goalTimeInput, setGoalTimeInput] = useState('');
+  const [previewRunTarget, setPreviewRunTarget] = useState<RunTarget | null>(
+    null,
+  );
   const [presetName, setPresetName] = useState('');
   const [strength, setStrength] = useState<StrengthState>(emptyStrengthState());
   const [workoutOpen, setWorkoutOpen] = useState(false);
@@ -1160,6 +1170,8 @@ export function RunbackApp({
     if (next === 'muscle-map') {
       setNow(Date.now());
     }
+    if (next === 'run-target' || next === 'run-audio')
+      setPreviewRunTarget(null);
     if (next === 'goal') {
       setGoalInput(schedule.goal?.name || settings.goal || '');
       // Ohne Beginn kein Planstand und kein Aufbau: heute vorschlagen, der
@@ -3101,6 +3113,13 @@ export function RunbackApp({
       {(coachArea === 'strength' || !showRunning) && showStrengthArea
         ? renderStrengthCoach()
         : renderRunningCoach()}
+      {showRunning && coachArea === 'running' ? (
+        <Row
+          title="Zielzeiten"
+          subtitle="1 km bis Marathon · Schätzungen und bisherige Zeiten"
+          onPress={() => openPage('distance-times')}
+        />
+      ) : null}
       <Section title="Fragen">
         {proseReady ? (
           <Row
@@ -3319,6 +3338,27 @@ export function RunbackApp({
             />
           ) : null}
         </View>
+        {isRun(selected) && selected.distanceMeters > 0 ? (
+          <Row
+            title="Zielzeit für den nächsten Lauf"
+            subtitle={(() => {
+              const estimate = distanceTime(
+                runningRuns,
+                selected.distanceMeters / 1000,
+                Date.now(),
+              );
+              return estimate.estimatedSeconds === undefined
+                ? 'Zu wenig vergleichbare Läufe'
+                : `Gleiche Strecke · Schätzung ${formatGoalTime(
+                    estimate.estimatedSeconds,
+                  )}`;
+            })()}
+            onPress={() => {
+              setSelected(null);
+              openPage('distance-times');
+            }}
+          />
+        ) : null}
         {selected.avgCadence && usesPace(selected.sport) ? (
           <Copy muted>Ø {Math.round(selected.avgCadence)} Schritte / min</Copy>
         ) : null}
@@ -3601,6 +3641,15 @@ export function RunbackApp({
           onPress={() => openPage('features')}
         />
       </Section>
+      {showRunning ? (
+        <Section title="Beim Laufen">
+          <Row
+            title="Stimme & Vibration"
+            subtitle="Hinweisabstand und Zwischenstände"
+            onPress={() => openPage('run-audio')}
+          />
+        </Section>
+      ) : null}
       <Section title="Gerät">
         <Row
           title="Geräte & Verbindungen"
@@ -4267,6 +4316,28 @@ export function RunbackApp({
 
   const content = selected ? (
     renderDetail()
+  ) : page === 'distance-times' ? (
+    <DistanceTimes
+      runs={runningRuns}
+      onRun={run => openRun(run.id)}
+      onNextRun={(km, seconds) => {
+        openPage('run-target');
+        setPreviewRunTarget({
+          ...runTarget,
+          kind: 'pace',
+          version: RUN_TARGET_VERSION,
+          secondsPerKm: seconds / km,
+          mode: 'range',
+          output: runTarget.kind === 'none' ? 'both' : runTarget.output,
+        });
+      }}
+      onChoose={(km, seconds) => {
+        openPage('goal');
+        setGoalInput(`${String(km).replace('.', ',')} km`);
+        setGoalDistanceInput(String(km).replace('.', ','));
+        setGoalTimeInput(formatGoalTime(seconds).replace(/ (min|h)$/, ''));
+      }}
+    />
   ) : page === 'development' ? (
     <DevelopmentScreen
       runs={runningRuns}
@@ -4306,16 +4377,16 @@ export function RunbackApp({
     <TrainingChat onSettings={() => openPage('models')} />
   ) : page === 'goal' ? (
     renderGoal()
-  ) : page === 'run-target' ? (
+  ) : page === 'run-target' || page === 'run-audio' ? (
     <RunTargetScreen
-      value={runTarget}
+      value={previewRunTarget ?? runTarget}
       purpose={
         todaysScheduledRun ? todaysScheduledRun.purpose || 'free' : purpose
       }
       onSave={async target => {
         await persist({ runTarget: target });
-        setPage('main');
-        if (!todaysScheduledRun) {
+        setPage(page === 'run-audio' ? 'settings' : 'main');
+        if (page !== 'run-audio' && !todaysScheduledRun) {
           setStartSheet('run');
         }
       }}

@@ -31,6 +31,8 @@ jest.mock('../src/native', () => {
 
 import { native, nativeCall, type AppState, type Run } from '../src/native';
 import { RunbackApp } from '../src/ui/RunbackApp';
+import { DistanceTimes } from '../src/ui/DistanceTimes';
+import { RunTargetScreen } from '../src/ui/RunTargetScreen';
 import {
   localDateKey,
   normalizeSchedule,
@@ -182,7 +184,7 @@ describe('Freie Aufzeichnung auf Heute', () => {
       'startRun',
       'intervals',
       'cycling',
-      '{"kind":"none","version":1}',
+      '{"kind":"none","version":2}',
     );
     const live = screenText();
     expect(live).toContain('Radfahrt läuft');
@@ -212,7 +214,7 @@ describe('Freie Aufzeichnung auf Heute', () => {
       'startRun',
       'free',
       'running',
-      '{"kind":"none","version":1}',
+      '{"kind":"none","version":2}',
     );
     // Eine freie Aufzeichnung verknüpft sich nicht mit dem Termin.
     expect(stored.settings.schedule?.sessions[0].activityId).toBeUndefined();
@@ -380,4 +382,31 @@ describe('Funktionen der Aufzeichnung', () => {
     expect(screenText()).not.toContain('Notiz zu dieser Aufzeichnung');
     alert.mockRestore();
   });
+});
+
+it('previews a next-run pace and a race goal without changing persisted settings', async () => {
+  stored.runs = ['a', 'b', 'c'].map(id =>
+    finished({ id, distanceMeters: 5000, durationSeconds: 1500 }),
+  );
+  await mount();
+  await tap('Coach');
+  await tapText('Zielzeiten');
+  await act(async () => {
+    tree.root.findByType(DistanceTimes).props.onChoose(5, 1500);
+  });
+  expect(stored.settings.goalTargetSeconds).toBeUndefined();
+  const goalTime = tree.root.findAll(
+    node => node.props.accessibilityLabel === 'Zielzeit',
+  );
+  expect(goalTime.some(node => node.props.value === '25:00')).toBe(true);
+  await tap('Coach');
+  await tapText('Zielzeiten');
+  await act(async () => {
+    tree.root.findByType(DistanceTimes).props.onNextRun(5, 1500);
+  });
+  expect(tree.root.findByType(RunTargetScreen).props.value).toMatchObject({
+    kind: 'pace',
+    secondsPerKm: 300,
+  });
+  expect(stored.settings.runTarget).toBeUndefined();
 });
