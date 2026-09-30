@@ -98,6 +98,10 @@ export function DistanceTimes({
                 um und nimmt deren mittleren Wert.
               </Copy>
               <Copy muted>
+                Kürzere Strecken bleiben eine grobe Hochrechnung aus längeren
+                Läufen.
+              </Copy>
+              <Copy muted>
                 Trainingsläufe zeigen keine Wettkampfgrenze; Gelände, Gehphasen
                 und Tagesform bleiben enthalten.
               </Copy>

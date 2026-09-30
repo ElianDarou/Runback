@@ -59,3 +59,13 @@ it('keeps actual times separate from estimated times and requires three recent r
   expect(result.history.map(item => item.durationSeconds)).toEqual([1500]);
   expect(result.estimatedSeconds).toBeUndefined();
 });
+
+it('also estimates short-distance times from the usual five- and ten-kilometer runs', () => {
+  const runs = [run('a'), run('b'), run('c')];
+  expect(distanceTime(runs, 1, now).estimatedSeconds).toBe(
+    Math.round(1500 * Math.pow(1 / 5, 1.06)),
+  );
+  expect(distanceTime(runs, 2, now).estimatedSeconds).toBe(
+    Math.round(1500 * Math.pow(2 / 5, 1.06)),
+  );
+});

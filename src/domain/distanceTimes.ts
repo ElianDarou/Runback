@@ -66,8 +66,7 @@ export function distanceTime(
     .filter(
       run =>
         run.startTime >= now - REFERENCE_WINDOW_DAYS * 86400000 &&
-        run.distanceMeters / 1000 >= Math.max(0.8, distanceKm * 0.25) &&
-        run.distanceMeters / 1000 <= distanceKm * 4,
+        run.distanceMeters / 1000 >= Math.max(0.8, distanceKm * 0.25),
     )
     .slice(0, 8);
   const seconds = medianOrNull(
