@@ -66,6 +66,8 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
     private var offRouteAnnounced = false
     private var lastAnnouncedTurnIndex = -1
     private var targetGuidance: RunTargetGuidance? = null
+    private var runAnnouncements: RunAnnouncements? = null
+    private var latestGuidanceGpsAt = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -169,6 +171,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
                         flush()
                         recording = false
                         endListening()
+                        routeSpeech?.stop()
                         store.pause(commandId)
                         activeId?.let { store.checkpoint(it) }
                         updateNotification()
@@ -315,6 +318,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
                     updateNotification()
                 }
                 maybeGuideHeartRate()
+                maybeAnnounceRun()
                 if (now - lastWakeRenewal >= WAKE_RENEW_INTERVAL_MS) renewWakeLock()
                 worker.postDelayed(this, FLUSH_INTERVAL_MS)
             } catch (error: Exception) {
@@ -381,12 +385,16 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
             store.appendSamples(runId, listOf(sample))
             publishSamples(runId, listOf(sample))
             val session = store.active()
+            latestGuidanceGpsAt = location.time.takeIf { location.accuracy <= 20 } ?: 0L
             targetGuidance?.onLocation(
                 location.time,
                 location.latitude,
                 location.longitude,
                 location.accuracy.toDouble(),
                 session?.optLong("elapsedMs", 0L) ?: 0L,
+                session?.optDouble("lastCadence", Double.NaN)?.takeIf {
+                    location.time - session.optLong("lastCadenceAt", 0L) in 0..15_000L
+                },
             )?.let(::deliverTargetCue)
             val progress = routePlan?.let { routeProgress(location) }
             maybeSpeakNavigation(progress)
@@ -435,12 +443,19 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
     private fun loadTargetGuidance(session: JSONObject, resumed: Boolean) {
         targetGuidance = RunTargetGuidance.fromJson(session.optJSONObject("target"))
         targetGuidance?.reset(session.optLong("elapsedMs", 0L), resumed)
+        latestGuidanceGpsAt = 0L
+        // Neuanfang nach Pause/Prozessverlust: kein erfundenes Tempo für den angebrochenen Kilometer.
+        runAnnouncements = if (session.optString("sport", "running") == "running")
+            RunAnnouncements.fromJson(session.optJSONObject("target")?.optJSONObject("announcements")) else null
+        runAnnouncements?.onProgress(session.optDouble("distanceMeters", 0.0), session.optDouble("elapsedMs", 0.0) / 1000,
+            System.currentTimeMillis(), null, false)
     }
 
     private fun maybeGuideHeartRate() {
         val guidance = targetGuidance ?: return
         val runId = activeId ?: return
         val session = store.active() ?: return
+        if (session.optJSONObject("target")?.optString("kind") != "heart_rate") return
         val now = System.currentTimeMillis()
         guidance.onHeartRates(
             now,
@@ -449,22 +464,43 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
         )?.let(::deliverTargetCue)
     }
 
+    private fun maybeAnnounceRun() {
+        val announcer = runAnnouncements ?: return
+        val runId = activeId ?: return
+        val session = store.active() ?: return
+        val now = System.currentTimeMillis()
+        val heart = session.optDouble("lastHeartRate", Double.NaN).takeIf {
+            it.isFinite() && now - session.optLong("lastHeartRateAt", 0L) in 0..15_000L
+        }
+        val text = announcer.onProgress(session.optDouble("distanceMeters", Double.NaN),
+            session.optDouble("elapsedMs", Double.NaN) / 1000.0, now, heart,
+            now - latestGuidanceGpsAt in 0..10_000L) ?: return
+        if (routeSpeechReady && routeSpeech?.isSpeaking != true) {
+            mainHandler.post {
+                routeSpeech?.speak(text, TextToSpeech.QUEUE_ADD, null, "runback-progress")
+            }
+            store.addEvent(runId, "progress_cue", JSONObject().put("message", text).put("model_version", RunAnnouncements.VERSION))
+        }
+    }
+
     private fun deliverTargetCue(cue: TargetCue) {
         val guidance = targetGuidance ?: return
         activeId?.let { runId ->
             runCatching {
                 store.addEvent(runId, "target_cue", JSONObject()
-                    .put("code", cue.code).put("message", cue.message))
+                    .put("code", cue.code).put("message", cue.message).put("model_version", RunTargetGuidance.VERSION))
             }
         }
-        if (guidance.wantsVoice() && routeSpeechReady) {
+        if (guidance.wantsVoice() && routeSpeechReady && routeSpeech?.isSpeaking != true) {
             mainHandler.post {
                 routeSpeech?.speak(cue.message, TextToSpeech.QUEUE_ADD, null, "runback-target-${cue.code}")
             }
         }
         if (guidance.wantsVibration()) {
             val vibrator = getSystemService(Vibrator::class.java)
-            val effect = if (cue.faster) {
+            val effect = if (cue.code == "pace_perfect") {
+                VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE)
+            } else if (cue.faster) {
                 VibrationEffect.createWaveform(longArrayOf(0, 120, 120, 120), -1)
             } else {
                 VibrationEffect.createOneShot(450, VibrationEffect.DEFAULT_AMPLITUDE)
@@ -589,6 +625,8 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
     private fun maybeSpeakRoute(progress: RouteProgress?) {
         if (!routeSpeechReady || routePlan == null) return
         val session = store.active() ?: return
+        // Explizite Zwischenstand-Einstellung gilt auch auf Routen; Navigation bleibt separat.
+        if (session.optJSONObject("target")?.has("announcements") == true) return
         val distance = session.optDouble("distanceM", 0.0)
         refreshRouteVoice(distance)
         if (routePlan == null) return
@@ -721,12 +759,16 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
             if (values.has("bearingDeg")) bearing = values.optDouble("bearingDeg").toFloat()
         }
         val session = store.active()
+        latestGuidanceGpsAt = sample.time.takeIf { location.accuracy <= 20 } ?: 0L
         targetGuidance?.onLocation(
             sample.time,
             latitude,
             longitude,
             location.accuracy.toDouble(),
             session?.optLong("elapsedMs", 0L) ?: 0L,
+            session?.optDouble("lastCadence", Double.NaN)?.takeIf {
+                sample.time - session.optLong("lastCadenceAt", 0L) in 0..15_000L
+            },
         )?.let(::deliverTargetCue)
         val progress = routePlan?.let { routeProgress(location) }
         maybeSpeakNavigation(progress)

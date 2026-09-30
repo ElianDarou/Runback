@@ -237,6 +237,12 @@ class RunStore(context: Context) : DocumentStore {
                 require(sample.time > 0 && sample.kind.length <= 40) { "Ungültiger Messwert" }
                 db.insertOrThrow("samples", null, ContentValues().apply {
                     put("run_id", id); put("time", sample.time); put("kind", sample.kind); put("json", sample.values.toString()) })
+                if (sample.kind == "cadence") {
+                    val rpm = sample.values.optDouble("rpm", Double.NaN)
+                    if (rpm.isFinite() && rpm in 30.0..240.0 && sample.time >= run.optLong("lastCadenceAt", 0L)) {
+                        run.put("lastCadence", rpm).put("lastCadenceAt", sample.time)
+                    }
+                }
                 if (sample.kind == "heartRate") {
                     val bpm = sample.values.optDouble("bpm")
                     if (bpm.isFinite() && bpm in 30.0..240.0 && sample.time >= run.optLong("lastHeartRateAt", 0L)) {
