@@ -56,6 +56,7 @@ import {
   type RouteCoordinate,
 } from '../domain/routes';
 
+import { runExportRange } from './runExportRange';
 import { TrainingChat } from './TrainingChat';
 import { DeviceSettings } from './DeviceSettings';
 import { WearRecordingRow } from './WearRecordingRow';
@@ -177,6 +178,7 @@ import {
   EmptyState,
   Field,
   Icon,
+  Input,
   Notice,
   Progress,
   Route,
@@ -454,9 +456,15 @@ const setsLine = (exercise: SessionExercise) => {
 const UnitRow = memo(function UnitRow({
   unit,
   open,
+  onLongPress,
+  checked,
+  disabled = false,
 }: {
   unit: Unit;
   open: (unit: Unit) => void;
+  onLongPress?: () => void;
+  checked?: boolean;
+  disabled?: boolean;
 }) {
   const title = unitTitle(unit);
   const kind = unitKindLabel(unit);
@@ -488,7 +496,15 @@ const UnitRow = memo(function UnitRow({
       : duration(sessionSeconds(unit.session));
   return (
     <Pressable
-      accessibilityRole="button"
+      accessibilityRole={checked === undefined ? 'button' : 'checkbox'}
+      accessibilityState={{ checked, disabled }}
+      disabled={disabled}
+      onLongPress={onLongPress}
+      accessibilityHint={
+        onLongPress
+          ? 'Halte gedrückt, um Läufe zum Export auszuwählen.'
+          : undefined
+      }
       accessibilityLabel={`${kind}: ${title}, ${date(
         unit.at,
       )}, ${value} ${valueUnit}`}
@@ -507,7 +523,9 @@ const UnitRow = memo(function UnitRow({
           {value} <Text style={styles.runUnit}>{valueUnit}</Text>
         </Text>
         <Text style={styles.muted}>{detail}</Text>
-        <Text style={styles.arrow}>›</Text>
+        <Text style={styles.arrow}>
+          {checked === undefined ? '›' : checked ? '✓' : '○'}
+        </Text>
       </View>
     </Pressable>
   );
@@ -534,6 +552,10 @@ export function RunbackApp({
   const [selected, setSelected] = useState<Run | null>(null);
   const [selectedSession, setSelectedSession] =
     useState<StrengthSession | null>(null);
+  const [exportSelection, setExportSelection] = useState<string[] | null>(null);
+  const [exportFrom, setExportFrom] = useState('');
+  const [exportTo, setExportTo] = useState('');
+  const [exportProgress, setExportProgress] = useState('');
   const [unitFilter, setUnitFilter] = useState<UnitFilter>('all');
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
@@ -879,31 +901,94 @@ export function RunbackApp({
   // für Menschen, die Analyse als JSON und die 5-s-Zeitreihe als CSV. Die
   // Zeitreihe schreibt Kotlin direkt in den Export-Cache; fehlt sie oder der
   // Zeitverlauf, fehlt nur dieser Teil — der Rest wird trotzdem geteilt.
+  const prepareRunExport = async (
+    run: Run,
+    analysis: RunAnalysis | null,
+    current: AppState,
+  ) => {
+    let timeline: RunTimeline | null = null;
+    try {
+      timeline = await native.runTimeline(run.id);
+    } catch {
+      timeline = null;
+    }
+    const sameSport = current.runs.filter(
+      other => normalizeSport(other.sport) === normalizeSport(run.sport),
+    );
+    const names = runExportFileNames(run);
+    const input = {
+      run,
+      analysis,
+      timeline,
+      context: {
+        goal: current.settings.goal,
+        goalTargetDate: current.settings.goalTargetDate,
+        focus: current.settings.trainingFocus,
+        adherence: current.settings.adherence?.[run.id],
+        history: sameSport,
+      },
+    };
+    return { names, input };
+  };
+  const shareRuns = (getIds: () => Promise<string[]>) => {
+    void action(async () => {
+      const ids = [...new Set(await getIds())];
+      if (!ids.length)
+        throw new Error(
+          'Wähle mindestens einen Lauf im Zeitraum oder in der Liste.',
+        );
+      const current = stateRef.current;
+      const archive = await native.beginRunArchive();
+      try {
+        for (const [index, id] of ids.entries()) {
+          setExportProgress(`${index + 1} von ${ids.length} Läufen`);
+          const run = await native.run(id);
+          const analysis = analyzeRun(
+            run,
+            activeExperimentFor(current.settings.experiments, 'running'),
+            current.runs.filter(isRun),
+          );
+          const { names, input } = await prepareRunExport(
+            run,
+            analysis,
+            current,
+          );
+          await native.appendRunArchive(archive, id, {
+            markdown: {
+              fileName: names.markdown,
+              content: buildRunReport(input),
+            },
+            analysis: {
+              fileName: names.analysis,
+              content: JSON.stringify(buildRunAnalysisExport(input), null, 1),
+            },
+            timeseries: names.timeseries,
+          });
+        }
+        await native.shareRunArchive(archive);
+        setExportSelection(null);
+      } finally {
+        setExportProgress('');
+        await native.discardRunArchive(archive).catch(() => {});
+      }
+    });
+  };
+  const toggleExportRun = (id: string) => {
+    if (busyRef.current) return;
+    setExportSelection(ids =>
+      ids?.includes(id)
+        ? ids.filter(value => value !== id)
+        : [...(ids || []), id],
+    );
+  };
+
   const shareRun = (run: Run, analysis: RunAnalysis | null) => {
     void action(async () => {
-      let timeline: RunTimeline | null = null;
-      try {
-        timeline = await native.runTimeline(run.id);
-      } catch {
-        timeline = null;
-      }
-      const current = stateRef.current;
-      const sameSport = current.runs.filter(
-        other => normalizeSport(other.sport) === normalizeSport(run.sport),
-      );
-      const names = runExportFileNames(run);
-      const input = {
+      const { names, input } = await prepareRunExport(
         run,
         analysis,
-        timeline,
-        context: {
-          goal: current.settings.goal,
-          goalTargetDate: current.settings.goalTargetDate,
-          focus: current.settings.trainingFocus,
-          adherence: current.settings.adherence?.[run.id],
-          history: sameSport,
-        },
-      };
+        stateRef.current,
+      );
       const files: { fileName: string; mimeType: string; content?: string }[] =
         [
           {
@@ -1055,6 +1140,10 @@ export function RunbackApp({
     const subscription = BackHandler.addEventListener(
       'hardwareBackPress',
       () => {
+        if (exportSelection !== null) {
+          if (!busyRef.current) setExportSelection(null);
+          return true;
+        }
         if (showOnboarding) return false;
         if (sorenessOpen) {
           setSorenessOpen(false);
@@ -1092,6 +1181,7 @@ export function RunbackApp({
     );
     return () => subscription.remove();
   }, [
+    exportSelection,
     selected,
     page,
     tab,
@@ -1162,6 +1252,7 @@ export function RunbackApp({
     [openRun],
   );
   const openPage = (next: Page) => {
+    setExportSelection(null);
     setPage(next);
     if (next !== 'session') {
       setSelectedSession(null);
@@ -1202,6 +1293,7 @@ export function RunbackApp({
     }
   };
   const switchTab = (next: Tab) => {
+    setExportSelection(null);
     setNow(Date.now());
     setTab(next);
     setStartSheet(null);
@@ -3968,6 +4060,43 @@ export function RunbackApp({
           </>
         ) : null}
       </Section>
+      <Section title="Laufberichte exportieren">
+        <Copy muted>
+          Teile Bericht, Analyse und vorhandene Zeitreihen als ZIP-Datei.
+        </Copy>
+        <Field label="Von">
+          <Input
+            label="Von (TT.MM.JJJJ)"
+            placeholder="TT.MM.JJJJ"
+            value={exportFrom}
+            onChangeText={setExportFrom}
+            editable={!busy}
+            keyboardType="numbers-and-punctuation"
+          />
+        </Field>
+        <Field label="Bis">
+          <Input
+            label="Bis (TT.MM.JJJJ)"
+            placeholder="TT.MM.JJJJ"
+            value={exportTo}
+            onChangeText={setExportTo}
+            editable={!busy}
+            keyboardType="numbers-and-punctuation"
+          />
+        </Field>
+        <Copy muted>Beide Tage zählen vollständig mit.</Copy>
+        <Button
+          secondary
+          title="Läufe als ZIP exportieren"
+          disabled={busy || !exportFrom || !exportTo}
+          onPress={() =>
+            shareRuns(async () => {
+              const range = runExportRange(exportFrom, exportTo);
+              return native.runIdsInRange(range.from, range.until);
+            })
+          }
+        />
+      </Section>
       <Section title="Vollständiges Backup">
         <Copy muted>
           Sichert alle erhaltenen Originaldaten und Einstellungen.
@@ -4485,7 +4614,10 @@ export function RunbackApp({
         label="Ansicht"
         options={VERLAUF_VIEWS}
         value={verlaufView}
-        onChange={setVerlaufView}
+        onChange={next => {
+          setExportSelection(null);
+          setVerlaufView(next);
+        }}
       />
       <Statistics
         embedded
@@ -4812,6 +4944,11 @@ export function RunbackApp({
           </Notice>
         </View>
       ) : null}
+      {exportProgress ? (
+        <View style={styles.noticeSlot} accessibilityLiveRegion="polite">
+          <Copy>{exportProgress}</Copy>
+        </View>
+      ) : null}
       {message ? (
         <View style={styles.noticeSlot}>
           <Notice onDismiss={() => setMessage('')}>{message}</Notice>
@@ -4835,7 +4972,34 @@ export function RunbackApp({
                 <Text style={styles.muted}>{item.summary}</Text>
               </View>
             ) : (
-              <UnitRow unit={item.unit} open={openUnit} />
+              <UnitRow
+                unit={item.unit}
+                disabled={
+                  busy ||
+                  (exportSelection !== null &&
+                    (item.unit.kind !== 'run' || !isRun(item.unit.run)))
+                }
+                checked={
+                  exportSelection !== null &&
+                  item.unit.kind === 'run' &&
+                  isRun(item.unit.run)
+                    ? exportSelection.includes(item.unit.run.id)
+                    : undefined
+                }
+                onLongPress={
+                  item.unit.kind === 'run' && isRun(item.unit.run)
+                    ? () =>
+                        toggleExportRun(
+                          item.unit.kind === 'run' ? item.unit.run.id : '',
+                        )
+                    : undefined
+                }
+                open={unit => {
+                  if (exportSelection !== null && unit.kind === 'run')
+                    toggleExportRun(unit.run.id);
+                  else openUnit(unit);
+                }}
+              />
             )
           }
           contentContainerStyle={styles.listContent}
@@ -4846,7 +5010,10 @@ export function RunbackApp({
                 label="Ansicht"
                 options={VERLAUF_VIEWS}
                 value={verlaufView}
-                onChange={setVerlaufView}
+                onChange={next => {
+                  setExportSelection(null);
+                  setVerlaufView(next);
+                }}
               />
               <ChipGroup
                 label="Einheiten filtern"
@@ -4854,6 +5021,29 @@ export function RunbackApp({
                 value={activeUnitFilter}
                 onChange={setUnitFilter}
               />
+              {exportSelection !== null ? (
+                <Card>
+                  <Copy>
+                    {counted(exportSelection.length, 'Lauf', 'Läufe')}{' '}
+                    ausgewählt
+                  </Copy>
+                  <Button
+                    title="Auswahl als ZIP exportieren"
+                    disabled={busy || !exportSelection.length}
+                    onPress={() => shareRuns(async () => exportSelection)}
+                  />
+                  <Button
+                    secondary
+                    title="Auswahl beenden"
+                    disabled={busy}
+                    onPress={() => setExportSelection(null)}
+                  />
+                </Card>
+              ) : units.length ? (
+                <Copy muted>
+                  Halte einen Lauf gedrückt, um mehrere zu exportieren.
+                </Copy>
+              ) : null}
               {units.length ? <Copy muted>{unitCountLabel}</Copy> : null}
             </View>
           }

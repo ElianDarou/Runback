@@ -19,6 +19,14 @@ jest.mock('../src/native', () => {
     nativeCall: jest.fn(() => Promise.resolve({})),
     native: {
       state: jest.fn(() => Promise.resolve(state)),
+      beginRunArchive: jest.fn(() => Promise.resolve('archive')),
+      appendRunArchive: jest.fn(() => Promise.resolve()),
+      shareRunArchive: jest.fn(() => Promise.resolve()),
+      discardRunArchive: jest.fn(() => Promise.resolve()),
+      runIdsInRange: jest.fn(() => Promise.resolve([])),
+      runTimeline: jest.fn(() =>
+        Promise.resolve({ rows: [], stepSeconds: 60 }),
+      ),
       run: jest.fn(() => Promise.resolve(null)),
       saveSettings: jest.fn(() => Promise.resolve()),
       feedback: jest.fn(() => Promise.resolve()),
@@ -38,6 +46,10 @@ import { RunbackApp } from '../src/ui/RunbackApp';
 import { native } from '../src/native';
 import { ChipGroup } from '../src/ui/components';
 import { acceptRecommendation, analyzeRun } from '../src/domain';
+import {
+  buildRunReport,
+  buildRunAnalysisExport,
+} from '../src/domain/runReport';
 import type { RunSummary } from '../src/domain';
 
 const DAY = 86400000;
@@ -634,5 +646,169 @@ describe('Lauf-Detail', () => {
         tree.unmount();
       });
     }
+  });
+});
+
+describe('Laufberichte gesammelt exportieren', () => {
+  beforeEach(() => jest.clearAllMocks());
+  let activeTree: TestRenderer.ReactTestRenderer | undefined;
+  afterEach(async () => {
+    await act(async () => activeTree?.unmount());
+    activeTree = undefined;
+  });
+  const run = (id: string) => ({
+    id,
+    startTime: new Date(2026, 9, 1, 12).getTime(),
+    endTime: new Date(2026, 9, 1, 12, 30).getTime(),
+    durationSeconds: 1800,
+    distanceMeters: 5000,
+    purpose: 'easy' as const,
+    source: 'test',
+    status: 'complete',
+  });
+  const rows = (tree: TestRenderer.ReactTestRenderer) =>
+    tree.root.findAll(
+      node =>
+        typeof node.props.accessibilityLabel === 'string' &&
+        node.props.accessibilityLabel.startsWith('Lauf:') &&
+        typeof node.props.onPress === 'function',
+    );
+  const setup = async () => {
+    jest.mocked(native.state).mockResolvedValueOnce({
+      runs: [run('first'), run('second'), { ...run('bike'), sport: 'cycling' }],
+      recording: null,
+      settings: { onboardedAt: 1 },
+      capabilities: {},
+    });
+    jest.mocked(native.run).mockImplementation(async id => run(id));
+    const tree = await render();
+    activeTree = tree;
+    await tap(tree, 'Verlauf');
+    return tree;
+  };
+
+  it('selects by long press, toggles by tap, and exports the same report files', async () => {
+    const tree = await setup();
+    await act(async () => {
+      rows(tree)[0].props.onLongPress();
+    });
+    expect(screenText(tree)).toContain('1 Lauf ausgewählt');
+    expect(rows(tree)[0].props.accessibilityState.checked).toBe(true);
+    await act(async () => {
+      rows(tree)[1].props.onPress();
+    });
+    expect(screenText(tree)).toContain('2 Läufe ausgewählt');
+    await act(async () => {
+      rows(tree)[0].props.onPress();
+    });
+    await tap(tree, 'Auswahl als ZIP exportieren');
+    expect(native.appendRunArchive).toHaveBeenCalledTimes(1);
+    expect(native.appendRunArchive).toHaveBeenCalledWith('archive', 'second', {
+      markdown: {
+        fileName: expect.stringMatching(/\.md$/),
+        content: expect.stringContaining('Runback'),
+      },
+      analysis: {
+        fileName: expect.stringMatching(/_analysis\.json$/),
+        content: expect.any(String),
+      },
+      timeseries: expect.stringMatching(/_timeseries\.csv$/),
+    });
+    const expectedInput = {
+      run: run('second'),
+      analysis: analyzeRun(run('second'), undefined, [
+        run('first'),
+        run('second'),
+      ]),
+      timeline: { rows: [], stepSeconds: 60 },
+      context: { history: [run('first'), run('second')] },
+    };
+    const exported = jest.mocked(native.appendRunArchive).mock.calls[0][2];
+    expect(exported.markdown.content).toBe(buildRunReport(expectedInput));
+    expect(JSON.parse(exported.analysis.content)).toEqual(
+      JSON.parse(
+        JSON.stringify(
+          buildRunAnalysisExport({
+            ...expectedInput,
+            now: Date.parse(JSON.parse(exported.analysis.content).exportedAt),
+          }),
+        ),
+      ),
+    );
+    expect(native.shareRunArchive).toHaveBeenCalledWith('archive');
+    expect(native.discardRunArchive).toHaveBeenCalledWith('archive');
+    expect(screenText(tree)).not.toContain('ausgewählt');
+    await act(async () => tree.unmount());
+  });
+
+  it('keeps selection and discards partial archives when an export fails', async () => {
+    const tree = await setup();
+    jest
+      .mocked(native.appendRunArchive)
+      .mockRejectedValueOnce(new Error('Speicher voll.'));
+    await act(async () => {
+      rows(tree)[0].props.onLongPress();
+    });
+    await tap(tree, 'Auswahl als ZIP exportieren');
+    expect(screenText(tree)).toContain('Speicher voll.');
+    expect(screenText(tree)).toContain('1 Lauf ausgewählt');
+    expect(native.shareRunArchive).not.toHaveBeenCalled();
+    expect(native.discardRunArchive).toHaveBeenCalledWith('archive');
+    await tap(tree, 'Auswahl beenden');
+    expect(rows(tree)[0].props.accessibilityRole).toBe('button');
+    await act(async () => tree.unmount());
+  });
+
+  it('exports the inclusive date range from settings, including runs outside the loaded list', async () => {
+    const tree = await setup();
+    await tap(tree, 'Einstellungen');
+    await tap(tree, 'Importieren, sichern & löschen');
+    const input = (label: string) =>
+      tree.root.findAll(
+        node =>
+          node.props.accessibilityLabel === label &&
+          typeof node.props.onChangeText === 'function',
+      )[0];
+    await act(async () => {
+      input('Von (TT.MM.JJJJ)').props.onChangeText('01.10.2026');
+      input('Bis (TT.MM.JJJJ)').props.onChangeText('02.10.2026');
+    });
+    jest
+      .mocked(native.runIdsInRange)
+      .mockResolvedValueOnce(['old-run', 'second']);
+    await tap(tree, 'Läufe als ZIP exportieren');
+    expect(native.runIdsInRange).toHaveBeenCalledWith(
+      new Date(2026, 9, 1).getTime(),
+      new Date(2026, 9, 3).getTime(),
+    );
+    expect(native.run).toHaveBeenCalledWith('old-run');
+    expect(native.appendRunArchive).toHaveBeenCalledTimes(2);
+    await act(async () => tree.unmount());
+  });
+
+  it('rejects invalid and empty ranges before creating an archive', async () => {
+    const tree = await setup();
+    await tap(tree, 'Einstellungen');
+    await tap(tree, 'Importieren, sichern & löschen');
+    const input = (label: string) =>
+      tree.root.findAll(
+        node =>
+          node.props.accessibilityLabel === label &&
+          typeof node.props.onChangeText === 'function',
+      )[0];
+    await act(async () => {
+      input('Von (TT.MM.JJJJ)').props.onChangeText('31.02.2026');
+      input('Bis (TT.MM.JJJJ)').props.onChangeText('02.10.2026');
+    });
+    await tap(tree, 'Läufe als ZIP exportieren');
+    expect(native.runIdsInRange).not.toHaveBeenCalled();
+    expect(native.beginRunArchive).not.toHaveBeenCalled();
+    await act(async () =>
+      input('Von (TT.MM.JJJJ)').props.onChangeText('01.10.2026'),
+    );
+    await tap(tree, 'Läufe als ZIP exportieren');
+    expect(screenText(tree)).toContain('Wähle mindestens einen Lauf');
+    expect(native.beginRunArchive).not.toHaveBeenCalled();
+    await act(async () => tree.unmount());
   });
 });
