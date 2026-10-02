@@ -1,6 +1,5 @@
 import type { Run } from '../native';
 import { validRun } from './statistics';
-import { medianOrNull } from './inference';
 import {
   HALF_MARATHON_KM,
   MARATHON_KM,
@@ -9,7 +8,7 @@ import {
 } from './raceGoal';
 
 export const DISTANCE_TIMES_VERSION =
-  'distance-times-riegel-median-v1' as const;
+  'distance-times-riegel-recent-v2' as const;
 export const STANDARD_DISTANCES = [
   1,
   2,
@@ -30,7 +29,10 @@ export interface DistanceTime {
 
 /** Neutrale Hochrechnung, keine neue Trainingsempfehlung; Originalzeiten bleiben sichtbar.
  * Riegel (1981): https://pubmed.ncbi.nlm.nih.gov/7235349/
- * Der Median der letzten acht passenden Läufe begrenzt den Einfluss einzelner Ausreißer.
+ * Gewichteter Median: die neuesten drei Läufe zählen 3, 2 und 1,5; danach
+ * halbiert sich das Gewicht (1/2, 1/4, …). Alte Läufe überstimmen sie nicht.
+ * Die letzte tatsächlich gelaufene passende Strecke begrenzt die Schätzung
+ * nach oben, ohne daraus eine Garantie oder eine dauerhafte Bestzeit zu machen.
  */
 export function distanceTime(
   runs: Run[],
@@ -69,16 +71,37 @@ export function distanceTime(
         run.distanceMeters / 1000 >= Math.max(0.8, distanceKm * 0.25),
     )
     .slice(0, 8);
-  const seconds = medianOrNull(
-    sources.map(run =>
-      riegelSeconds(run.durationSeconds, run.distanceMeters / 1000, distanceKm),
+  const projections = sources.map((run, index) => ({
+    run,
+    seconds: riegelSeconds(
+      run.durationSeconds,
+      run.distanceMeters / 1000,
+      distanceKm,
     ),
-  );
+    weight: index < 3 ? [3, 2, 1.5][index] : 2 ** (2 - index),
+  }));
+  const halfWeight =
+    projections.reduce((sum, item) => sum + item.weight, 0) / 2;
+  let cumulativeWeight = 0;
+  const middle = [...projections]
+    .sort((a, b) => a.seconds - b.seconds)
+    .find(item => {
+      cumulativeWeight += item.weight;
+      return cumulativeWeight >= halfWeight;
+    });
+  // Nur eine aktuelle Beobachtung derselben Strecke begrenzt den Richtwert;
+  // eine Hochrechnung aus einer anderen Strecke ist kein erreichter Wert.
+  const latestActual = projections.find(item => history.includes(item.run));
+  const seconds = middle
+    ? Math.min(middle.seconds, latestActual?.seconds ?? middle.seconds)
+    : undefined;
   return {
     ...base,
     history,
     sourceRunIds: sources.map(run => run.id),
     estimatedSeconds:
-      sources.length >= 3 && seconds !== null ? Math.round(seconds) : undefined,
+      sources.length >= 3 && seconds !== undefined
+        ? Math.round(seconds)
+        : undefined,
   };
 }
