@@ -355,6 +355,33 @@ describe('Funktionen der Aufzeichnung', () => {
     expect(text).not.toContain('Ø min / km');
   });
 
+  it('zeigt, ob die Uhr den Lauf mitschreibt', async () => {
+    stored.recording = live();
+    let wear: unknown = {
+      status: 'connected',
+      connected: true,
+      lastCommand: { status: 'sent', runId: 'live', updatedAt: Date.now() },
+    };
+    (nativeCall as jest.Mock).mockImplementation(async (method: string) =>
+      method === 'getWearStatus' ? wear : {},
+    );
+    await mount();
+    expect(screenText()).toContain('Wartet');
+    expect(screenText()).toContain('Öffne Runback auf der Uhr.');
+    await act(async () => tree.unmount());
+    wear = {
+      status: 'connected',
+      connected: true,
+      lastCommand: { status: 'live', runId: 'live', lastLiveAt: Date.now() },
+    };
+    await mount();
+    expect(screenText()).toContain('Zeichnet mit');
+    await act(async () => tree.unmount());
+    wear = { status: 'disconnected', connected: false, lastCommand: null };
+    await mount();
+    expect(screenText()).toContain('Das Telefon zeichnet allein auf.');
+  });
+
   it('kehrt nach dem Beenden direkt zu Heute zurück, wenn gewünscht', async () => {
     stored.settings.features = { recording: { afterRun: 'home' } } as any;
     stored.recording = live();
