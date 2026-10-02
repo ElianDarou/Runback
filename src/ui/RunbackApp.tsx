@@ -58,6 +58,7 @@ import {
 
 import { TrainingChat } from './TrainingChat';
 import { DeviceSettings } from './DeviceSettings';
+import { WearRecordingRow } from './WearRecordingRow';
 import { VendorImport } from './VendorImport';
 import { WorkoutScreen } from './WorkoutScreen';
 import { ExercisePicker } from './ExercisePicker';
@@ -2356,6 +2357,7 @@ export function RunbackApp({
             subtitle={runTargetLabel(recording.target)}
           />
         ) : null}
+        <WearRecordingRow run={recording} />
         <Copy muted>
           {recording.distanceMeters > 0
             ? 'GPS-Strecke wird lokal gespeichert.'
