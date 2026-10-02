@@ -174,6 +174,7 @@ const EVENT_LABELS: Record<string, string> = {
   completed: 'Ende',
   interrupted: 'Unterbrochen',
   target_cue: 'Hinweis zum Ziel',
+  target_pace: 'Zieltempo geändert',
   progress_cue: 'Zwischenstand',
   warning: 'Warnung',
   feedback: 'Feedback gespeichert',

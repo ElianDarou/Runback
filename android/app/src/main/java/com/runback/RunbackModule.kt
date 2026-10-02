@@ -339,6 +339,11 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         recording(RecordingService.START, purpose, promise, sport, target = target)
     @ReactMethod fun startRouteRun(routePlanId: String, purpose: String, sport: String, target: String, promise: Promise) =
         recording(RecordingService.START, purpose, promise, sport, routePlanId, target)
+    @ReactMethod fun setRunTargetPace(secondsPerKm: Double, promise: Promise) = task(promise) {
+        val run = store.changeTargetPace(secondsPerKm)
+        RecordingService.changeTargetPace(run.getString("id"), secondsPerKm)
+        run
+    }
     @ReactMethod fun pauseRun(promise: Promise) = recording(RecordingService.PAUSE, "easy", promise)
     @ReactMethod fun resumeRun(promise: Promise) = recording(RecordingService.RESUME, "easy", promise)
     @ReactMethod fun finishRun(promise: Promise) = recording(RecordingService.FINISH, "easy", promise)

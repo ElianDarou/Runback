@@ -109,6 +109,27 @@ export function parsePaceInput(value: string): number | null {
   return seconds >= 120 && seconds <= 1200 ? seconds : null;
 }
 
+/** Schrittweite der Plus-/Minus-Tasten für das Zieltempo während des Laufs. */
+export const PACE_STEP_SECONDS = 5;
+
+/**
+ * Nächstes Zieltempo nach einem Tastendruck: `+1` erhöht die Zahl (langsamer),
+ * `-1` senkt sie (schneller). Außerhalb des gültigen Bereichs gibt es keinen
+ * Schritt; ein krummer Wert rastet auf das nächste 5-Sekunden-Raster ein.
+ */
+export function stepTargetPace(
+  secondsPerKm: number,
+  direction: 1 | -1,
+): number | null {
+  if (!Number.isFinite(secondsPerKm)) return null;
+  const snapped =
+    direction > 0
+      ? Math.floor(secondsPerKm / PACE_STEP_SECONDS) * PACE_STEP_SECONDS
+      : Math.ceil(secondsPerKm / PACE_STEP_SECONDS) * PACE_STEP_SECONDS;
+  const next = snapped + direction * PACE_STEP_SECONDS;
+  return next >= 120 && next <= 1200 ? next : null;
+}
+
 export function formatTargetPace(seconds: number): string {
   const rounded = Math.round(seconds);
   return `${Math.floor(rounded / 60)}:${String(rounded % 60).padStart(

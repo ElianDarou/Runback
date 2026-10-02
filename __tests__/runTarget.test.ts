@@ -3,6 +3,7 @@ import {
   normalizeRunTarget,
   parsePaceInput,
   runTargetLabel,
+  stepTargetPace,
   targetForPurpose,
 } from '../src/domain/runTarget';
 
@@ -44,5 +45,16 @@ describe('Laufziel', () => {
     expect(runTargetLabel(targetForPurpose(pace, 'easy'))).toBe(
       'Nicht schneller als 5:30 /km',
     );
+  });
+
+  it('steps the target pace in five seconds and stays in range', () => {
+    expect(stepTargetPace(330, 1)).toBe(335);
+    expect(stepTargetPace(330, -1)).toBe(325);
+    // Ein krummes Zieltempo aus der Zielzeit rastet auf das Raster ein.
+    expect(stepTargetPace(331.4, 1)).toBe(335);
+    expect(stepTargetPace(331.4, -1)).toBe(330);
+    expect(stepTargetPace(120, -1)).toBeNull();
+    expect(stepTargetPace(1200, 1)).toBeNull();
+    expect(stepTargetPace(Number.NaN, 1)).toBeNull();
   });
 });

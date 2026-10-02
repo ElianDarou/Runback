@@ -132,6 +132,57 @@ export function Button({
   );
 }
 
+/**
+ * Minus und Plus für einen Wert, der schrittweise verstellt wird. Steht als
+ * `trailing` in einer `Row`, die den aktuellen Wert nennt.
+ */
+export function Stepper({
+  onDecrease,
+  onIncrease,
+  decreaseLabel,
+  increaseLabel,
+  canDecrease = true,
+  canIncrease = true,
+  disabled = false,
+}: {
+  onDecrease: () => void;
+  onIncrease: () => void;
+  /** Vorlesetext, z. B. „5 Sekunden schneller“. */
+  decreaseLabel: string;
+  increaseLabel: string;
+  canDecrease?: boolean;
+  canIncrease?: boolean;
+  disabled?: boolean;
+}) {
+  const step = (
+    symbol: string,
+    label: string,
+    enabled: boolean,
+    onPress: () => void,
+  ) => (
+    <Pressable
+      accessibilityLabel={label}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: disabled || !enabled }}
+      disabled={disabled || !enabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        s.stepperButton,
+        (disabled || !enabled) && s.disabled,
+        pressed && s.pressed,
+      ]}
+    >
+      <Text style={s.stepperSymbol}>{symbol}</Text>
+    </Pressable>
+  );
+  return (
+    <View style={s.stepper}>
+      {step('−', decreaseLabel, canDecrease, onDecrease)}
+      {step('+', increaseLabel, canIncrease, onIncrease)}
+    </View>
+  );
+}
+
 export function Copy({
   children,
   muted = false,
@@ -1384,6 +1435,18 @@ export const s = StyleSheet.create({
     borderWidth: 1,
   },
   small: { minHeight: 48, paddingVertical: space.sm },
+  stepper: { flexDirection: 'row', gap: space.xs },
+  stepperButton: {
+    minWidth: 56,
+    minHeight: 56,
+    borderRadius: radius.md,
+    backgroundColor: color.surface,
+    borderColor: color.line,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  stepperSymbol: { color: color.text, ...type.value },
   disabled: { opacity: 0.4 },
   pressed: { opacity: 0.72 },
   buttonText: { color: color.ink, ...type.body, fontWeight: '700' },
