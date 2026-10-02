@@ -382,6 +382,45 @@ describe('Funktionen der Aufzeichnung', () => {
     expect(screenText()).toContain('Das Telefon zeichnet allein auf.');
   });
 
+  it('verstellt das Zieltempo im Lauf in 5-Sekunden-Schritten', async () => {
+    stored.recording = {
+      ...live(),
+      target: {
+        kind: 'pace',
+        version: 2,
+        secondsPerKm: 330,
+        mode: 'range',
+        output: 'both',
+      },
+    };
+    (nativeCall as jest.Mock).mockImplementation(
+      async (method: string, ...args: unknown[]) => {
+        if (method === 'setRunTargetPace') {
+          stored.recording = {
+            ...stored.recording!,
+            target: {
+              ...(stored.recording!.target as any),
+              secondsPerKm: args[0],
+            },
+          };
+          return clone(stored.recording);
+        }
+        return {};
+      },
+    );
+    await mount();
+    expect(screenText()).toContain('5:30 /km');
+    await tap('Zieltempo 5 Sekunden langsamer');
+    expect(nativeCall).toHaveBeenCalledWith('setRunTargetPace', 335);
+    expect(screenText()).toContain('5:35 /km');
+    await tap('Zieltempo 5 Sekunden schneller');
+    await tap('Zieltempo 5 Sekunden schneller');
+    expect(nativeCall).toHaveBeenLastCalledWith('setRunTargetPace', 325);
+    expect(screenText()).toContain('5:25 /km');
+    // Die Vorgabe für den nächsten Lauf bleibt unverändert.
+    expect(native.saveSettings).not.toHaveBeenCalled();
+  });
+
   it('kehrt nach dem Beenden direkt zu Heute zurück, wenn gewünscht', async () => {
     stored.settings.features = { recording: { afterRun: 'home' } } as any;
     stored.recording = live();

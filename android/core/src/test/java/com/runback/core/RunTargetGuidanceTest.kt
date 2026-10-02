@@ -30,6 +30,32 @@ class RunTargetGuidanceTest {
         assertFalse(cue!!.faster)
     }
 
+    @Test fun changedPaceAppliesLiveAndForgetsTheOldExcursion() {
+        val guidance = pace()
+        var cue: TargetCue? = null
+        // Rund 4:10 /km gegen 5:30 läuft auf „langsamer“ zu; wer das Ziel
+        // unterwegs auf sein Tempo stellt, hört danach keinen Hinweis mehr.
+        for (second in 0..240) {
+            if (second == 60) guidance.changePace(250.0)
+            cue = guidance.onLocation(
+                time = second * 1_000L + 1,
+                latitude = 52.0 + second * 0.000036,
+                longitude = 13.0,
+                accuracy = 5.0,
+                elapsedMs = second * 1_000L,
+            ) ?: cue
+        }
+        assertNull(cue)
+    }
+
+    @Test fun changedPaceRejectsUnsupportedValuesAndOtherTargets() {
+        assertThrows(IllegalArgumentException::class.java) { pace().changePace(60.0) }
+        assertThrows(IllegalArgumentException::class.java) { pace().changePace(Double.NaN) }
+        assertThrows(IllegalArgumentException::class.java) {
+            RunTargetGuidance.heartRate(130.0, 150.0).changePace(330.0)
+        }
+    }
+
     @Test fun ceilingNeverPushesAnEasyRunFaster() {
         val guidance = pace("ceiling")
         var cue: TargetCue? = null

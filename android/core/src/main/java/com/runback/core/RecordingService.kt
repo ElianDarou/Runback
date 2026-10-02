@@ -909,6 +909,14 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
         @Volatile var controlSink: RecordingControlSink? = null
         @Volatile private var activeService: RecordingService? = null
         fun hasLiveService(): Boolean = activeService != null
+        /** Das neue Zieltempo gilt für die Hinweise ab sofort; gespeichert ist es bereits. */
+        fun changeTargetPace(runId: String, secondsPerKm: Double) {
+            activeService?.worker?.post {
+                val service = activeService ?: return@post
+                if (service.activeId == runId) runCatching { service.targetGuidance?.changePace(secondsPerKm) }
+                    .onFailure { Log.w(TAG, "Zieltempo konnte nicht übernommen werden", it) }
+            }
+        }
         fun acceptRemoteLocation(runId: String, sample: RawSample) {
             activeService?.worker?.post { activeService?.handleRemoteLocation(runId, sample) }
         }

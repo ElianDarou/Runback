@@ -141,7 +141,9 @@ import {
   RUN_TARGET_VERSION,
   type RunTarget,
   normalizeRunTarget,
+  PACE_STEP_SECONDS,
   runTargetLabel,
+  stepTargetPace,
   targetForPurpose,
 } from '../domain/runTarget';
 import {
@@ -184,6 +186,7 @@ import {
   Segmented,
   Sheet,
   Stat,
+  Stepper,
   Title,
   color,
   radius,
@@ -2274,6 +2277,19 @@ export function RunbackApp({
     </Sheet>
   );
 
+  // Plus und Minus ändern nur das Ziel dieses Laufs; die gespeicherte Vorgabe
+  // für den nächsten Lauf bleibt, wie der Nutzer sie im Coach gewählt hat.
+  const changeTargetPace = (direction: 1 | -1) => {
+    void action(async () => {
+      const target = stateRef.current.recording?.target;
+      if (target?.kind !== 'pace') return;
+      const next = stepTargetPace(target.secondsPerKm, direction);
+      if (next === null) return;
+      const updated = normalizeRun(await nativeCall('setRunTargetPace', next));
+      stateRef.current = { ...stateRef.current, recording: updated };
+      setState(stateRef.current);
+    });
+  };
   const renderRecording = () => {
     if (!recording) {
       return null;
@@ -2355,6 +2371,23 @@ export function RunbackApp({
           <Row
             title="Laufen nach"
             subtitle={runTargetLabel(recording.target)}
+            trailing={
+              recording.target.kind === 'pace' ? (
+                <Stepper
+                  decreaseLabel={`Zieltempo ${PACE_STEP_SECONDS} Sekunden schneller`}
+                  increaseLabel={`Zieltempo ${PACE_STEP_SECONDS} Sekunden langsamer`}
+                  canDecrease={
+                    stepTargetPace(recording.target.secondsPerKm, -1) !== null
+                  }
+                  canIncrease={
+                    stepTargetPace(recording.target.secondsPerKm, 1) !== null
+                  }
+                  disabled={busy}
+                  onDecrease={() => changeTargetPace(-1)}
+                  onIncrease={() => changeTargetPace(1)}
+                />
+              ) : undefined
+            }
           />
         ) : null}
         <WearRecordingRow run={recording} />

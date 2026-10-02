@@ -11,10 +11,10 @@ data class TargetCue(val code: String, val message: String, val faster: Boolean)
  * Pause und gespeicherte Messwerte bleiben allein unter Kontrolle des Nutzers.
  */
 class RunTargetGuidance private constructor(
-    private val targetJson: String,
+    private var targetJson: String,
     private val kind: String,
     private val output: String,
-    private val paceSecondsPerKm: Double,
+    private var paceSecondsPerKm: Double,
     private val paceMode: String,
     private val minBpm: Double,
     private val maxBpm: Double,
@@ -47,6 +47,21 @@ class RunTargetGuidance private constructor(
         lastCueAt = null
         running = false
         movementAt = 0L
+    }
+
+    /**
+     * Neues Zieltempo mitten im Lauf. Eine laufende Abweichung zählt nicht weiter:
+     * Wer das Ziel an sein Tempo anpasst, soll nicht sofort den alten Hinweis hören.
+     */
+    fun changePace(secondsPerKm: Double) {
+        require(kind == "pace") { "Nur ein Tempoziel lässt sich ändern." }
+        require(secondsPerKm.isFinite() && secondsPerKm in 120.0..1200.0) { "Zieltempo wird nicht unterstützt." }
+        paceSecondsPerKm = secondsPerKm
+        if (targetJson.isNotBlank() && targetJson != "{}") {
+            targetJson = JSONObject(targetJson).put("secondsPerKm", secondsPerKm).toString()
+        }
+        clearExcursion()
+        lastCueAt = null
     }
 
     private fun clearExcursion() {

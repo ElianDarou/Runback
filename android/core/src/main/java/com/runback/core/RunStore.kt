@@ -176,6 +176,23 @@ class RunStore(context: Context) : DocumentStore {
         }
         write(run)
     }
+    /** Ändert das Zieltempo des aktiven Laufs; das Ereignis hält alten und neuen Wert fest. */
+    fun changeTargetPace(secondsPerKm: Double): JSONObject = locked {
+        require(secondsPerKm.isFinite() && secondsPerKm in 120.0..1200.0) { "Zieltempo wird nicht unterstützt." }
+        val id = activeId() ?: error("Es läuft gerade keine Aufzeichnung.")
+        val run = read(id)
+        val target = run.optJSONObject("target")
+        check(target?.optString("kind") == "pace") { "Dieser Lauf hat kein Tempoziel." }
+        val previous = target!!.optDouble("secondsPerKm")
+        if (previous != secondsPerKm) transaction {
+            target.put("secondsPerKm", secondsPerKm)
+            write(run)
+            val whole = kotlin.math.round(secondsPerKm).toInt()
+            addEvent(id, "target_pace", JSONObject().put("from", previous).put("to", secondsPerKm)
+                .put("message", "%d:%02d /km".format(whole / 60, whole % 60)))
+        }
+        present(read(id))
+    }
     fun pause(commandId: String? = null): JSONObject? = setStatus("paused", "pause", commandId)
     fun finish(commandId: String? = null): JSONObject? = setStatus("completed", "finish", commandId)
     private fun setStatus(status: String, event: String, commandId: String? = null): JSONObject? = locked {

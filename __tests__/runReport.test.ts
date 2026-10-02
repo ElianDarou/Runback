@@ -63,6 +63,11 @@ const run: ReportRun = {
       at: start + 30 * 60_000,
       data: { code: 'pace_fast', message: 'Etwas langsamer.' },
     },
+    {
+      type: 'target_pace',
+      at: start + 32 * 60_000,
+      data: { from: 330, to: 335, message: '5:35 /km' },
+    },
     { type: 'feedback', at: start + 3600_000 },
   ],
   route: [
@@ -185,6 +190,7 @@ describe('buildRunReport', () => {
   it('lists events without the internal feedback entries', () => {
     expect(report).toContain('— Pause');
     expect(report).toContain('— Hinweis zum Ziel: Etwas langsamer.');
+    expect(report).toContain('— Zieltempo geändert: 5:35 /km');
     expect(report).not.toContain('Feedback gespeichert');
   });
 
