@@ -94,8 +94,12 @@ export function DistanceTimes({
                 />
               )}
               <Copy muted>
-                Die Schätzung rechnet letzte Läufe nach Riegel auf diese Strecke
-                um und nimmt deren mittleren Wert.
+                Die Schätzung rechnet letzte Läufe auf diese Strecke um und
+                gewichtet die neuesten drei am stärksten.
+              </Copy>
+              <Copy muted>
+                Dein letzter passender Lauf aus den Vergleichsläufen begrenzt
+                den Richtwert: Die Schätzung fällt höchstens so langsam aus.
               </Copy>
               <Copy muted>
                 Kürzere Strecken bleiben eine grobe Hochrechnung aus längeren
