@@ -49,6 +49,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     private var pending: Pair<Promise, (Int, Intent?) -> Unit>? = null
     private var speechRecognizer: SpeechRecognizer? = null
     private var speechPromise: Promise? = null
+    private val analysisArchives = mutableMapOf<String, RunAnalysisArchive>()
 
     init {
         context.addActivityEventListener(object : BaseActivityEventListener() {
@@ -519,6 +520,47 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         }
     }
 
+    @ReactMethod fun beginRunArchive(promise: Promise) = task(promise) {
+        val id = UUID.randomUUID().toString()
+        analysisArchives[id] = RunAnalysisArchive(File(exportDirectory(), "runback-berichte-$id.zip"))
+        JSONObject().put("id", id)
+    }
+    @ReactMethod fun appendRunArchive(id: String, runId: String, filesJson: String, promise: Promise) = task(promise) {
+        val archive = analysisArchives[id] ?: error("Der Export ist nicht mehr verfügbar.")
+        val input = JSONObject(filesJson)
+        val files = linkedMapOf<String, String>()
+        for (key in listOf("markdown", "analysis")) {
+            val entry = input.getJSONObject(key)
+            val content = entry.getString("content")
+            require(content.length <= 4_000_000) { "Der Bericht ist zu groß zum Teilen." }
+            files[safeExportName(entry.getString("fileName"), "runback-$key.txt")] = content
+        }
+        // Wie beim Einzelbericht: Ohne Messdaten bleiben Bericht und Analyse erhalten.
+        val csv = runCatching { store.timeseriesCsv(runId) }.getOrNull()
+        if (csv != null && csv.count { it == '\n' } > 1) {
+            files[safeExportName(input.getString("timeseries"), "runback-timeseries.csv")] = csv
+        }
+        archive.append(files)
+        JSONObject().put("appended", true)
+    }
+    @ReactMethod fun discardRunArchive(id: String, promise: Promise) = task(promise) {
+        analysisArchives.remove(id)?.discard()
+        JSONObject().put("discarded", true)
+    }
+    @ReactMethod fun shareRunArchive(id: String, promise: Promise) {
+        worker.execute {
+            try {
+                val archive = analysisArchives[id] ?: error("Der Export ist nicht mehr verfügbar.")
+                val file = archive.finish()
+                analysisArchives.remove(id)
+                shareUris(listOf(FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)), "application/zip", "Laufberichte teilen", promise)
+            } catch (error: Exception) { promise.reject("SHARE_ERROR", error.message, error) }
+        }
+    }
+    @ReactMethod fun runIdsInRange(from: Double, until: Double, promise: Promise) = task(promise) {
+        JSONObject().put("ids", runIdsForExport(from, until, store::listRuns))
+    }
+
     @ReactMethod fun bleStatus(promise: Promise) = task(promise) { BleSensors.get(context).status() }
     @ReactMethod fun bleStartScan(promise: Promise) = task(promise) { BleSensors.get(context).startScan(); BleSensors.get(context).status() }
     @ReactMethod fun bleStopScan(promise: Promise) = task(promise) { BleSensors.get(context).stopScan(); BleSensors.get(context).status() }
@@ -594,6 +636,10 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         pending = null
         chat.resetData {}
         aiWorker.shutdown()
+        worker.execute {
+            analysisArchives.values.forEach { runCatching { it.discard() } }
+            analysisArchives.clear()
+        }
         worker.shutdown()
         importWorker.shutdown()
         super.invalidate()

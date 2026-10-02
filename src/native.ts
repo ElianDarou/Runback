@@ -171,6 +171,34 @@ export function normalizeRun(raw: any): Run {
   };
 }
 export const native = {
+  async runIdsInRange(from: number, until: number): Promise<string[]> {
+    const result = await nativeCall<{ ids: string[] }>(
+      'runIdsInRange',
+      from,
+      until,
+    );
+    return result.ids;
+  },
+  async beginRunArchive(): Promise<string> {
+    return (await nativeCall<{ id: string }>('beginRunArchive')).id;
+  },
+  async appendRunArchive(
+    id: string,
+    runId: string,
+    files: {
+      markdown: { fileName: string; content: string };
+      analysis: { fileName: string; content: string };
+      timeseries: string;
+    },
+  ) {
+    await nativeCall('appendRunArchive', id, runId, JSON.stringify(files));
+  },
+  async shareRunArchive(id: string) {
+    await nativeCall('shareRunArchive', id);
+  },
+  async discardRunArchive(id: string) {
+    await nativeCall('discardRunArchive', id);
+  },
   async state(): Promise<AppState> {
     const raw = await nativeCall<any>('getState');
     return {
