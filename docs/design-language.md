@@ -40,7 +40,8 @@ Vier Tabs, je eine Frage: **Heute** (Was mache ich jetzt?), **Plan** (Was
 mache ich diese Woche?), **Verlauf** (Was habe ich gemacht?), **Coach** (Woran
 arbeite ich?). Einstellungen sind kein Tab, sondern eine Seite hinter dem
 Zahnrad im Kopf. Jedes Thema hat genau einen Ort: Fokus, Ziel und Empfehlung
-im Coach; Vorlagen im Plan; Geräte und Daten in den Einstellungen.
+im Coach; Vorlagen im Plan; Geräte und Daten in den Einstellungen. „Vorlagen
+verwalten“ in den Einstellungen öffnet dieselbe Vorlagenverwaltung.
 
 Wo Laufen und Krafttraining beide vorkommen (Coach, Statistik), wählt ein
 `Segmented` oben den Bereich — nicht jede Sektion zweimal.

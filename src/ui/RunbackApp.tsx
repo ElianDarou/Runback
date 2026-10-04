@@ -601,6 +601,7 @@ export function RunbackApp({
   const [purposeSkipped, setPurposeSkipped] = useState<string[]>([]);
   const [verlaufView, setVerlaufView] = useState<VerlaufView>('units');
   const [templatesView, setTemplatesView] = useState<TemplatesView>('strength');
+  const [templatesParent, setTemplatesParent] = useState<Page>('main');
   const [note, setNote] = useState('');
   const [importStatus, setImportStatus] = useState<any>(null);
   const [moreDetails, setMoreDetails] = useState(false);
@@ -1204,7 +1205,9 @@ export function RunbackApp({
           return true;
         }
         if (page !== 'main') {
-          setPage(PARENT_PAGE[page] ?? 'main');
+          setPage(
+            page === 'templates' ? templatesParent : PARENT_PAGE[page] ?? 'main',
+          );
           setSelectedSession(null);
           return true;
         }
@@ -1220,6 +1223,7 @@ export function RunbackApp({
     exportSelection,
     selected,
     page,
+    templatesParent,
     tab,
     startSheet,
     showOnboarding,
@@ -1289,6 +1293,9 @@ export function RunbackApp({
   );
   const openPage = (next: Page) => {
     setExportSelection(null);
+    if (next === 'templates' && page !== 'templates') {
+      setTemplatesParent(page);
+    }
     setPage(next);
     if (next !== 'session') {
       setSelectedSession(null);
@@ -1358,7 +1365,9 @@ export function RunbackApp({
     if (page === 'models' || page === 'devices') {
       loadProseReady();
     }
-    setPage(PARENT_PAGE[page] ?? 'main');
+    setPage(
+      page === 'templates' ? templatesParent : PARENT_PAGE[page] ?? 'main',
+    );
     setSelectedSession(null);
   };
   const changeFeatures = (next: Features) => {
@@ -4012,9 +4021,7 @@ export function RunbackApp({
     );
   };
 
-  // Einstellungen: was übrig bleibt, wenn Fokus, Ziel, Vorlagen und Chat ihren
-  // fachlichen Ort haben — Gerät, Daten, Optionales. Jede Zeile zeigt ihren
-  // Zustand, damit man nicht hineingehen muss, um ihn zu kennen.
+  // Vorlagen behalten ihren Ort im Plan; die Einstellungen öffnen dieselbe Verwaltung.
   // Einstellungen sind eine kurze Liste; jede Zeile nennt, was dahinter liegt.
   const renderSettings = () => (
     <>
@@ -4032,6 +4039,14 @@ export function RunbackApp({
             onPress={() => openPage('run-audio')}
           />
         ) : null}
+        <Row
+          title="Vorlagen verwalten"
+          subtitle="Verwalte deine Kraft- und Laufvorlagen"
+          onPress={() => {
+            setTemplatesView(showStrength ? 'strength' : 'run');
+            openPage('templates');
+          }}
+        />
         <Row
           title="Geräte & Verbindungen"
           subtitle="Uhr, Sensoren, Health Connect, Wetter"
