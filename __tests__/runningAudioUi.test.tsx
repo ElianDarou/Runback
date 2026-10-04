@@ -105,11 +105,11 @@ it('opens a target preview only on selection and leaves unsupported distances in
   });
   expect(onChoose).not.toHaveBeenCalled();
   const rows = tree.root.findAllByType(Row);
-  const five = rows.find(item => item.props.title === 'Schätzung 25:00 min')!;
+  const five = rows.find(item => item.props.subtitle === 'Schätzung 25:00 min')!;
   act(() => five.props.onPress());
   expect(onChoose).toHaveBeenCalledWith(5, 1500);
   expect(
-    rows.find(item => item.props.title === 'Zu wenig vergleichbare Läufe')!
+    rows.find(item => item.props.subtitle === 'Zu wenig vergleichbare Läufe')!
       .props.onPress,
   ).toBeUndefined();
   act(() => tree.unmount());
@@ -143,7 +143,7 @@ it('prefers the next-run pace preview when available without applying settings',
   act(() =>
     tree.root
       .findAllByType(Row)
-      .find(item => item.props.title === 'Schätzung 25:00 min')!
+      .find(item => item.props.subtitle === 'Schätzung 25:00 min')!
       .props.onPress(),
   );
   expect(onNextRun).toHaveBeenCalledWith(5, 1500);

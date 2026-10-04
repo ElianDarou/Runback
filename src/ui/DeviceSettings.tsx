@@ -1,7 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Switch, View } from 'react-native';
 import { nativeCall, type Capabilities, type Settings } from '../native';
-import { Button, Copy, Notice, Row, Section, Title, color, space } from './components';
+import {
+  Button,
+  Copy,
+  Notice,
+  Row,
+  Section,
+  Title,
+  color,
+  space,
+} from './components';
 
 export function DeviceSettings({
   capabilities,
@@ -15,6 +24,8 @@ export function DeviceSettings({
   refresh: () => Promise<unknown>;
 }) {
   const [ble, setBle] = useState<any>(null);
+  // „Keine Sensoren gefunden“ ist erst nach einer Suche eine Aussage.
+  const [scanned, setScanned] = useState(false);
   const [health, setHealth] = useState<any>(null);
   const [wear, setWear] = useState<any>(null);
   const [busy, setBusy] = useState(false);
@@ -140,25 +151,31 @@ export function DeviceSettings({
             );
           }}
         />
-        <Button
-          secondary
-          title="Letzte 30 Tage importieren"
-          disabled={busy || health?.status !== 'connected'}
-          onPress={() => {
-            void act(async () => {
-              const result = await nativeCall<any>('healthImport', 30);
-              setMessage(
-                result.message ||
-                  `${result.imported ?? result.runs ?? 0} Läufe eingelesen.`,
-              );
-              await refresh();
-            });
-          }}
-        />
-        <Copy muted>
-          Verfügbar ist nur, was deine anderen Apps nach Health Connect
-          schreiben.
-        </Copy>
+        {health?.status === 'connected' ? (
+          <>
+            <Button
+              secondary
+              title="Letzte 30 Tage importieren"
+              disabled={busy}
+              onPress={() => {
+                void act(async () => {
+                  const result = await nativeCall<any>('healthImport', 30);
+                  setMessage(
+                    result.message ||
+                      `${
+                        result.imported ?? result.runs ?? 0
+                      } Läufe eingelesen.`,
+                  );
+                  await refresh();
+                });
+              }}
+            />
+            <Copy muted>
+              Verfügbar ist nur, was deine anderen Apps nach Health Connect
+              schreiben.
+            </Copy>
+          </>
+        ) : null}
       </Section>
       <Section title="Bluetooth-Sensoren">
         <Copy muted>
@@ -173,6 +190,7 @@ export function DeviceSettings({
             void act(async () => {
               if (!ble?.scanning) {
                 await nativeCall('requestBluetoothPermissions');
+                setScanned(true);
               }
               setBle(
                 await nativeCall(
@@ -236,7 +254,7 @@ export function DeviceSettings({
             />
           </View>
         ))}
-        {ble && !ble.scanning && !ble.devices?.length ? (
+        {scanned && ble && !ble.scanning && !ble.devices?.length ? (
           <Copy muted>Keine Sensoren gefunden.</Copy>
         ) : null}
       </Section>

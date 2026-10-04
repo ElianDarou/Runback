@@ -24,6 +24,7 @@ import {
 import {
   ChipGroup,
   Copy,
+  Disclosure,
   Field,
   Row,
   Section,
@@ -42,14 +43,12 @@ export function FeatureSettings({
   disabled = false,
   onChange,
   onOpenHomeSections,
-  onOpenDevices,
 }: {
   features: Features;
   screen?: 'main' | 'home';
   disabled?: boolean;
   onChange: (next: Features) => void;
   onOpenHomeSections: () => void;
-  onOpenDevices: () => void;
 }) {
   const toggle = (value: boolean, change: (value: boolean) => void) => (
     <Switch
@@ -121,10 +120,7 @@ export function FeatureSettings({
   return (
     <>
       <Title>Funktionen</Title>
-      <Copy muted>
-        Aus heißt weg: Abgeschaltetes verschwindet aus der App. Deine Daten
-        bleiben und kommen mit dem Einschalten zurück.
-      </Copy>
+      <Copy muted>Abgeschaltetes verschwindet, deine Daten bleiben.</Copy>
       <Section title="Bereiche">
         <Row
           title="Laufen"
@@ -218,170 +214,196 @@ export function FeatureSettings({
           </>
         ) : null}
       </Section>
-      <Section title="Empfehlungen">
-        {running ? (
-          <Field label="Laufen">
-            <ChipGroup
-              label="Empfehlungen fürs Laufen"
-              options={RECOMMENDATION_MODES.map(value => ({
-                value,
-                label: RECOMMENDATION_MODE_LABELS[value],
-              }))}
-              value={features.recommendations.running}
-              onChange={mode => patch('recommendations', { running: mode })}
-              disabled={disabled}
-            />
-          </Field>
-        ) : null}
-        {strength ? (
-          <Field label="Krafttraining">
-            <ChipGroup
-              label="Empfehlungen fürs Krafttraining"
-              options={RECOMMENDATION_MODES.map(value => ({
-                value,
-                label: RECOMMENDATION_MODE_LABELS[value],
-              }))}
-              value={features.recommendations.strength}
-              onChange={mode => patch('recommendations', { strength: mode })}
-              disabled={disabled}
-            />
-          </Field>
-        ) : null}
-        <Row
-          title="„Danach vorgesehen“ anzeigen"
-          subtitle="Die wartende nächste Empfehlung"
-          trailing={toggle(features.recommendations.showQueued, value =>
-            patch('recommendations', { showQueued: value }),
-          )}
-        />
-        <Copy muted>
-          Nur auf Nachfrage: Die Empfehlung steht im Coach, nicht auf Heute.
-          Aus: Eine laufende Empfehlung wird pausiert, nicht abgebrochen.
-        </Copy>
-      </Section>
-      {recordsSomething ? (
-        <Section title="Aufzeichnung">
-          <Field label="Groß angezeigt">
-            <ChipGroup
-              label="Große Kennzahl während der Aufzeichnung"
-              options={RECORDING_PRIMARIES.map(value => ({
-                value,
-                label: RECORDING_PRIMARY_LABELS[value],
-              }))}
-              value={features.recording.primary}
-              onChange={primary => patch('recording', { primary })}
-              disabled={disabled}
-            />
-          </Field>
-          <Row
-            title="Kilometer"
-            trailing={toggle(hasMetric('distance'), value =>
-              setMetric('distance', value),
-            )}
-          />
-          <Row
-            title="Tempo"
-            trailing={toggle(hasMetric('pace'), value =>
-              setMetric('pace', value),
-            )}
-          />
-          <Row
-            title="Herzfrequenz"
-            subtitle="Nur mit vorhandenen Messdaten"
-            trailing={toggle(hasMetric('heartRate'), value =>
-              setMetric('heartRate', value),
-            )}
-          />
+      <Section title="Mehr einstellen">
+        <Disclosure
+          title="Empfehlungen"
+          subtitle={[
+            running
+              ? `Laufen: ${
+                  RECOMMENDATION_MODE_LABELS[features.recommendations.running]
+                }`
+              : '',
+            strength
+              ? `Kraft: ${
+                  RECOMMENDATION_MODE_LABELS[features.recommendations.strength]
+                }`
+              : '',
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        >
           {running ? (
-            <>
-              <Row
-                title="Laufen nach Tempo oder Puls"
-                subtitle="Zielvorgabe vor dem Start anbieten"
-                trailing={toggle(features.recording.targets, value =>
-                  patch('recording', { targets: value }),
-                )}
+            <Field label="Laufen">
+              <ChipGroup
+                label="Empfehlungen fürs Laufen"
+                options={RECOMMENDATION_MODES.map(value => ({
+                  value,
+                  label: RECOMMENDATION_MODE_LABELS[value],
+                }))}
+                value={features.recommendations.running}
+                onChange={mode => patch('recommendations', { running: mode })}
+                disabled={disabled}
               />
-              <Row
-                title="Routenplaner"
-                subtitle="Routen anlegen und mit Ansagen laufen"
-                trailing={toggle(features.recording.routes, value =>
-                  patch('recording', { routes: value }),
-                )}
-              />
-            </>
+            </Field>
           ) : null}
-          <Field label="Nach dem Beenden">
-            <ChipGroup
-              label="Was nach dem Beenden einer Aufzeichnung passiert"
-              options={AFTER_RUN_OPTIONS.map(value => ({
-                value,
-                label: AFTER_RUN_LABELS[value],
-              }))}
-              value={features.recording.afterRun}
-              onChange={afterRun => patch('recording', { afterRun })}
-              disabled={disabled}
-            />
-          </Field>
-        </Section>
-      ) : null}
-      {strength ? (
-        <Section title="Krafttraining">
+          {strength ? (
+            <Field label="Krafttraining">
+              <ChipGroup
+                label="Empfehlungen fürs Krafttraining"
+                options={RECOMMENDATION_MODES.map(value => ({
+                  value,
+                  label: RECOMMENDATION_MODE_LABELS[value],
+                }))}
+                value={features.recommendations.strength}
+                onChange={mode => patch('recommendations', { strength: mode })}
+                disabled={disabled}
+              />
+            </Field>
+          ) : null}
           <Row
-            title="Pausentimer"
-            subtitle="Balken nach jedem bestätigten Satz"
-            trailing={toggle(features.strength.restTimer, value =>
-              patch('strength', { restTimer: value }),
+            title="„Danach vorgesehen“ anzeigen"
+            subtitle="Die wartende nächste Empfehlung"
+            trailing={toggle(features.recommendations.showQueued, value =>
+              patch('recommendations', { showQueued: value }),
             )}
           />
-          <Field label="Standardpause für neue Sätze">
-            <ChipGroup
-              label="Standardpause für neue Sätze"
-              options={REST_SECONDS_OPTIONS.map(value => ({
-                value: String(value),
-                label: `${value} s`,
-              }))}
-              value={String(features.strength.defaultRestSeconds)}
-              onChange={value =>
-                patch('strength', { defaultRestSeconds: Number(value) })
-              }
-              disabled={disabled}
-            />
-          </Field>
-          <Row
-            title="Wiederholungen im Tank"
-            subtitle="Feld je Satz, freiwillig"
-            trailing={toggle(features.strength.rir, value =>
-              patch('strength', { rir: value }),
-            )}
-          />
-          <Row
-            title="Tagesvorlage auf Heute"
-            subtitle="Vorlage nach Wochentag vorschlagen"
-            trailing={toggle(features.strength.templateOfDay, value =>
-              patch('strength', { templateOfDay: value }),
-            )}
-          />
-        </Section>
-      ) : null}
-      {running ? (
-        <Section title="Statistik · Tiefer schauen">
-          {STATS_MODULES.map(module => (
+          <Copy muted>
+            Nur auf Nachfrage: Die Empfehlung steht im Coach, nicht auf Heute.
+            Aus: Eine laufende Empfehlung wird pausiert, nicht abgebrochen.
+          </Copy>
+        </Disclosure>
+        {recordsSomething ? (
+          <Disclosure
+            title="Aufzeichnung"
+            subtitle={`Groß: ${
+              RECORDING_PRIMARY_LABELS[features.recording.primary]
+            } · Danach: ${AFTER_RUN_LABELS[features.recording.afterRun]}`}
+          >
+            <Field label="Groß angezeigt">
+              <ChipGroup
+                label="Große Kennzahl während der Aufzeichnung"
+                options={RECORDING_PRIMARIES.map(value => ({
+                  value,
+                  label: RECORDING_PRIMARY_LABELS[value],
+                }))}
+                value={features.recording.primary}
+                onChange={primary => patch('recording', { primary })}
+                disabled={disabled}
+              />
+            </Field>
             <Row
-              key={module}
-              title={STATS_MODULE_LABELS[module]}
-              trailing={toggle(hasModule(module), value =>
-                setModule(module, value),
+              title="Kilometer"
+              trailing={toggle(hasMetric('distance'), value =>
+                setMetric('distance', value),
               )}
             />
-          ))}
-        </Section>
-      ) : null}
-      <Section title="Verbindungen">
-        <Row
-          title="Geräte & Verbindungen"
-          subtitle="Uhr, Sensoren, Health Connect, Wetter, OpenRouter"
-          onPress={onOpenDevices}
-        />
+            <Row
+              title="Tempo"
+              trailing={toggle(hasMetric('pace'), value =>
+                setMetric('pace', value),
+              )}
+            />
+            <Row
+              title="Herzfrequenz"
+              subtitle="Nur mit vorhandenen Messdaten"
+              trailing={toggle(hasMetric('heartRate'), value =>
+                setMetric('heartRate', value),
+              )}
+            />
+            {running ? (
+              <>
+                <Row
+                  title="Laufen nach Tempo oder Puls"
+                  subtitle="Zielvorgabe vor dem Start anbieten"
+                  trailing={toggle(features.recording.targets, value =>
+                    patch('recording', { targets: value }),
+                  )}
+                />
+                <Row
+                  title="Routenplaner"
+                  subtitle="Routen anlegen und mit Ansagen laufen"
+                  trailing={toggle(features.recording.routes, value =>
+                    patch('recording', { routes: value }),
+                  )}
+                />
+              </>
+            ) : null}
+            <Field label="Nach dem Beenden">
+              <ChipGroup
+                label="Was nach dem Beenden einer Aufzeichnung passiert"
+                options={AFTER_RUN_OPTIONS.map(value => ({
+                  value,
+                  label: AFTER_RUN_LABELS[value],
+                }))}
+                value={features.recording.afterRun}
+                onChange={afterRun => patch('recording', { afterRun })}
+                disabled={disabled}
+              />
+            </Field>
+          </Disclosure>
+        ) : null}
+        {strength ? (
+          <Disclosure
+            title="Krafttraining"
+            subtitle={`Pause ${features.strength.defaultRestSeconds} s${
+              features.strength.restTimer ? '' : ' · Timer aus'
+            }`}
+          >
+            <Row
+              title="Pausentimer"
+              subtitle="Balken nach jedem bestätigten Satz"
+              trailing={toggle(features.strength.restTimer, value =>
+                patch('strength', { restTimer: value }),
+              )}
+            />
+            <Field label="Standardpause für neue Sätze">
+              <ChipGroup
+                label="Standardpause für neue Sätze"
+                options={REST_SECONDS_OPTIONS.map(value => ({
+                  value: String(value),
+                  label: `${value} s`,
+                }))}
+                value={String(features.strength.defaultRestSeconds)}
+                onChange={value =>
+                  patch('strength', { defaultRestSeconds: Number(value) })
+                }
+                disabled={disabled}
+              />
+            </Field>
+            <Row
+              title="Wiederholungen im Tank"
+              subtitle="Feld je Satz, freiwillig"
+              trailing={toggle(features.strength.rir, value =>
+                patch('strength', { rir: value }),
+              )}
+            />
+            <Row
+              title="Tagesvorlage auf Heute"
+              subtitle="Vorlage nach Wochentag vorschlagen"
+              trailing={toggle(features.strength.templateOfDay, value =>
+                patch('strength', { templateOfDay: value }),
+              )}
+            />
+          </Disclosure>
+        ) : null}
+        {running ? (
+          <Disclosure
+            title="Statistik · Tiefer schauen"
+            subtitle={`${
+              STATS_MODULES.filter(module => hasModule(module)).length
+            } von ${STATS_MODULES.length} Blöcken`}
+          >
+            {STATS_MODULES.map(module => (
+              <Row
+                key={module}
+                title={STATS_MODULE_LABELS[module]}
+                trailing={toggle(hasModule(module), value =>
+                  setModule(module, value),
+                )}
+              />
+            ))}
+          </Disclosure>
+        ) : null}
       </Section>
     </>
   );

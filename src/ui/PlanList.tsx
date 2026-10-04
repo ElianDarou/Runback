@@ -50,11 +50,6 @@ export function PlanList({
 
   return (
     <View style={styles.content}>
-      <Copy muted>
-        Eine Kraftvorlage schlägt vor, was ansteht. Was du tatsächlich
-        trainierst, zählt — auch wenn es etwas anderes ist.
-      </Copy>
-
       {templates.length ? (
         templates.map(template => {
           const onToday = template.days.includes(today);
@@ -154,8 +149,8 @@ export function PlanList({
         <View style={styles.card}>
           <Text style={styles.name}>Noch kein Plan</Text>
           <Copy muted>
-            Du kannst jederzeit frei trainieren. Ein Plan hilft nur dann, wenn
-            du wiederkehrende Einheiten festhalten möchtest.
+            Du kannst jederzeit frei trainieren. Eine Vorlage hält
+            wiederkehrende Einheiten fest.
           </Copy>
         </View>
       )}

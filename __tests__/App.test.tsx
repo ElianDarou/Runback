@@ -161,7 +161,7 @@ function alertButton(label: string) {
 async function openData(renderer: ReactTestRenderer.ReactTestRenderer) {
   await tap(renderer, 'Heute');
   await tap(renderer, 'Einstellungen');
-  await tap(renderer, 'Importieren, sichern & löschen');
+  await tap(renderer, 'Deine Daten');
 }
 /** Krafteinheiten stehen gemeinsam mit den Läufen im Tab „Verlauf“. */
 async function openHistory(renderer: ReactTestRenderer.ReactTestRenderer) {
@@ -185,6 +185,7 @@ test('clearing data reloads the UI and removes old strength history and soreness
   await openHistory(renderer);
   expect(text(renderer, 'Altes Training')).toBeDefined();
   await openData(renderer);
+  await tap(renderer, 'Daten löschen');
   await tap(renderer, 'Alle lokalen Daten löschen');
   await ReactTestRenderer.act(async () => {
     alertButton('Alles löschen').onPress();
@@ -206,6 +207,7 @@ test('successful restore reloads the newly restored history and soreness', async
   mockStrengthSessions = [session('old-session', 'Altes Training')];
   const renderer = await renderLoaded();
   await openData(renderer);
+  await tap(renderer, 'Backup');
   await tap(renderer, 'Backup wiederherstellen');
   mockRestoreBackup.mockImplementationOnce(async () => {
     mockStrengthSessions = [session('new-session', 'Neues Training')];
@@ -230,6 +232,7 @@ test('cancelled restore retains old state and does not reload training data', as
   const renderer = await renderLoaded();
   const callsBefore = mockGetStrengthSessions.mock.calls.length;
   await openData(renderer);
+  await tap(renderer, 'Backup');
   await tap(renderer, 'Backup wiederherstellen');
   mockRestoreBackup.mockResolvedValueOnce({ cancelled: true });
   await ReactTestRenderer.act(async () => {
@@ -250,6 +253,7 @@ test('failed training reload does not preserve deleted previous history', async 
   mockGetStrengthState.mockImplementationOnce(async () => {
     throw new Error('reload failed');
   });
+  await tap(renderer, 'Daten löschen');
   await tap(renderer, 'Alle lokalen Daten löschen');
   await ReactTestRenderer.act(async () => {
     alertButton('Alles löschen').onPress();
@@ -265,14 +269,15 @@ test('locked muscle map does not invoke model validation and keeps all freshness
   const calibrateSpy = jest.spyOn(calibration, 'calibrateModel');
   const renderer = await renderLoaded();
   await openMuscleMap(renderer);
+  // Die Karte öffnet mit der eigenen Meldung; die Frische bleibt gesperrt.
+  expect(renderer.root.findAllByType(BodyMap)[0].props.values.quad_l).toBe(7);
+  await tap(renderer, 'Frische');
   const bodyMap = renderer.root.findAllByType(BodyMap)[0];
   expect(
     Object.values(bodyMap.props.values).every(value => value === null),
   ).toBe(true);
   expect(unlockedSpy).not.toHaveBeenCalled();
   expect(calibrateSpy).not.toHaveBeenCalled();
-  await tap(renderer, 'Gemeldeter Muskelkater');
-  expect(renderer.root.findAllByType(BodyMap)[0].props.values.quad_l).toBe(7);
   unlockedSpy.mockRestore();
   calibrateSpy.mockRestore();
   await ReactTestRenderer.act(async () => renderer.unmount());
