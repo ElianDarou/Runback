@@ -57,7 +57,7 @@ Wo Laufen und Krafttraining beide vorkommen (Coach, Statistik), wählt ein
 
 Höchstens eine primäre Aktion je Bildschirm. Drei sekundäre Buttons
 untereinander sind eine Liste (`Row`). Entscheidungen, die nur im Moment einer
-Handlung zählen (Sportart, Zweck, Vorlage beim Start), stehen nicht dauerhaft
+Handlung zählen (Sportart, Laufart, Vorlage beim Start), stehen nicht dauerhaft
 auf der Seite, sondern in einem `Sheet`, das sich beim Antippen öffnet — mit
 der letzten Wahl als Vorgabe.
 

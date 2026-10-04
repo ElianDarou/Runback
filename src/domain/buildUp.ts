@@ -190,7 +190,7 @@ export function buildUpWeek(input: BuildUpInput): BuildUpWeek {
   const easy: Omit<RunSlotPlan, 'routineDay'> = {
     minutes: input.routine.minutes,
     purpose: 'easy',
-    title: 'Lockerer Lauf',
+    title: 'Ruhige Runde',
     effort: 'easy',
   };
   const minutesFor = (km: number) => roundMinutes((km * pace) / 60);

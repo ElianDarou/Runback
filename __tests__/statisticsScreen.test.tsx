@@ -7,6 +7,7 @@ import {
   type StatisticsView,
 } from '../src/ui/Statistics';
 import type { Run } from '../src/native';
+import { Row } from '../src/ui/components';
 
 const NOW = Date.now();
 const days = (count: number) => count * 24 * 60 * 60 * 1000;
@@ -93,7 +94,9 @@ describe('Statistik', () => {
     expect(byLabel(bare, 'Tempo')).toBeUndefined();
     expect(byLabel(bare, 'Gefühl')).toBeUndefined();
 
-    const rated = render([run({ rpe: { legs: 5, breathing: 7, recordedAt: 1 } })]);
+    const rated = render([
+      run({ rpe: { legs: 5, breathing: 7, recordedAt: 1 } }),
+    ]);
     expect(byLabel(rated, 'Tempo')).toBeDefined();
     expect(byLabel(rated, 'Gefühl')).toBeDefined();
   });
@@ -120,6 +123,71 @@ describe('Statistik', () => {
       panel.props.onPress();
     });
     expect(texts(tree)).toContain('Längster Lauf');
+  });
+
+  it('öffnet Einzelrekorde und die stärkste Woche mit ihren Quellen', () => {
+    const onOpenRecord = jest.fn();
+    let tree!: ReactTestRenderer.ReactTestRenderer;
+    ReactTestRenderer.act(() => {
+      tree = ReactTestRenderer.create(
+        <Statistics runs={[run()]} onOpenRecord={onOpenRecord} />,
+      );
+    });
+    ReactTestRenderer.act(() => {
+      labelStartingWith(tree, 'Bestwerte,')!.props.onPress();
+    });
+    for (const title of [
+      'Längster Lauf',
+      'Längste Dauer',
+      'Schnellster Lauf ab 5 km',
+      'Stärkste Woche',
+    ]) {
+      const row = tree.root
+        .findAllByType(Row)
+        .find(node => node.props.title === title)!;
+      expect(
+        row.findAll(node => node.props.accessibilityRole === 'button').length,
+      ).toBeGreaterThan(0);
+      expect(
+        row
+          .findAllByType('Text' as unknown as React.ComponentType)
+          .some(node => node.props.children === '›'),
+      ).toBe(true);
+      ReactTestRenderer.act(() => row.props.onPress());
+      expect(onOpenRecord).toHaveBeenLastCalledWith(
+        expect.objectContaining({ label: title, runIds: ['run-1'] }),
+      );
+    }
+  });
+
+  it('bietet ohne Lauf-ID oder Navigation keinen Link an und sperrt beim Laden', () => {
+    const onOpenRecord = jest.fn();
+    let tree!: ReactTestRenderer.ReactTestRenderer;
+    ReactTestRenderer.act(() => {
+      tree = ReactTestRenderer.create(
+        <Statistics runs={[run()]} onOpenRecord={onOpenRecord} busy />,
+      );
+    });
+    ReactTestRenderer.act(() =>
+      labelStartingWith(tree, 'Bestwerte,')!.props.onPress(),
+    );
+    const row = tree.root
+      .findAllByType(Row)
+      .find(node => node.props.title === 'Längster Lauf')!;
+    expect(
+      row.findAll(node => node.props.accessibilityRole === 'button')[0].props
+        .accessibilityState.disabled,
+    ).toBe(true);
+    for (const props of [
+      { runs: [run({ id: '' })], onOpenRecord },
+      { runs: [run()] },
+    ]) {
+      ReactTestRenderer.act(() => tree.update(<Statistics {...props} />));
+      const record = tree.root
+        .findAllByType(Row)
+        .find(node => node.props.title === 'Längster Lauf')!;
+      expect(record.props.onPress).toBeUndefined();
+    }
   });
 });
 

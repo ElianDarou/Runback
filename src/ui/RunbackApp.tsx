@@ -34,6 +34,7 @@ import {
 } from '../domain/areas';
 import { Onboarding } from './Onboarding';
 import { Statistics, readStatisticsView } from './Statistics';
+import type { StatsRecord } from '../domain/statisticsView';
 import { PlanningScreen } from './PlanningScreen';
 import { DevelopmentScreen } from './DevelopmentScreen';
 import { GoalProgress } from './GoalProgress';
@@ -100,7 +101,12 @@ import {
 import { RunIntegrations } from './RunIntegrations';
 import { KilometerTable, RunSeriesPanel } from './RunCharts';
 import { RunInsights, toneFor } from './RunInsights';
-import { recentComparison } from '../domain/insights';
+import { maxHeartRate, recentComparison } from '../domain/insights';
+import {
+  purposeHintProvenance,
+  purposeHintReason,
+  suggestRunPurpose,
+} from '../domain/purposeHint';
 import {
   compassLabel,
   kilometerSplits,
@@ -203,6 +209,7 @@ import {
   hasNamedPurpose,
   purposeLabel,
   runTitle,
+  selectablePurpose,
 } from '../domain/runTitle';
 import {
   buildRunAnalysisExport,
@@ -269,6 +276,7 @@ type Page =
   | 'focus-strength'
   | 'goal'
   | 'session'
+  | 'record-runs'
   | 'templates'
   | 'muscle-map'
   | 'settings'
@@ -334,7 +342,7 @@ const unitMatches = (unit: Unit, filter: UnitFilter) =>
     ? unit.kind === 'strength'
     : unit.kind === 'run' &&
       (filter === 'runs' ? isRun(unit.run) : !isRun(unit.run));
-/** Ohne jede Angabe zum Zweck — „Frei“ ist eine Antwort, „Offen“ nicht. */
+/** Ohne jede Angabe zur Laufart — „Einfach laufen“ ist eine Antwort, „Noch offen“ nicht. */
 const purposeMissing = (run: Run) => !run.purpose || run.purpose === 'unknown';
 /** Zählwort mit Zahl: „1 Lauf“, „3 Radfahrten“. */
 const counted = (count: number, singular: string, plural: string) =>
@@ -566,6 +574,9 @@ export function RunbackApp({
   const [tab, setTab] = useState<Tab>('Heute');
   const [page, setPage] = useState<Page>('main');
   const [selected, setSelected] = useState<Run | null>(null);
+  const [selectedRecord, setSelectedRecord] = useState<StatsRecord | null>(
+    null,
+  );
   const [selectedSession, setSelectedSession] =
     useState<StrengthSession | null>(null);
   const [exportSelection, setExportSelection] = useState<string[] | null>(null);
@@ -580,12 +591,12 @@ export function RunbackApp({
   const [setupOpen, setSetupOpen] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  // Heute: Sportart, Zweck, Vorlage und Ziel werden im Moment des Startens
+  // Heute: Sportart, Laufart, Vorlage und Ziel werden im Moment des Startens
   // gewählt, nicht dauerhaft auf der Seite. Das Sheet merkt sich seine Art.
   const [startSheet, setStartSheet] = useState<StartKind | null>(null);
   const [startTemplateId, setStartTemplateId] = useState<string | null>(null);
   const [coachArea, setCoachArea] = useState<'running' | 'strength'>('running');
-  // Zweck nachtragen: ein Lauf nach dem anderen; Übersprungenes bleibt offen.
+  // Laufart nachtragen: ein Lauf nach dem anderen; Übersprungenes bleibt offen.
   const [purposeSheet, setPurposeSheet] = useState(false);
   const [purposeSkipped, setPurposeSkipped] = useState<string[]>([]);
   const [verlaufView, setVerlaufView] = useState<VerlaufView>('units');
@@ -1483,7 +1494,7 @@ export function RunbackApp({
     ? templateForDay(strength.templates, new Date(now).getDay())
     : null;
   // Eine Aufzeichnung braucht die Standortfreigabe, sonst nichts: keine
-  // Planung, keine Vorlage. Sportart und Zweck sind Beschriftung, nicht Vorgabe.
+  // Planung, keine Vorlage. Sportart und Laufart sind Beschriftung, nicht Vorgabe.
   const beginRecording = async (
     nextPurpose: RunPurpose,
     nextSport: Sport,
@@ -2373,19 +2384,23 @@ export function RunbackApp({
               />
             </Field>
           ) : null}
-          <Field label="Zweck">
+          <Field label="Wie willst du laufen?">
             <ChipGroup
-              label="Zweck dieser Aufzeichnung"
-              options={purposes
-                .filter(p => p.value !== 'unknown' || purpose === 'unknown')
-                .map(p => ({
-                  value: p.value,
-                  label: p.label,
-                }))}
-              value={purpose}
+              label="Laufart dieser Aufzeichnung"
+              options={purposes.map(p => ({
+                value: p.value,
+                label: p.label,
+              }))}
+              value={selectablePurpose(purpose)}
               onChange={value => save({ purpose: value })}
               disabled={busy}
             />
+            <Copy muted>
+              {
+                purposes.find(p => p.value === selectablePurpose(purpose))
+                  ?.description
+              }
+            </Copy>
           </Field>
           {sport === 'running' ? targetRow(purpose) : null}
           {sport === 'running' ? (
@@ -2422,7 +2437,7 @@ export function RunbackApp({
     </Sheet>
   );
 
-  // Zweck nachtragen: ein Lauf je Schritt, neueste zuerst. Weiter geht es erst,
+  // Laufart nachtragen: ein Lauf je Schritt, neueste zuerst. Weiter geht es erst,
   // wenn die Wahl gespeichert ist; Übersprungenes bleibt offen und wird am
   // Ende genannt.
   const purposeOpen = runningRuns.filter(purposeMissing);
@@ -2433,7 +2448,7 @@ export function RunbackApp({
   const renderPurposeSheet = () => (
     <Sheet
       visible={purposeSheet}
-      title="Zweck nachtragen"
+      title="Laufart nachtragen"
       onClose={() => setPurposeSheet(false)}
     >
       {error ? (
@@ -2444,7 +2459,7 @@ export function RunbackApp({
       {purposeRun ? (
         <>
           <Copy muted>
-            {`Noch ${counted(purposeQueue.length, 'Lauf', 'Läufe')} ohne Zweck`}
+            {`Noch ${counted(purposeQueue.length, 'Lauf', 'Läufe')} ohne Laufart`}
           </Copy>
           <Row
             title={runTitle(purposeRun)}
@@ -2453,15 +2468,17 @@ export function RunbackApp({
             )} km · ${tempoValue(purposeRun)} ${tempoUnit(purposeRun)}`}
           />
           <ChipGroup
-            label={`Zweck von ${runTitle(purposeRun)}`}
-            options={purposes
-              .filter(p => p.value !== 'unknown')
-              .map(p => ({ value: p.value, label: p.label }))}
-            value={purposeRun.purpose}
+            label={`Laufart von ${runTitle(purposeRun)}`}
+            options={purposes.map(p => ({ value: p.value, label: p.label }))}
+            value={selectablePurpose(purposeRun.purpose)}
             disabled={busy}
             onChange={value => {
               void action(async () => {
-                await native.feedback(purposeRun.id, { purpose: value });
+                await native.feedback(purposeRun.id, {
+                  purpose: value,
+                  purposeConfirmed: true,
+                  purposeHint: null,
+                });
                 await refresh();
               });
             }}
@@ -2484,8 +2501,8 @@ export function RunbackApp({
                   purposeOpen.length,
                   'Lauf bleibt',
                   'Läufe bleiben',
-                )} ohne Zweck.`
-              : 'Jeder Lauf hat jetzt einen Zweck.'}
+                )} ohne Laufart.`
+              : 'Jeder Lauf hat jetzt eine Laufart.'}
           </Copy>
           <Button title="Fertig" onPress={() => setPurposeSheet(false)} />
         </>
@@ -2725,7 +2742,7 @@ export function RunbackApp({
     const run = runningRuns.find(item => item.id === id);
     return run ? runTitle(run) : 'Lauf nicht mehr vorhanden';
   };
-  // Gleicher Grund, gleiche Zeile: 28 Läufe ohne Zweck sind ein Befund.
+  // Gleicher Grund, gleiche Zeile: 28 Läufe ohne Laufart sind ein Befund.
   const groupedAlternatives = () => {
     const groups = new Map<
       string,
@@ -3003,8 +3020,8 @@ export function RunbackApp({
       : !runningRuns.length
       ? 'Dafür fehlt noch ein aufgezeichneter Lauf.'
       : needsPurpose
-      ? `Bei ${counted(withoutPurpose, 'Lauf', 'Läufen')} fehlt der Zweck.`
-      : 'Vorschläge entstehen aus lockeren und langen Läufen mit mindestens vier gleichmäßigen Abschnitten ab 500 m.';
+      ? `Bei ${counted(withoutPurpose, 'Lauf', 'Läufen')} fehlt die Laufart.`
+      : 'Vorschläge entstehen aus ruhigen und langen Runden mit mindestens vier gleichmäßigen Abschnitten ab 500 m.';
     const past = (settings.experiments || []).filter(
       (e): e is Experiment<Recommendation> =>
         (e.status === 'completed' || e.status === 'aborted') &&
@@ -3104,7 +3121,7 @@ export function RunbackApp({
                   : runningRuns.length
                   ? needsPurpose
                     ? {
-                        title: 'Zweck nachtragen',
+                        title: 'Laufart nachtragen',
                         onPress: () => {
                           setPurposeSkipped([]);
                           setPurposeSheet(true);
@@ -3464,7 +3481,7 @@ export function RunbackApp({
 
   // Detail einer Aufzeichnung: erst sehen (Karte, Zahlen), dann bewerten
   // (nächster Schritt, Gefühl), dann die Abschnitte. Rohdaten, Modell,
-  // Art/Zweck ändern und Löschen liegen eingeklappt darunter. Die
+  // Sport-/Laufart ändern und Löschen liegen eingeklappt darunter. Die
   // Laufauswertung erscheint nur bei Läufen (Spec T-1).
   const renderDetail = () => {
     if (!selected) {
@@ -3513,30 +3530,68 @@ export function RunbackApp({
           .filter(Boolean)
           .join(' · ')
       : '';
+    // Jede Wahl hier ist ausdrücklich; danach fragt die Seite nicht mehr nach.
+    // Eine eigene Wahl löscht die Spur eines früher bestätigten Vorschlags;
+    // das Ereignisprotokoll im Speicher behält sie.
     const purposeChips = (
-      <Field label="Zweck">
+      <Field label="Laufart">
         <ChipGroup
-          label="Trainingszweck dieser Aufzeichnung"
+          label="Laufart dieser Aufzeichnung"
           options={purposes.map(p => ({ value: p.value, label: p.label }))}
-          value={selected.purpose}
-          onChange={value => updateFeedback({ purpose: value })}
+          value={selectablePurpose(selected.purpose)}
+          onChange={value =>
+            updateFeedback({
+              purpose: value,
+              purposeConfirmed: true,
+              purposeHint: null,
+            })
+          }
           disabled={busy}
         />
       </Field>
     );
-    const askPurpose = isRun(selected) && purposeMissing(selected);
-    // Die Rückfrage bietet nur Zwecke an, die etwas aussagen; „Offen“ ist der
-    // Zustand, nach dem gefragt wird.
+    // „Noch offen“ fragt immer. „Einfach laufen“ ohne ausdrückliche Wahl (die
+    // Vorgabe beim Start) fragt nur, wenn es einen Vorschlag gibt.
+    const unconfirmedFree =
+      isRun(selected) &&
+      selected.purpose === 'free' &&
+      !selected.purposeConfirmed;
+    const purposeHint =
+      isRun(selected) && (purposeMissing(selected) || unconfirmedFree)
+        ? suggestRunPurpose(
+            selected,
+            runningRuns,
+            maxHeartRate(settings.maxHeartRate, runningRuns),
+          )
+        : undefined;
+    const askPurpose =
+      isRun(selected) &&
+      (purposeMissing(selected) || (unconfirmedFree && Boolean(purposeHint)));
     const purposePrompt = (
-      <ChipGroup
-        label="Trainingszweck dieser Aufzeichnung"
-        options={purposes
-          .filter(p => p.value !== 'unknown')
-          .map(p => ({ value: p.value, label: p.label }))}
-        value={selected.purpose}
-        onChange={value => updateFeedback({ purpose: value })}
-        disabled={busy}
-      />
+      <>
+        {purposeHint ? (
+          <>
+            <Copy>
+              Sah aus wie: {purposeLabel(purposeHint.purpose)} —{' '}
+              {purposeHintReason(purposeHint)}.
+            </Copy>
+            <Button
+              secondary
+              title="Stimmt"
+              onPress={() =>
+                updateFeedback({
+                  purpose: purposeHint.purpose,
+                  purposeConfirmed: true,
+                  purposeHint: purposeHintProvenance(purposeHint),
+                })
+              }
+              disabled={busy}
+            />
+          </>
+        ) : null}
+        <Copy muted>Danach vergleichen wir den Lauf mit ähnlichen Läufen.</Copy>
+        {purposeChips}
+      </>
     );
     const finishedAt = selected.startTime + selected.durationSeconds * 1000;
     // Das Gefühl klappt nur bei frischen Einheiten auf; bei alten oder
@@ -3649,7 +3704,7 @@ export function RunbackApp({
           </Copy>
         ) : null}
         {askPurpose ? (
-          <Section title="Wofür war dieser Lauf?">{purposePrompt}</Section>
+          <Section title="Wie war der Lauf gemeint?">{purposePrompt}</Section>
         ) : null}
         {selected.avgCadence && usesPace(selected.sport) && !series ? (
           <Copy muted>Ø {Math.round(selected.avgCadence)} Schritte / min</Copy>
@@ -3707,7 +3762,7 @@ export function RunbackApp({
             }}
           />
         ) : null}
-        {/* Fehlt nur der Zweck, ist die Rückfrage oben schon der nächste Schritt. */}
+        {/* Fehlt nur die Laufart, ist die Rückfrage oben schon der nächste Schritt. */}
         {snapshot &&
         !(askPurpose && !snapshot.recommendation && !experiment) ? (
           <Card style={styles.nextStepCard}>
@@ -3861,6 +3916,22 @@ export function RunbackApp({
             {snapshot ? (
               <Row title="Modell" subtitle={snapshot.model_version} />
             ) : null}
+            {selected.purposeHint ? (
+              <Row
+                title="Laufart"
+                subtitle={`Vorschlag bestätigt · ${
+                  selected.purposeHint.model_version
+                }${
+                  selected.purposeHint.maxHeartRate
+                    ? ` · Maxpuls ${selected.purposeHint.maxHeartRate.value} (${
+                        selected.purposeHint.maxHeartRate.source === 'setting'
+                          ? 'eingestellt'
+                          : 'geschätzt'
+                      })`
+                    : ''
+                }`}
+              />
+            ) : null}
             {snapshot ? (
               <Section title="Modellierte Anforderung">
                 <Copy>
@@ -3895,9 +3966,9 @@ export function RunbackApp({
           </Disclosure>
           <Disclosure
             title="Bearbeiten & verwalten"
-            subtitle="Art und Zweck ändern, löschen"
+            subtitle="Sportart und Laufart ändern, löschen"
           >
-            <Field label="Art">
+            <Field label="Sportart">
               <ChipGroup
                 label="Sportart dieser Aufzeichnung"
                 options={SPORTS.filter(
@@ -4355,11 +4426,11 @@ export function RunbackApp({
   );
 
   // Vorlagen an einem Ort: Kraftvorlagen (Übungsfolgen) und Laufvorlagen
-  // (Zweck und Zeit für den Start). Beide erscheinen im Start-Sheet.
+  // (Laufart und Zeit für den Start). Beide erscheinen im Start-Sheet.
   const renderPresets = () => (
     <>
       <Copy muted>
-        Eine Laufvorlage setzt Zweck und Zeit beim Start. Die aktuelle Wahl
+        Eine Laufvorlage setzt Laufart und Zeit beim Start. Die aktuelle Wahl
         speicherst du hier als neue Vorlage.
       </Copy>
       <Section title="Aktuelle Einstellung speichern">
@@ -4623,7 +4694,7 @@ export function RunbackApp({
       <Title>Wie Runback rechnet</Title>
       <Section title="Lokal aus deinen Daten">
         <Copy>
-          Basiswerte, Datenqualität und Laufzweck rechnet Runback auf diesem
+          Basiswerte, Datenqualität und Laufart rechnet Runback auf diesem
           Gerät. Messung, Gefühl und Schätzung bleiben getrennt.
         </Copy>
         <Copy muted>
@@ -4654,8 +4725,43 @@ export function RunbackApp({
     </>
   );
 
+  const recordRuns = selectedRecord
+    ? runningRuns
+        .filter(run => selectedRecord.runIds.includes(run.id))
+        .sort((a, b) => b.startTime - a.startTime)
+    : [];
+
   const content = selected ? (
     renderDetail()
+  ) : page === 'record-runs' && selectedRecord ? (
+    <>
+      <Title>{selectedRecord.label}</Title>
+      <Copy muted>{selectedRecord.detail}</Copy>
+      <Stat value={selectedRecord.value} label="Distanz" />
+      <Section title="Läufe">
+        {recordRuns.map(run => (
+          <Row
+            key={run.id}
+            title={runTitle(run)}
+            subtitle={unitSummary({
+              kind: 'run',
+              key: run.id,
+              run,
+              at: run.startTime,
+            })}
+            onPress={() => openRun(run.id)}
+            disabled={busy}
+          />
+        ))}
+        {!recordRuns.length ? (
+          <EmptyState
+            title="Keine Läufe mehr vorhanden"
+            copy="Öffne die Statistik erneut."
+            action={{ title: 'Zur Statistik', onPress: leaveDetail }}
+          />
+        ) : null}
+      </Section>
+    </>
   ) : page === 'distance-times' ? (
     <DistanceTimes
       runs={runningRuns}
@@ -4801,6 +4907,15 @@ export function RunbackApp({
         sessions={finishedSessions}
         view={statisticsView}
         onViewChange={next => save({ statisticsView: next })}
+        busy={busy}
+        onOpenRecord={record => {
+          if (record.runId) {
+            openRun(record.runId);
+          } else {
+            setSelectedRecord(record);
+            openPage('record-runs');
+          }
+        }}
         modules={features.statistics.modules}
         showRunning={showRunning}
         showStrength={showStrength}

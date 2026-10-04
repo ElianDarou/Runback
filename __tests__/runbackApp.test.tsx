@@ -44,7 +44,7 @@ jest.mock('../src/native', () => {
 
 import { RunbackApp } from '../src/ui/RunbackApp';
 import { native } from '../src/native';
-import { ChipGroup } from '../src/ui/components';
+import { ChipGroup, Row } from '../src/ui/components';
 import { acceptRecommendation, analyzeRun } from '../src/domain';
 import {
   buildRunReport,
@@ -160,10 +160,10 @@ describe('Heute', () => {
     expect(text).not.toContain('Dein Fokus');
     expect(text).not.toContain('Dein Ziel');
     expect(text).not.toContain('Laufvorlagen');
-    // Der Zweck wird erst im Moment des Startens gewählt.
+    // Die Laufart wird erst im Moment des Startens gewählt.
     expect(text).not.toContain('Zweck');
     await tap(tree, 'Lauf starten');
-    expect(screenText(tree)).toContain('Zweck');
+    expect(screenText(tree)).toContain('Wie willst du laufen?');
     await act(async () => {
       tree.unmount();
     });
@@ -181,6 +181,80 @@ describe('Heute', () => {
 });
 
 describe('Verlauf', () => {
+  it('opens record runs and returns through the strongest week to statistics', async () => {
+    const monday = new Date();
+    monday.setHours(0, 0, 0, 0);
+    monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7) - 7);
+    const base = {
+      id: 'record-long',
+      startTime: monday.getTime(),
+      endTime: monday.getTime() + 3600000,
+      durationSeconds: 3600,
+      distanceMeters: 12000,
+      purpose: 'long' as const,
+      source: 'test',
+      status: 'completed' as const,
+    };
+    const runs = [
+      base,
+      {
+        ...base,
+        id: 'record-easy',
+        startTime: base.startTime + DAY,
+        distanceMeters: 5000,
+        purpose: 'easy' as const,
+      },
+      {
+        ...base,
+        id: 'outside-week',
+        startTime: base.startTime - DAY,
+        distanceMeters: 1000,
+        purpose: 'free' as const,
+      },
+    ];
+    jest.mocked(native.state).mockResolvedValueOnce({
+      runs,
+      recording: null,
+      settings: { onboardedAt: 1, minutes: 30 },
+      capabilities: {},
+    });
+    jest
+      .mocked(native.run)
+      .mockImplementation(async id => runs.find(run => run.id === id) as never);
+    const tree = await render();
+    const pressRow = async (title: string) => {
+      const row = tree.root
+        .findAllByType(Row)
+        .find(node => node.props.title === title)!;
+      await act(async () => row.props.onPress());
+    };
+    try {
+      await tap(tree, 'Verlauf');
+      await tap(tree, 'Statistik');
+      await tap(tree, 'Bestwerte, 12,0 km');
+      await pressRow('Längster Lauf');
+      expect(native.run).toHaveBeenLastCalledWith('record-long');
+      expect(screenText(tree)).toContain('12,00');
+      await tap(tree, 'Zurück');
+      expect(screenText(tree)).toContain('Statistik');
+      await tap(tree, 'Bestwerte, 12,0 km');
+      await pressRow('Stärkste Woche');
+      expect(screenText(tree)).toContain('17,0 km');
+      expect(
+        tree.root.findAllByType(Row).map(node => node.props.title),
+      ).toEqual(['Ruhige Runde', 'Lange Runde']);
+      await pressRow('Ruhige Runde');
+      expect(native.run).toHaveBeenLastCalledWith('record-easy');
+      await tap(tree, 'Zurück');
+      expect(screenText(tree)).toContain('Stärkste Woche');
+      await tap(tree, 'Zurück');
+      expect(screenText(tree)).toContain('Zeitverlauf');
+    } finally {
+      jest.mocked(native.run).mockResolvedValue(null as never);
+      await act(async () => tree.unmount());
+    }
+  });
+
   it('shows runs and strength side by side, without an import entry', async () => {
     const tree = await render();
     await tap(tree, 'Verlauf');
@@ -625,7 +699,7 @@ describe('Lauf-Detail', () => {
     const tree = await render();
     try {
       await tap(tree, 'Verlauf');
-      await tapText(tree, 'Locker');
+      await tapText(tree, 'Ruhige Runde');
       const text = screenText(tree);
       expect(text).toContain('Bewegung');
       expect(text).toContain('2,50 km · 12:30 ohne Gehpause');
@@ -816,7 +890,7 @@ describe('Laufberichte gesammelt exportieren', () => {
   });
 });
 
-describe('Zweck nachtragen', () => {
+describe('Laufart nachtragen', () => {
   const run = (id: string, day: number, purpose: string) => ({
     id,
     startTime: new Date(2026, 9, day, 7).getTime(),
@@ -844,7 +918,7 @@ describe('Zweck nachtragen', () => {
       );
   });
 
-  it('fragt Lauf für Lauf, geht erst nach dem Speichern weiter und zählt „Frei“ als Antwort', async () => {
+  it('fragt Lauf für Lauf, geht erst nach dem Speichern weiter und zählt „Einfach laufen“ als Antwort', async () => {
     let runs = [run('neu', 2, 'unknown'), run('alt', 1, 'unknown')];
     jest.mocked(native.state).mockImplementation(() =>
       Promise.resolve({
@@ -862,18 +936,22 @@ describe('Zweck nachtragen', () => {
     const tree = await render();
     activeTree = tree;
     await tap(tree, 'Coach');
-    expect(screenText(tree)).toContain('Bei 2 Läufen fehlt der Zweck.');
-    await tap(tree, 'Zweck nachtragen');
-    expect(screenText(tree)).toContain('Noch 2 Läufe ohne Zweck');
+    expect(screenText(tree)).toContain('Bei 2 Läufen fehlt die Laufart.');
+    await tap(tree, 'Laufart nachtragen');
+    expect(screenText(tree)).toContain('Noch 2 Läufe ohne Laufart');
     const chips = () =>
       tree.root
         .findAllByType(ChipGroup)
-        .find(group => String(group.props.label).startsWith('Zweck von'))!;
+        .find(group => String(group.props.label).startsWith('Laufart von'))!;
     await act(async () => chips().props.onChange('free'));
-    expect(native.feedback).toHaveBeenCalledWith('neu', { purpose: 'free' });
-    expect(screenText(tree)).toContain('Noch 1 Lauf ohne Zweck');
+    expect(native.feedback).toHaveBeenCalledWith('neu', {
+      purpose: 'free',
+      purposeConfirmed: true,
+      purposeHint: null,
+    });
+    expect(screenText(tree)).toContain('Noch 1 Lauf ohne Laufart');
     await tap(tree, 'Überspringen');
-    expect(screenText(tree)).toContain('1 Lauf bleibt ohne Zweck.');
+    expect(screenText(tree)).toContain('1 Lauf bleibt ohne Laufart.');
   });
 
   it('bleibt beim Lauf, wenn das Speichern scheitert', async () => {
@@ -891,13 +969,13 @@ describe('Zweck nachtragen', () => {
     const tree = await render();
     activeTree = tree;
     await tap(tree, 'Coach');
-    await tap(tree, 'Zweck nachtragen');
+    await tap(tree, 'Laufart nachtragen');
     const chips = tree.root
       .findAllByType(ChipGroup)
-      .find(group => String(group.props.label).startsWith('Zweck von'))!;
+      .find(group => String(group.props.label).startsWith('Laufart von'))!;
     await act(async () => chips.props.onChange('easy'));
     const text = screenText(tree);
     expect(text).toContain('Speicher voll.');
-    expect(text).toContain('Noch 1 Lauf ohne Zweck');
+    expect(text).toContain('Noch 1 Lauf ohne Laufart');
   });
 });

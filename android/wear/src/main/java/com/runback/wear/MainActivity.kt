@@ -47,7 +47,7 @@ class MainActivity : Activity() {
     private lateinit var content: LinearLayout
     private lateinit var scroll: ScrollView
     private var page = "home"
-    private var purpose = "easy"
+    private var purpose = "free"
     private var target = JSONObject().put("kind", "none").put("version", 1)
     private var lastState = ""
     private var timer: TextView? = null
@@ -70,7 +70,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         store = RunStore(this)
         val settings = store.settings()
-        purpose = settings.optString("wearPurpose", "easy")
+        purpose = normalizePurpose(settings.optString("wearPurpose", "free"))
         target = settings.optJSONObject("wearTarget") ?: target
         window.statusBarColor = bg
         window.navigationBarColor = bg
@@ -134,7 +134,7 @@ class MainActivity : Activity() {
         text("Dein nächster Lauf.", 21, ink, bold = true, margin = 6)
         text("Ohne Handy aufzeichnen", 12, muted, margin = 3)
         button("Lauf starten", true, 12) { requestStart() }
-        button("Zweck · ${purposeLabel(purpose)}", false, 6) { choosePurpose() }
+        button("Laufart · ${purposeLabel(purpose)}", false, 6) { choosePurpose() }
         button("Ziel · ${targetLabel()}", false, 6) { chooseTarget() }
         button("Stimme & Vibration", false, 6) { chooseGuidance() }
         button("Zwischenstände ansagen", false, 6) { chooseAnnouncements() }
@@ -427,8 +427,8 @@ class MainActivity : Activity() {
             }.show()
     }
     private fun choosePurpose() {
-        val values = arrayOf("easy", "long", "quality", "race", "free", "unknown")
-        AlertDialog.Builder(this).setTitle("Trainingszweck")
+        val values = arrayOf("free", "easy", "long", "intervals", "race")
+        AlertDialog.Builder(this).setTitle("Wie willst du laufen?")
             .setItems(values.map(::purposeLabel).toTypedArray()) { _, index ->
                 purpose = values[index]
                 store.saveSettings(store.settings().put("wearPurpose", purpose))
@@ -559,9 +559,12 @@ class MainActivity : Activity() {
         "heart_rate" -> "${target.optInt("minBpm")}–${target.optInt("maxBpm")} bpm"
         else -> "Ohne Ziel"
     }
-    private fun purposeLabel(value: String) = when (value) {
-        "easy" -> "Locker"; "long" -> "Langer Lauf"; "quality", "interval" -> "Intervalle"; "race" -> "Wettkampf"; "free" -> "Freier Lauf"; else -> "Offen"
+    // Gleiche Wörter wie RUN_PURPOSES in src/domain/runTitle.ts.
+    private fun purposeLabel(value: String) = when (normalizePurpose(value)) {
+        "easy" -> "Ruhig"; "long" -> "Lange Runde"; "intervals" -> "Tempowechsel"; "race" -> "Auf Zeit"; "free" -> "Einfach laufen"; else -> "Noch offen"
     }
+    // Ältere Versionen speicherten Tempowechsel als "quality".
+    private fun normalizePurpose(value: String) = if (value == "quality" || value == "interval") "intervals" else value
     private fun formatDuration(seconds: Long): String = if (seconds >= 3600) "%d:%02d:%02d".format(seconds / 3600, seconds / 60 % 60, seconds % 60) else "%02d:%02d".format(seconds / 60, seconds % 60)
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
     private fun text(value: String, size: Int, color: Int, bold: Boolean = false, margin: Int = 0): TextView {

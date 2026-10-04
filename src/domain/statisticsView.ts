@@ -1,6 +1,7 @@
 import type { Run } from '../native';
 import type { RunPurpose } from './types';
 import { medianOrNull } from './inference';
+import { normalizePurpose, purposeLabel } from './runTitle';
 import { average, mondayStart, validRun } from './statistics';
 
 /**
@@ -57,6 +58,8 @@ export interface StatsRecord {
   value: string;
   detail: string | null;
   runId: string | null;
+  /** Genau die Läufe, die den Bestwert tragen; bereits gefiltert und dedupliziert. */
+  runIds: string[];
 }
 
 export interface StatsTotals {
@@ -120,14 +123,6 @@ const RANGE_COMPARISONS: Record<StatsRange, string> = {
   all: 'den Zeitraum davor',
 };
 
-const PURPOSE_LABELS: Record<RunPurpose, string> = {
-  easy: 'Locker',
-  long: 'Lang',
-  intervals: 'Intervalle',
-  race: 'Wettkampf',
-  free: 'Frei',
-  unknown: 'Ohne Zweck',
-};
 
 const dayFormat = new Intl.DateTimeFormat('de-DE', {
   day: '2-digit',
@@ -364,6 +359,7 @@ function buildRecords(runs: Run[], weekBuckets: StatsBucket[]): StatsRecord[] {
       value: formatKm(longest.distanceMeters / 1000),
       detail: dayLongFormat.format(new Date(longest.startTime)),
       runId: longest.id || null,
+      runIds: longest.id ? [longest.id] : [],
     });
   }
   const longestTime = runs.reduce<Run | null>(
@@ -377,6 +373,7 @@ function buildRecords(runs: Run[], weekBuckets: StatsBucket[]): StatsRecord[] {
       value: formatDurationValue(longestTime.durationSeconds),
       detail: dayLongFormat.format(new Date(longestTime.startTime)),
       runId: longestTime.id || null,
+      runIds: longestTime.id ? [longestTime.id] : [],
     });
   }
   // Bestes Tempo nur über Läufe ab 5 km. Kürzere Strecken sind nicht
@@ -397,6 +394,7 @@ function buildRecords(runs: Run[], weekBuckets: StatsBucket[]): StatsRecord[] {
         new Date(fastest.startTime),
       )}`,
       runId: fastest.id || null,
+      runIds: fastest.id ? [fastest.id] : [],
     });
   }
   const bestWeek = weekBuckets.reduce<StatsBucket | null>(
@@ -410,6 +408,14 @@ function buildRecords(runs: Run[], weekBuckets: StatsBucket[]): StatsRecord[] {
       value: formatKm(bestWeek.distanceKm),
       detail: bestWeek.fullLabel,
       runId: null,
+      runIds: runs
+        .filter(
+          run =>
+            run.id &&
+            run.startTime >= bestWeek.startTime &&
+            run.startTime < bestWeek.endTime,
+        )
+        .map(run => run.id),
     });
   }
   return result;
@@ -419,8 +425,7 @@ function purposeShares(runs: Run[]): PurposeShare[] {
   const totalKm = runs.reduce((sum, run) => sum + run.distanceMeters / 1000, 0);
   const groups = new Map<RunPurpose, Run[]>();
   runs.forEach(run => {
-    const purpose: RunPurpose =
-      run.purpose && PURPOSE_LABELS[run.purpose] ? run.purpose : 'unknown';
+    const purpose = normalizePurpose(run.purpose);
     groups.set(purpose, (groups.get(purpose) || []).concat(run));
   });
   return Array.from(groups.entries())
@@ -431,7 +436,7 @@ function purposeShares(runs: Run[]): PurposeShare[] {
       );
       return {
         purpose,
-        label: PURPOSE_LABELS[purpose],
+        label: purposeLabel(purpose),
         runCount: group.length,
         distanceKm,
         share: totalKm > 0 ? distanceKm / totalKm : 0,
