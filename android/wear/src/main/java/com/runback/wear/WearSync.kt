@@ -282,9 +282,14 @@ class WearSyncListener : WearableListenerService() {
 
     override fun onDataChanged(events: DataEventBuffer) {
         for (event in events) {
-            if (event.type != DataEvent.TYPE_CHANGED || event.dataItem.uri.path?.startsWith("/runback/acks/") != true) continue
+            if (event.type != DataEvent.TYPE_CHANGED) continue
+            val path = event.dataItem.uri.path ?: continue
             val data = DataMapItem.fromDataItem(event.dataItem).dataMap
-            WearSync.acceptAck(this, data.getString("runId") ?: "", data.getString("sha256") ?: "")
+            if (path.startsWith("/runback/acks/")) {
+                WearSync.acceptAck(this, data.getString("runId") ?: "", data.getString("sha256") ?: "")
+            } else if (path.startsWith(WearProtocol.MOTION_ACK_PREFIX)) {
+                MotionSync.acceptAck(this, data.getString("sessionId") ?: "", data.getString("sha256") ?: "")
+            }
         }
     }
     override fun onMessageReceived(event: MessageEvent) {
@@ -292,11 +297,13 @@ class WearSyncListener : WearableListenerService() {
             WearProtocol.CONTROL_PATH -> executor.execute { handleControl(event) }
             WearProtocol.LIVE_PATH -> executor.execute { receivePhoneSamples(event.data) }
             WearProtocol.ACK_PATH -> executor.execute { receivePhoneAck(event.data) }
+            WearProtocol.MOTION_PATH -> MotionSync.handleMessage(this, event)
         }
     }
     override fun onPeerConnected(peer: Node) {
         WearSync.retryControl(this)
         WearSync.retry(this)
+        MotionSync.retry(this)
     }
     override fun onDestroy() { executor.shutdown(); super.onDestroy() }
 
@@ -524,6 +531,7 @@ class WearSyncListener : WearableListenerService() {
 class SyncJobService : JobService() {
     override fun onStartJob(params: JobParameters): Boolean {
         WearSync.retryControl(this)
+        MotionSync.retry(this)
         WearSync.retry(this) { jobFinished(params, false) }
         return true
     }

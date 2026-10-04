@@ -52,6 +52,8 @@ export interface Settings {
   sport?: Sport;
   /** Wo das Handy beim Laufen steckt; Kotlin liest es beim Start für den Laufstil. */
   gaitPlacement?: GaitPlacement;
+  /** Bewegungen der Uhr im Krafttraining mitschreiben; Kotlin liest es beim Start einer Einheit. */
+  motionCapture?: MotionCaptureSettings;
   trainingDays?: number[];
   cues?: boolean;
   /** Explizit gewählte Begleitung für den nächsten Lauf. */
@@ -69,6 +71,24 @@ export interface Settings {
   adherence?: Record<string, Adherence>;
   postponedUntil?: number;
   [key: string]: unknown;
+}
+export type MotionWrist = 'left' | 'right' | 'unknown';
+export interface MotionCaptureSettings {
+  enabled: boolean;
+  wrist: MotionWrist;
+}
+/** Zähler aus `MotionSessions.status`; die Rohdaten selbst bleiben nativ. */
+export interface MotionStatus {
+  enabled: boolean;
+  wrist: MotionWrist;
+  sessions: number;
+  received: number;
+  waiting: number;
+  bytes: number;
+  recording: {
+    sessionId: string;
+    watch: { status?: string; message?: string };
+  } | null;
 }
 export interface RoutePoint {
   latitude: number;
