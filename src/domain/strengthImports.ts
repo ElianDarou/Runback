@@ -3,7 +3,7 @@ import type { PlannedSet, WorkoutTemplate } from './strength';
 import { CATALOG_VERSION } from './strength';
 import type { StrongWorkout } from './vendorImports';
 
-export const STRENGTH_IMPORT_TEMPLATE_VERSION = 'strength-import-template-v1';
+export const STRENGTH_IMPORT_TEMPLATE_VERSION = 'strength-import-template-v2';
 export interface ImportedTemplate {
   template: WorkoutTemplate;
   source: StrongWorkout;
@@ -16,7 +16,9 @@ const workoutName = (name: string) =>
 export function importedTemplateCandidates(
   workouts: StrongWorkout[],
   existing: WorkoutTemplate[] = [],
+  dismissedIds: readonly string[] = [],
 ): ImportedTemplate[] {
+  const dismissed = new Set(dismissedIds);
   const latest = new Map<string, StrongWorkout>();
   for (const workout of workouts) {
     if (
@@ -37,7 +39,11 @@ export function importedTemplateCandidates(
   }
   const result: ImportedTemplate[] = [];
   for (const [key, workout] of latest) {
+    const source = workout.source ?? 'strong';
+    // Die Wahl gilt für Quelle und Trainingsname, auch nach einem erneuten Import.
+    const id = `import-template:${encodeURIComponent(source)}:${encodeURIComponent(key)}`;
     if (
+      dismissed.has(id) ||
       workout.incomplete ||
       existing.some(
         template =>
@@ -102,14 +108,11 @@ export function importedTemplateCandidates(
         });
     }
     if (!exercises.length) continue;
-    const source = workout.source ?? 'strong';
     result.push({
       source: workout,
       warnings: Array.from(warnings),
       template: {
-        id: `import-template:${encodeURIComponent(source)}:${encodeURIComponent(
-          key,
-        )}`,
+        id,
         name: workout.name.trim(),
         days: [],
         exercises,
