@@ -20,6 +20,7 @@ import {
   Section,
   Title,
 } from './components';
+import { dateToInput, inputToDate } from './dateInput';
 
 /**
  * Fokus eines Bereichs. Für Krafttraining trägt die Seite zusätzlich das
@@ -45,7 +46,9 @@ export function FocusEditor({
   const [kind, setKind] = useState<FocusKind | ''>(focus?.kind || '');
   const [label, setLabel] = useState(focus?.label || '');
   const [goalInput, setGoalInput] = useState(goalEditor?.value || '');
-  const [targetInput, setTargetInput] = useState(goalEditor?.targetDate || '');
+  const [targetInput, setTargetInput] = useState(
+    dateToInput(goalEditor?.targetDate),
+  );
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const suggestion = suggestedFocus(goal, area);
@@ -74,11 +77,8 @@ export function FocusEditor({
   }
   return (
     <>
-      <Title>Wähle, woran du arbeiten möchtest.</Title>
-      <Copy muted>
-        {AREA_LABELS[area]} · Dein Fokus bleibt, solange er zu dir passt. Du
-        kannst auch ohne Fokus trainieren.
-      </Copy>
+      <Title>Dein Fokus</Title>
+      <Copy muted>{AREA_LABELS[area]} · Woran möchtest du arbeiten?</Copy>
       {message ? (
         <Notice onDismiss={() => setMessage('')}>{message}</Notice>
       ) : null}
@@ -93,25 +93,30 @@ export function FocusEditor({
               placeholder="Zum Beispiel: 100 kg Kniebeuge"
             />
           </Field>
-          <Field label="Zieldatum (optional, JJJJ-MM-TT)">
+          <Field label="Zieldatum (optional)">
             <Input
               label="Zieldatum im Krafttraining"
               value={targetInput}
               onChangeText={setTargetInput}
               editable={!busy}
-              placeholder="2027-03-01"
+              placeholder="TT.MM.JJJJ"
             />
           </Field>
           <Button
             secondary
             title="Ziel speichern"
             disabled={busy}
-            onPress={() =>
+            onPress={() => {
+              const targetDate = inputToDate(targetInput);
+              if (targetDate === null) {
+                setMessage('Gib das Zieldatum als TT.MM.JJJJ ein.');
+                return;
+              }
               void run(
-                () => goalEditor.persist(goalInput.trim(), targetInput.trim()),
+                () => goalEditor.persist(goalInput.trim(), targetDate),
                 goalInput.trim() ? 'Ziel gespeichert.' : 'Ziel entfernt.',
-              )
-            }
+              );
+            }}
           />
         </Section>
       ) : null}
@@ -126,7 +131,7 @@ export function FocusEditor({
         {!focus && suggestion && !kind ? (
           <Button
             secondary
-            title={`Vorschlag zum Ziel: ${focusLabel({
+            title={`Vorschlag übernehmen: ${focusLabel({
               version: FOCUS_VERSION,
               kind: suggestion,
               label: '',
@@ -152,10 +157,6 @@ export function FocusEditor({
           placeholder="Zum Beispiel: gut durch den Winter"
         />
       </Field>
-      <Copy muted>
-        Deine Bezeichnung wird nur angezeigt. Die Fokus-Art hilft bei der
-        Auswahl künftiger Empfehlungen.
-      </Copy>
       <Button
         title="Fokus speichern"
         disabled={busy || !kind}
@@ -165,16 +166,19 @@ export function FocusEditor({
         }
       />
       {focus ? (
-        <Button
-          secondary
-          title="Fokus entfernen"
-          disabled={busy}
-          onPress={() => void save(null)}
-        />
+        <>
+          <Button
+            secondary
+            title="Fokus entfernen"
+            disabled={busy}
+            onPress={() => void save(null)}
+          />
+          <Copy muted>
+            Eine laufende Empfehlung bleibt mit ihren bisherigen Regeln
+            bestehen.
+          </Copy>
+        </>
       ) : null}
-      <Copy muted>
-        Eine laufende Empfehlung bleibt mit ihren bisherigen Regeln bestehen.
-      </Copy>
     </>
   );
 }

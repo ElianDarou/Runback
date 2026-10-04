@@ -228,9 +228,11 @@ export function RunInsights({
             <Row
               title="Wechsel zwischen Laufen und Gehen"
               subtitle={
-                movement.runWalkTransitions === 0
-                  ? 'Keiner — durchgelaufen'
-                  : `${movement.runWalkTransitions}×`
+                // Keine erkannten Wechsel belegen kein durchgehendes Laufen:
+                // Stillstand und unbekannte Abschnitte zählen hier nicht mit.
+                movement.runWalkTransitions > 0
+                  ? `${movement.runWalkTransitions}×`
+                  : 'Keiner erkannt'
               }
             />
           ) : null}
@@ -247,7 +249,7 @@ export function RunInsights({
       ) : null}
 
       {verdict || drift || gap ? (
-        <Section title="Pacing">
+        <Section title="Einteilung">
           {verdict ? <Copy>{verdict.sentence}</Copy> : null}
           {verdict ? (
             <Row

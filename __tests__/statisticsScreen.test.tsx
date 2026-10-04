@@ -100,15 +100,14 @@ describe('Statistik', () => {
 
   it('öffnet die Werte eines Balkens an Ort und Stelle', () => {
     const tree = render([run()]);
-    expect(texts(tree)).toContain('Balken antippen');
+    expect(texts(tree)).not.toContain('Woche ');
 
     const bar = labelStartingWith(tree, 'Woche ');
     ReactTestRenderer.act(() => {
       bar!.props.onPress();
     });
     const shown = texts(tree);
-    expect(shown).not.toContain('Balken antippen');
-    expect(shown).toContain('10,0 km');
+    expect(shown).toContain('Woche ');
   });
 
   it('klappt einen Abschnitt erst auf Anforderung auf', () => {

@@ -46,10 +46,13 @@ export function RunTargetScreen({
   value,
   purpose,
   onSave,
+  settings = false,
 }: {
   value: RunTarget;
   purpose: RunPurpose;
   onSave: (target: RunTarget) => Promise<void>;
+  /** Aus den Einstellungen („Stimme & Vibration“) statt aus dem Start-Sheet. */
+  settings?: boolean;
 }) {
   const normalized = normalizeRunTarget(value);
   const [kind, setKind] = useState<TargetKind>(normalized.kind);
@@ -193,7 +196,9 @@ export function RunTargetScreen({
 
   return (
     <>
-      <Title>Wie möchtest du laufen?</Title>
+      <Title>
+        {settings ? 'Stimme & Vibration' : 'Wie möchtest du laufen?'}
+      </Title>
       <Field label="Laufen nach">
         <ChipGroup
           label="Laufziel"
@@ -355,7 +360,13 @@ export function RunTargetScreen({
       </Section>
       {error ? <Notice title="Prüfe deine Angabe">{error}</Notice> : null}
       <Button
-        title={kind === 'none' ? 'Ohne Ziel übernehmen' : 'Ziel übernehmen'}
+        title={
+          settings
+            ? 'Speichern'
+            : kind === 'none'
+            ? 'Ohne Ziel übernehmen'
+            : 'Ziel übernehmen'
+        }
         onPress={save}
         disabled={busy || checkingSensor}
       />

@@ -266,7 +266,7 @@ export function RunSeriesPanel({
                 : ''}
             </>
           ) : (
-            'Gesamt · wischen zeigt einen Moment'
+            'Gesamt'
           )}
         </Text>
         <View style={styles.readoutTiles}>

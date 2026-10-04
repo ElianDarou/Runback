@@ -13,6 +13,8 @@ import {
 } from '../domain/statisticsView';
 import {
   ChipGroup,
+  Chevron,
+  Segmented,
   Copy,
   EmptyState,
   Row,
@@ -220,10 +222,7 @@ export function Statistics({
           label="Zeit"
           value={strength.seconds > 0 ? formatDuration(strength.seconds) : DASH}
         />
-        <Copy muted>
-          Nur bestätigte Sätze. Volumen ist Last mal Wiederholungen und bleibt
-          ohne Gewichtsangabe leer.
-        </Copy>
+        <Copy muted>Volumen zählt nur bestätigte Sätze mit Gewicht.</Copy>
       </Section>
     ) : null;
 
@@ -280,7 +279,7 @@ export function Statistics({
         </Text>
       )}
 
-      <ChipGroup
+      <Segmented
         label="Zeitraum"
         options={STATS_RANGES}
         value={active.range}
@@ -310,13 +309,13 @@ export function Statistics({
           delta={stats.deltas.duration}
         />
       </View>
-      <Copy muted style={styles.compare}>
-        {stats.comparisonLabel
-          ? `Pfeile vergleichen mit ${stats.comparisonLabel}.`
-          : 'Kein vergleichbarer Zeitraum davor.'}
-      </Copy>
+      {stats.comparisonLabel ? (
+        <Copy muted style={styles.compare}>
+          {`Pfeile vergleichen mit ${stats.comparisonLabel}.`}
+        </Copy>
+      ) : null}
 
-      <Section title="Verlauf">
+      <Section title="Zeitverlauf">
         <ChipGroup
           label="Kennzahl im Verlauf"
           options={metrics.map(entry => ({
@@ -457,6 +456,7 @@ export function Statistics({
                     ? DASH
                     : `${formatPace(stats.totals.paceSecondsPerKm)} min / km`
                 }
+                meta="Nach Strecke gewichtet, Läufe ab 500 m"
               />
               <ValueRow
                 label="Ø Distanz je Lauf"
@@ -504,11 +504,6 @@ export function Statistics({
       ) : null}
 
       {strengthSection}
-
-      <Copy muted>
-        Abgeschlossene und importierte Läufe, Doppelte zusammengeführt. Das
-        Tempo ist nach Strecke gewichtet, ab 500 m.
-      </Copy>
     </View>
   );
 }
@@ -547,13 +542,12 @@ function Tile({
       style={styles.tile}
     >
       <Stat value={value} label={unit ? `${label} · ${unit}` : label} />
-      <Text style={styles.tileDelta}>
-        {delta.direction === 'unknown'
-          ? DASH
-          : delta.direction === 'flat'
-          ? '± 0 %'
-          : `${arrow} ${percent}`}
-      </Text>
+      {/* Ohne Vergleichszeitraum gibt es keinen Pfeil — und keinen Platzhalter. */}
+      {delta.direction === 'unknown' ? null : (
+        <Text style={styles.tileDelta}>
+          {delta.direction === 'flat' ? '± 0 %' : `${arrow} ${percent}`}
+        </Text>
+      )}
     </View>
   );
 }
@@ -688,11 +682,7 @@ function BucketDetail({
   metric: StatsMetric;
 }) {
   if (!bucket) {
-    return (
-      <Copy muted style={styles.hint}>
-        Balken antippen zeigt den Zeitraum im Detail.
-      </Copy>
-    );
+    return null;
   }
   const highlighted = formatMetric(metric, bucketValue(bucket, metric));
   return (
@@ -743,7 +733,7 @@ function Panel({
           <Text style={styles.panelTitle}>{title}</Text>
           <Text style={styles.panelSummary}>{summary}</Text>
         </View>
-        <Text style={[styles.caret, open && styles.caretOpen]}>⌄</Text>
+        <Chevron open={open} />
       </Pressable>
       {open ? <View style={styles.panelBody}>{children}</View> : null}
     </View>
@@ -813,7 +803,11 @@ const styles = StyleSheet.create({
     backgroundColor: color.line,
   },
   markSelected: { backgroundColor: color.green },
+  // Breiter als die Spalte, damit „13.09.“ nicht abgeschnitten wird; es
+  // trägt ohnehin nur jede zweite oder dritte Spalte eine Beschriftung.
   tick: {
+    width: 56,
+    textAlign: 'center',
     height: 16,
     color: color.muted,
     ...type_.micro,
@@ -822,7 +816,6 @@ const styles = StyleSheet.create({
   },
   tickSelected: { color: color.text },
 
-  hint: { ...type_.label, fontWeight: '400' },
   detail: {
     backgroundColor: color.surface,
     borderRadius: radius.md,
@@ -862,8 +855,6 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     fontVariant: ['tabular-nums'],
   },
-  caret: { color: color.muted, fontSize: 22, lineHeight: 26 },
-  caretOpen: { transform: [{ rotate: '180deg' }] },
   panelBody: { paddingBottom: space.md, gap: space.xs },
   pressed: { opacity: 0.72 },
 
