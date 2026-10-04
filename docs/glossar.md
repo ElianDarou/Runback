@@ -35,6 +35,7 @@ rechts wozu es dient. Nur Begriffe, die im Produkt wirklich vorkommen.
 | Tempoindex | `EffortEstimate` | Einfaches Tempomaß relativ zu 3 m/s. Keine Leistung, kein Score. |
 | Belastung | `sessionLoad` | RPE × Bewegungsminuten, je Skala (Beine, Atmung) getrennt. Kein Gesamtwert aus beiden. |
 | Wiederholungen im Tank | `actualRir` | Freiwillige Nutzerangabe je Satz. Fehlt sie, bleibt sie unbekannt und wird nicht geschätzt. |
+| Bewegungsdaten | `MotionSessions`, `MotionExport` | Optional mitgeschriebene Bewegungen der Uhr im Krafttraining plus Abhakzeiten. Nur Trainingsdaten für spätere Satzerkennung, fließen in keine Auswertung ein. |
 | Relevanzmatrix | `prioritization.ts` | Versionierte Gewichte je Fokus-Art und Handlungsklasse. |
 | Handlungsklasse | `ActionClass` | Art einer Empfehlung, z. B. Startdisziplin (`calmer_start`), Last einer Übung (`strength_load`). |
 | Einheit | `StrengthSession` / `RunSummary` | Trainingseinheit beliebiger Art mit Zeit, Zweck und Herkunft. |

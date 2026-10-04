@@ -1,8 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Switch, View } from 'react-native';
-import { nativeCall, type Capabilities, type Settings } from '../native';
+import { Alert, StyleSheet, Switch, View } from 'react-native';
+import {
+  nativeCall,
+  type Capabilities,
+  type MotionCaptureSettings,
+  type MotionStatus,
+  type MotionWrist,
+  type Settings,
+} from '../native';
 import {
   Button,
+  ChipGroup,
   Copy,
   Notice,
   Row,
@@ -11,6 +19,26 @@ import {
   color,
   space,
 } from './components';
+
+const WRISTS: { value: MotionWrist; label: string }[] = [
+  { value: 'left', label: 'Links' },
+  { value: 'right', label: 'Rechts' },
+];
+
+/** „3 Einheiten · 2 auf dem Handy · 12,4 MB“ */
+function motionSummary(status: MotionStatus): string {
+  const parts = [
+    `${status.sessions} ${status.sessions === 1 ? 'Einheit' : 'Einheiten'}`,
+    `${status.received} auf dem Handy`,
+  ];
+  if (status.waiting > 0) {
+    parts.push(`${status.waiting} noch auf der Uhr`);
+  }
+  if (status.bytes > 0) {
+    parts.push(`${(status.bytes / 1_000_000).toFixed(1).replace('.', ',')} MB`);
+  }
+  return parts.join(' · ');
+}
 
 export function DeviceSettings({
   capabilities,
@@ -28,6 +56,7 @@ export function DeviceSettings({
   const [scanned, setScanned] = useState(false);
   const [health, setHealth] = useState<any>(null);
   const [wear, setWear] = useState<any>(null);
+  const [motion, setMotion] = useState<MotionStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   useEffect(() => {
@@ -37,6 +66,7 @@ export function DeviceSettings({
         nativeCall('bleStatus'),
         nativeCall('healthStatus'),
         nativeCall('getWearStatus'),
+        nativeCall<MotionStatus>('getMotionStatus'),
       ]);
       if (!mounted) {
         return;
@@ -49,6 +79,9 @@ export function DeviceSettings({
       }
       if (results[2].status === 'fulfilled') {
         setWear(results[2].value);
+      }
+      if (results[3].status === 'fulfilled') {
+        setMotion(results[3].value);
       }
     };
     void update();
@@ -76,6 +109,12 @@ export function DeviceSettings({
       setBusy(false);
     }
   };
+  const motionSettings: MotionCaptureSettings = settings.motionCapture ?? {
+    enabled: false,
+    wrist: 'unknown',
+  };
+  const saveMotion = (patch: Partial<MotionCaptureSettings>) =>
+    save({ motionCapture: { ...motionSettings, ...patch } });
   return (
     <>
       <Title>Geräte & Verbindungen</Title>
@@ -124,6 +163,84 @@ export function DeviceSettings({
           <Copy muted>Status wird geprüft …</Copy>
         )}
         <Copy muted>Die Uhr zeichnet auch ohne Telefon auf.</Copy>
+      </Section>
+      <Section title="Bewegungen im Krafttraining">
+        <Row
+          title="Mit der Uhr mitschreiben"
+          subtitle="Sammelt Daten, damit Runback später Sätze erkennen kann."
+          trailing={
+            <Switch
+              accessibilityLabel="Bewegungen im Krafttraining aufzeichnen"
+              value={motionSettings.enabled}
+              onValueChange={value => saveMotion({ enabled: value })}
+              trackColor={{ false: color.line, true: color.green }}
+              thumbColor={motionSettings.enabled ? color.ink : color.muted}
+            />
+          }
+        />
+        {motionSettings.enabled ? (
+          <>
+            <ChipGroup
+              label="Handgelenk mit der Uhr"
+              options={WRISTS}
+              value={motionSettings.wrist}
+              onChange={wrist => saveMotion({ wrist })}
+              disabled={busy}
+            />
+            {motionSettings.wrist === 'unknown' ? (
+              <Copy muted>Wähle das Handgelenk, an dem die Uhr sitzt.</Copy>
+            ) : null}
+          </>
+        ) : null}
+        {motion?.recording ? (
+          <Copy>
+            {motion.recording.watch.message || 'Uhr wird gestartet …'}
+          </Copy>
+        ) : null}
+        {motion && motion.sessions > 0 ? (
+          <>
+            <Copy muted>{motionSummary(motion)}</Copy>
+            <Button
+              secondary
+              title="Bewegungsdaten exportieren"
+              disabled={busy || motion.received === 0}
+              onPress={() => {
+                void act(async () => {
+                  const result = await nativeCall<any>('exportMotionData');
+                  if (result?.exported) {
+                    setMessage(`${result.sessions} Einheiten exportiert.`);
+                  }
+                });
+              }}
+            />
+            <Button
+              small
+              secondary
+              title="Bewegungsdaten löschen"
+              disabled={busy}
+              onPress={() =>
+                Alert.alert(
+                  'Bewegungsdaten löschen?',
+                  'Deine Sätze bleiben erhalten.',
+                  [
+                    { text: 'Abbrechen', style: 'cancel' },
+                    {
+                      text: 'Löschen',
+                      style: 'destructive',
+                      onPress: () => {
+                        void act(async () =>
+                          setMotion(
+                            await nativeCall<MotionStatus>('deleteMotionData'),
+                          ),
+                        );
+                      },
+                    },
+                  ],
+                )
+              }
+            />
+          </>
+        ) : null}
       </Section>
       <Section title="Health Connect">
         <Copy muted>

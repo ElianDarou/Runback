@@ -119,7 +119,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     @ReactMethod fun deleteRun(id: String, promise: Promise) = task(promise) { store.deleteRun(id); state() }
     @ReactMethod fun clearAllData(promise: Promise) = task(promise) {
         check(store.active() == null) { "Beende zuerst die laufende Aufzeichnung." }
-        importer.cancel(); chat.resetData { store.clearAllData() }; state()
+        importer.cancel(); chat.resetData { store.clearAllData() }; MotionSessions.deleteFiles(context); state()
     }
     @ReactMethod fun deleteAllData(promise: Promise) = clearAllData(promise)
 
@@ -139,15 +139,25 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     @ReactMethod fun saveStrengthTemplates(json: String, promise: Promise) = task(promise) {
         store.putDocument("strength_templates", JSONObject().put("templates", JSONArray(json))); strengthState()
     }
+    // Die Bewegungsaufzeichnung hängt nur an; sie darf das Speichern einer Einheit nie verhindern.
     @ReactMethod fun saveStrengthSession(json: String, promise: Promise) = task(promise) {
-        store.putDocument("strength_active", JSONObject(json)); strengthState()
+        val previous = store.getDocument("strength_active")
+        val session = JSONObject(json)
+        store.putDocument("strength_active", session)
+        runCatching { MotionSessions.onStrengthSaved(context, store, previous, session, System.currentTimeMillis()) }
+        strengthState()
     }
     @ReactMethod fun discardStrengthSession(promise: Promise) = task(promise) {
-        store.deleteDocument("strength_active"); strengthState()
+        val previous = store.getDocument("strength_active")
+        store.deleteDocument("strength_active")
+        runCatching { MotionSessions.onStrengthDiscarded(context, store, previous) }
+        strengthState()
     }
     @ReactMethod fun finishStrengthSession(json: String, summaryJson: String, promise: Promise) = task(promise) {
+        val previous = store.getDocument("strength_active")
         val session = JSONObject(json)
         store.finishStrengthSession(session, JSONObject(summaryJson))
+        runCatching { MotionSessions.onStrengthFinished(context, store, previous, session, System.currentTimeMillis()) }
         strengthState()
     }
     @ReactMethod fun getStrengthSession(id: String, promise: Promise) = task(promise) {
@@ -155,7 +165,28 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     }
     @ReactMethod fun deleteStrengthSession(id: String, promise: Promise) = task(promise) {
         store.deleteStrengthSession(id)
+        runCatching { MotionSessions.onStrengthDeleted(context, store, id) }
         strengthState()
+    }
+
+    // Bewegungsdaten aus dem Krafttraining: Status, Export als ZIP und Löschen.
+    // Rohsamples bleiben nativ; JS sieht nur Zähler.
+    @ReactMethod fun getMotionStatus(promise: Promise) = task(promise) { MotionSessions.status(context, store) }
+    @ReactMethod fun exportMotionData(promise: Promise) {
+        if ((store.getDocument("motion_index")?.optJSONArray("sessions")?.length() ?: 0) == 0) {
+            promise.reject("MOTION_EMPTY", "Noch keine Bewegungsdaten aufgezeichnet."); return
+        }
+        val day = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT).format(java.util.Date())
+        launch(Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/zip")
+            .putExtra(Intent.EXTRA_TITLE, "runback-bewegungsdaten-$day.zip"), promise) { code, data ->
+            val uri = data?.data
+            if (code != Activity.RESULT_OK || uri == null) promise.resolve("{\"cancelled\":true}")
+            else task(promise) { context.contentResolver.openOutputStream(uri, "wt")!!.use { MotionSessions.export(context, store, it) } }
+        }
+    }
+    @ReactMethod fun deleteMotionData(promise: Promise) = task(promise) {
+        MotionSessions.deleteAll(context, store)
+        MotionSessions.status(context, store)
     }
 
     // Muskelkatermeldungen liegen als ein versioniertes Dokument neben den

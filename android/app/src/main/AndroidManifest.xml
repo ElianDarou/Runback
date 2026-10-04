@@ -59,6 +59,10 @@
           <data android:scheme="wear" android:host="*" android:pathPrefix="/runback/runs" />
         </intent-filter>
         <intent-filter>
+          <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
+          <data android:scheme="wear" android:host="*" android:pathPrefix="/runback/motion-data/" />
+        </intent-filter>
+        <intent-filter>
           <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
           <data android:scheme="wear" android:host="*" android:pathPrefix="/runback/" />
         </intent-filter>
