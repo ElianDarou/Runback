@@ -17,12 +17,14 @@ export function VendorImport({
   onImport,
   onCancelImport,
   onOpenDocs,
+  onOpenTemplates,
   busy,
   importStatus,
 }: {
   onImport: () => void;
   onCancelImport: () => void;
   onOpenDocs?: () => void;
+  onOpenTemplates?: () => void;
   busy: boolean;
   importStatus: any;
 }) {
@@ -76,9 +78,16 @@ export function VendorImport({
         {status.strength !== undefined
           ? ` · Krafteinheiten: ${status.strength}`
           : ''}
+        {status.strengthDuplicates
+          ? ` · ${status.strengthDuplicates} Krafteinheiten doppelt`
+          : ''}
         {status.nonRunning ? ` · ${status.nonRunning} keine Läufe` : ''}
-        {status.skipped !== undefined ? ` · ${status.skipped} übersprungen` : ''}
-        {status.failed !== undefined ? ` · ${status.failed} fehlgeschlagen` : ''}
+        {status.skipped !== undefined
+          ? ` · ${status.skipped} übersprungen`
+          : ''}
+        {status.failed !== undefined
+          ? ` · ${status.failed} fehlgeschlagen`
+          : ''}
       </Copy>
     ) : null;
 
@@ -100,6 +109,13 @@ export function VendorImport({
         {progress}
         {result}
         {errors}
+        {vendor.id === 'strong' && onOpenTemplates ? (
+          <Row
+            title="Vorlagen ansehen"
+            subtitle="Prüfe und übernimm deine importierten Trainings."
+            onPress={onOpenTemplates}
+          />
+        ) : null}
         <Section title="So exportierst du">
           {vendor.exportSteps.map((step, i) => (
             <Copy key={i}>
@@ -166,6 +182,9 @@ export function VendorImport({
       {progress}
       {result}
       {errors}
+      {status.strength !== undefined && onOpenTemplates ? (
+        <Row title="Vorlagen ansehen" onPress={onOpenTemplates} />
+      ) : null}
       <Section title="Quelle">
         {VENDOR_INFOS.map(item => {
           const counts = vendors[item.id] || vendors[item.id.replace('_', '')];

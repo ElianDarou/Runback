@@ -42,7 +42,13 @@ import { ExercisePicker } from './ExercisePicker';
  * dem Feld und nicht als Fehlermeldung.
  */
 
-const SET_KINDS: SetKind[] = ['warmup', 'normal', 'failure', 'dropset', 'timed'];
+const SET_KINDS: SetKind[] = [
+  'warmup',
+  'normal',
+  'failure',
+  'dropset',
+  'timed',
+];
 
 const setKindLabel: Record<SetKind, string> = {
   warmup: 'Aufwärmen',
@@ -61,6 +67,7 @@ const setKindShort: Record<SetKind, string> = {
 };
 
 const loadKindLabel: Record<LoadKind, string> = {
+  unknown: 'Lastart unbekannt',
   kg: 'Zusatzlast in kg',
   bodyweight: 'Eigengewicht',
   assisted: 'mit Unterstützung',
@@ -68,6 +75,7 @@ const loadKindLabel: Record<LoadKind, string> = {
 };
 
 const LOAD_KINDS: LoadKind[] = [
+  'unknown',
   'kg',
   'bodyweight',
   'assisted',
@@ -109,15 +117,15 @@ const SetRow = memo(function SetRow({
   const timed = set.kind === 'timed';
   const bodyweight = set.loadKind === 'bodyweight';
   const [weight, setWeight] = useState(numberText(set.weightKg));
-  const [reps, setReps] = useState(
-    numberText(timed ? set.seconds : set.reps),
-  );
+  const [reps, setReps] = useState(numberText(timed ? set.seconds : set.reps));
   const [rest, setRest] = useState(numberText(set.restSeconds));
 
   return (
     <View style={styles.setRow}>
       <Pressable
-        accessibilityLabel={`Satzart für Satz ${position} von ${exerciseName}, jetzt ${setKindLabel[set.kind]}, weiterschalten`}
+        accessibilityLabel={`Satzart für Satz ${position} von ${exerciseName}, jetzt ${
+          setKindLabel[set.kind]
+        }, weiterschalten`}
         accessibilityRole="button"
         onPress={onCycleKind}
         style={({ pressed }) => [styles.kind, pressed && styles.pressed]}
@@ -161,7 +169,7 @@ const SetRow = memo(function SetRow({
       <TextInput
         accessibilityLabel={`Pause nach Satz ${position} von ${exerciseName} in Sekunden`}
         keyboardType="number-pad"
-        onBlur={() => onChange({ restSeconds: parseNumber(rest) ?? 0 })}
+        onBlur={() => onChange({ restSeconds: parseNumber(rest) })}
         onChangeText={setRest}
         placeholder="s"
         placeholderTextColor={color.muted}
@@ -260,7 +268,9 @@ export function PlanEditor({
           <Text style={styles.label}>Name</Text>
           <TextInput
             accessibilityLabel="Name des Plans"
-            onChangeText={value => change(current => renameTemplate(current, value))}
+            onChangeText={value =>
+              change(current => renameTemplate(current, value))
+            }
             placeholder="Zum Beispiel Oberkörper A"
             placeholderTextColor={color.muted}
             style={styles.nameInput}
@@ -285,14 +295,18 @@ export function PlanEditor({
                   accessibilityRole="button"
                   accessibilityState={{ selected: active }}
                   key={day}
-                  onPress={() => change(current => toggleTemplateDay(current, day))}
+                  onPress={() =>
+                    change(current => toggleTemplateDay(current, day))
+                  }
                   style={({ pressed }) => [
                     styles.day,
                     active && styles.dayActive,
                     pressed && styles.pressed,
                   ]}
                 >
-                  <Text style={[styles.dayText, active && styles.dayTextActive]}>
+                  <Text
+                    style={[styles.dayText, active && styles.dayTextActive]}
+                  >
                     {WEEKDAY_SHORT[day]}
                   </Text>
                 </Pressable>
@@ -310,7 +324,10 @@ export function PlanEditor({
         </View>
 
         {draft.exercises.map((exercise, exerciseIndex) => (
-          <View key={`${exercise.exerciseId}-${exerciseIndex}`} style={styles.card}>
+          <View
+            key={`${exercise.exerciseId}-${exerciseIndex}`}
+            style={styles.card}
+          >
             <View style={styles.exerciseHead}>
               <Text numberOfLines={2} style={styles.exerciseName}>
                 {exercise.name}
@@ -322,7 +339,11 @@ export function PlanEditor({
                 disabled={exerciseIndex === 0}
                 onPress={() =>
                   change(current =>
-                    moveTemplateExercise(current, exerciseIndex, exerciseIndex - 1),
+                    moveTemplateExercise(
+                      current,
+                      exerciseIndex,
+                      exerciseIndex - 1,
+                    ),
                   )
                 }
                 style={({ pressed }) => [
@@ -342,12 +363,17 @@ export function PlanEditor({
                 disabled={exerciseIndex === draft.exercises.length - 1}
                 onPress={() =>
                   change(current =>
-                    moveTemplateExercise(current, exerciseIndex, exerciseIndex + 1),
+                    moveTemplateExercise(
+                      current,
+                      exerciseIndex,
+                      exerciseIndex + 1,
+                    ),
                   )
                 }
                 style={({ pressed }) => [
                   styles.iconButton,
-                  exerciseIndex === draft.exercises.length - 1 && styles.disabled,
+                  exerciseIndex === draft.exercises.length - 1 &&
+                    styles.disabled,
                   pressed && styles.pressed,
                 ]}
               >
@@ -357,9 +383,14 @@ export function PlanEditor({
                 accessibilityLabel={`${exercise.name} aus dem Plan nehmen`}
                 accessibilityRole="button"
                 onPress={() =>
-                  change(current => removeTemplateExercise(current, exerciseIndex))
+                  change(current =>
+                    removeTemplateExercise(current, exerciseIndex),
+                  )
                 }
-                style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+                style={({ pressed }) => [
+                  styles.iconButton,
+                  pressed && styles.pressed,
+                ]}
               >
                 <Text style={styles.iconText}>×</Text>
               </Pressable>
@@ -379,7 +410,9 @@ export function PlanEditor({
                   );
                   return sets.reduce(
                     (next, _set, setIndex) =>
-                      updatePlannedSet(next, exerciseIndex, setIndex, { loadKind }),
+                      updatePlannedSet(next, exerciseIndex, setIndex, {
+                        loadKind,
+                      }),
                     current,
                   );
                 })
@@ -395,7 +428,9 @@ export function PlanEditor({
               <Text style={[styles.columnLabel, styles.columnKind]}>Satz</Text>
               <Text style={[styles.columnLabel, styles.columnInput]}>kg</Text>
               <Text style={[styles.columnLabel, styles.columnInput]}>Wdh.</Text>
-              <Text style={[styles.columnLabel, styles.columnInput]}>Pause</Text>
+              <Text style={[styles.columnLabel, styles.columnInput]}>
+                Pause
+              </Text>
               <View style={styles.columnIcon} />
             </View>
 

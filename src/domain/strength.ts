@@ -11,30 +11,44 @@ import { sharesAreValid } from './regions';
  * bleiben beide erhalten. Abweichung wird festgehalten, aber nicht bewertet.
  */
 export const STRENGTH_MODEL_VERSION = 'strength-v1';
-export const CATALOG_VERSION = 'catalog-v1';
+export const CATALOG_VERSION = 'catalog-v2';
 
 export type SetKind = 'warmup' | 'normal' | 'failure' | 'dropset' | 'timed';
-export type LoadKind = 'kg' | 'bodyweight' | 'assisted' | 'bodyweight_plus';
+export type LoadKind =
+  | 'kg'
+  | 'bodyweight'
+  | 'assisted'
+  | 'bodyweight_plus'
+  | 'unknown';
 export type Equipment =
   | 'barbell'
   | 'dumbbell'
   | 'machine'
   | 'cable'
   | 'bodyweight'
-  | 'band';
+  | 'band'
+  | 'kettlebell'
+  | 'ez_bar'
+  | 'ball'
+  | 'other'
+  | 'unknown';
 
 export interface Exercise {
   id: string;
   name: string;
   equipment: Equipment;
   /** Trainiert eine Seite zur Zeit; Belastung geht dann nur auf diese Seite. */
-  unilateral: boolean;
+  unilateral?: boolean;
   /** Exzentrik- und Dehnungsfaktor für den Belastungsreiz (freshness.ts). */
-  eccentric: number;
+  eccentric?: number;
   shares: MuscleShares;
   /** `catalog` oder `user`. Eigene Übungen tragen keine Katalogherkunft. */
   origin: 'catalog' | 'user';
   catalogVersion?: string;
+  aliases?: string[];
+  /** Datenbankherkunft; Muskelgruppen sind keine numerischen Modellanteile. */
+  source?: { database: string; revision: string; id: string };
+  muscleGroups?: string[];
 }
 
 /** Zielvorgabe eines Satzes. Stammt aus Plan oder letzter Einheit. */
@@ -44,7 +58,7 @@ export interface PlannedSet {
   reps?: number;
   seconds?: number;
   weightKg?: number;
-  restSeconds: number;
+  restSeconds?: number;
 }
 
 /** Ein Satz während oder nach der Einheit: Vorgabe plus tatsächlicher Wert. */
@@ -102,6 +116,15 @@ export interface WorkoutTemplate {
   days: number[];
   exercises: TemplateExercise[];
   createdAt: number;
+  importSource?: {
+    modelVersion: string;
+    importVersion: string;
+    catalogVersion: string;
+    workoutId: string;
+    source: string;
+    time: number;
+    name: string;
+  };
 }
 
 export interface StrengthState {
@@ -119,12 +142,8 @@ export interface SessionSummary {
   volumeKg: number;
 }
 
-const identifier = (
-  prefix: string,
-  seed: number,
-  index: number,
-  scope = 0,
-) => `${prefix}-${seed.toString(36)}-${scope}-${index}`;
+const identifier = (prefix: string, seed: number, index: number, scope = 0) =>
+  `${prefix}-${seed.toString(36)}-${scope}-${index}`;
 
 export const emptyStrengthState = (): StrengthState => ({
   templates: [],
@@ -141,14 +160,16 @@ export function startSession(
   now: number,
   name = 'Freies Training',
 ): StrengthSession {
-  const exercises = (template?.exercises || []).map((exercise, exerciseIndex) => ({
-    exerciseId: exercise.exerciseId,
-    name: exercise.name,
-    sets: exercise.sets.map((planned, index) => ({
-      id: identifier(exercise.exerciseId, now, index, exerciseIndex),
-      planned: { ...planned },
-    })),
-  }));
+  const exercises = (template?.exercises || []).map(
+    (exercise, exerciseIndex) => ({
+      exerciseId: exercise.exerciseId,
+      name: exercise.name,
+      sets: exercise.sets.map((planned, index) => ({
+        id: identifier(exercise.exerciseId, now, index, exerciseIndex),
+        planned: { ...planned },
+      })),
+    }),
+  );
   return {
     id: `session-${now.toString(36)}`,
     kind: 'strength',
@@ -267,8 +288,8 @@ export function completeSet(
       exerciseIndex,
       replaceSet(exercise, setId, completed),
     ),
-    restStartedAt: rest > 0 ? now : undefined,
-    restSeconds: rest > 0 ? rest : undefined,
+    restStartedAt: rest !== undefined && rest > 0 ? now : undefined,
+    restSeconds: rest !== undefined && rest > 0 ? rest : undefined,
   };
 }
 
@@ -325,7 +346,10 @@ export function addSet(
     ...exercise,
     sets: [
       ...exercise.sets,
-      { id: identifier(exercise.exerciseId, now, exercise.sets.length), planned },
+      {
+        id: identifier(exercise.exerciseId, now, exercise.sets.length),
+        planned,
+      },
     ],
   });
 }
@@ -385,7 +409,9 @@ export interface ExerciseProgress {
 
 export function exerciseProgress(exercise: SessionExercise): ExerciseProgress {
   const relevant = exercise.sets.filter(set => !set.skipped);
-  const completed = relevant.filter(set => set.completedAt !== undefined).length;
+  const completed = relevant.filter(
+    set => set.completedAt !== undefined,
+  ).length;
   return {
     completed,
     total: relevant.length,
@@ -457,9 +483,7 @@ export function referenceSet(
     );
     const set = exercise?.sets.filter(
       candidate => candidate.completedAt !== undefined,
-    )[
-      setIndex
-    ];
+    )[setIndex];
     if (set && (set.actualWeightKg || set.actualReps || set.actualSeconds)) {
       return set;
     }
@@ -572,5 +596,9 @@ export function templateForDay(
 }
 
 export function exerciseIsUsable(exercise: Exercise): boolean {
-  return sharesAreValid(exercise.shares) && exercise.eccentric > 0;
+  return (
+    sharesAreValid(exercise.shares) &&
+    exercise.eccentric !== undefined &&
+    exercise.eccentric > 0
+  );
 }

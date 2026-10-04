@@ -285,11 +285,13 @@ export function updatePlannedSet(
     } else if (key === 'loadKind' && value !== undefined) {
       next.loadKind = value as LoadKind;
     } else if (key === 'restSeconds') {
-      next.restSeconds = Math.max(0, Number(value) || 0);
+      next.restSeconds =
+        typeof value === 'number' && Number.isFinite(value)
+          ? Math.max(0, value)
+          : undefined;
     } else if (key === 'reps' || key === 'seconds' || key === 'weightKg') {
-      const parsed = typeof value === 'number' && Number.isFinite(value)
-        ? value
-        : undefined;
+      const parsed =
+        typeof value === 'number' && Number.isFinite(value) ? value : undefined;
       next[key] = parsed !== undefined && parsed >= 0 ? parsed : undefined;
     }
   }
@@ -679,9 +681,7 @@ function comparisonSummary(counts: {
     parts.push(`${counts.matched} ${setWord(counts.matched)} wie vorgesehen`);
   }
   if (counts.deviated) {
-    parts.push(
-      `${counts.deviated} mit anderen Werten`,
-    );
+    parts.push(`${counts.deviated} mit anderen Werten`);
   }
   if (counts.added) {
     parts.push(`${counts.added} zusätzlich`);
@@ -797,14 +797,18 @@ export function proposalIsAllowed(
   const lastStructure = records
     .filter(
       record =>
-        record.scope === 'structure' && record.templateId === proposal.templateId,
+        record.scope === 'structure' &&
+        record.templateId === proposal.templateId,
     )
     .reduce(
       (latest, record) => Math.max(latest, record.decidedAt),
       Number.NEGATIVE_INFINITY,
     );
   if (lastStructure === Number.NEGATIVE_INFINITY) {
-    return { allowed: true, reason: 'Erster Strukturvorschlag für diesen Plan.' };
+    return {
+      allowed: true,
+      reason: 'Erster Strukturvorschlag für diesen Plan.',
+    };
   }
   const days = Math.floor((now - lastStructure) / DAY_MS);
   return days >= STRUCTURE_PROPOSAL_INTERVAL_DAYS

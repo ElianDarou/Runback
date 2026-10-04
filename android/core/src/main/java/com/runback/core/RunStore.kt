@@ -21,7 +21,8 @@ data class StrengthWorkout(val id: String, val time: Long, val name: String = ""
     val durationSec: Double = 0.0, val source: String = "import", val extra: String = "{}")
 data class StrengthSet(val exercise: String, val setOrder: Int = 0, val weight: Double? = null,
     val weightUnit: String = "kg", val reps: Int? = null, val distance: Double? = null,
-    val seconds: Double? = null, val rpe: Double? = null, val notes: String = "")
+    val seconds: Double? = null, val rpe: Double? = null, val notes: String = "",
+    val restSeconds: Double? = null, val kind: String = "normal", val distanceUnit: String = "unknown")
 
 /** One serialized SQLite owner per process. Raw rows are append-only, corrections are separate. */
 class RunStore(context: Context) : DocumentStore {
@@ -850,13 +851,23 @@ class RunStore(context: Context) : DocumentStore {
         }
         result
     }
-    fun addStrengthWorkout(workout: StrengthWorkout, sets: List<StrengthSet>): JSONObject = locked {
+    fun addStrengthWorkout(workout: StrengthWorkout, sets: List<StrengthSet>, importDocument: JSONObject? = null): JSONObject = locked {
         require(workout.time > 0) { "Trainingszeit fehlt" }
         require(sets.size <= 2000) { "Zu viele Sätze für ein Krafttraining" }
+        require(workout.id.length <= 120 && workout.id.isNotBlank()) { "Ungültige Trainingskennung" }
+        require(importDocument == null || importDocument.optString("id") == workout.id) { "Importabbild gehört zu einer anderen Einheit" }
         transaction {
+            val exists = db.rawQuery("SELECT 1 FROM strength_workouts WHERE id=?", arrayOf(workout.id)).use { it.moveToFirst() }
+            if (exists) {
+                // Neue Importregeln liegen neben alten Originalen, sie ersetzen sie nicht.
+                if (importDocument != null && getDocument("strength_import_${workout.id}") == null) {
+                    putDocument("strength_import_${workout.id}", importDocument)
+                }
+                return@transaction JSONObject().put("id", workout.id).put("status", "duplicate")
+            }
             db.insertWithOnConflict("strength_workouts", null, ContentValues().apply {
                 put("id", workout.id.take(120)); put("time", workout.time); put("name", workout.name.take(120))
-                put("durationSec", workout.durationSec); put("source", workout.source.take(120)); put("extra", workout.extra.take(2000))
+                put("durationSec", workout.durationSec); put("source", workout.source.take(120)); put("extra", workout.extra)
             }, SQLiteDatabase.CONFLICT_IGNORE)
             db.delete("strength_sets", "workout_id=?", arrayOf(workout.id))
             sets.forEach { set ->
@@ -867,8 +878,27 @@ class RunStore(context: Context) : DocumentStore {
                     put("rpe", set.rpe); put("notes", set.notes.take(500))
                 })
             }
-            JSONObject().put("id", workout.id).put("sets", sets.size)
+            importDocument?.let { putDocument("strength_import_${workout.id}", it) }
+            JSONObject().put("id", workout.id).put("sets", sets.size).put("status", "imported")
         }
+    }
+    /** Nur die neueste Einheit je Name, höchstens 50 Vorlagen und 10.000 Satzwerte für JS. */
+    fun strengthImportCandidates(): JSONObject = locked {
+        val workouts = JSONArray()
+        var setCount = 0
+        var omitted = 0
+        val names = HashSet<String>()
+        db.rawQuery("SELECT id,name FROM strength_workouts ORDER BY time DESC,id DESC", null).use { rows ->
+            while (rows.moveToNext()) {
+                val id = rows.getString(0)
+                val document = getDocument("strength_import_$id") ?: continue
+                if (!names.add(rows.getString(1).trim().lowercase(java.util.Locale.ROOT))) continue
+                val count = document.optJSONArray("sets")?.length() ?: 0
+                if (workouts.length() >= 50 || setCount + count > 10000) { omitted++; continue }
+                workouts.put(document); setCount += count
+            }
+        }
+        JSONObject().put("workouts", workouts).put("omitted", omitted)
     }
     fun strengthSummary(limit: Int = 20): JSONObject = locked {
         val workouts = JSONArray()
@@ -878,11 +908,12 @@ class RunStore(context: Context) : DocumentStore {
                 val id = rows.getString(0)
                 val setCount = db.rawQuery("SELECT COUNT(*) FROM strength_sets WHERE workout_id=?", arrayOf(id)).use {
                     it.moveToFirst(); it.getInt(0) }
-                val volume = db.rawQuery("SELECT SUM(COALESCE(weight,0)*COALESCE(reps,0)) FROM strength_sets WHERE workout_id=?", arrayOf(id)).use {
-                    it.moveToFirst(); if (it.isNull(0)) 0.0 else it.getDouble(0) }
+                val volume = db.rawQuery("SELECT CASE WHEN COUNT(*)=0 OR SUM(CASE WHEN weight IS NULL OR reps IS NULL OR weight<0 OR weight_unit NOT IN ('kg','lb') THEN 1 ELSE 0 END)>0 THEN NULL ELSE SUM(weight*reps*CASE WHEN weight_unit='lb' THEN 0.45359237 ELSE 1 END) END FROM strength_sets WHERE workout_id=?", arrayOf(id)).use {
+                    it.moveToFirst(); if (it.isNull(0)) null else it.getDouble(0) }
+                val importDocument = getDocument("strength_import_$id")
                 workouts.put(JSONObject().put("id", id).put("time", rows.getLong(1)).put("name", rows.getString(2) ?: "")
-                    .put("durationSec", rows.getDouble(3)).put("source", rows.getString(4) ?: "")
-                    .put("sets", setCount).put("volume", volume))
+                    .put("durationSec", importDocument?.opt("durationSeconds") ?: rows.getDouble(3)).put("source", rows.getString(4) ?: "")
+                    .put("sets", setCount).put("volume", volume ?: JSONObject.NULL))
             }
         }
         val totalWorkouts = db.rawQuery("SELECT COUNT(*) FROM strength_workouts", null).use {

@@ -1,0 +1,3248 @@
+{
+  "repository": "https://github.com/yuhonas/free-exercise-db",
+  "revision": "f00c92c7dcf1216a928a52c3706c7ce8e2f71ed5",
+  "license": "Unlicense",
+  "exercises": [
+    {
+      "id": "Ab_Crunch_Machine",
+      "name": "Bauchpresse (Maschine)",
+      "englishName": "Ab Crunch Machine",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Ab_Roller",
+      "name": "Bauchroller",
+      "englishName": "Ab Roller",
+      "equipment": "other",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": [
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Air_Bike",
+      "name": "Käfer mit Beinwechsel",
+      "englishName": "Air Bike",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Alternate_Hammer_Curl",
+      "name": "Hammercurl abwechselnd",
+      "englishName": "Alternate Hammer Curl",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "biceps"
+      ],
+      "secondaryMuscles": [
+        "forearms"
+      ]
+    },
+    {
+      "id": "Alternate_Heel_Touchers",
+      "name": "Fersen berühren",
+      "englishName": "Alternate Heel Touchers",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Alternate_Incline_Dumbbell_Curl",
+      "name": "Schrägbank-Curl abwechselnd",
+      "englishName": "Alternate Incline Dumbbell Curl",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "biceps"
+      ],
+      "secondaryMuscles": [
+        "forearms"
+      ]
+    },
+    {
+      "id": "Alternating_Cable_Shoulder_Press",
+      "name": "Schulterdrücken abwechselnd (Kabel)",
+      "englishName": "Alternating Cable Shoulder Press",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": [
+        "triceps"
+      ]
+    },
+    {
+      "id": "Alternating_Kettlebell_Press",
+      "name": "Schulterdrücken abwechselnd (Kettlebell)",
+      "englishName": "Alternating Kettlebell Press",
+      "equipment": "kettlebells",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": [
+        "triceps"
+      ]
+    },
+    {
+      "id": "Alternating_Kettlebell_Row",
+      "name": "Rudern abwechselnd (Kettlebell)",
+      "englishName": "Alternating Kettlebell Row",
+      "equipment": "kettlebells",
+      "primaryMuscles": [
+        "middle back"
+      ],
+      "secondaryMuscles": [
+        "biceps",
+        "lats"
+      ]
+    },
+    {
+      "id": "Alternating_Renegade_Row",
+      "name": "Rudern im Stütz (Kettlebell)",
+      "englishName": "Alternating Renegade Row",
+      "equipment": "kettlebells",
+      "primaryMuscles": [
+        "middle back"
+      ],
+      "secondaryMuscles": [
+        "abdominals",
+        "biceps",
+        "chest",
+        "lats",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Arnold_Dumbbell_Press",
+      "name": "Arnold-Drücken (Kurzhantel)",
+      "englishName": "Arnold Dumbbell Press",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": [
+        "triceps"
+      ]
+    },
+    {
+      "id": "Around_The_Worlds",
+      "name": "Kreisen um den Körper (Kurzhantel)",
+      "englishName": "Around The Worlds",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": [
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Back_Flyes_-_With_Bands",
+      "name": "Fliegende rückwärts (Band)",
+      "englishName": "Back Flyes - With Bands",
+      "equipment": "bands",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": [
+        "middle back",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Ball_Leg_Curl",
+      "name": "Beinbeuger (Gymnastikball)",
+      "englishName": "Ball Leg Curl",
+      "equipment": "exercise ball",
+      "primaryMuscles": [
+        "hamstrings"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "glutes"
+      ]
+    },
+    {
+      "id": "Band_Assisted_Pull-Up",
+      "name": "Klimmzug mit Band",
+      "englishName": "Band Assisted Pull-Up",
+      "equipment": "other",
+      "primaryMuscles": [
+        "lats"
+      ],
+      "secondaryMuscles": [
+        "abdominals",
+        "forearms",
+        "middle back"
+      ]
+    },
+    {
+      "id": "Band_Good_Morning",
+      "name": "Rumpfbeuge (Band)",
+      "englishName": "Band Good Morning",
+      "equipment": "bands",
+      "primaryMuscles": [
+        "hamstrings"
+      ],
+      "secondaryMuscles": [
+        "glutes",
+        "lower back"
+      ]
+    },
+    {
+      "id": "Band_Hip_Adductions",
+      "name": "Beine zusammenführen (Band)",
+      "englishName": "Band Hip Adductions",
+      "equipment": "bands",
+      "primaryMuscles": [
+        "adductors"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Band_Pull_Apart",
+      "name": "Band auseinanderziehen",
+      "englishName": "Band Pull Apart",
+      "equipment": "bands",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": [
+        "middle back",
+        "traps"
+      ]
+    },
+    {
+      "id": "Band_Skull_Crusher",
+      "name": "Stirndrücken (Band)",
+      "englishName": "Band Skull Crusher",
+      "equipment": "bands",
+      "primaryMuscles": [
+        "triceps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Barbell_Ab_Rollout",
+      "name": "Bauchrollen (Langhantel)",
+      "englishName": "Barbell Ab Rollout",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": [
+        "lower back",
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Barbell_Ab_Rollout_-_On_Knees",
+      "name": "Bauchrollen kniend (Langhantel)",
+      "englishName": "Barbell Ab Rollout - On Knees",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": [
+        "lower back",
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Barbell_Glute_Bridge",
+      "name": "Beckenheben (Langhantel)",
+      "englishName": "Barbell Glute Bridge",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "glutes"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "hamstrings"
+      ]
+    },
+    {
+      "id": "Barbell_Hack_Squat",
+      "name": "Hackenschmidt-Kniebeuge (Langhantel)",
+      "englishName": "Barbell Hack Squat",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "forearms",
+        "hamstrings"
+      ]
+    },
+    {
+      "id": "Barbell_Lunge",
+      "name": "Ausfallschritt (Langhantel)",
+      "englishName": "Barbell Lunge",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "glutes",
+        "hamstrings"
+      ]
+    },
+    {
+      "id": "Barbell_Rear_Delt_Row",
+      "name": "Rudern zur hinteren Schulter (Langhantel)",
+      "englishName": "Barbell Rear Delt Row",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": [
+        "biceps",
+        "lats",
+        "middle back"
+      ]
+    },
+    {
+      "id": "Barbell_Seated_Calf_Raise",
+      "name": "Wadenheben sitzend (Langhantel)",
+      "englishName": "Barbell Seated Calf Raise",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "calves"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Barbell_Shrug",
+      "name": "Schulterheben (Langhantel)",
+      "englishName": "Barbell Shrug",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "traps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Barbell_Shrug_Behind_The_Back",
+      "name": "Schulterheben hinter dem Rücken (Langhantel)",
+      "englishName": "Barbell Shrug Behind The Back",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "traps"
+      ],
+      "secondaryMuscles": [
+        "forearms",
+        "middle back"
+      ]
+    },
+    {
+      "id": "Barbell_Side_Bend",
+      "name": "Seitbeuge (Langhantel)",
+      "englishName": "Barbell Side Bend",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": [
+        "lower back"
+      ]
+    },
+    {
+      "id": "Barbell_Side_Split_Squat",
+      "name": "Seitlicher Ausfallschritt (Langhantel)",
+      "englishName": "Barbell Side Split Squat",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "hamstrings",
+        "lower back"
+      ]
+    },
+    {
+      "id": "Barbell_Squat_To_A_Bench",
+      "name": "Kniebeuge auf die Bank (Langhantel)",
+      "englishName": "Barbell Squat To A Bench",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "glutes",
+        "hamstrings",
+        "lower back"
+      ]
+    },
+    {
+      "id": "Barbell_Step_Ups",
+      "name": "Aufsteigen (Langhantel)",
+      "englishName": "Barbell Step Ups",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "glutes",
+        "hamstrings",
+        "quadriceps"
+      ]
+    },
+    {
+      "id": "Barbell_Walking_Lunge",
+      "name": "Ausfallschritt gehend (Langhantel)",
+      "englishName": "Barbell Walking Lunge",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "glutes",
+        "hamstrings"
+      ]
+    },
+    {
+      "id": "Battling_Ropes",
+      "name": "Seilschwingen",
+      "englishName": "Battling Ropes",
+      "equipment": "other",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": [
+        "chest",
+        "forearms"
+      ]
+    },
+    {
+      "id": "Bench_Dips",
+      "name": "Dips an der Bank",
+      "englishName": "Bench Dips",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "triceps"
+      ],
+      "secondaryMuscles": [
+        "chest",
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Bent_Over_Low-Pulley_Side_Lateral",
+      "name": "Seitheben vorgebeugt (Kabel)",
+      "englishName": "Bent Over Low-Pulley Side Lateral",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": [
+        "lower back",
+        "middle back",
+        "traps"
+      ]
+    },
+    {
+      "id": "Bodyweight_Squat",
+      "name": "Kniebeuge (Eigengewicht)",
+      "englishName": "Bodyweight Squat",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": [
+        "glutes",
+        "hamstrings"
+      ]
+    },
+    {
+      "id": "Bottoms_Up",
+      "name": "Beinheben mit Beckenheben",
+      "englishName": "Bottoms Up",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Box_Squat",
+      "name": "Kniebeuge auf die Box",
+      "englishName": "Box Squat",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": [
+        "adductors",
+        "calves",
+        "glutes",
+        "hamstrings",
+        "lower back"
+      ]
+    },
+    {
+      "id": "Butterfly",
+      "name": "Fliegende (Maschine)",
+      "englishName": "Butterfly",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Cable_Chest_Press",
+      "name": "Brustdrücken (Kabel)",
+      "englishName": "Cable Chest Press",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": [
+        "shoulders",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Cable_Crossover",
+      "name": "Fliegende stehend (Kabel)",
+      "englishName": "Cable Crossover",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": [
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Cable_Crunch",
+      "name": "Bauchbeuge (Kabel)",
+      "englishName": "Cable Crunch",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Cable_Hammer_Curls_-_Rope_Attachment",
+      "name": "Hammercurl (Kabel mit Seil)",
+      "englishName": "Cable Hammer Curls - Rope Attachment",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "biceps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Cable_Incline_Triceps_Extension",
+      "name": "Trizepsstrecken auf der Schrägbank (Kabel)",
+      "englishName": "Cable Incline Triceps Extension",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "triceps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Cable_Lying_Triceps_Extension",
+      "name": "Trizepsstrecken liegend (Kabel)",
+      "englishName": "Cable Lying Triceps Extension",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "triceps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Cable_One_Arm_Tricep_Extension",
+      "name": "Trizepsstrecken einarmig (Kabel)",
+      "englishName": "Cable One Arm Tricep Extension",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "triceps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Cable_Preacher_Curl",
+      "name": "Bizepscurl an der Scottbank (Kabel)",
+      "englishName": "Cable Preacher Curl",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "biceps"
+      ],
+      "secondaryMuscles": [
+        "forearms"
+      ]
+    },
+    {
+      "id": "Cable_Rear_Delt_Fly",
+      "name": "Fliegende rückwärts (Kabel)",
+      "englishName": "Cable Rear Delt Fly",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Cable_Reverse_Crunch",
+      "name": "Bauchbeuge rückwärts (Kabel)",
+      "englishName": "Cable Reverse Crunch",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Cable_Seated_Crunch",
+      "name": "Bauchbeuge sitzend (Kabel)",
+      "englishName": "Cable Seated Crunch",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Cable_Seated_Lateral_Raise",
+      "name": "Seitheben sitzend (Kabel)",
+      "englishName": "Cable Seated Lateral Raise",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": [
+        "middle back",
+        "traps"
+      ]
+    },
+    {
+      "id": "Calf_Press_On_The_Leg_Press_Machine",
+      "name": "Wadendrücken an der Beinpresse",
+      "englishName": "Calf Press On The Leg Press Machine",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "calves"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Chin-Up",
+      "name": "Klimmzug im Untergriff",
+      "englishName": "Chin-Up",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "lats"
+      ],
+      "secondaryMuscles": [
+        "biceps",
+        "forearms",
+        "middle back"
+      ]
+    },
+    {
+      "id": "Close-Grip_Barbell_Bench_Press",
+      "name": "Bankdrücken eng (Langhantel)",
+      "englishName": "Close-Grip Barbell Bench Press",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "triceps"
+      ],
+      "secondaryMuscles": [
+        "chest",
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Concentration_Curls",
+      "name": "Konzentrationscurl (Kurzhantel)",
+      "englishName": "Concentration Curls",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "biceps"
+      ],
+      "secondaryMuscles": [
+        "forearms"
+      ]
+    },
+    {
+      "id": "Cross-Body_Crunch",
+      "name": "Bauchbeuge diagonal",
+      "englishName": "Cross-Body Crunch",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Crunches",
+      "name": "Bauchbeuge",
+      "englishName": "Crunches",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Decline_Barbell_Bench_Press",
+      "name": "Negativbankdrücken (Langhantel)",
+      "englishName": "Decline Barbell Bench Press",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": [
+        "shoulders",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Decline_Crunch",
+      "name": "Bauchbeuge auf der Negativbank",
+      "englishName": "Decline Crunch",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Decline_Dumbbell_Bench_Press",
+      "name": "Negativbankdrücken (Kurzhantel)",
+      "englishName": "Decline Dumbbell Bench Press",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": [
+        "shoulders",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Decline_Dumbbell_Flyes",
+      "name": "Fliegende auf der Negativbank (Kurzhantel)",
+      "englishName": "Decline Dumbbell Flyes",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Decline_Reverse_Crunch",
+      "name": "Bauchbeuge rückwärts auf der Negativbank",
+      "englishName": "Decline Reverse Crunch",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Dip_Machine",
+      "name": "Dips (Maschine)",
+      "englishName": "Dip Machine",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "triceps"
+      ],
+      "secondaryMuscles": [
+        "chest",
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Dumbbell_Alternate_Bicep_Curl",
+      "name": "Bizepscurl abwechselnd (Kurzhantel)",
+      "englishName": "Dumbbell Alternate Bicep Curl",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "biceps"
+      ],
+      "secondaryMuscles": [
+        "forearms"
+      ]
+    },
+    {
+      "id": "Dumbbell_Bicep_Curl",
+      "name": "Bizepscurl (Kurzhantel)",
+      "englishName": "Dumbbell Bicep Curl",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "biceps"
+      ],
+      "secondaryMuscles": [
+        "forearms"
+      ]
+    },
+    {
+      "id": "Dumbbell_Flyes",
+      "name": "Fliegende (Kurzhantel)",
+      "englishName": "Dumbbell Flyes",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Dumbbell_Incline_Row",
+      "name": "Rudern auf der Schrägbank (Kurzhantel)",
+      "englishName": "Dumbbell Incline Row",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "middle back"
+      ],
+      "secondaryMuscles": [
+        "biceps",
+        "forearms",
+        "lats",
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Dumbbell_Lunges",
+      "name": "Ausfallschritt (Kurzhantel)",
+      "englishName": "Dumbbell Lunges",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "glutes",
+        "hamstrings"
+      ]
+    },
+    {
+      "id": "Dumbbell_Rear_Lunge",
+      "name": "Ausfallschritt rückwärts (Kurzhantel)",
+      "englishName": "Dumbbell Rear Lunge",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "glutes",
+        "hamstrings"
+      ]
+    },
+    {
+      "id": "Dumbbell_Seated_One-Leg_Calf_Raise",
+      "name": "Wadenheben einbeinig sitzend (Kurzhantel)",
+      "englishName": "Dumbbell Seated One-Leg Calf Raise",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "calves"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Dumbbell_Shrug",
+      "name": "Schulterheben (Kurzhantel)",
+      "englishName": "Dumbbell Shrug",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "traps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Dumbbell_Side_Bend",
+      "name": "Seitbeuge (Kurzhantel)",
+      "englishName": "Dumbbell Side Bend",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Dumbbell_Squat",
+      "name": "Kniebeuge (Kurzhantel)",
+      "englishName": "Dumbbell Squat",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "glutes",
+        "hamstrings",
+        "lower back"
+      ]
+    },
+    {
+      "id": "Dumbbell_Step_Ups",
+      "name": "Aufsteigen (Kurzhantel)",
+      "englishName": "Dumbbell Step Ups",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "glutes",
+        "hamstrings"
+      ]
+    },
+    {
+      "id": "Dumbbell_Tricep_Extension_-Pronated_Grip",
+      "name": "Trizepsstrecken im Obergriff (Kurzhantel)",
+      "englishName": "Dumbbell Tricep Extension -Pronated Grip",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "triceps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "EZ-Bar_Curl",
+      "name": "Bizepscurl (SZ-Stange)",
+      "englishName": "EZ-Bar Curl",
+      "equipment": "e-z curl bar",
+      "primaryMuscles": [
+        "biceps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Exercise_Ball_Crunch",
+      "name": "Bauchbeuge (Gymnastikball)",
+      "englishName": "Exercise Ball Crunch",
+      "equipment": "exercise ball",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Flat_Bench_Cable_Flyes",
+      "name": "Fliegende auf der Flachbank (Kabel)",
+      "englishName": "Flat Bench Cable Flyes",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Flat_Bench_Leg_Pull-In",
+      "name": "Beine anziehen auf der Bank",
+      "englishName": "Flat Bench Leg Pull-In",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Flutter_Kicks",
+      "name": "Beinschere",
+      "englishName": "Flutter Kicks",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "glutes"
+      ],
+      "secondaryMuscles": [
+        "hamstrings"
+      ]
+    },
+    {
+      "id": "Front_Dumbbell_Raise",
+      "name": "Frontheben (Kurzhantel)",
+      "englishName": "Front Dumbbell Raise",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Front_Plate_Raise",
+      "name": "Frontheben (Hantelscheibe)",
+      "englishName": "Front Plate Raise",
+      "equipment": "other",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Glute_Ham_Raise",
+      "name": "Beinbeugen mit Rumpfheben",
+      "englishName": "Glute Ham Raise",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "hamstrings"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "glutes"
+      ]
+    },
+    {
+      "id": "Glute_Kickback",
+      "name": "Bein nach hinten strecken",
+      "englishName": "Glute Kickback",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "glutes"
+      ],
+      "secondaryMuscles": [
+        "hamstrings"
+      ]
+    },
+    {
+      "id": "Goblet_Squat",
+      "name": "Kniebeuge vor der Brust (Kettlebell)",
+      "englishName": "Goblet Squat",
+      "equipment": "kettlebells",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "glutes",
+        "hamstrings",
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Good_Morning",
+      "name": "Rumpfbeuge (Langhantel)",
+      "englishName": "Good Morning",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "hamstrings"
+      ],
+      "secondaryMuscles": [
+        "abdominals",
+        "glutes",
+        "lower back"
+      ]
+    },
+    {
+      "id": "Hack_Squat",
+      "name": "Hackenschmidt-Kniebeuge (Maschine)",
+      "englishName": "Hack Squat",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "glutes",
+        "hamstrings"
+      ]
+    },
+    {
+      "id": "Hammer_Curls",
+      "name": "Hammercurl (Kurzhantel)",
+      "englishName": "Hammer Curls",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "biceps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Hip_Lift_with_Band",
+      "name": "Beckenheben (Band)",
+      "englishName": "Hip Lift with Band",
+      "equipment": "bands",
+      "primaryMuscles": [
+        "glutes"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "hamstrings"
+      ]
+    },
+    {
+      "id": "Hyperextensions_With_No_Hyperextension_Bench",
+      "name": "Rückenstrecken am Boden",
+      "englishName": "Hyperextensions With No Hyperextension Bench",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "lower back"
+      ],
+      "secondaryMuscles": [
+        "glutes",
+        "hamstrings"
+      ]
+    },
+    {
+      "id": "Incline_Cable_Chest_Press",
+      "name": "Schrägbankdrücken (Kabel)",
+      "englishName": "Incline Cable Chest Press",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": [
+        "shoulders",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Incline_Cable_Flye",
+      "name": "Fliegende auf der Schrägbank (Kabel)",
+      "englishName": "Incline Cable Flye",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": [
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Incline_Dumbbell_Flyes",
+      "name": "Fliegende auf der Schrägbank (Kurzhantel)",
+      "englishName": "Incline Dumbbell Flyes",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": [
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Incline_Dumbbell_Press",
+      "name": "Schrägbankdrücken (Kurzhantel)",
+      "englishName": "Incline Dumbbell Press",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": [
+        "shoulders",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Incline_Hammer_Curls",
+      "name": "Hammercurl auf der Schrägbank",
+      "englishName": "Incline Hammer Curls",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "biceps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Incline_Push-Up",
+      "name": "Liegestütz erhöht",
+      "englishName": "Incline Push-Up",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": [
+        "shoulders",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Inverted_Row",
+      "name": "Rudern hängend",
+      "englishName": "Inverted Row",
+      "equipment": null,
+      "primaryMuscles": [
+        "middle back"
+      ],
+      "secondaryMuscles": [
+        "lats"
+      ]
+    },
+    {
+      "id": "Jackknife_Sit-Up",
+      "name": "Klappmesser",
+      "englishName": "Jackknife Sit-Up",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Kettlebell_Dead_Clean",
+      "name": "Umsetzen vom Boden (Kettlebell)",
+      "englishName": "Kettlebell Dead Clean",
+      "equipment": "kettlebells",
+      "primaryMuscles": [
+        "hamstrings"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "glutes",
+        "lower back",
+        "quadriceps",
+        "traps"
+      ]
+    },
+    {
+      "id": "Kettlebell_Figure_8",
+      "name": "Achterkreisen (Kettlebell)",
+      "englishName": "Kettlebell Figure 8",
+      "equipment": "kettlebells",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": [
+        "hamstrings",
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Kettlebell_Pistol_Squat",
+      "name": "Einbeinige Kniebeuge (Kettlebell)",
+      "englishName": "Kettlebell Pistol Squat",
+      "equipment": "kettlebells",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "glutes",
+        "hamstrings",
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Kettlebell_Sumo_High_Pull",
+      "name": "Sumozug (Kettlebell)",
+      "englishName": "Kettlebell Sumo High Pull",
+      "equipment": "kettlebells",
+      "primaryMuscles": [
+        "traps"
+      ],
+      "secondaryMuscles": [
+        "adductors",
+        "glutes",
+        "hamstrings",
+        "quadriceps",
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Kettlebell_Thruster",
+      "name": "Kniebeuge mit Schulterdrücken (Kettlebell)",
+      "englishName": "Kettlebell Thruster",
+      "equipment": "kettlebells",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": [
+        "quadriceps",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Kettlebell_Turkish_Get-Up_Lunge_style",
+      "name": "Aufstehen mit Gewicht (Kettlebell)",
+      "englishName": "Kettlebell Turkish Get-Up (Lunge style)",
+      "equipment": "kettlebells",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": [
+        "abdominals",
+        "hamstrings",
+        "quadriceps",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Kettlebell_Windmill",
+      "name": "Windmühle (Kettlebell)",
+      "englishName": "Kettlebell Windmill",
+      "equipment": "kettlebells",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": [
+        "glutes",
+        "hamstrings",
+        "shoulders",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Leg_Lift",
+      "name": "Beinheben am Boden",
+      "englishName": "Leg Lift",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "glutes"
+      ],
+      "secondaryMuscles": [
+        "hamstrings"
+      ]
+    },
+    {
+      "id": "Leverage_Chest_Press",
+      "name": "Brustpresse (Hebelmaschine)",
+      "englishName": "Leverage Chest Press",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": [
+        "shoulders",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Leverage_Decline_Chest_Press",
+      "name": "Brustpresse nach unten (Hebelmaschine)",
+      "englishName": "Leverage Decline Chest Press",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": [
+        "shoulders",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Leverage_Incline_Chest_Press",
+      "name": "Brustpresse schräg (Hebelmaschine)",
+      "englishName": "Leverage Incline Chest Press",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": [
+        "shoulders",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Lying_Cable_Curl",
+      "name": "Bizepscurl liegend (Kabel)",
+      "englishName": "Lying Cable Curl",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "biceps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Lying_T-Bar_Row",
+      "name": "T-Stangen-Rudern brustgestützt",
+      "englishName": "Lying T-Bar Row",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "middle back"
+      ],
+      "secondaryMuscles": [
+        "biceps",
+        "lats"
+      ]
+    },
+    {
+      "id": "Machine_Bench_Press",
+      "name": "Brustdrücken (Maschine)",
+      "englishName": "Machine Bench Press",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": [
+        "shoulders",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Machine_Bicep_Curl",
+      "name": "Bizepscurl (Maschine)",
+      "englishName": "Machine Bicep Curl",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "biceps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Machine_Preacher_Curls",
+      "name": "Bizepscurl an der Scottbank (Maschine)",
+      "englishName": "Machine Preacher Curls",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "biceps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Machine_Shoulder_Military_Press",
+      "name": "Schulterdrücken (Maschine)",
+      "englishName": "Machine Shoulder (Military) Press",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": [
+        "triceps"
+      ]
+    },
+    {
+      "id": "Machine_Triceps_Extension",
+      "name": "Trizepsstrecken (Maschine)",
+      "englishName": "Machine Triceps Extension",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "triceps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Monster_Walk",
+      "name": "Seitwärtsgehen (Band)",
+      "englishName": "Monster Walk",
+      "equipment": "bands",
+      "primaryMuscles": [
+        "abductors"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Muscle_Up",
+      "name": "Klimmzug in den Stütz",
+      "englishName": "Muscle Up",
+      "equipment": "other",
+      "primaryMuscles": [
+        "lats"
+      ],
+      "secondaryMuscles": [
+        "abdominals",
+        "biceps",
+        "forearms",
+        "middle back",
+        "shoulders",
+        "traps",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Narrow_Stance_Hack_Squats",
+      "name": "Hackenschmidt-Kniebeuge mit engem Stand",
+      "englishName": "Narrow Stance Hack Squats",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "glutes",
+        "hamstrings"
+      ]
+    },
+    {
+      "id": "Narrow_Stance_Leg_Press",
+      "name": "Beinpresse mit engem Stand",
+      "englishName": "Narrow Stance Leg Press",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "glutes",
+        "hamstrings"
+      ]
+    },
+    {
+      "id": "Natural_Glute_Ham_Raise",
+      "name": "Beinbeuger kniend",
+      "englishName": "Natural Glute Ham Raise",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "hamstrings"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "glutes",
+        "lower back"
+      ]
+    },
+    {
+      "id": "Oblique_Crunches",
+      "name": "Bauchbeuge seitlich",
+      "englishName": "Oblique Crunches",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "One-Arm_Kettlebell_Row",
+      "name": "Rudern einarmig (Kettlebell)",
+      "englishName": "One-Arm Kettlebell Row",
+      "equipment": "kettlebells",
+      "primaryMuscles": [
+        "middle back"
+      ],
+      "secondaryMuscles": [
+        "biceps",
+        "lats"
+      ]
+    },
+    {
+      "id": "One-Arm_Kettlebell_Swings",
+      "name": "Schwingen einarmig (Kettlebell)",
+      "englishName": "One-Arm Kettlebell Swings",
+      "equipment": "kettlebells",
+      "primaryMuscles": [
+        "hamstrings"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "glutes",
+        "lower back",
+        "shoulders"
+      ]
+    },
+    {
+      "id": "One-Arm_Long_Bar_Row",
+      "name": "Rudern einarmig an der Landmine",
+      "englishName": "One-Arm Long Bar Row",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "middle back"
+      ],
+      "secondaryMuscles": [
+        "biceps",
+        "lats"
+      ]
+    },
+    {
+      "id": "One-Arm_Side_Laterals",
+      "name": "Seitheben einarmig (Kurzhantel)",
+      "englishName": "One-Arm Side Laterals",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "One-Legged_Cable_Kickback",
+      "name": "Bein nach hinten strecken (Kabel)",
+      "englishName": "One-Legged Cable Kickback",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "glutes"
+      ],
+      "secondaryMuscles": [
+        "hamstrings"
+      ]
+    },
+    {
+      "id": "One_Arm_Dumbbell_Bench_Press",
+      "name": "Bankdrücken einarmig (Kurzhantel)",
+      "englishName": "One Arm Dumbbell Bench Press",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": [
+        "shoulders",
+        "triceps"
+      ]
+    },
+    {
+      "id": "One_Arm_Dumbbell_Preacher_Curl",
+      "name": "Bizepscurl einarmig an der Scottbank (Kurzhantel)",
+      "englishName": "One Arm Dumbbell Preacher Curl",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "biceps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "One_Arm_Lat_Pulldown",
+      "name": "Latzug einarmig (Kabel)",
+      "englishName": "One Arm Lat Pulldown",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "lats"
+      ],
+      "secondaryMuscles": [
+        "biceps",
+        "middle back"
+      ]
+    },
+    {
+      "id": "Overhead_Cable_Curl",
+      "name": "Bizepscurl über Kopf (Kabel)",
+      "englishName": "Overhead Cable Curl",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "biceps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Overhead_Squat",
+      "name": "Überkopfkniebeuge",
+      "englishName": "Overhead Squat",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": [
+        "abdominals",
+        "calves",
+        "glutes",
+        "hamstrings",
+        "lower back",
+        "shoulders",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Pallof_Press",
+      "name": "Drücken gegen die Drehung (Kabel)",
+      "englishName": "Pallof Press",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": [
+        "chest",
+        "shoulders",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Pallof_Press_With_Rotation",
+      "name": "Drücken mit Drehung (Kabel)",
+      "englishName": "Pallof Press With Rotation",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": [
+        "chest",
+        "shoulders",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Palms-Down_Dumbbell_Wrist_Curl_Over_A_Bench",
+      "name": "Handgelenkcurl im Obergriff (Kurzhantel)",
+      "englishName": "Palms-Down Dumbbell Wrist Curl Over A Bench",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "forearms"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Palms-Down_Wrist_Curl_Over_A_Bench",
+      "name": "Handgelenkcurl im Obergriff (Langhantel)",
+      "englishName": "Palms-Down Wrist Curl Over A Bench",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "forearms"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Palms-Up_Barbell_Wrist_Curl_Over_A_Bench",
+      "name": "Handgelenkcurl im Untergriff (Langhantel)",
+      "englishName": "Palms-Up Barbell Wrist Curl Over A Bench",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "forearms"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Palms-Up_Dumbbell_Wrist_Curl_Over_A_Bench",
+      "name": "Handgelenkcurl im Untergriff (Kurzhantel)",
+      "englishName": "Palms-Up Dumbbell Wrist Curl Over A Bench",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "forearms"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Plate_Pinch",
+      "name": "Hantelscheiben halten",
+      "englishName": "Plate Pinch",
+      "equipment": "other",
+      "primaryMuscles": [
+        "forearms"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Plie_Dumbbell_Squat",
+      "name": "Kniebeuge mit breitem Stand (Kurzhantel)",
+      "englishName": "Plie Dumbbell Squat",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": [
+        "abdominals",
+        "calves",
+        "glutes",
+        "hamstrings"
+      ]
+    },
+    {
+      "id": "Power_Clean",
+      "name": "Umsetzen (Langhantel)",
+      "englishName": "Power Clean",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "hamstrings"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "forearms",
+        "glutes",
+        "lower back",
+        "middle back",
+        "quadriceps",
+        "shoulders",
+        "traps",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Power_Snatch",
+      "name": "Reißen in den Stand (Langhantel)",
+      "englishName": "Power Snatch",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "hamstrings"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "glutes",
+        "lower back",
+        "quadriceps",
+        "shoulders",
+        "traps",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Preacher_Curl",
+      "name": "Bizepscurl an der Scottbank (Langhantel)",
+      "englishName": "Preacher Curl",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "biceps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Preacher_Hammer_Dumbbell_Curl",
+      "name": "Hammercurl an der Scottbank",
+      "englishName": "Preacher Hammer Dumbbell Curl",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "biceps"
+      ],
+      "secondaryMuscles": [
+        "forearms"
+      ]
+    },
+    {
+      "id": "Pull_Through",
+      "name": "Hüftstrecken (Kabel)",
+      "englishName": "Pull Through",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "glutes"
+      ],
+      "secondaryMuscles": [
+        "hamstrings",
+        "lower back"
+      ]
+    },
+    {
+      "id": "Push-Up_Wide",
+      "name": "Liegestütz breit",
+      "englishName": "Push-Up Wide",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": [
+        "abdominals",
+        "shoulders",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Push-Ups_-_Close_Triceps_Position",
+      "name": "Liegestütz eng",
+      "englishName": "Push-Ups - Close Triceps Position",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "triceps"
+      ],
+      "secondaryMuscles": [
+        "chest",
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Push-Ups_With_Feet_Elevated",
+      "name": "Liegestütz mit erhöhten Füßen",
+      "englishName": "Push-Ups With Feet Elevated",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": [
+        "shoulders",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Push_Press",
+      "name": "Schwungdrücken (Langhantel)",
+      "englishName": "Push Press",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": [
+        "quadriceps",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Rack_Pulls",
+      "name": "Kreuzheben ab Ablage",
+      "englishName": "Rack Pulls",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "lower back"
+      ],
+      "secondaryMuscles": [
+        "forearms",
+        "glutes",
+        "hamstrings",
+        "traps"
+      ]
+    },
+    {
+      "id": "Reverse_Barbell_Curl",
+      "name": "Bizepscurl im Obergriff (Langhantel)",
+      "englishName": "Reverse Barbell Curl",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "biceps"
+      ],
+      "secondaryMuscles": [
+        "forearms"
+      ]
+    },
+    {
+      "id": "Reverse_Cable_Curl",
+      "name": "Bizepscurl im Obergriff (Kabel)",
+      "englishName": "Reverse Cable Curl",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "biceps"
+      ],
+      "secondaryMuscles": [
+        "forearms"
+      ]
+    },
+    {
+      "id": "Reverse_Crunch",
+      "name": "Bauchbeuge rückwärts",
+      "englishName": "Reverse Crunch",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Reverse_Flyes",
+      "name": "Fliegende rückwärts (Kurzhantel)",
+      "englishName": "Reverse Flyes",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Reverse_Grip_Bent-Over_Rows",
+      "name": "Rudern vorgebeugt im Untergriff (Langhantel)",
+      "englishName": "Reverse Grip Bent-Over Rows",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "middle back"
+      ],
+      "secondaryMuscles": [
+        "biceps",
+        "lats",
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Reverse_Grip_Triceps_Pushdown",
+      "name": "Trizepsdrücken im Untergriff (Kabel)",
+      "englishName": "Reverse Grip Triceps Pushdown",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "triceps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Reverse_Hyperextension",
+      "name": "Umgekehrtes Rückenstrecken",
+      "englishName": "Reverse Hyperextension",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "hamstrings"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "glutes"
+      ]
+    },
+    {
+      "id": "Reverse_Machine_Flyes",
+      "name": "Fliegende rückwärts (Maschine)",
+      "englishName": "Reverse Machine Flyes",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Ring_Dips",
+      "name": "Dips an Ringen",
+      "englishName": "Ring Dips",
+      "equipment": "other",
+      "primaryMuscles": [
+        "triceps"
+      ],
+      "secondaryMuscles": [
+        "chest",
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Rope_Crunch",
+      "name": "Bauchbeuge am Seil (Kabel)",
+      "englishName": "Rope Crunch",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Rope_Straight-Arm_Pulldown",
+      "name": "Latzug mit gestreckten Armen am Seil",
+      "englishName": "Rope Straight-Arm Pulldown",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "lats"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Russian_Twist",
+      "name": "Rumpfdrehen sitzend",
+      "englishName": "Russian Twist",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": [
+        "lower back"
+      ]
+    },
+    {
+      "id": "Scapular_Pull-Up",
+      "name": "Schulterblatt-Klimmzug",
+      "englishName": "Scapular Pull-Up",
+      "equipment": null,
+      "primaryMuscles": [
+        "traps"
+      ],
+      "secondaryMuscles": [
+        "lats",
+        "middle back"
+      ]
+    },
+    {
+      "id": "Seated_Band_Hamstring_Curl",
+      "name": "Beinbeuger sitzend (Band)",
+      "englishName": "Seated Band Hamstring Curl",
+      "equipment": "other",
+      "primaryMuscles": [
+        "hamstrings"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Seated_Barbell_Military_Press",
+      "name": "Schulterdrücken sitzend (Langhantel)",
+      "englishName": "Seated Barbell Military Press",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": [
+        "triceps"
+      ]
+    },
+    {
+      "id": "Seated_Bent-Over_Rear_Delt_Raise",
+      "name": "Fliegende rückwärts sitzend (Kurzhantel)",
+      "englishName": "Seated Bent-Over Rear Delt Raise",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Seated_Cable_Shoulder_Press",
+      "name": "Schulterdrücken sitzend (Kabel)",
+      "englishName": "Seated Cable Shoulder Press",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": [
+        "triceps"
+      ]
+    },
+    {
+      "id": "Seated_Dumbbell_Curl",
+      "name": "Bizepscurl sitzend (Kurzhantel)",
+      "englishName": "Seated Dumbbell Curl",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "biceps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Seated_Dumbbell_Press",
+      "name": "Schulterdrücken sitzend (Kurzhantel)",
+      "englishName": "Seated Dumbbell Press",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": [
+        "triceps"
+      ]
+    },
+    {
+      "id": "Seated_Good_Mornings",
+      "name": "Rumpfbeuge sitzend (Langhantel)",
+      "englishName": "Seated Good Mornings",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "lower back"
+      ],
+      "secondaryMuscles": [
+        "glutes"
+      ]
+    },
+    {
+      "id": "Seated_Leg_Curl",
+      "name": "Beinbeuger sitzend (Maschine)",
+      "englishName": "Seated Leg Curl",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "hamstrings"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Seated_One-arm_Cable_Pulley_Rows",
+      "name": "Rudern einarmig sitzend (Kabel)",
+      "englishName": "Seated One-arm Cable Pulley Rows",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "middle back"
+      ],
+      "secondaryMuscles": [
+        "biceps",
+        "lats",
+        "traps"
+      ]
+    },
+    {
+      "id": "Seated_Side_Lateral_Raise",
+      "name": "Seitheben sitzend (Kurzhantel)",
+      "englishName": "Seated Side Lateral Raise",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Seated_Triceps_Press",
+      "name": "Trizepsstrecken über Kopf (Kurzhantel)",
+      "englishName": "Seated Triceps Press",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "triceps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Shoulder_Press_-_With_Bands",
+      "name": "Schulterdrücken (Band)",
+      "englishName": "Shoulder Press - With Bands",
+      "equipment": "bands",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": [
+        "triceps"
+      ]
+    },
+    {
+      "id": "Side_Bridge",
+      "name": "Seitstütz",
+      "englishName": "Side Bridge",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": [
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Single-Arm_Cable_Crossover",
+      "name": "Fliegende einarmig (Kabel)",
+      "englishName": "Single-Arm Cable Crossover",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Single-Arm_Push-Up",
+      "name": "Liegestütz einarmig",
+      "englishName": "Single-Arm Push-Up",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": [
+        "shoulders",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Single-Leg_Leg_Extension",
+      "name": "Beinstrecker einbeinig (Maschine)",
+      "englishName": "Single-Leg Leg Extension",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Single_Leg_Glute_Bridge",
+      "name": "Beckenheben einbeinig",
+      "englishName": "Single Leg Glute Bridge",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "glutes"
+      ],
+      "secondaryMuscles": [
+        "hamstrings"
+      ]
+    },
+    {
+      "id": "Sit-Up",
+      "name": "Rumpfheben",
+      "englishName": "Sit-Up",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Sled_Push",
+      "name": "Schlitten schieben",
+      "englishName": "Sled Push",
+      "equipment": "other",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "chest",
+        "glutes",
+        "hamstrings",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Smith_Machine_Bench_Press",
+      "name": "Bankdrücken an der Multipresse",
+      "englishName": "Smith Machine Bench Press",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": [
+        "shoulders",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Smith_Machine_Bent_Over_Row",
+      "name": "Rudern vorgebeugt an der Multipresse",
+      "englishName": "Smith Machine Bent Over Row",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "middle back"
+      ],
+      "secondaryMuscles": [
+        "biceps",
+        "lats",
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Smith_Machine_Calf_Raise",
+      "name": "Wadenheben an der Multipresse",
+      "englishName": "Smith Machine Calf Raise",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "calves"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Smith_Machine_Close-Grip_Bench_Press",
+      "name": "Bankdrücken eng an der Multipresse",
+      "englishName": "Smith Machine Close-Grip Bench Press",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "triceps"
+      ],
+      "secondaryMuscles": [
+        "chest",
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Smith_Machine_Decline_Press",
+      "name": "Negativbankdrücken an der Multipresse",
+      "englishName": "Smith Machine Decline Press",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": [
+        "shoulders",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Smith_Machine_Incline_Bench_Press",
+      "name": "Schrägbankdrücken an der Multipresse",
+      "englishName": "Smith Machine Incline Bench Press",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": [
+        "shoulders",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Smith_Machine_Overhead_Shoulder_Press",
+      "name": "Schulterdrücken an der Multipresse",
+      "englishName": "Smith Machine Overhead Shoulder Press",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": [
+        "triceps"
+      ]
+    },
+    {
+      "id": "Smith_Machine_Squat",
+      "name": "Kniebeuge an der Multipresse",
+      "englishName": "Smith Machine Squat",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "glutes",
+        "hamstrings",
+        "lower back"
+      ]
+    },
+    {
+      "id": "Smith_Machine_Stiff-Legged_Deadlift",
+      "name": "Kreuzheben mit gestreckten Beinen an der Multipresse",
+      "englishName": "Smith Machine Stiff-Legged Deadlift",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "hamstrings"
+      ],
+      "secondaryMuscles": [
+        "glutes",
+        "lower back"
+      ]
+    },
+    {
+      "id": "Smith_Machine_Upright_Row",
+      "name": "Rudern aufrecht an der Multipresse",
+      "englishName": "Smith Machine Upright Row",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "traps"
+      ],
+      "secondaryMuscles": [
+        "biceps",
+        "middle back",
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Snatch",
+      "name": "Reißen (Langhantel)",
+      "englishName": "Snatch",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": [
+        "biceps",
+        "glutes",
+        "hamstrings",
+        "lower back",
+        "shoulders",
+        "traps",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Spider_Curl",
+      "name": "Bizepscurl brustgestützt (SZ-Stange)",
+      "englishName": "Spider Curl",
+      "equipment": "e-z curl bar",
+      "primaryMuscles": [
+        "biceps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Split_Squat_with_Dumbbells",
+      "name": "Geteilte Kniebeuge (Kurzhantel)",
+      "englishName": "Split Squat with Dumbbells",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": [
+        "glutes",
+        "hamstrings"
+      ]
+    },
+    {
+      "id": "Standing_Biceps_Cable_Curl",
+      "name": "Bizepscurl stehend (Kabel)",
+      "englishName": "Standing Biceps Cable Curl",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "biceps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Standing_Cable_Chest_Press",
+      "name": "Brustdrücken stehend (Kabel)",
+      "englishName": "Standing Cable Chest Press",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": [
+        "shoulders",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Standing_Dumbbell_Calf_Raise",
+      "name": "Wadenheben stehend (Kurzhantel)",
+      "englishName": "Standing Dumbbell Calf Raise",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "calves"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Standing_Dumbbell_Press",
+      "name": "Schulterdrücken stehend (Kurzhantel)",
+      "englishName": "Standing Dumbbell Press",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": [
+        "triceps"
+      ]
+    },
+    {
+      "id": "Standing_Dumbbell_Reverse_Curl",
+      "name": "Bizepscurl im Obergriff (Kurzhantel)",
+      "englishName": "Standing Dumbbell Reverse Curl",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "biceps"
+      ],
+      "secondaryMuscles": [
+        "forearms"
+      ]
+    },
+    {
+      "id": "Standing_Dumbbell_Upright_Row",
+      "name": "Rudern aufrecht (Kurzhantel)",
+      "englishName": "Standing Dumbbell Upright Row",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "traps"
+      ],
+      "secondaryMuscles": [
+        "biceps",
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Standing_Leg_Curl",
+      "name": "Beinbeuger stehend (Maschine)",
+      "englishName": "Standing Leg Curl",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "hamstrings"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Standing_Low-Pulley_Deltoid_Raise",
+      "name": "Seitheben (Kabel)",
+      "englishName": "Standing Low-Pulley Deltoid Raise",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": [
+        "forearms"
+      ]
+    },
+    {
+      "id": "Standing_One-Arm_Cable_Curl",
+      "name": "Bizepscurl einarmig (Kabel)",
+      "englishName": "Standing One-Arm Cable Curl",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "biceps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Standing_Overhead_Barbell_Triceps_Extension",
+      "name": "Trizepsstrecken über Kopf (Langhantel)",
+      "englishName": "Standing Overhead Barbell Triceps Extension",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "triceps"
+      ],
+      "secondaryMuscles": [
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Stiff-Legged_Barbell_Deadlift",
+      "name": "Kreuzheben mit gestreckten Beinen (Langhantel)",
+      "englishName": "Stiff-Legged Barbell Deadlift",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "hamstrings"
+      ],
+      "secondaryMuscles": [
+        "glutes",
+        "lower back"
+      ]
+    },
+    {
+      "id": "Stiff-Legged_Dumbbell_Deadlift",
+      "name": "Kreuzheben mit gestreckten Beinen (Kurzhantel)",
+      "englishName": "Stiff-Legged Dumbbell Deadlift",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "hamstrings"
+      ],
+      "secondaryMuscles": [
+        "glutes",
+        "lower back"
+      ]
+    },
+    {
+      "id": "Straight-Arm_Dumbbell_Pullover",
+      "name": "Überzüge (Kurzhantel)",
+      "englishName": "Straight-Arm Dumbbell Pullover",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": [
+        "lats",
+        "shoulders",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Straight-Arm_Pulldown",
+      "name": "Latzug mit gestreckten Armen (Kabel)",
+      "englishName": "Straight-Arm Pulldown",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "lats"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Sumo_Deadlift",
+      "name": "Sumokreuzheben",
+      "englishName": "Sumo Deadlift",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "hamstrings"
+      ],
+      "secondaryMuscles": [
+        "adductors",
+        "forearms",
+        "glutes",
+        "lower back",
+        "middle back",
+        "quadriceps",
+        "traps"
+      ]
+    },
+    {
+      "id": "Suspended_Fallout",
+      "name": "Bauchstrecken an Schlingen",
+      "englishName": "Suspended Fallout",
+      "equipment": "other",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": [
+        "chest",
+        "lower back",
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Suspended_Push-Up",
+      "name": "Liegestütz an Schlingen",
+      "englishName": "Suspended Push-Up",
+      "equipment": "other",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": [
+        "shoulders",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Suspended_Row",
+      "name": "Rudern an Schlingen",
+      "englishName": "Suspended Row",
+      "equipment": "other",
+      "primaryMuscles": [
+        "middle back"
+      ],
+      "secondaryMuscles": [
+        "biceps",
+        "lats"
+      ]
+    },
+    {
+      "id": "Suspended_Split_Squat",
+      "name": "Geteilte Kniebeuge an Schlingen",
+      "englishName": "Suspended Split Squat",
+      "equipment": "other",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": [
+        "abductors",
+        "adductors",
+        "calves",
+        "glutes",
+        "hamstrings"
+      ]
+    },
+    {
+      "id": "T-Bar_Row_with_Handle",
+      "name": "T-Stangen-Rudern",
+      "englishName": "T-Bar Row with Handle",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "middle back"
+      ],
+      "secondaryMuscles": [
+        "biceps",
+        "lats"
+      ]
+    },
+    {
+      "id": "Thigh_Abductor",
+      "name": "Beine auseinanderdrücken (Maschine)",
+      "englishName": "Thigh Abductor",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "abductors"
+      ],
+      "secondaryMuscles": [
+        "glutes"
+      ]
+    },
+    {
+      "id": "Thigh_Adductor",
+      "name": "Beine zusammenführen (Maschine)",
+      "englishName": "Thigh Adductor",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "adductors"
+      ],
+      "secondaryMuscles": [
+        "glutes",
+        "hamstrings"
+      ]
+    },
+    {
+      "id": "Trap_Bar_Deadlift",
+      "name": "Kreuzheben (Trap-Bar)",
+      "englishName": "Trap Bar Deadlift",
+      "equipment": "other",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": [
+        "glutes",
+        "hamstrings"
+      ]
+    },
+    {
+      "id": "Tricep_Dumbbell_Kickback",
+      "name": "Trizepsstrecken nach hinten (Kurzhantel)",
+      "englishName": "Tricep Dumbbell Kickback",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "triceps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Triceps_Pushdown_-_Rope_Attachment",
+      "name": "Trizepsdrücken (Kabel mit Seil)",
+      "englishName": "Triceps Pushdown - Rope Attachment",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "triceps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Triceps_Pushdown_-_V-Bar_Attachment",
+      "name": "Trizepsdrücken (Kabel mit V-Griff)",
+      "englishName": "Triceps Pushdown - V-Bar Attachment",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "triceps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Underhand_Cable_Pulldowns",
+      "name": "Latzug im Untergriff (Kabel)",
+      "englishName": "Underhand Cable Pulldowns",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "lats"
+      ],
+      "secondaryMuscles": [
+        "biceps",
+        "middle back",
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Upright_Barbell_Row",
+      "name": "Rudern aufrecht (Langhantel)",
+      "englishName": "Upright Barbell Row",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": [
+        "traps"
+      ]
+    },
+    {
+      "id": "Upright_Cable_Row",
+      "name": "Rudern aufrecht (Kabel)",
+      "englishName": "Upright Cable Row",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "traps"
+      ],
+      "secondaryMuscles": [
+        "shoulders"
+      ]
+    },
+    {
+      "id": "V-Bar_Pulldown",
+      "name": "Latzug mit engem Griff (Kabel)",
+      "englishName": "V-Bar Pulldown",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "lats"
+      ],
+      "secondaryMuscles": [
+        "biceps",
+        "middle back",
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Weighted_Pull_Ups",
+      "name": "Klimmzug mit Zusatzlast",
+      "englishName": "Weighted Pull Ups",
+      "equipment": "other",
+      "primaryMuscles": [
+        "lats"
+      ],
+      "secondaryMuscles": [
+        "biceps",
+        "middle back"
+      ]
+    },
+    {
+      "id": "Wide-Grip_Barbell_Bench_Press",
+      "name": "Bankdrücken breit (Langhantel)",
+      "englishName": "Wide-Grip Barbell Bench Press",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": [
+        "shoulders",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Wide-Grip_Lat_Pulldown",
+      "name": "Latzug breit (Kabel)",
+      "englishName": "Wide-Grip Lat Pulldown",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "lats"
+      ],
+      "secondaryMuscles": [
+        "biceps",
+        "middle back",
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Wide_Stance_Barbell_Squat",
+      "name": "Kniebeuge mit breitem Stand (Langhantel)",
+      "englishName": "Wide Stance Barbell Squat",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "glutes",
+        "hamstrings",
+        "lower back"
+      ]
+    },
+    {
+      "id": "Wrist_Roller",
+      "name": "Handgelenkroller",
+      "englishName": "Wrist Roller",
+      "equipment": "other",
+      "primaryMuscles": [
+        "forearms"
+      ],
+      "secondaryMuscles": [
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Zercher_Squats",
+      "name": "Kniebeuge in der Armbeuge",
+      "englishName": "Zercher Squats",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "glutes",
+        "hamstrings"
+      ]
+    },
+    {
+      "id": "Zottman_Curl",
+      "name": "Bizepscurl mit Griffwechsel (Kurzhantel)",
+      "englishName": "Zottman Curl",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "biceps"
+      ],
+      "secondaryMuscles": [
+        "forearms"
+      ]
+    },
+    {
+      "id": "Barbell_Full_Squat",
+      "name": "Kniebeuge (Langhantel)",
+      "englishName": "Barbell Full Squat",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "glutes",
+        "hamstrings",
+        "lower back"
+      ]
+    },
+    {
+      "id": "Front_Barbell_Squat",
+      "name": "Frontkniebeuge",
+      "englishName": "Front Barbell Squat",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "glutes",
+        "hamstrings"
+      ]
+    },
+    {
+      "id": "Leg_Press",
+      "name": "Beinpresse",
+      "englishName": "Leg Press",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "glutes",
+        "hamstrings"
+      ]
+    },
+    {
+      "id": "Leg_Extensions",
+      "name": "Beinstrecker",
+      "englishName": "Leg Extensions",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "quadriceps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Romanian_Deadlift",
+      "name": "Rumänisches Kreuzheben",
+      "englishName": "Romanian Deadlift",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "hamstrings"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "glutes",
+        "lower back"
+      ]
+    },
+    {
+      "id": "Barbell_Deadlift",
+      "name": "Kreuzheben",
+      "englishName": "Barbell Deadlift",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "lower back"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "forearms",
+        "glutes",
+        "hamstrings",
+        "lats",
+        "middle back",
+        "quadriceps",
+        "traps"
+      ]
+    },
+    {
+      "id": "Lying_Leg_Curls",
+      "name": "Beinbeuger liegend",
+      "englishName": "Lying Leg Curls",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "hamstrings"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Barbell_Hip_Thrust",
+      "name": "Hip Thrust",
+      "englishName": "Barbell Hip Thrust",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "glutes"
+      ],
+      "secondaryMuscles": [
+        "calves",
+        "hamstrings"
+      ]
+    },
+    {
+      "id": "Standing_Calf_Raises",
+      "name": "Wadenheben stehend",
+      "englishName": "Standing Calf Raises",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "calves"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Seated_Calf_Raise",
+      "name": "Wadenheben sitzend",
+      "englishName": "Seated Calf Raise",
+      "equipment": "machine",
+      "primaryMuscles": [
+        "calves"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Hyperextensions_Back_Extensions",
+      "name": "Rückenstrecken",
+      "englishName": "Hyperextensions (Back Extensions)",
+      "equipment": "other",
+      "primaryMuscles": [
+        "lower back"
+      ],
+      "secondaryMuscles": [
+        "glutes",
+        "hamstrings"
+      ]
+    },
+    {
+      "id": "Barbell_Bench_Press_-_Medium_Grip",
+      "name": "Bankdrücken",
+      "englishName": "Barbell Bench Press - Medium Grip",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": [
+        "shoulders",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Barbell_Incline_Bench_Press_-_Medium_Grip",
+      "name": "Schrägbankdrücken",
+      "englishName": "Barbell Incline Bench Press - Medium Grip",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": [
+        "shoulders",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Dumbbell_Bench_Press",
+      "name": "Bankdrücken (Kurzhantel)",
+      "englishName": "Dumbbell Bench Press",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": [
+        "shoulders",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Dips_-_Triceps_Version",
+      "name": "Dips",
+      "englishName": "Dips - Triceps Version",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "triceps"
+      ],
+      "secondaryMuscles": [
+        "chest",
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Pushups",
+      "name": "Liegestütz",
+      "englishName": "Pushups",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "chest"
+      ],
+      "secondaryMuscles": [
+        "shoulders",
+        "triceps"
+      ]
+    },
+    {
+      "id": "Standing_Military_Press",
+      "name": "Schulterdrücken (Langhantel)",
+      "englishName": "Standing Military Press",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": [
+        "triceps"
+      ]
+    },
+    {
+      "id": "Side_Lateral_Raise",
+      "name": "Seitheben",
+      "englishName": "Side Lateral Raise",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Face_Pull",
+      "name": "Face Pull",
+      "englishName": "Face Pull",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "shoulders"
+      ],
+      "secondaryMuscles": [
+        "middle back"
+      ]
+    },
+    {
+      "id": "Pullups",
+      "name": "Klimmzug (Obergriff)",
+      "englishName": "Pullups",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "lats"
+      ],
+      "secondaryMuscles": [
+        "biceps",
+        "middle back"
+      ]
+    },
+    {
+      "id": "Bent_Over_Barbell_Row",
+      "name": "Langhantelrudern",
+      "englishName": "Bent Over Barbell Row",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "middle back"
+      ],
+      "secondaryMuscles": [
+        "biceps",
+        "lats",
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Seated_Cable_Rows",
+      "name": "Rudern am Kabel sitzend",
+      "englishName": "Seated Cable Rows",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "middle back"
+      ],
+      "secondaryMuscles": [
+        "biceps",
+        "lats",
+        "shoulders"
+      ]
+    },
+    {
+      "id": "One-Arm_Dumbbell_Row",
+      "name": "Einarmiges Rudern",
+      "englishName": "One-Arm Dumbbell Row",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "middle back"
+      ],
+      "secondaryMuscles": [
+        "biceps",
+        "lats",
+        "shoulders"
+      ]
+    },
+    {
+      "id": "Barbell_Curl",
+      "name": "Bizepscurl (Langhantel)",
+      "englishName": "Barbell Curl",
+      "equipment": "barbell",
+      "primaryMuscles": [
+        "biceps"
+      ],
+      "secondaryMuscles": [
+        "forearms"
+      ]
+    },
+    {
+      "id": "Incline_Dumbbell_Curl",
+      "name": "Schrägbank-Curl",
+      "englishName": "Incline Dumbbell Curl",
+      "equipment": "dumbbell",
+      "primaryMuscles": [
+        "biceps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Triceps_Pushdown",
+      "name": "Trizepsdrücken am Kabel",
+      "englishName": "Triceps Pushdown",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "triceps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Triceps_Overhead_Extension_with_Rope",
+      "name": "Trizepsdrücken über Kopf",
+      "englishName": "Triceps Overhead Extension with Rope",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "triceps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Lying_Triceps_Press",
+      "name": "Stirndrücken",
+      "englishName": "Lying Triceps Press",
+      "equipment": "e-z curl bar",
+      "primaryMuscles": [
+        "triceps"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Plank",
+      "name": "Unterarmstütz",
+      "englishName": "Plank",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Hanging_Leg_Raise",
+      "name": "Beinheben hängend",
+      "englishName": "Hanging Leg Raise",
+      "equipment": "body only",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "id": "Standing_Cable_Wood_Chop",
+      "name": "Holzhacker am Kabel",
+      "englishName": "Standing Cable Wood Chop",
+      "equipment": "cable",
+      "primaryMuscles": [
+        "abdominals"
+      ],
+      "secondaryMuscles": [
+        "shoulders"
+      ]
+    }
+  ]
+}

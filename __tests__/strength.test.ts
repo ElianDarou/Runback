@@ -1,4 +1,5 @@
 import {
+  CATALOG_VERSION,
   addExercise,
   addSet,
   completeSet,
@@ -38,16 +39,40 @@ const template: WorkoutTemplate = {
       exerciseId: 'barbell_back_squat',
       name: 'Kniebeuge (Langhantel)',
       sets: [
-        { kind: 'warmup', loadKind: 'kg', reps: 8, weightKg: 40, restSeconds: 60 },
-        { kind: 'normal', loadKind: 'kg', reps: 5, weightKg: 100, restSeconds: 180 },
-        { kind: 'normal', loadKind: 'kg', reps: 5, weightKg: 100, restSeconds: 180 },
+        {
+          kind: 'warmup',
+          loadKind: 'kg',
+          reps: 8,
+          weightKg: 40,
+          restSeconds: 60,
+        },
+        {
+          kind: 'normal',
+          loadKind: 'kg',
+          reps: 5,
+          weightKg: 100,
+          restSeconds: 180,
+        },
+        {
+          kind: 'normal',
+          loadKind: 'kg',
+          reps: 5,
+          weightKg: 100,
+          restSeconds: 180,
+        },
       ],
     },
     {
       exerciseId: 'romanian_deadlift',
       name: 'Rumänisches Kreuzheben',
       sets: [
-        { kind: 'normal', loadKind: 'kg', reps: 8, weightKg: 80, restSeconds: 120 },
+        {
+          kind: 'normal',
+          loadKind: 'kg',
+          reps: 8,
+          weightKg: 80,
+          restSeconds: 120,
+        },
       ],
     },
   ],
@@ -82,13 +107,18 @@ describe('Muskelregionen', () => {
 });
 
 describe('Übungskatalog', () => {
-  it('verteilt jede Übung vollständig auf bekannte Regionen', () => {
-    const broken = CATALOG.filter(exercise => !sharesAreValid(exercise.shares));
+  it('verteilt modellierte Übungen vollständig und lässt fehlende Modelle unbekannt', () => {
+    const broken = CATALOG.filter(
+      exercise =>
+        exercise.eccentric !== undefined && !sharesAreValid(exercise.shares),
+    );
     expect(broken.map(exercise => exercise.id)).toEqual([]);
   });
 
   it('hält den Exzentrikfaktor im dokumentierten Bereich', () => {
-    for (const exercise of CATALOG) {
+    for (const exercise of CATALOG.filter(
+      entry => entry.eccentric !== undefined,
+    )) {
       expect(exercise.eccentric).toBeGreaterThanOrEqual(0.7);
       expect(exercise.eccentric).toBeLessThanOrEqual(1.8);
     }
@@ -103,7 +133,7 @@ describe('Übungskatalog', () => {
   it('kennzeichnet Herkunft und Katalogversion', () => {
     for (const exercise of CATALOG) {
       expect(exercise.origin).toBe('catalog');
-      expect(exercise.catalogVersion).toBe('catalog-v1');
+      expect(exercise.catalogVersion).toBe(CATALOG_VERSION);
     }
   });
 
@@ -125,7 +155,7 @@ describe('Einheit starten', () => {
     expect(session.exercises[0].sets).toHaveLength(3);
     expect(session.exercises[0].sets[1].planned.weightKg).toBe(100);
     expect(session.modelVersion).toBe('strength-v1');
-    expect(session.catalogVersion).toBe('catalog-v1');
+    expect(session.catalogVersion).toBe(CATALOG_VERSION);
   });
 
   it('erlaubt eine Einheit ohne Vorlage', () => {
@@ -136,9 +166,15 @@ describe('Einheit starten', () => {
   });
 
   it('kopiert die Vorgaben, statt die Vorlage zu teilen', () => {
-    const session = completeSet(start(), 0, start().exercises[0].sets[0].id, 1, {
-      actualReps: 12,
-    });
+    const session = completeSet(
+      start(),
+      0,
+      start().exercises[0].sets[0].id,
+      1,
+      {
+        actualReps: 12,
+      },
+    );
     expect(template.exercises[0].sets[0].reps).toBe(8);
     expect(session.exercises[0].sets[0].actualReps).toBe(12);
   });
@@ -241,12 +277,7 @@ describe('Sätze erfassen', () => {
   });
 
   it('ergänzt einen Standardsatz, wenn die Übung noch leer ist', () => {
-    const empty = addExercise(
-      startSession(null, 1),
-      { ...CATALOG[0] },
-      2,
-      0,
-    );
+    const empty = addExercise(startSession(null, 1), { ...CATALOG[0] }, 2, 0);
     const withSet = addSet(removeAllSets(empty), 0, 3);
     expect(withSet.exercises[0].sets[0].planned.reps).toBe(8);
     expect(withSet.exercises[0].sets[0].planned.restSeconds).toBe(120);
@@ -310,7 +341,12 @@ describe('Pause', () => {
             exerciseId: 'plank',
             name: 'Unterarmstütz',
             sets: [
-              { kind: 'timed', loadKind: 'bodyweight', seconds: 45, restSeconds: 0 },
+              {
+                kind: 'timed',
+                loadKind: 'bodyweight',
+                seconds: 45,
+                restSeconds: 0,
+              },
             ],
           },
         ],
@@ -372,7 +408,10 @@ describe('Fortschritt und Auswertung', () => {
       actualWeightKg: 100,
       actualReps: 5,
     });
-    expect(sessionBest1RM(session, 'barbell_back_squat')).toBeCloseTo(116.667, 3);
+    expect(sessionBest1RM(session, 'barbell_back_squat')).toBeCloseTo(
+      116.667,
+      3,
+    );
     expect(sessionBest1RM(session, 'gibtesnicht')).toBeNull();
   });
 
@@ -411,9 +450,13 @@ describe('Bezug zur letzten Leistung', () => {
   };
 
   it('nennt Gewicht und Wiederholungen der letzten Einheit', () => {
-    expect(referenceLabel(historyFrom({ weight: 82.5, reps: 6 }), 'barbell_back_squat', 0)).toBe(
-      '82,5 kg × 6',
-    );
+    expect(
+      referenceLabel(
+        historyFrom({ weight: 82.5, reps: 6 }),
+        'barbell_back_squat',
+        0,
+      ),
+    ).toBe('82,5 kg × 6');
   });
 
   it('kommt ohne Gewicht aus', () => {
@@ -425,7 +468,11 @@ describe('Bezug zur letzten Leistung', () => {
               ...exercise,
               sets: exercise.sets.map((set, position) =>
                 position === 0
-                  ? { ...set, actualWeightKg: undefined, planned: { ...set.planned, weightKg: undefined } }
+                  ? {
+                      ...set,
+                      actualWeightKg: undefined,
+                      planned: { ...set.planned, weightKg: undefined },
+                    }
                   : set,
               ),
             }
@@ -457,9 +504,15 @@ describe('Bezug zur letzten Leistung', () => {
   it('gibt null zurück, wenn nichts Vergleichbares vorliegt', () => {
     expect(referenceSet([], 'barbell_back_squat', 0)).toBeNull();
     expect(referenceLabel([], 'barbell_back_squat', 0)).toBeNull();
-    expect(referenceLabel(historyFrom({ weight: 80, reps: 5 }), 'leg_press', 0)).toBeNull();
     expect(
-      referenceLabel(historyFrom({ weight: 80, reps: 5 }), 'barbell_back_squat', 4),
+      referenceLabel(historyFrom({ weight: 80, reps: 5 }), 'leg_press', 0),
+    ).toBeNull();
+    expect(
+      referenceLabel(
+        historyFrom({ weight: 80, reps: 5 }),
+        'barbell_back_squat',
+        4,
+      ),
     ).toBeNull();
   });
 });

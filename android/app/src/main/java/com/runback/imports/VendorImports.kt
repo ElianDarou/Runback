@@ -29,6 +29,7 @@ import org.json.JSONObject
 object VendorImports {
     /** Bumped whenever import interpretation changes; carried into imported runs. */
     const val IMPORT_VERSION = "vendor-import-v2"
+    const val STRONG_IMPORT_VERSION = "strong-import-v3"
 
     enum class Vendor {
         FITBIT, GOOGLE_FIT, STRONG, MI_FITNESS, APPLE_HEALTH, SAMSUNG,
@@ -40,6 +41,7 @@ object VendorImports {
         val setsByWorkout: Map<String, List<StrengthSet>>,
         val rows: Int,
         val skipped: Int,
+        val restRows: Int = 0,
     )
 
     data class ActivitiesParseResult(
@@ -378,65 +380,125 @@ object VendorImports {
         }
     }
 
-    // ---- Strong CSV (one row per set) ----
+    // ---- Strong CSV: Pausen sind Metadaten des vorherigen Satzes, keine Sätze. ----
+
+    private fun strongCsvRecords(text: String): List<String> {
+        val records = ArrayList<String>()
+        var start = 0
+        var quoted = false
+        var i = 0
+        while (i < text.length) {
+            val c = text[i]
+            if (c == '"') {
+                if (quoted && i + 1 < text.length && text[i + 1] == '"') i++
+                else quoted = !quoted
+            } else if (!quoted && (c == '\n' || c == '\r')) {
+                val record = text.substring(start, i)
+                if (record.isNotBlank()) records.add(record)
+                require(records.size <= MAX_CSV_ROWS + 1) { "Zu viele Zeilen im Strong-Export" }
+                if (c == '\r' && i + 1 < text.length && text[i + 1] == '\n') i++
+                start = i + 1
+            }
+            i++
+        }
+        require(!quoted) { "Nicht geschlossene Anführungszeichen im Strong-Export" }
+        text.substring(start).takeIf { it.isNotBlank() }?.let(records::add)
+        require(records.size <= MAX_CSV_ROWS + 1) { "Zu viele Zeilen im Strong-Export" }
+        return records
+    }
 
     fun parseStrongCsv(text: String, source: String): StrongParseResult {
-        val lines = text.lineSequence().take(MAX_CSV_ROWS + 2).toList()
+        val lines = strongCsvRecords(stripBom(text))
         if (lines.isEmpty()) return StrongParseResult(emptyList(), emptyMap(), 0, 0)
         val delimiter = csvDelimiter(lines.first())
-        val header = splitCsvLine(stripBom(lines.first()), delimiter)
+        val header = splitCsvLine(lines.first(), delimiter)
         require(isStrongHeader(header)) { "Keine Strong-Kopfzeile (Date, Exercise Name, Set Order erwartet)" }
         val idx = header.map { it.trim().lowercase(Locale.ROOT) }
-        fun col(name: String): Int = idx.indexOf(name)
-        val cDate = col("date"); val cWorkout = col("workout name"); val cDuration = col("duration")
-        val cExercise = col("exercise name"); val cOrder = col("set order"); val cWeight = col("weight")
-        val cReps = col("reps"); val cDistance = col("distance"); val cSeconds = col("seconds")
-        val cNotes = col("notes"); val cWorkoutNotes = col("workout notes"); val cRpe = col("rpe")
-        data class Key(val time: Long, val name: String)
-        val groups = LinkedHashMap<Key, MutableList<Map<String, String>>>()
+        fun col(vararg names: String): Int = names.firstNotNullOfOrNull { name -> idx.indexOf(name).takeIf { it >= 0 } } ?: -1
+        val cNumber = col("workout #")
+        val cDate = col("date"); val cWorkout = col("workout name"); val cDuration = col("duration (sec)", "duration (seconds)", "duration")
+        val cExercise = col("exercise name"); val cOrder = col("set order"); val cWeight = col("weight (kg)", "weight (lbs)", "weight (lb)", "weight")
+        val cReps = col("reps"); val cDistance = col("distance (meters)", "distance (m)", "distance (km)", "distance (miles)", "distance")
+        val cSeconds = col("seconds"); val cNotes = col("notes"); val cWorkoutNotes = col("workout notes"); val cRpe = col("rpe")
+        val weightHeader = idx.getOrNull(cWeight).orEmpty()
+        val weightUnit = if (weightHeader.contains("lb")) "lb" else if (weightHeader.contains("kg")) "kg" else "unknown"
+        val distanceHeader = idx.getOrNull(cDistance).orEmpty()
+        val distanceFactor = if (distanceHeader.contains("km")) 1000.0 else if (distanceHeader.contains("miles")) 1609.344 else 1.0
+        fun number(raw: String): Double? = raw.takeIf { it.matches(Regex("[+-]?[0-9]+(?:[.,][0-9]+)?")) }
+            ?.replace(',', '.')?.toDoubleOrNull()?.takeIf { it.isFinite() }
+        fun bounded(raw: String, max: Double): Double? = number(raw)?.takeIf { it in 0.0..max }
+        data class Key(val time: Long, val name: String, val number: String, val identityTime: Long)
+        data class Group(val sets: MutableList<StrengthSet>, var duration: Double?, var note: String,
+            var incomplete: Boolean = false, var lastExercise: String = "")
+        val groups = LinkedHashMap<Key, Group>()
         var skipped = 0
-        var rows = 0
+        var rests = 0
         for (raw in lines.drop(1)) {
-            if (raw.isBlank()) continue
-            if (++rows > MAX_CSV_ROWS) break
             val cells = splitCsvLine(raw, delimiter)
-            fun get(i: Int): String = if (i >= 0 && i < cells.size) cells[i] else ""
-            val time = parseTimeFlexible(get(cDate))
-            if (time == null) { skipped++; continue }
+            fun get(i: Int): String = cells.getOrNull(i).orEmpty()
+            val local = runCatching { LocalDateTime.parse(get(cDate).replace('T', ' '), DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss").withResolverStyle(java.time.format.ResolverStyle.STRICT))
+                .atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli() }.getOrNull()
+            val time = if (get(cDate).matches(Regex("[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2}"))) local
+                else parseTimeFlexible(get(cDate))
+            if (time == null || time <= 0) { skipped++; continue }
+            val key = Key(time, get(cWorkout).ifBlank { "Krafttraining" }.take(120), get(cNumber).take(120), parseTimeFlexible(get(cDate)) ?: time)
+            val group = groups.getOrPut(key) { Group(ArrayList(), null, "") }
+            if (cells.size != header.size) { group.incomplete = true; group.lastExercise = ""; skipped++; continue }
+            val durationRaw = get(cDuration)
+            val duration = durationRaw.takeIf { it.matches(Regex("[0-9]+(?:[.,][0-9]+)?")) ||
+                it.matches(Regex("[0-9]+(?::[0-9]{1,2}){1,2}")) ||
+                it.matches(Regex("""(?:[0-9]+(?:[.,][0-9]+)?\s*[hms]\s*)+""", RegexOption.IGNORE_CASE)) }
+                ?.let(::parseDurationFlexible)?.takeIf { it.isFinite() && it in 0.0..43200.0 }
+            if (group.duration == null) group.duration = duration
+            if (group.note.isBlank()) group.note = get(cWorkoutNotes).take(2000)
             val exercise = get(cExercise).take(160)
-            if (exercise.isBlank()) { skipped++; continue }
-            val key = Key(time, get(cWorkout).ifBlank { "Krafttraining" }.take(120))
-            groups.getOrPut(key) { ArrayList() }.add(mapOf(
-                "exercise" to exercise, "order" to get(cOrder), "weight" to get(cWeight),
-                "reps" to get(cReps), "distance" to get(cDistance), "seconds" to get(cSeconds),
-                "notes" to get(cNotes), "workoutNotes" to get(cWorkoutNotes), "rpe" to get(cRpe),
-                "duration" to get(cDuration),
-            ))
+            val order = get(cOrder).lowercase(Locale.ROOT)
+            if (order == "rest timer") {
+                val rest = bounded(get(cSeconds), 86400.0)
+                val previous = group.sets.lastOrNull()
+                if (previous != null && previous.exercise == exercise && group.lastExercise == exercise && rest != null && previous.restSeconds == null) {
+                    group.sets[group.sets.lastIndex] = previous.copy(restSeconds = rest)
+                    rests++
+                } else { skipped++ }
+                group.lastExercise = ""
+                continue
+            }
+            val kind = when (order) {
+                "w", "warmup", "warm up", "warm-up" -> "warmup"
+                "f", "failure" -> "failure"
+                "d", "drop", "dropset", "drop set" -> "dropset"
+                else -> if (order.toIntOrNull()?.let { it > 0 } == true) "normal" else null
+            }
+            if (exercise.isBlank() || kind == null) { group.incomplete = true; group.lastExercise = ""; skipped++; continue }
+            val reps = number(get(cReps))?.takeIf { it in 0.0..1000.0 && it % 1.0 == 0.0 }?.toInt()
+            val seconds = bounded(get(cSeconds), 86400.0)
+            val distance = bounded(get(cDistance), 100000.0 / distanceFactor)?.times(distanceFactor)
+            if (reps == null && seconds == null && distance == null) { group.incomplete = true; group.lastExercise = ""; skipped++; continue }
+            group.sets.add(StrengthSet(exercise, get(cOrder).toIntOrNull() ?: group.sets.size + 1,
+                number(get(cWeight))?.takeIf { it in -1500.0..1500.0 }, weightUnit, reps, distance, seconds,
+                bounded(get(cRpe), 10.0), get(cNotes).take(500), kind = kind,
+                distanceUnit = if (distanceHeader.contains(Regex("\\((?:meters|m|km|miles)\\)"))) "m" else "unknown"))
+            group.lastExercise = exercise
+            require(group.sets.size <= 2000) { "Zu viele Sätze in einer Strong-Einheit" }
         }
         val workouts = ArrayList<StrengthWorkout>()
         val setsByWorkout = LinkedHashMap<String, List<StrengthSet>>()
-        for ((key, setRows) in groups) {
-            if (setRows.size > 2000) continue
-            val id = "strong:" + UUID.nameUUIDFromBytes("${key.time}:${key.name}".toByteArray()).toString()
-            val duration = setRows.firstNotNullOfOrNull { parseDurationFlexible(it["duration"]) } ?: 0.0
-            val workoutNotes = setRows.firstNotNullOfOrNull { it["workoutNotes"]?.takeIf(String::isNotBlank) } ?: ""
-            workouts.add(StrengthWorkout(id, key.time, key.name, duration.coerceIn(0.0, 12 * 3600.0), source,
-                "{\"workoutNotes\":${jsonStr(workoutNotes)},\"sets\":${setRows.size}}"))
-            setsByWorkout[id] = setRows.mapIndexed { i, r ->
-                StrengthSet(
-                    exercise = r["exercise"] ?: "",
-                    setOrder = r["order"]?.toIntOrNull() ?: (i + 1),
-                    weight = parseDoubleFlexible(r["weight"])?.takeIf { it.isFinite() && it in 0.0..1500.0 },
-                    weightUnit = "kg",
-                    reps = parseDoubleFlexible(r["reps"])?.toInt()?.takeIf { it in 0..1000 },
-                    distance = parseDoubleFlexible(r["distance"])?.takeIf { it.isFinite() && it in 0.0..100000.0 },
-                    seconds = parseDoubleFlexible(r["seconds"])?.takeIf { it.isFinite() && it in 0.0..86400.0 },
-                    rpe = parseDoubleFlexible(r["rpe"])?.takeIf { it.isFinite() && it in 0.0..10.0 },
-                    notes = (r["notes"] ?: "").take(500),
-                )
-            }
+        val sameTimeNames = groups.keys.groupingBy { it.identityTime to it.name }.eachCount()
+        for ((key, group) in groups) {
+            if (group.sets.isEmpty()) continue
+            val collision = (sameTimeNames[key.identityTime to key.name] ?: 0) > 1
+            // Ohne Zeitzone bleibt die Kennung unabhängig vom aktuellen Gerätestandort stabil.
+            val identity = "${key.identityTime}:${key.name}" + if (collision) ":${key.number}" else ""
+            val id = "strong:" + UUID.nameUUIDFromBytes(identity.toByteArray(Charsets.UTF_8)).toString()
+            val extra = JSONObject().put("workoutNotes", group.note).put("sets", group.sets.size)
+                .put("modelVersion", STRONG_IMPORT_VERSION).put("durationKnown", group.duration != null)
+                .put("incomplete", group.incomplete).put("weightUnit", weightUnit)
+                .put("timeInterpretation", "local_device_time_unless_export_has_offset")
+                .put("sourceWorkoutNumber", key.number)
+            workouts.add(StrengthWorkout(id, key.time, key.name, group.duration ?: 0.0, source, extra.toString()))
+            setsByWorkout[id] = group.sets
         }
-        return StrongParseResult(workouts, setsByWorkout, rows, skipped)
+        return StrongParseResult(workouts, setsByWorkout, lines.size - 1, skipped, rests)
     }
 
     // ---- Generic activities CSV (Strava/Garmin/Polar bulk summaries) ----

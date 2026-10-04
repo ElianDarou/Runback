@@ -62,6 +62,8 @@ import { TrainingChat } from './TrainingChat';
 import { DeviceSettings } from './DeviceSettings';
 import { WearRecordingRow } from './WearRecordingRow';
 import { VendorImport } from './VendorImport';
+import { ImportedTemplates } from './ImportedTemplates';
+import { acceptImportedTemplate } from '../domain/strengthImports';
 import { WorkoutScreen } from './WorkoutScreen';
 import { ExercisePicker } from './ExercisePicker';
 import { PlanEditor } from './PlanEditor';
@@ -4345,6 +4347,10 @@ export function RunbackApp({
       importStatus={importStatus}
       onImport={runVendorImport}
       onCancelImport={cancelImport}
+      onOpenTemplates={() => {
+        setTemplatesView('strength');
+        openPage('templates');
+      }}
     />
   );
 
@@ -4438,24 +4444,38 @@ export function RunbackApp({
         onChange={setTemplatesView}
       />
       {templatesView === 'strength' ? (
-        <PlanList
-          busy={busy}
-          onCreate={() =>
-            setPlanDraft(createTemplate(Date.now(), '', strength.templates))
-          }
-          onDelete={id =>
-            persistTemplates(deleteTemplate(strength.templates, id))
-          }
-          onDuplicate={id =>
-            persistTemplates(
-              duplicateTemplate(strength.templates, id, Date.now()),
-            )
-          }
-          onEdit={template => setPlanDraft(template)}
-          onStart={template => startStrength(template)}
-          templates={strength.templates}
-          today={new Date().getDay()}
-        />
+        <>
+          <ImportedTemplates
+            refreshKey={`${importStatus?.state ?? ''}:${importStatus?.strength ?? ''}:${importStatus?.strengthDuplicates ?? ''}`}
+            templates={strength.templates}
+            busy={busy}
+            onSave={async template => {
+              const next = acceptImportedTemplate(
+                strengthRef.current.templates,
+                { ...template, createdAt: Date.now() },
+              );
+              setStrength(await native.saveStrengthTemplates(next));
+            }}
+          />
+          <PlanList
+            busy={busy}
+            onCreate={() =>
+              setPlanDraft(createTemplate(Date.now(), '', strength.templates))
+            }
+            onDelete={id =>
+              persistTemplates(deleteTemplate(strength.templates, id))
+            }
+            onDuplicate={id =>
+              persistTemplates(
+                duplicateTemplate(strength.templates, id, Date.now()),
+              )
+            }
+            onEdit={template => setPlanDraft(template)}
+            onStart={template => startStrength(template)}
+            templates={strength.templates}
+            today={new Date().getDay()}
+          />
+        </>
       ) : (
         renderPresets()
       )}

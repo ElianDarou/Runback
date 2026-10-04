@@ -432,6 +432,8 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     }
     @ReactMethod fun getImportStatus(promise: Promise) { promise.resolve(importer.status().toString()) }
     @ReactMethod fun cancelImport(promise: Promise) { importer.cancel(); promise.resolve(importer.status().toString()) }
+    @ReactMethod fun getStrengthImportCandidates(promise: Promise) = task(promise) { store.strengthImportCandidates() }
+
     @ReactMethod fun getVendorSummary(promise: Promise) = task(promise) {
         JSONObject().put("wellness", store.wellnessSummary(3)).put("strength", store.strengthSummary(5))
             .put("import", importer.status())

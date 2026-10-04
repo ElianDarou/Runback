@@ -12,6 +12,7 @@ import type {
  * ihrem Bereich zugeordnet werden und wann eine zweite Empfehlung die Prüfung
  * der ersten verfälschen könnte (Kopplungssperre).
  */
+export const COUPLING_GATE_VERSION = 'coupling-v2';
 export const AREAS: readonly Area[] = ['running', 'strength'];
 export const AREA_LABELS: Record<Area, string> = {
   running: 'Laufen',
@@ -73,7 +74,8 @@ export function activeExperimentFor(
  */
 export function influencedAreas(recommendation: AnyRecommendation): Area[] {
   if (isStrengthRecommendation(recommendation)) {
-    return recommendation.regions.some(region => RUNNING_REGIONS.has(region))
+    // Ohne bekannte Regionen lässt sich eine Kopplung mit Laufen nicht ausschließen.
+    return !recommendation.regions.length || recommendation.regions.some(region => RUNNING_REGIONS.has(region))
       ? ['running']
       : [];
   }
@@ -88,7 +90,7 @@ export function influencedAreas(recommendation: AnyRecommendation): Area[] {
 export function couplingGate(
   candidate: AnyRecommendation,
   activeOthers: Experiment[],
-): { blocked?: string } {
+): { blocked?: string; modelVersion: string } {
   const area = recommendationArea(candidate);
   for (const other of activeOthers) {
     if (!isOpen(other)) continue;
@@ -96,14 +98,16 @@ export function couplingGate(
     if (otherArea === area) continue;
     if (influencedAreas(candidate).includes(otherArea)) {
       return {
+        modelVersion: COUPLING_GATE_VERSION,
         blocked: `Könnte die laufende Prüfung im Bereich ${AREA_LABELS[otherArea]} verfälschen. Erst danach.`,
       };
     }
     if (influencedAreas(other.recommendation).includes(area)) {
       return {
+        modelVersion: COUPLING_GATE_VERSION,
         blocked: `Deine laufende Empfehlung im Bereich ${AREA_LABELS[otherArea]} kann dieses Ergebnis beeinflussen. Erst danach.`,
       };
     }
   }
-  return {};
+  return { modelVersion: COUPLING_GATE_VERSION };
 }

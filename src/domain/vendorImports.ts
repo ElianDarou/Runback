@@ -141,13 +141,15 @@ export const VENDOR_INFOS: VendorInfo[] = [
   {
     id: 'strong',
     name: 'Strong (Krafttraining)',
-    short: 'Sätze, Volumen, RPE als Kontext',
+    short: 'Einheiten, Sätze und wiederverwendbare Vorlagen',
     exportSteps: [
       'Strong öffnen → Profil → Einstellungen → Strong-Daten exportieren (iOS) bzw. Daten exportieren (Android).',
       'Die CSV-Datei (eine Zeile je Satz) per Datei, Mail oder Drive ans Telefon geben.',
-      'CSV in Runback importieren. Auch Hevy- und FitNotes-CSVs mit ähnlichem Aufbau werden erkannt.',
+      'CSV in Runback importieren und die erkannten Vorlagen im Plan übernehmen.',
     ],
-    filePatterns: ['strong.csv bzw. Export-CSV mit Spalten Date, Exercise Name, Set Order, Weight, Reps'],
+    filePatterns: [
+      'strong.csv bzw. Export-CSV mit Spalten Date, Exercise Name, Set Order, Weight, Reps',
+    ],
     useful: [
       {
         label: 'Krafteinheiten (Datum, Name, Dauer)',
@@ -157,7 +159,8 @@ export const VENDOR_INFOS: VendorInfo[] = [
       {
         label: 'Sätze (Übung, Gewicht, Wiederholungen)',
         why: 'Umfang pro Übung als Kontext.',
-        howUsed: 'Volumen-Anzeige je Einheit, keine Empfehlungslogik.',
+        howUsed:
+          'Satzwerte bleiben gespeichert; die letzte Einheit je Name wird zur Vorlagenvorschau.',
       },
       {
         label: 'RPE & Notizen (falls protokolliert)',
@@ -171,8 +174,8 @@ export const VENDOR_INFOS: VendorInfo[] = [
       },
     ],
     limitations: [
-      'Strong exportiert keine Gewichtseinheit: Runback nimmt kg an und zeigt die Annahme.',
-      'Keine Superset- oder Aufwärm-Kennzeichnung im Export.',
+      'Übernimm Vorlagen im Plan; vorhandene Vorlagen und feste Trainingstage bleiben erhalten.',
+      'Ohne Gewichtseinheit oder Pause bleibt der Wert in der Vorlage offen.',
       'Strong-Läufe ohne GPS-Spur werden keine Tempo-Läufe.',
     ],
     privacy: 'Die CSV enthält Trainingsnotizen im Klartext und bleibt lokal.',
@@ -218,7 +221,8 @@ export const VENDOR_INFOS: VendorInfo[] = [
       'Minutendaten sind grob; Lücken bleiben Lücken.',
       'Inoffizielle Cloud-Skripte werden nicht benötigt und nicht unterstützt.',
     ],
-    privacy: 'Das Archiv enthält Standort- und Gesundheitsverläufe. Lokal lassen, nicht teilen.',
+    privacy:
+      'Das Archiv enthält Standort- und Gesundheitsverläufe. Lokal lassen, nicht teilen.',
   },
   {
     id: 'apple_health',
@@ -245,7 +249,8 @@ export const VENDOR_INFOS: VendorInfo[] = [
       {
         label: 'Ruhepuls & HRV (SDNN)',
         why: 'Erholungskontext.',
-        howUsed: 'Nur Anzeige. SDNN wird nicht mit RMSSD anderer Apps vermischt.',
+        howUsed:
+          'Nur Anzeige. SDNN wird nicht mit RMSSD anderer Apps vermischt.',
       },
       {
         label: 'Schlafanalyse (Phasen je Intervall)',
@@ -308,7 +313,8 @@ export const VENDOR_INFOS: VendorInfo[] = [
       'Minuten-Binning-JSONs werden zusammengefasst, nicht vollständig übernommen.',
       'Spaltennamen teils lokalisiert; unbekannte Spalten werden übersprungen.',
     ],
-    privacy: 'Das Paket enthält Jahre an Gesundheitsdaten. Lokal verarbeiten, Backups bewusst ablegen.',
+    privacy:
+      'Das Paket enthält Jahre an Gesundheitsdaten. Lokal verarbeiten, Backups bewusst ablegen.',
   },
   {
     id: 'garmin',
@@ -347,7 +353,8 @@ export const VENDOR_INFOS: VendorInfo[] = [
       'Trainingsstatus und VO2max-Verläufe sind nicht historisch exportierbar.',
       'FIT-Dateinamen sind Zeitstempel; Namen kommen aus summarizedActivities.json.',
     ],
-    privacy: 'FITs enthalten GPS-Spuren in Sekundenauflösung. Nur lokal verarbeiten.',
+    privacy:
+      'FITs enthalten GPS-Spuren in Sekundenauflösung. Nur lokal verarbeiten.',
   },
   {
     id: 'polar',
@@ -358,7 +365,10 @@ export const VENDOR_INFOS: VendorInfo[] = [
       'Trainingsliste bzw. Tagebuch als CSV sichern, falls angeboten.',
       'Beides in Runback importieren.',
     ],
-    filePatterns: ['Einzel-TCX/GPX je Training', 'Trainings-CSV (falls vorhanden)'],
+    filePatterns: [
+      'Einzel-TCX/GPX je Training',
+      'Trainings-CSV (falls vorhanden)',
+    ],
     useful: [
       {
         label: 'Lauftrainings (TCX/GPX)',
@@ -371,7 +381,9 @@ export const VENDOR_INFOS: VendorInfo[] = [
         howUsed: 'Zusammenfassungs-Läufe.',
       },
     ],
-    limitations: ['Kein dokumentierter Bulk-Wellness-Export; Schlaf/Erholung nur soweit in CSV enthalten.'],
+    limitations: [
+      'Kein dokumentierter Bulk-Wellness-Export; Schlaf/Erholung nur soweit in CSV enthalten.',
+    ],
     privacy: 'Trainings enthalten GPS-Spuren; lokal verarbeiten.',
   },
   {
@@ -383,7 +395,10 @@ export const VENDOR_INFOS: VendorInfo[] = [
       'Das ZIP (activities.csv plus Track-Dateien) in Runback importieren.',
       'Bereits vorhandene FIT/GPX/TCX-Einzeldaten werden als Duplikate erkannt.',
     ],
-    filePatterns: ['activities.csv (eine Zeile je Aktivität)', 'Track-Dateien (GPX/FIT/TCX) im selben ZIP'],
+    filePatterns: [
+      'activities.csv (eine Zeile je Aktivität)',
+      'Track-Dateien (GPX/FIT/TCX) im selben ZIP',
+    ],
     useful: [
       {
         label: 'Läufe mit Track',
@@ -414,7 +429,10 @@ export const VENDOR_INFOS: VendorInfo[] = [
     notes: [
       'Kommt der Export passwortgeschützt, zuerst mit dem zugesandten Passwort entpacken.',
     ],
-    filePatterns: ['Huawei-Export (CSV/JSON, je nach Version)', 'Einzel-TCX/GPX je Lauf (falls angeboten)'],
+    filePatterns: [
+      'Huawei-Export (CSV/JSON, je nach Version)',
+      'Einzel-TCX/GPX je Lauf (falls angeboten)',
+    ],
     useful: [
       {
         label: 'Lauftrainings',
@@ -463,7 +481,8 @@ export const VENDOR_INFOS: VendorInfo[] = [
       'Unbekannte Spalten werden übersprungen statt geraten.',
       'Nike Run Club u. a. ohne Export brauchen Drittanbieter-Umwege; diese werden nicht empfohlen.',
     ],
-    privacy: 'Fremd-Tools für Export-Umwege prüfen: keine Zugangsdaten teilen, wenn ein manueller Export reicht.',
+    privacy:
+      'Fremd-Tools für Export-Umwege prüfen: keine Zugangsdaten teilen, wenn ein manueller Export reicht.',
   },
 ];
 
@@ -482,9 +501,16 @@ const FILE_VENDOR_RULES: { pattern: RegExp; vendor: VendorId }[] = [
   { pattern: /heart_rate-\d{4}-\d{2}-\d{2}\.json$/i, vendor: 'fitbit' },
   { pattern: /sleep-\d{4}-\d{2}-\d{2}\.json$/i, vendor: 'fitbit' },
   { pattern: /(?:^|[/\\])exercise-\d+\.json$/i, vendor: 'fitbit' },
-  { pattern: /UserExercises_|UserSleeps_|UserSleepScores_|UserSleepStages_/i, vendor: 'fitbit' },
+  {
+    pattern: /UserExercises_|UserSleeps_|UserSleepScores_|UserSleepStages_/i,
+    vendor: 'fitbit',
+  },
   { pattern: /Heart Rate Variability/i, vendor: 'fitbit' },
-  { pattern: /Physical Activity.*(?:vo2|max|steps|calories|active_minutes|active_energy)/i, vendor: 'fitbit' },
+  {
+    pattern:
+      /Physical Activity.*(?:vo2|max|steps|calories|active_minutes|active_energy)/i,
+    vendor: 'fitbit',
+  },
   { pattern: /summarizedactivities\.json$/i, vendor: 'garmin' },
   { pattern: /di_connect/i, vendor: 'garmin' },
   { pattern: /^strong.*\.csv$/i, vendor: 'strong' },
@@ -521,250 +547,367 @@ export function detectVendorForFile(fileName: string): VendorId {
   if (lower.includes('huawei') || lower.includes('hihealth')) {
     return 'huawei';
   }
-  if (lower.includes('zepp') || lower.includes('mifit') || lower.includes('xiaomi')) {
+  if (
+    lower.includes('zepp') ||
+    lower.includes('mifit') ||
+    lower.includes('xiaomi')
+  ) {
     return 'mi_fitness';
   }
-  if (lower.includes('apple') || lower.includes('healthkit') || lower.includes('export.xml')) {
+  if (
+    lower.includes('apple') ||
+    lower.includes('healthkit') ||
+    lower.includes('export.xml')
+  ) {
     return 'apple_health';
   }
-  if (lower.includes('strong') || lower.includes('hevy') || lower.includes('fitnotes')) {
+  if (
+    lower.includes('strong') ||
+    lower.includes('hevy') ||
+    lower.includes('fitnotes')
+  ) {
     return 'strong';
   }
-  if (lower.endsWith('.fit') || lower.endsWith('.gpx') || lower.endsWith('.tcx')) {
+  if (
+    lower.endsWith('.fit') ||
+    lower.endsWith('.gpx') ||
+    lower.endsWith('.tcx')
+  ) {
     return 'generic';
   }
   return 'generic';
 }
 
+export const STRONG_IMPORT_VERSION = 'strong-import-v3';
+
 export interface StrongSet {
   exercise: string;
   setOrder: number;
   weight: number | null;
+  weightUnit?: 'kg' | 'lb' | 'unknown';
   reps: number | null;
   distance: number | null;
+  distanceUnit?: 'm' | 'unknown';
   seconds: number | null;
   rpe: number | null;
   notes: string;
+  kind?: 'normal' | 'warmup' | 'failure' | 'dropset';
+  restSeconds?: number | null;
 }
-
 export interface StrongWorkout {
+  id?: string;
   time: number;
   name: string;
-  durationSeconds: number;
+  source?: string;
+  modelVersion?: string;
+  durationSeconds: number | null;
   sets: StrongSet[];
   workoutNotes: string;
+  incomplete?: boolean;
 }
 
 function csvDelimiter(line: string): ',' | ';' {
-  let inQuotes = false;
-  let commas = 0;
-  let semicolons = 0;
+  let quoted = false,
+    commas = 0,
+    semicolons = 0;
   for (let i = 0; i < line.length; i++) {
     const c = line[i];
     if (c === '"') {
-      if (inQuotes && line[i + 1] === '"') {
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (!inQuotes && c === ',') {
-      commas++;
-    } else if (!inQuotes && c === ';') {
-      semicolons++;
-    }
+      if (quoted && line[i + 1] === '"') i++;
+      else quoted = !quoted;
+    } else if (!quoted && c === ',') commas++;
+    else if (!quoted && c === ';') semicolons++;
   }
   return semicolons > commas ? ';' : ',';
 }
-
 function splitCsvLine(line: string, delimiter = csvDelimiter(line)): string[] {
-  const out: string[] = [];
-  let current = '';
-  let inQuotes = false;
+  const cells: string[] = [];
+  let cell = '',
+    quoted = false;
   for (let i = 0; i < line.length; i++) {
     const c = line[i];
-    if (inQuotes) {
-      if (c === '"') {
-        if (line[i + 1] === '"') {
-          current += '"';
-          i++;
-        } else {
-          inQuotes = false;
-        }
-      } else {
-        current += c;
-      }
-      continue;
-    }
     if (c === '"') {
-      inQuotes = true;
-    } else if (c === delimiter) {
-      out.push(current);
-      current = '';
-    } else {
-      current += c;
+      if (quoted && line[i + 1] === '"') {
+        cell += '"';
+        i++;
+      } else quoted = !quoted;
+    } else if (!quoted && c === delimiter) {
+      cells.push(cell.trim());
+      cell = '';
+    } else cell += c;
+  }
+  cells.push(cell.trim());
+  return cells;
+}
+function strongCsvRecords(text: string, maxRows: number): string[] {
+  const records: string[] = [];
+  let start = 0,
+    quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"') {
+      if (quoted && text[i + 1] === '"') i++;
+      else quoted = !quoted;
+    } else if (!quoted && (c === '\n' || c === '\r')) {
+      const record = text.slice(start, i);
+      if (record.trim()) records.push(record);
+      if (records.length > maxRows + 1)
+        throw new Error('Zu viele Zeilen im Strong-Export');
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      start = i + 1;
     }
   }
-  out.push(current);
-  return out.map(cell => cell.trim());
+  if (quoted)
+    throw new Error('Nicht geschlossene Anführungszeichen im Strong-Export');
+  if (text.slice(start).trim()) records.push(text.slice(start));
+  if (records.length > maxRows + 1)
+    throw new Error('Zu viele Zeilen im Strong-Export');
+  return records;
 }
-
 function parseNumberFlexible(raw: string | undefined): number | null {
-  if (!raw) {
-    return null;
-  }
-  let s = raw.trim().replace(/ /g, '');
-  if (!s || s === '-' || ['n/a', 'na', 'none', 'null'].includes(s.toLowerCase())) {
-    return null;
-  }
-  const lastComma = s.lastIndexOf(',');
-  const lastDot = s.lastIndexOf('.');
-  if (lastComma >= 0 && lastDot >= 0) {
-    s = lastComma > lastDot ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
-  } else if (lastComma >= 0) {
-    s = s.indexOf(',') === lastComma && s.length - lastComma - 1 >= 1 && s.length - lastComma - 1 <= 3
-      ? s.replace(',', '.')
-      : s.replace(/,/g, '');
-  }
-  s = s.replace(/[^0-9.\-eE+]/g, '');
-  if (!s || s === '-' || s === '.' || s === '-.') {
-    return null;
-  }
-  const value = Number(s);
+  if (!raw || !/^[+-]?\d+(?:[.,]\d+)?$/.test(raw.trim())) return null;
+  const value = Number(raw.trim().replace(',', '.'));
   return Number.isFinite(value) ? value : null;
 }
-
+function bounded(raw: string, max: number): number | null {
+  const value = parseNumberFlexible(raw);
+  return value !== null && value >= 0 && value <= max ? value : null;
+}
 function parseStrongTime(raw: string): number | null {
-  const s = raw.trim();
-  if (!s) {
-    return null;
+  const local = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/.exec(
+    raw,
+  );
+  if (local) {
+    const [year, month, day, hour, minute, second] = local.slice(1).map(Number);
+    const date = new Date(year, month - 1, day, hour, minute, second);
+    if (
+      date.getFullYear() !== year ||
+      date.getMonth() !== month - 1 ||
+      date.getDate() !== day ||
+      date.getHours() !== hour ||
+      date.getMinutes() !== minute ||
+      date.getSeconds() !== second
+    )
+      return null;
+    return date.getTime() > 0 ? date.getTime() : null;
   }
-  const asNumber = Number(s);
-  if (Number.isFinite(asNumber) && /^\d+(\.\d+)?$/.test(s)) {
-    return asNumber > 1e11 ? asNumber : asNumber * 1000;
+  if (/^\d+(?:\.\d+)?$/.test(raw)) {
+    const value = Number(raw);
+    return value > 0 ? (value > 1e11 ? value : value * 1000) : null;
   }
-  const parsed = Date.parse(s.replace(' ', 'T').replace(/(\+\d{4})$/, '$1'));
-  if (Number.isFinite(parsed)) {
-    return parsed;
-  }
-  const iso = Date.parse(s);
-  return Number.isFinite(iso) ? iso : null;
+  const time = Date.parse(raw);
+  return Number.isFinite(time) && time > 0 ? time : null;
 }
-
-function parseStrongDuration(raw: string): number {
-  const s = raw.trim();
-  if (!s) {
-    return 0;
-  }
-  if (s.includes(':')) {
-    return s.split(':').reduce((total, part) => {
-      const value = parseNumberFlexible(part) ?? 0;
-      return total * 60 + value;
-    }, 0);
-  }
-  const hours = /([0-9]+(?:[.,][0-9]+)?)\s*h/i.exec(s)?.[1];
-  const minutes = /([0-9]+(?:[.,][0-9]+)?)\s*m(?!s)/i.exec(s)?.[1];
-  const seconds = /([0-9]+(?:[.,][0-9]+)?)\s*s/i.exec(s)?.[1];
-  if (hours || minutes || seconds) {
-    return (parseNumberFlexible(hours) ?? 0) * 3600 +
-      (parseNumberFlexible(minutes) ?? 0) * 60 +
-      (parseNumberFlexible(seconds) ?? 0);
-  }
-  return parseNumberFlexible(s) ?? 0;
+function parseStrongDuration(raw: string): number | null {
+  if (!raw) return null;
+  let value: number | null = null;
+  if (/^\d+(?::\d{1,2}){1,2}$/.test(raw)) {
+    value = raw
+      .split(':')
+      .reduce((total, part) => total * 60 + Number(part), 0);
+  } else if (/^(?:\d+(?:[.,]\d+)?\s*[hms]\s*)+$/i.test(raw)) {
+    value = Array.from(raw.matchAll(/(\d+(?:[.,]\d+)?)\s*([hms])/gi)).reduce(
+      (total, match) =>
+        total +
+        Number(match[1].replace(',', '.')) *
+          ({ h: 3600, m: 60, s: 1 }[match[2].toLowerCase()] ?? 1),
+      0,
+    );
+  } else value = parseNumberFlexible(raw);
+  return value !== null && value >= 0 && value <= 43200 ? value : null;
 }
-
 export function isStrongCsvContent(text: string): boolean {
   const first = text.replace(/^\uFEFF/, '').split(/\r?\n/, 1)[0] ?? '';
   const header = splitCsvLine(first).map(cell => cell.toLowerCase());
-  return header.includes('exercise name') && header.includes('set order') && header.includes('date');
+  return (
+    header.includes('exercise name') &&
+    header.includes('set order') &&
+    header.includes('date')
+  );
 }
 
-/**
- * Small, testable Strong CSV preview parser (same grouping as native code).
- * Weight unit is not exported by Strong; values are kept raw and flagged kg-assumed.
- */
-export function parseStrongCsvPreview(text: string, maxRows = 60000): {
+/** Testbare Vorschau; dieselben Satz- und Pausenregeln gelten beim nativen Import. */
+export function parseStrongCsvPreview(
+  text: string,
+  maxRows = 120000,
+): {
   workouts: StrongWorkout[];
   rows: number;
   skipped: number;
+  restRows: number;
 } {
-  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/);
-  if (!lines.length) {
-    return { workouts: [], rows: 0, skipped: 0 };
-  }
+  const lines = strongCsvRecords(text.replace(/^\uFEFF/, ''), maxRows);
+  if (!lines.length) return { workouts: [], rows: 0, skipped: 0, restRows: 0 };
   const delimiter = csvDelimiter(lines[0]);
-  const header = splitCsvLine(lines[0], delimiter).map(cell => cell.toLowerCase());
-  const col = (name: string) => header.indexOf(name);
-  const cDate = col('date');
-  const cWorkout = col('workout name');
-  const cDuration = col('duration');
-  const cExercise = col('exercise name');
-  const cOrder = col('set order');
-  const cWeight = col('weight');
-  const cReps = col('reps');
-  const cDistance = col('distance');
-  const cSeconds = col('seconds');
-  const cNotes = col('notes');
-  const cWorkoutNotes = col('workout notes');
-  const cRpe = col('rpe');
-  if (cDate < 0 || cExercise < 0 || cOrder < 0) {
-    throw new Error('Keine Strong-Kopfzeile (Date, Exercise Name, Set Order erwartet)');
-  }
-  const get = (cells: string[], i: number) => (i >= 0 && i < cells.length ? cells[i] : '');
-  const groups = new Map<string, StrongWorkout & { key: string }>();
-  let rows = 0;
-  let skipped = 0;
+  const header = splitCsvLine(lines[0], delimiter).map(cell =>
+    cell.toLowerCase(),
+  );
+  const col = (...names: string[]) =>
+    names.map(name => header.indexOf(name)).find(i => i >= 0) ?? -1;
+  const cNumber = col('workout #');
+  const cDate = col('date'),
+    cWorkout = col('workout name');
+  const cDuration = col('duration (sec)', 'duration (seconds)', 'duration');
+  const cExercise = col('exercise name'),
+    cOrder = col('set order');
+  const cWeight = col('weight (kg)', 'weight (lbs)', 'weight (lb)', 'weight');
+  const cReps = col('reps'),
+    cDistance = col(
+      'distance (meters)',
+      'distance (m)',
+      'distance (km)',
+      'distance (miles)',
+      'distance',
+    );
+  const cSeconds = col('seconds'),
+    cNotes = col('notes'),
+    cWorkoutNotes = col('workout notes'),
+    cRpe = col('rpe');
+  if (cDate < 0 || cExercise < 0 || cOrder < 0)
+    throw new Error(
+      'Keine Strong-Kopfzeile (Date, Exercise Name, Set Order erwartet)',
+    );
+  const weightHeader = header[cWeight] ?? '';
+  const weightUnit = weightHeader.includes('lb')
+    ? 'lb'
+    : weightHeader.includes('kg')
+    ? 'kg'
+    : 'unknown';
+  const distanceHeader = header[cDistance] ?? '';
+  const distanceFactor = distanceHeader.includes('km')
+    ? 1000
+    : distanceHeader.includes('miles')
+    ? 1609.344
+    : 1;
+  const groups = new Map<string, StrongWorkout & { lastExercise: string }>();
+  let skipped = 0,
+    restRows = 0;
   for (const raw of lines.slice(1)) {
-    if (!raw.trim()) {
-      continue;
-    }
-    if (++rows > maxRows) {
-      break;
-    }
     const cells = splitCsvLine(raw, delimiter);
-    const time = parseStrongTime(get(cells, cDate));
-    const exercise = get(cells, cExercise);
-    if (time === null || !exercise) {
+    const get = (i: number) => cells[i] ?? '';
+    const time = parseStrongTime(get(cDate));
+    if (time === null) {
       skipped++;
       continue;
     }
-    const name = get(cells, cWorkout) || 'Krafttraining';
-    const key = `${time}|${name}`;
+    const name = (get(cWorkout) || 'Krafttraining').slice(0, 120);
+    const key = `${time}|${name}|${get(cNumber)}`;
     let workout = groups.get(key);
     if (!workout) {
       workout = {
-        key,
+        id: key,
         time,
         name,
-        durationSeconds: parseStrongDuration(get(cells, cDuration)),
+        source: 'strong',
+        modelVersion: STRONG_IMPORT_VERSION,
+        durationSeconds: null,
         sets: [],
-        workoutNotes: get(cells, cWorkoutNotes),
+        workoutNotes: '',
+        lastExercise: '',
       };
       groups.set(key, workout);
     }
-    const order = Number.parseInt(get(cells, cOrder), 10);
+    if (cells.length !== header.length) {
+      workout.incomplete = true;
+      workout.lastExercise = '';
+      skipped++;
+      continue;
+    }
+    workout.durationSeconds ??= parseStrongDuration(get(cDuration));
+    if (!workout.workoutNotes)
+      workout.workoutNotes = get(cWorkoutNotes).slice(0, 2000);
+    const exercise = get(cExercise).slice(0, 160),
+      order = get(cOrder).toLowerCase();
+    if (order === 'rest timer') {
+      const rest = bounded(get(cSeconds), 86400),
+        previous = workout.sets[workout.sets.length - 1];
+      if (
+        previous &&
+        previous.exercise === exercise &&
+        workout.lastExercise === exercise &&
+        rest !== null &&
+        previous.restSeconds == null
+      ) {
+        previous.restSeconds = rest;
+        restRows++;
+      } else skipped++;
+      workout.lastExercise = '';
+      continue;
+    }
+    const kinds: Record<string, StrongSet['kind']> = {
+      w: 'warmup',
+      warmup: 'warmup',
+      'warm up': 'warmup',
+      'warm-up': 'warmup',
+      f: 'failure',
+      failure: 'failure',
+      d: 'dropset',
+      drop: 'dropset',
+      dropset: 'dropset',
+      'drop set': 'dropset',
+    };
+    const kind =
+      kinds[order] ?? (/^[1-9]\d*$/.test(order) ? 'normal' : undefined);
+    if (!exercise || !kind) {
+      workout.incomplete = true;
+      workout.lastExercise = '';
+      skipped++;
+      continue;
+    }
+    const count = bounded(get(cReps), 1000);
+    const reps = count !== null && Number.isInteger(count) ? count : null;
+    const seconds = bounded(get(cSeconds), 86400);
+    const rawDistance = bounded(get(cDistance), 100000 / distanceFactor);
+    const distance = rawDistance !== null ? rawDistance * distanceFactor : null;
+    if (reps === null && seconds === null && distance === null) {
+      workout.incomplete = true;
+      workout.lastExercise = '';
+      skipped++;
+      continue;
+    }
+    const weight = parseNumberFlexible(get(cWeight));
     workout.sets.push({
       exercise,
-      setOrder: Number.isFinite(order) ? order : workout.sets.length + 1,
-      weight: parseNumberFlexible(get(cells, cWeight)),
-      reps: parseNumberFlexible(get(cells, cReps)),
-      distance: parseNumberFlexible(get(cells, cDistance)),
-      seconds: parseNumberFlexible(get(cells, cSeconds)),
-      rpe: parseNumberFlexible(get(cells, cRpe)),
-      notes: get(cells, cNotes),
+      setOrder: /^[1-9]\d*$/.test(order)
+        ? Number(order)
+        : workout.sets.length + 1,
+      weight:
+        weight !== null && weight >= -1500 && weight <= 1500 ? weight : null,
+      weightUnit,
+      reps,
+      distance,
+      distanceUnit: /\((?:meters|m|km|miles)\)/.test(distanceHeader) ? 'm' : 'unknown',
+      seconds,
+      rpe: bounded(get(cRpe), 10),
+      notes: get(cNotes).slice(0, 500),
+      kind,
     });
-    if (!workout.workoutNotes) {
-      workout.workoutNotes = get(cells, cWorkoutNotes);
-    }
+    workout.lastExercise = exercise;
+    if (workout.sets.length > 2000)
+      throw new Error('Zu viele Sätze in einer Strong-Einheit');
   }
   return {
-    workouts: Array.from(groups.values()).map(({ key: _key, ...rest }) => rest),
-    rows,
+    workouts: Array.from(groups.values())
+      .filter(workout => workout.sets.length)
+      .map(({ lastExercise: _last, ...workout }) => workout),
+    rows: lines.length - 1,
     skipped,
+    restRows,
   };
 }
-
-export function strongWorkoutVolume(workout: StrongWorkout): number {
-  return workout.sets.reduce((sum, set) => sum + (set.weight ?? 0) * (set.reps ?? 0), 0);
+export function strongWorkoutVolume(workout: StrongWorkout): number | null {
+  let sum = 0;
+  for (const set of workout.sets) {
+    if (
+      set.weight === null ||
+      set.reps === null ||
+      (set.weightUnit !== 'kg' && set.weightUnit !== 'lb') ||
+      set.weight < 0
+    )
+      return null;
+    sum += set.weight * (set.weightUnit === 'lb' ? 0.45359237 : 1) * set.reps;
+  }
+  return sum;
 }
 
 /** Apple HealthKit record type -> Runback wellness kind (null = intentionally skipped). */

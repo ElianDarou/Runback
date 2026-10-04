@@ -242,20 +242,24 @@ class ActivityImporter(private val context: Context, private val store: RunStore
     }
 
     private fun isStrongCsv(file: File): Boolean = try {
-        val header = VendorImports.splitCsvLine(VendorImports.stripBom(readText(file).lineSequence().firstOrNull() ?: return false))
+        val header = VendorImports.splitCsvLine(VendorImports.stripBom(readText(file).lineSequence().firstOrNull { it.isNotBlank() } ?: return false))
         VendorImports.isStrongHeader(header)
     } catch (_: Exception) { false }
 
     private fun importStrongCsv(file: File, name: String): Boolean {
         val text = readText(file)
         val parsed = VendorImports.parseStrongCsv(text, "strong")
-        var strength = 0
+        update { it.put("skipped", it.optInt("skipped") + parsed.skipped)
+            .put("strengthRestRows", it.optInt("strengthRestRows") + parsed.restRows) }
         for (workout in parsed.workouts) {
             checkCancelled()
-            store.addStrengthWorkout(workout, parsed.setsByWorkout[workout.id] ?: emptyList())
-            strength++
+            val sets = parsed.setsByWorkout[workout.id] ?: emptyList()
+            val result = store.addStrengthWorkout(workout, sets, com.runback.core.StrengthImport.document(workout, sets))
+            if (result.optString("status") == "duplicate") {
+                update { it.put("strengthDuplicates", it.optInt("strengthDuplicates") + 1) }
+                noteVendor("strong", 0, 1, 0, 0)
+            } else noteVendor("strong", 0, 0, 0, 1)
         }
-        noteVendor("strong", 0, 0, 0, strength)
         return true
     }
 
