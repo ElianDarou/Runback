@@ -589,12 +589,12 @@ export function RunbackApp({
   const [setupOpen, setSetupOpen] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  // Heute: Sportart, Zweck, Vorlage und Ziel werden im Moment des Startens
+  // Heute: Sportart, Laufart, Vorlage und Ziel werden im Moment des Startens
   // gewählt, nicht dauerhaft auf der Seite. Das Sheet merkt sich seine Art.
   const [startSheet, setStartSheet] = useState<StartKind | null>(null);
   const [startTemplateId, setStartTemplateId] = useState<string | null>(null);
   const [coachArea, setCoachArea] = useState<'running' | 'strength'>('running');
-  // Zweck nachtragen: ein Lauf nach dem anderen; Übersprungenes bleibt offen.
+  // Laufart nachtragen: ein Lauf nach dem anderen; Übersprungenes bleibt offen.
   const [purposeSheet, setPurposeSheet] = useState(false);
   const [purposeSkipped, setPurposeSkipped] = useState<string[]>([]);
   const [verlaufView, setVerlaufView] = useState<VerlaufView>('units');
@@ -1492,7 +1492,7 @@ export function RunbackApp({
     ? templateForDay(strength.templates, new Date(now).getDay())
     : null;
   // Eine Aufzeichnung braucht die Standortfreigabe, sonst nichts: keine
-  // Planung, keine Vorlage. Sportart und Zweck sind Beschriftung, nicht Vorgabe.
+  // Planung, keine Vorlage. Sportart und Laufart sind Beschriftung, nicht Vorgabe.
   const beginRecording = async (
     nextPurpose: RunPurpose,
     nextSport: Sport,
@@ -2740,7 +2740,7 @@ export function RunbackApp({
     const run = runningRuns.find(item => item.id === id);
     return run ? runTitle(run) : 'Lauf nicht mehr vorhanden';
   };
-  // Gleicher Grund, gleiche Zeile: 28 Läufe ohne Zweck sind ein Befund.
+  // Gleicher Grund, gleiche Zeile: 28 Läufe ohne Laufart sind ein Befund.
   const groupedAlternatives = () => {
     const groups = new Map<
       string,
@@ -3479,7 +3479,7 @@ export function RunbackApp({
 
   // Detail einer Aufzeichnung: erst sehen (Karte, Zahlen), dann bewerten
   // (nächster Schritt, Gefühl), dann die Abschnitte. Rohdaten, Modell,
-  // Art/Zweck ändern und Löschen liegen eingeklappt darunter. Die
+  // Sport-/Laufart ändern und Löschen liegen eingeklappt darunter. Die
   // Laufauswertung erscheint nur bei Läufen (Spec T-1).
   const renderDetail = () => {
     if (!selected) {

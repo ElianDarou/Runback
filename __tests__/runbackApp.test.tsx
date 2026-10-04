@@ -242,8 +242,8 @@ describe('Verlauf', () => {
       expect(screenText(tree)).toContain('17,0 km');
       expect(
         tree.root.findAllByType(Row).map(node => node.props.title),
-      ).toEqual(['Locker', 'Lang']);
-      await pressRow('Locker');
+      ).toEqual(['Ruhige Runde', 'Lange Runde']);
+      await pressRow('Ruhige Runde');
       expect(native.run).toHaveBeenLastCalledWith('record-easy');
       await tap(tree, 'Zurück');
       expect(screenText(tree)).toContain('Stärkste Woche');
