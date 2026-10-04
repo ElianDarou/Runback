@@ -164,7 +164,7 @@ describe('buildRunReport', () => {
     expect(report).toContain(
       '| Begleitung unterwegs | Nicht schneller als 5:30 /km |',
     );
-    expect(report).toContain('| Zweck | Locker |');
+    expect(report).toContain('| Laufart | Ruhig |');
     expect(report).toContain('| Quelle | Telefon (Runback) |');
   });
 

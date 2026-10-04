@@ -58,7 +58,7 @@ describe('domain rules', () => {
     const result = analyzeRun(run({ purpose: 'unknown' }));
 
     expect(result.state).toBe('insufficient');
-    expect(result.focus).toMatch(/Ohne beabsichtigten Laufzweck/);
+    expect(result.focus).toMatch(/Ohne gewählte Laufart/);
     expect(result.question?.id).toBe('purpose-run-1');
     expect(result.recommendation).toBeUndefined();
   });

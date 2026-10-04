@@ -815,7 +815,7 @@ export function searchMonthlyPlan(
             'Diese Verteilung hält die geschätzte Muskel-Frische vor wichtigen Einheiten möglichst hoch. Bei gleich guten Möglichkeiten bleibt möglichst viel am Plan gleich.',
           targetRange: { assignments: best.assignments },
           expectedEffort: {
-            text: 'Probiere die empfohlene Verteilung der Einheiten aus; Trainingszweck und Umfang bleiben erhalten.',
+            text: 'Probiere die empfohlene Verteilung der Einheiten aus; Laufart und Umfang bleiben erhalten.',
           },
           checkCriterion: {
             method: 'monthly-freshness-v1',

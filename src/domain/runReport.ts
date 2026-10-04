@@ -209,7 +209,7 @@ function overviewRows(run: ReportRun): string[][] {
   const pace = usesPace(sport);
   const rows: string[][] = [
     ['Sportart', sportWords(sport).label],
-    ['Zweck', purposeLabel(run.purpose)],
+    ['Laufart', purposeLabel(run.purpose)],
     ['Start', dateTime.format(new Date(run.startTime))],
   ];
   if (run.endTime > run.startTime) {

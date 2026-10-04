@@ -18,7 +18,7 @@ import {
 import type { Run } from '../native';
 import type { StrengthSession, WorkoutTemplate } from '../domain/strength';
 import type { RunPurpose } from '../domain/types';
-import { runTitle } from '../domain/runTitle';
+import { RUN_PURPOSES, runTitle } from '../domain/runTitle';
 import { buildUpWeek } from '../domain/buildUp';
 import { effectiveGoalDistanceKm } from '../domain/raceGoal';
 import {
@@ -131,12 +131,7 @@ const MONTH_NAMES = [
   'November',
   'Dezember',
 ];
-const PURPOSES: { value: RunPurpose; label: string }[] = [
-  { value: 'easy', label: 'Locker' },
-  { value: 'long', label: 'Lang' },
-  { value: 'intervals', label: 'Intervalle' },
-  { value: 'free', label: 'Frei' },
-];
+const PURPOSES = RUN_PURPOSES.map(({ value, label }) => ({ value, label }));
 const KIND_OPTIONS: { value: ScheduleKind; label: string }[] = [
   { value: 'run', label: 'Lauf' },
   { value: 'strength', label: 'Kraft' },
@@ -1725,7 +1720,7 @@ export function PlanningScreen({
                         current ? { ...current, title } : current,
                       )
                     }
-                    placeholder="Zum Beispiel Lockerer Lauf"
+                    placeholder="Zum Beispiel Ruhige Runde"
                   />
                 </Field>
                 <Field label="Dauer in Minuten">
@@ -1757,7 +1752,7 @@ export function PlanningScreen({
                   />
                 </Field>
                 {editor.kind === 'run' ? (
-                  <Field label="Zweck">
+                  <Field label="Laufart">
                     <ChipGroup
                       options={PURPOSES}
                       value={editor.purpose}
@@ -1775,7 +1770,7 @@ export function PlanningScreen({
                             : current,
                         )
                       }
-                      label="Zweck des Laufs"
+                      label="Laufart"
                     />
                   </Field>
                 ) : (

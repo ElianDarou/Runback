@@ -1,8 +1,11 @@
 import {
+  RUN_PURPOSES,
   dayPartTitle,
   isMeaningfulRunName,
+  normalizePurpose,
   purposeLabel,
   runTitle,
+  selectablePurpose,
 } from '../src/domain/runTitle';
 
 const at = (hour: number) => new Date(2024, 4, 1, hour, 30).getTime();
@@ -72,5 +75,36 @@ describe('runTitle', () => {
       runTitle({ name: 'Garmin Lauf', startTime: at(7), purpose: 'unknown' }),
     ).toBe('Morgenlauf');
     expect(runTitle({ startTime: at(19), purpose: 'free' })).toBe('Abendlauf');
+  });
+});
+
+describe('Laufarten', () => {
+  it('bietet „Noch offen“ nicht zur Auswahl an', () => {
+    expect(RUN_PURPOSES.map(option => option.label)).toEqual([
+      'Einfach laufen',
+      'Ruhig',
+      'Lange Runde',
+      'Tempowechsel',
+      'Auf Zeit',
+    ]);
+    expect(selectablePurpose('unknown')).toBe('free');
+    expect(selectablePurpose(undefined)).toBe('free');
+    expect(selectablePurpose('race')).toBe('race');
+    expect(purposeLabel('unknown')).toBe('Noch offen');
+  });
+
+  it('liest die alten Uhr-Werte als Tempowechsel', () => {
+    expect(normalizePurpose('quality')).toBe('intervals');
+    expect(normalizePurpose('interval')).toBe('intervals');
+    expect(normalizePurpose('easy')).toBe('easy');
+    expect(normalizePurpose('bogus')).toBe('unknown');
+    expect(normalizePurpose(undefined)).toBe('unknown');
+  });
+
+  it('macht aus „Ruhig“ einen Titel, der als Name trägt', () => {
+    expect(runTitle({ startTime: at(7), purpose: 'easy' })).toBe(
+      'Ruhige Runde',
+    );
+    expect(runTitle({ startTime: at(7), purpose: 'race' })).toBe('Auf Zeit');
   });
 });

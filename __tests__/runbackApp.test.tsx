@@ -160,10 +160,10 @@ describe('Heute', () => {
     expect(text).not.toContain('Dein Fokus');
     expect(text).not.toContain('Dein Ziel');
     expect(text).not.toContain('Laufvorlagen');
-    // Der Zweck wird erst im Moment des Startens gewählt.
+    // Die Laufart wird erst im Moment des Startens gewählt.
     expect(text).not.toContain('Zweck');
     await tap(tree, 'Lauf starten');
-    expect(screenText(tree)).toContain('Zweck');
+    expect(screenText(tree)).toContain('Wie willst du laufen?');
     await act(async () => {
       tree.unmount();
     });
@@ -242,8 +242,8 @@ describe('Verlauf', () => {
       expect(screenText(tree)).toContain('17,0 km');
       expect(
         tree.root.findAllByType(Row).map(node => node.props.title),
-      ).toEqual(['Locker', 'Lang']);
-      await pressRow('Locker');
+      ).toEqual(['Ruhige Runde', 'Lange Runde']);
+      await pressRow('Ruhige Runde');
       expect(native.run).toHaveBeenLastCalledWith('record-easy');
       await tap(tree, 'Zurück');
       expect(screenText(tree)).toContain('Stärkste Woche');
@@ -699,7 +699,7 @@ describe('Lauf-Detail', () => {
     const tree = await render();
     try {
       await tap(tree, 'Verlauf');
-      await tapText(tree, 'Locker');
+      await tapText(tree, 'Ruhige Runde');
       const text = screenText(tree);
       expect(text).toContain('Bewegung');
       expect(text).toContain('2,50 km · 12:30 ohne Gehpause');
@@ -890,7 +890,7 @@ describe('Laufberichte gesammelt exportieren', () => {
   });
 });
 
-describe('Zweck nachtragen', () => {
+describe('Laufart nachtragen', () => {
   const run = (id: string, day: number, purpose: string) => ({
     id,
     startTime: new Date(2026, 9, day, 7).getTime(),
@@ -918,7 +918,7 @@ describe('Zweck nachtragen', () => {
       );
   });
 
-  it('fragt Lauf für Lauf, geht erst nach dem Speichern weiter und zählt „Frei“ als Antwort', async () => {
+  it('fragt Lauf für Lauf, geht erst nach dem Speichern weiter und zählt „Einfach laufen“ als Antwort', async () => {
     let runs = [run('neu', 2, 'unknown'), run('alt', 1, 'unknown')];
     jest.mocked(native.state).mockImplementation(() =>
       Promise.resolve({
@@ -936,18 +936,22 @@ describe('Zweck nachtragen', () => {
     const tree = await render();
     activeTree = tree;
     await tap(tree, 'Coach');
-    expect(screenText(tree)).toContain('Bei 2 Läufen fehlt der Zweck.');
-    await tap(tree, 'Zweck nachtragen');
-    expect(screenText(tree)).toContain('Noch 2 Läufe ohne Zweck');
+    expect(screenText(tree)).toContain('Bei 2 Läufen fehlt die Laufart.');
+    await tap(tree, 'Laufart nachtragen');
+    expect(screenText(tree)).toContain('Noch 2 Läufe ohne Laufart');
     const chips = () =>
       tree.root
         .findAllByType(ChipGroup)
-        .find(group => String(group.props.label).startsWith('Zweck von'))!;
+        .find(group => String(group.props.label).startsWith('Laufart von'))!;
     await act(async () => chips().props.onChange('free'));
-    expect(native.feedback).toHaveBeenCalledWith('neu', { purpose: 'free' });
-    expect(screenText(tree)).toContain('Noch 1 Lauf ohne Zweck');
+    expect(native.feedback).toHaveBeenCalledWith('neu', {
+      purpose: 'free',
+      purposeConfirmed: true,
+      purposeHint: null,
+    });
+    expect(screenText(tree)).toContain('Noch 1 Lauf ohne Laufart');
     await tap(tree, 'Überspringen');
-    expect(screenText(tree)).toContain('1 Lauf bleibt ohne Zweck.');
+    expect(screenText(tree)).toContain('1 Lauf bleibt ohne Laufart.');
   });
 
   it('bleibt beim Lauf, wenn das Speichern scheitert', async () => {
@@ -965,13 +969,13 @@ describe('Zweck nachtragen', () => {
     const tree = await render();
     activeTree = tree;
     await tap(tree, 'Coach');
-    await tap(tree, 'Zweck nachtragen');
+    await tap(tree, 'Laufart nachtragen');
     const chips = tree.root
       .findAllByType(ChipGroup)
-      .find(group => String(group.props.label).startsWith('Zweck von'))!;
+      .find(group => String(group.props.label).startsWith('Laufart von'))!;
     await act(async () => chips.props.onChange('easy'));
     const text = screenText(tree);
     expect(text).toContain('Speicher voll.');
-    expect(text).toContain('Noch 1 Lauf ohne Zweck');
+    expect(text).toContain('Noch 1 Lauf ohne Laufart');
   });
 });

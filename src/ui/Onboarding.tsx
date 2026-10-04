@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import type { RunPurpose } from '../domain/types';
+import { RUN_PURPOSES } from '../domain/runTitle';
 import {
   SORENESS_PROMPTS,
   SORENESS_PROMPT_LABELS,
@@ -21,13 +22,7 @@ import { Button, Copy, Section, color } from './components';
 const STEPS = ['welcome', 'goal', 'features', 'import', 'ready'] as const;
 type Step = (typeof STEPS)[number];
 const DAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
-const PURPOSES: { value: RunPurpose; label: string }[] = [
-  { value: 'easy', label: 'Locker laufen' },
-  { value: 'long', label: 'Langer Lauf' },
-  { value: 'intervals', label: 'Intervalle' },
-  { value: 'race', label: 'Wettkampf' },
-  { value: 'free', label: 'Freies Laufen' },
-];
+const PURPOSES = RUN_PURPOSES;
 
 export interface OnboardingProps {
   settings: Settings;
@@ -254,7 +249,7 @@ export function Onboarding({
               ))}
             </View>
           </Section>
-          <Section title="Standardzweck">
+          <Section title="Wie läufst du meistens?">
             {PURPOSES.map(option => (
               <Pressable
                 key={option.value}

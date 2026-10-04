@@ -26,7 +26,7 @@ export interface RunPreset {
 export const DEFAULT_PRESETS: RunPreset[] = [
   {
     id: 'easy-30',
-    name: 'Locker · 30 Minuten',
+    name: 'Ruhig · 30 Minuten',
     purpose: 'easy',
     durationMinutes: 30,
     requiredDeviceIds: [],
@@ -34,7 +34,7 @@ export const DEFAULT_PRESETS: RunPreset[] = [
   },
   {
     id: 'long-60',
-    name: 'Lang · 60 Minuten',
+    name: 'Lange Runde · 60 Minuten',
     purpose: 'long',
     durationMinutes: 60,
     requiredDeviceIds: [],
@@ -42,7 +42,7 @@ export const DEFAULT_PRESETS: RunPreset[] = [
   },
   {
     id: 'free',
-    name: 'Freier Lauf',
+    name: 'Einfach laufen',
     purpose: 'free',
     durationMinutes: 30,
     requiredDeviceIds: [],
@@ -237,7 +237,7 @@ export function compareRuns(
     ['unknown', 'free', 'intervals', 'race'].includes(a.purpose)
   ) {
     limitations.push(
-      'Kein ausreichend vergleichbarer gleichmäßiger Laufzweck.',
+      'Keine ausreichend vergleichbare gleichmäßige Laufart.',
     );
   }
   if (!assessQuality(a).paceUsable || !assessQuality(b).paceUsable) {
@@ -337,6 +337,6 @@ export function nextRunPlan(
       ? ` ${active.recommendation.action}`
       : preset.targetPaceSecondsPerKm
       ? ` Tempoziel ${formatPace(preset.targetPaceSecondsPerKm)} min/km.`
-      : ' Zweck und verfügbaren Umfang beachten.'
+      : ' Laufart und verfügbaren Umfang beachten.'
   }`;
 }
