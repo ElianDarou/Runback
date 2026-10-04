@@ -44,7 +44,7 @@ jest.mock('../src/native', () => {
 
 import { RunbackApp } from '../src/ui/RunbackApp';
 import { native } from '../src/native';
-import { ChipGroup } from '../src/ui/components';
+import { ChipGroup, Row } from '../src/ui/components';
 import { acceptRecommendation, analyzeRun } from '../src/domain';
 import {
   buildRunReport,
@@ -181,6 +181,80 @@ describe('Heute', () => {
 });
 
 describe('Verlauf', () => {
+  it('opens record runs and returns through the strongest week to statistics', async () => {
+    const monday = new Date();
+    monday.setHours(0, 0, 0, 0);
+    monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7) - 7);
+    const base = {
+      id: 'record-long',
+      startTime: monday.getTime(),
+      endTime: monday.getTime() + 3600000,
+      durationSeconds: 3600,
+      distanceMeters: 12000,
+      purpose: 'long' as const,
+      source: 'test',
+      status: 'completed' as const,
+    };
+    const runs = [
+      base,
+      {
+        ...base,
+        id: 'record-easy',
+        startTime: base.startTime + DAY,
+        distanceMeters: 5000,
+        purpose: 'easy' as const,
+      },
+      {
+        ...base,
+        id: 'outside-week',
+        startTime: base.startTime - DAY,
+        distanceMeters: 1000,
+        purpose: 'free' as const,
+      },
+    ];
+    jest.mocked(native.state).mockResolvedValueOnce({
+      runs,
+      recording: null,
+      settings: { onboardedAt: 1, minutes: 30 },
+      capabilities: {},
+    });
+    jest
+      .mocked(native.run)
+      .mockImplementation(async id => runs.find(run => run.id === id) as never);
+    const tree = await render();
+    const pressRow = async (title: string) => {
+      const row = tree.root
+        .findAllByType(Row)
+        .find(node => node.props.title === title)!;
+      await act(async () => row.props.onPress());
+    };
+    try {
+      await tap(tree, 'Verlauf');
+      await tap(tree, 'Statistik');
+      await tap(tree, 'Bestwerte, 12,0 km');
+      await pressRow('Längster Lauf');
+      expect(native.run).toHaveBeenLastCalledWith('record-long');
+      expect(screenText(tree)).toContain('12,00');
+      await tap(tree, 'Zurück');
+      expect(screenText(tree)).toContain('Statistik');
+      await tap(tree, 'Bestwerte, 12,0 km');
+      await pressRow('Stärkste Woche');
+      expect(screenText(tree)).toContain('17,0 km');
+      expect(
+        tree.root.findAllByType(Row).map(node => node.props.title),
+      ).toEqual(['Locker', 'Lang']);
+      await pressRow('Locker');
+      expect(native.run).toHaveBeenLastCalledWith('record-easy');
+      await tap(tree, 'Zurück');
+      expect(screenText(tree)).toContain('Stärkste Woche');
+      await tap(tree, 'Zurück');
+      expect(screenText(tree)).toContain('Zeitverlauf');
+    } finally {
+      jest.mocked(native.run).mockResolvedValue(null as never);
+      await act(async () => tree.unmount());
+    }
+  });
+
   it('shows runs and strength side by side, without an import entry', async () => {
     const tree = await render();
     await tap(tree, 'Verlauf');

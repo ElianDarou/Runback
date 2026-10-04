@@ -34,6 +34,7 @@ import {
 } from '../domain/areas';
 import { Onboarding } from './Onboarding';
 import { Statistics, readStatisticsView } from './Statistics';
+import type { StatsRecord } from '../domain/statisticsView';
 import { PlanningScreen } from './PlanningScreen';
 import { DevelopmentScreen } from './DevelopmentScreen';
 import { GoalProgress } from './GoalProgress';
@@ -273,6 +274,7 @@ type Page =
   | 'focus-strength'
   | 'goal'
   | 'session'
+  | 'record-runs'
   | 'templates'
   | 'muscle-map'
   | 'settings'
@@ -570,6 +572,9 @@ export function RunbackApp({
   const [tab, setTab] = useState<Tab>('Heute');
   const [page, setPage] = useState<Page>('main');
   const [selected, setSelected] = useState<Run | null>(null);
+  const [selectedRecord, setSelectedRecord] = useState<StatsRecord | null>(
+    null,
+  );
   const [selectedSession, setSelectedSession] =
     useState<StrengthSession | null>(null);
   const [exportSelection, setExportSelection] = useState<string[] | null>(null);
@@ -4700,8 +4705,43 @@ export function RunbackApp({
     </>
   );
 
+  const recordRuns = selectedRecord
+    ? runningRuns
+        .filter(run => selectedRecord.runIds.includes(run.id))
+        .sort((a, b) => b.startTime - a.startTime)
+    : [];
+
   const content = selected ? (
     renderDetail()
+  ) : page === 'record-runs' && selectedRecord ? (
+    <>
+      <Title>{selectedRecord.label}</Title>
+      <Copy muted>{selectedRecord.detail}</Copy>
+      <Stat value={selectedRecord.value} label="Distanz" />
+      <Section title="Läufe">
+        {recordRuns.map(run => (
+          <Row
+            key={run.id}
+            title={runTitle(run)}
+            subtitle={unitSummary({
+              kind: 'run',
+              key: run.id,
+              run,
+              at: run.startTime,
+            })}
+            onPress={() => openRun(run.id)}
+            disabled={busy}
+          />
+        ))}
+        {!recordRuns.length ? (
+          <EmptyState
+            title="Keine Läufe mehr vorhanden"
+            copy="Öffne die Statistik erneut."
+            action={{ title: 'Zur Statistik', onPress: leaveDetail }}
+          />
+        ) : null}
+      </Section>
+    </>
   ) : page === 'distance-times' ? (
     <DistanceTimes
       runs={runningRuns}
@@ -4847,6 +4887,15 @@ export function RunbackApp({
         sessions={finishedSessions}
         view={statisticsView}
         onViewChange={next => save({ statisticsView: next })}
+        busy={busy}
+        onOpenRecord={record => {
+          if (record.runId) {
+            openRun(record.runId);
+          } else {
+            setSelectedRecord(record);
+            openPage('record-runs');
+          }
+        }}
         modules={features.statistics.modules}
         showRunning={showRunning}
         showStrength={showStrength}

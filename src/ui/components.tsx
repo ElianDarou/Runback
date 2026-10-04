@@ -217,11 +217,13 @@ export function Row({
   subtitle,
   onPress,
   trailing,
+  disabled = false,
 }: {
   title: string;
   subtitle?: string;
   onPress?: () => void;
   trailing?: React.ReactNode;
+  disabled?: boolean;
 }) {
   const content = (
     <>
@@ -229,12 +231,15 @@ export function Row({
         <Text style={s.rowTitle}>{title}</Text>
         {subtitle ? <Text style={s.rowSubtitle}>{subtitle}</Text> : null}
       </View>
-      {trailing ?? (onPress ? <Text style={s.chevron}>›</Text> : null)}
+      {trailing}
+      {onPress ? <Text style={s.chevron}>›</Text> : null}
     </>
   );
   return onPress ? (
     <Pressable
       accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [s.row, pressed && s.pressed]}
     >

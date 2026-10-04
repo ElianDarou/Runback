@@ -10,6 +10,7 @@ import {
   type StatsDelta,
   type StatsMetric,
   type StatsRange,
+  type StatsRecord,
 } from '../domain/statisticsView';
 import {
   ChipGroup,
@@ -169,6 +170,8 @@ export function Statistics({
   sessions = [],
   view = defaultStatisticsView,
   onViewChange,
+  onOpenRecord,
+  busy = false,
   embedded = false,
   modules = STATS_MODULES,
   showRunning = true,
@@ -180,6 +183,8 @@ export function Statistics({
   /** Zuletzt gewählter Zeitraum und Kennzahl. */
   view?: StatisticsView;
   onViewChange?: (view: StatisticsView) => void;
+  onOpenRecord?: (record: StatsRecord) => void;
+  busy?: boolean;
   /** Als Teil einer Seite, die den Titel schon trägt (Verlauf). */
   embedded?: boolean;
   /** Blöcke unter „Tiefer schauen“, die der Nutzer sehen will. */
@@ -390,6 +395,12 @@ export function Statistics({
                     label={record.label}
                     value={record.value}
                     meta={record.detail}
+                    onPress={
+                      onOpenRecord && record.runIds.length
+                        ? () => onOpenRecord(record)
+                        : undefined
+                    }
+                    disabled={busy}
                   />
                 ))
               ) : (
@@ -746,15 +757,21 @@ function ValueRow({
   label,
   value,
   meta,
+  onPress,
+  disabled,
 }: {
   label: string;
   value: string;
   meta?: string | null;
+  onPress?: () => void;
+  disabled?: boolean;
 }) {
   return (
     <Row
       title={label}
       subtitle={meta ?? undefined}
+      onPress={onPress}
+      disabled={disabled}
       trailing={<Text style={styles.rowValue}>{value}</Text>}
     />
   );
