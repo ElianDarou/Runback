@@ -83,7 +83,7 @@ describe('Verlauf eines Laufs', () => {
       expect.arrayContaining(['Tempo', 'Puls', 'Höhe', 'Wind', 'km', 'min']),
     );
     expect(labels).not.toContain('Kadenz');
-    expect(texts(tree)).toContain('Gesamt · wischen zeigt einen Moment');
+    expect(texts(tree)).toContain('Gesamt');
     expect(texts(tree)).toContain('5:00');
 
     const chart = tree.root.findByProps({ accessibilityRole: 'adjustable' });

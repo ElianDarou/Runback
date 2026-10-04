@@ -21,7 +21,7 @@ import {
   type RegionId,
   type Side,
 } from '../domain/regions';
-import { color, radius, space, type } from './components';
+import { Chevron, color, radius, space, type } from './components';
 
 /**
  * Körperfigur: zeigt den Zustand je Region, kein Urteil.
@@ -748,7 +748,7 @@ export function BodyMap({
             <Text style={styles.disclosureText}>
               {listOpen ? 'Liste ausblenden' : 'Alle Regionen als Liste'}
             </Text>
-            <Text style={styles.disclosureText}>{listOpen ? '▴' : '▾'}</Text>
+            <Chevron open={listOpen} />
           </Pressable>
           {listOpen
             ? shapes.map(shape => {

@@ -190,9 +190,8 @@ export function Onboarding({
         <>
           <Text style={styles.title}>Willkommen bei Runback</Text>
           <Copy muted>
-            Richte die wenigen Dinge ein, die deinen nächsten Lauf besser
-            einordnen. Alles ist optional und bleibt grundsätzlich auf deinem
-            Gerät; optionale Cloud-Dienste kannst du später aktivieren.
+            Vier kurze Schritte, alle optional. Deine Daten bleiben auf diesem
+            Gerät.
           </Copy>
           <Button title="Einrichten" onPress={next} disabled={saving || busy} />
         </>
@@ -277,8 +276,8 @@ export function Onboarding({
         <>
           <Text style={styles.title}>Was möchtest du nutzen?</Text>
           <Copy muted>
-            Abgewähltes verschwindet aus der App. Unter Mehr → Funktionen
-            änderst du das jederzeit.
+            Abgewähltes verschwindet. Ändern kannst du das jederzeit in den
+            Einstellungen.
           </Copy>
           <Section title="Bereiche">
             {(
@@ -382,11 +381,8 @@ export function Onboarding({
         <>
           <Text style={styles.title}>Historie mitnehmen?</Text>
           <Copy muted>
-            Importiere FIT, GPX, TCX oder einen Strava Export. Doppelte
-            Aktivitäten werden erkannt. Auch Fitbit, Google Fit, Strong, Mi
-            Fitness, Apple Health, Samsung, Garmin und weitere Exporte
-            funktionieren — Details stehen später unter Mehr → Deine Daten →
-            App-Importe.
+            FIT, GPX, TCX oder ein Export aus Strava, Garmin und anderen Apps.
+            Doppelte Aktivitäten werden erkannt.
           </Copy>
           <Button
             title={importRunning ? 'Import läuft …' : 'Dateien importieren'}
@@ -402,8 +398,13 @@ export function Onboarding({
           ) : null}
           {status.imported !== undefined ? (
             <Copy>
-              Importiert: {status.imported} · Doppelt: {status.duplicates || 0}{' '}
-              · Übersprungen: {status.skipped || 0}
+              {[
+                `Importiert: ${status.imported}`,
+                status.duplicates ? `Doppelt: ${status.duplicates}` : '',
+                status.skipped ? `Übersprungen: ${status.skipped}` : '',
+              ]
+                .filter(Boolean)
+                .join(' · ')}
             </Copy>
           ) : null}
           <Button
@@ -418,7 +419,7 @@ export function Onboarding({
         <>
           <Text style={styles.title}>Bereit für den ersten Lauf</Text>
           <Copy muted>
-            Du kannst jederzeit unter Mehr → Einrichtung zurückkommen.
+            Die Einrichtung findest du jederzeit in den Einstellungen.
           </Copy>
           <Button
             secondary

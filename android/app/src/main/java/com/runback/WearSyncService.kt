@@ -23,10 +23,22 @@ class WearSyncService : WearableListenerService() {
     private val worker = Executors.newSingleThreadExecutor()
     override fun onDataChanged(events: DataEventBuffer) {
         val items = mutableListOf<DataItem>()
-        for (event in events) if (event.type == DataEvent.TYPE_CHANGED && event.dataItem.uri.path?.startsWith("/runback/runs/") == true) {
-            items.add(event.dataItem.freeze())
+        val motion = mutableListOf<DataItem>()
+        for (event in events) if (event.type == DataEvent.TYPE_CHANGED) {
+            val path = event.dataItem.uri.path ?: continue
+            if (path.startsWith("/runback/runs/")) items.add(event.dataItem.freeze())
+            else if (path.startsWith(WearProtocol.MOTION_DATA_PREFIX)) motion.add(event.dataItem.freeze())
         }
-        worker.execute { items.forEach(::receive) }
+        worker.execute {
+            items.forEach(::receive)
+            motion.forEach { item ->
+                runCatching { MotionSessions.receive(this, item) }.onFailure { error ->
+                    RunStore(this).putDocument("wearSyncStatus", JSONObject().put("status", "retry_needed")
+                        .put("message", error.message ?: "Bewegungsdaten konnten nicht übernommen werden")
+                        .put("updatedAt", System.currentTimeMillis()))
+                }
+            }
+        }
     }
 
     override fun onMessageReceived(event: MessageEvent) {
@@ -34,11 +46,14 @@ class WearSyncService : WearableListenerService() {
             WearProtocol.CONTROL_PATH -> worker.execute { handleWatchControl(event) }
             WearProtocol.LIVE_PATH -> worker.execute { receiveLive(event.data) }
             WearProtocol.ACK_PATH -> worker.execute { receiveAck(event.data) }
+            // Eigener Pfad, nicht hinter dem Worker: ein Pong soll nicht hinter einer Übertragung warten.
+            WearProtocol.MOTION_PATH -> MotionSessions.acceptMessage(this, event.data)
         }
     }
 
     override fun onPeerConnected(peer: Node) {
         WearController.retryPending(this)
+        worker.execute { MotionSessions.retryPending(this) }
     }
 
     private fun handleWatchControl(event: MessageEvent) {

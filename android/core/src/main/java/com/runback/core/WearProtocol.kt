@@ -70,6 +70,36 @@ object WearProtocol {
         put("sequence", sequence)
     }.toString().toByteArray(Charsets.UTF_8)
 
+    /**
+     * Bewegungsaufzeichnung im Krafttraining. Das Handy sendet `start`, `stop`,
+     * `discard` und `ping`; die Uhr antwortet mit `pong` (ihre Uhrzeit beim
+     * Empfang, für den Uhrenversatz) und `status`.
+     */
+    const val MOTION_PATH = "/runback/motion/v1"
+    const val MOTION_DATA_PREFIX = "/runback/motion-data/"
+    const val MOTION_ACK_PREFIX = "/runback/motion-acks/"
+    val MOTION_ACTIONS = setOf("start", "stop", "discard", "ping", "pong", "status")
+
+    fun motion(action: String, sessionId: String, fields: JSONObject = JSONObject()): ByteArray {
+        require(action in MOTION_ACTIONS) { "Unbekannte Bewegungsaktion" }
+        require(sessionId.matches(ID_PATTERN)) { "Ungültige Einheitskennung" }
+        return JSONObject(fields.toString())
+            .put("protocolVersion", VERSION)
+            .put("action", action)
+            .put("sessionId", sessionId)
+            .toString().toByteArray(Charsets.UTF_8)
+    }
+
+    /** Liest eine Bewegungsnachricht; wirft bei unbekannter Aktion oder Kennung. */
+    fun decodeMotion(bytes: ByteArray): JSONObject {
+        val payload = decode(bytes)
+        require(payload.optString("action") in MOTION_ACTIONS) { "Unbekannte Bewegungsaktion" }
+        require(payload.optString("sessionId").matches(ID_PATTERN)) { "Ungültige Einheitskennung" }
+        return payload
+    }
+
+    private val ID_PATTERN = Regex("[A-Za-z0-9_-]{1,100}")
+
     fun decode(bytes: ByteArray): JSONObject {
         require(bytes.size <= MAX_PAYLOAD_BYTES) { "Wear-Paket ist zu groß" }
         val payload = JSONObject(bytes.toString(Charsets.UTF_8))

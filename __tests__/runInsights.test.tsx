@@ -116,7 +116,7 @@ const texts = (tree: TestRenderer.ReactTestRenderer) =>
     .join('\n');
 
 describe('Einblicke auf der Detailseite', () => {
-  it('zeigt Bewegung, Pacing, Puls, Bedingungen und Vergleich', () => {
+  it('zeigt Bewegung, Einteilung, Puls, Bedingungen und Vergleich', () => {
     let tree!: TestRenderer.ReactTestRenderer;
     act(() => {
       tree = TestRenderer.create(
@@ -137,7 +137,7 @@ describe('Einblicke auf der Detailseite', () => {
     expect(all).toContain('3,20 km · 16:00 ohne Gehpause');
     expect(all).toContain('4×');
     expect(all).toContain('152 bpm · 118 bpm');
-    expect(all).toContain('Pacing');
+    expect(all).toContain('Einteilung');
     expect(all).toContain('Beide Hälften gleich schnell.');
     expect(all).toContain('Puls & Schritt');
     expect(all).toContain('110–175 bpm');
@@ -235,7 +235,7 @@ describe('Einblicke auf der Detailseite', () => {
     });
     const all = texts(tree);
     expect(all).not.toContain('Bewegung');
-    expect(all).not.toContain('Pacing');
+    expect(all).not.toContain('Einteilung');
     expect(all).not.toContain('Bedingungen');
     expect(all).not.toContain('Im Vergleich zu dir');
     expect(all).toContain(

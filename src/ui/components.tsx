@@ -300,6 +300,52 @@ export function ChipGroup<T extends string>({
   );
 }
 
+/**
+ * Mehrfachauswahl als Chips, z. B. Wochentage. Jeder Chip schaltet für sich;
+ * gewählt heißt grüner Rahmen plus `checked`.
+ */
+export function ToggleChips<T extends string>({
+  options,
+  values,
+  onToggle,
+  label,
+  disabled = false,
+}: {
+  options: { value: T; label: string }[];
+  values: T[];
+  onToggle: (value: T) => void;
+  label?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <View accessibilityLabel={label} style={s.chips}>
+      {options.map(option => {
+        const checked = values.includes(option.value);
+        return (
+          <Pressable
+            key={option.value}
+            accessibilityRole="checkbox"
+            accessibilityLabel={option.label}
+            accessibilityState={{ checked, disabled }}
+            disabled={disabled}
+            onPress={() => onToggle(option.value)}
+            style={({ pressed }) => [
+              s.chip,
+              checked && s.chipSelected,
+              disabled && s.disabled,
+              pressed && s.pressed,
+            ]}
+          >
+            <Text style={[s.chipText, checked && s.chipTextSelected]}>
+              {option.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 export function Field({
   label,
   hint,
@@ -529,7 +575,12 @@ export function Segmented<T extends string>({
               pressed && s.pressed,
             ]}
           >
-            <Text style={[s.segmentText, selected && s.segmentTextSelected]}>
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.8}
+              style={[s.segmentText, selected && s.segmentTextSelected]}
+            >
               {option.label}
             </Text>
           </Pressable>
@@ -673,10 +724,26 @@ export function Disclosure({
           <Text style={s.rowTitle}>{title}</Text>
           {subtitle ? <Text style={s.rowSubtitle}>{subtitle}</Text> : null}
         </View>
-        <Text style={[s.chevron, open && s.chevronOpen]}>⌄</Text>
+        <Chevron open={open} />
       </Pressable>
       {open ? <View style={s.disclosureBody}>{children}</View> : null}
     </View>
+  );
+}
+
+/**
+ * Das Aufklapp-Symbol `⌄`, gezeichnet als gedrehtes `›`: Die Systemschrift
+ * setzt `⌄` klein auf die Grundlinie, wo es wie ein „v“ aussieht.
+ */
+export function Chevron({ open = false }: { open?: boolean }) {
+  return (
+    <Text
+      accessible={false}
+      importantForAccessibility="no"
+      style={[s.chevron, open ? s.chevronUp : s.chevronDown]}
+    >
+      ›
+    </Text>
   );
 }
 
@@ -1389,13 +1456,16 @@ export function RouteOpenActions({
   onGoogleMaps,
   onCoMaps,
   disabled = false,
+  embedded = false,
 }: {
   onGoogleMaps: () => void;
   onCoMaps: () => void;
   disabled?: boolean;
+  /** Ohne eigene Überschrift, z. B. innerhalb einer `Disclosure`. */
+  embedded?: boolean;
 }) {
-  return (
-    <Section title="Route in Karten-App öffnen">
+  const actions = (
+    <>
       <Button
         secondary
         title="In Google Maps öffnen"
@@ -1409,10 +1479,14 @@ export function RouteOpenActions({
         disabled={disabled}
       />
       <Copy muted>
-        Google Maps berechnet die Gehroute neu. CoMaps erhält die exakte Route
-        als GPX-Datei.
+        Google Maps rechnet die Route neu, CoMaps übernimmt sie genau.
       </Copy>
-    </Section>
+    </>
+  );
+  return embedded ? (
+    actions
+  ) : (
+    <Section title="Route in Karten-App öffnen">{actions}</Section>
   );
 }
 
@@ -1474,7 +1548,7 @@ export const s = StyleSheet.create({
   rowText: { flex: 1, gap: space.xxs },
   rowTitle: { color: color.text, ...type.body, fontWeight: '500' },
   rowSubtitle: { color: color.muted, ...type.label, fontWeight: '400' },
-  chevron: { fontSize: 26, color: color.muted },
+  chevron: { fontSize: 26, color: color.muted, width: 24, textAlign: 'center' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs },
   chip: {
     minHeight: 48,
@@ -1525,7 +1599,7 @@ export const s = StyleSheet.create({
   },
   segment: {
     flex: 1,
-    minHeight: 44,
+    minHeight: 48,
     borderRadius: radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1564,7 +1638,8 @@ export const s = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   ringCaption: { color: color.muted, ...type.micro },
-  chevronOpen: { transform: [{ rotate: '180deg' }] },
+  chevronDown: { transform: [{ rotate: '90deg' }] },
+  chevronUp: { transform: [{ rotate: '-90deg' }] },
   disclosureBody: { paddingTop: space.sm, gap: space.sm },
   sheetBackdrop: { flex: 1, justifyContent: 'flex-end' },
   sheetScrim: {

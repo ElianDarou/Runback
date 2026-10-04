@@ -1,16 +1,22 @@
 import React from 'react';
+import { View } from 'react-native';
 import type { Run } from '../native';
 import { distanceTime, STANDARD_DISTANCES } from '../domain/distanceTimes';
 import { formatDistanceKm, formatGoalTime } from '../domain/raceGoal';
-import {
-  Copy,
-  Disclosure,
-  EmptyState,
-  Row,
-  Section,
-  Title,
-} from './components';
+import { Copy, Disclosure, Row, Section, Title } from './components';
 
+const distanceName = (km: number) =>
+  km === 21.0975
+    ? 'Halbmarathon'
+    : km === 42.195
+    ? 'Marathon'
+    : formatDistanceKm(km);
+
+/**
+ * Eine Zeile je Strecke mit der geschätzten Zeit; ein Tipp übernimmt sie.
+ * Bisherige Zeiten, Vergleichsläufe und die Grenzen der Schätzung gelten für
+ * alle Strecken gleich und stehen einmal eingeklappt darunter.
+ */
 export function DistanceTimes({
   runs,
   onChoose,
@@ -23,43 +29,28 @@ export function DistanceTimes({
   onNextRun?: (distanceKm: number, seconds: number) => void;
 }) {
   const now = Date.now();
+  const results = STANDARD_DISTANCES.map(km => ({
+    km,
+    result: distanceTime(runs, km, now),
+  }));
   return (
     <>
       <Title>Zielzeiten</Title>
-      <Copy muted>
-        Vergleiche deine bisherigen Zeiten und wähle einen geschätzten
-        Richtwert.
-      </Copy>
-      {STANDARD_DISTANCES.map(km => {
-        const result = distanceTime(runs, km, now);
-        const supportsPace =
-          result.estimatedSeconds !== undefined &&
-          result.estimatedSeconds / km >= 120 &&
-          result.estimatedSeconds / km <= 1200;
-        const choose = onNextRun && supportsPace ? onNextRun : onChoose;
-        return (
-          <Section
-            key={km}
-            title={
-              km === 21.0975
-                ? 'Halbmarathon'
-                : km === 42.195
-                ? 'Marathon'
-                : formatDistanceKm(km)
-            }
-          >
+      <View>
+        {results.map(({ km, result }) => {
+          const supportsPace =
+            result.estimatedSeconds !== undefined &&
+            result.estimatedSeconds / km >= 120 &&
+            result.estimatedSeconds / km <= 1200;
+          const choose = onNextRun && supportsPace ? onNextRun : onChoose;
+          return (
             <Row
-              title={
+              key={km}
+              title={distanceName(km)}
+              subtitle={
                 result.estimatedSeconds === undefined
                   ? 'Zu wenig vergleichbare Läufe'
                   : `Schätzung ${formatGoalTime(result.estimatedSeconds)}`
-              }
-              subtitle={
-                result.estimatedSeconds === undefined
-                  ? 'Mindestens drei passende Läufe aus den letzten acht Wochen fehlen.'
-                  : onNextRun && supportsPace
-                  ? 'Tempo für nächsten Lauf ansehen'
-                  : 'Als Zielzeit ansehen'
               }
               onPress={
                 result.estimatedSeconds === undefined
@@ -67,70 +58,71 @@ export function DistanceTimes({
                   : () => choose(km, result.estimatedSeconds!)
               }
             />
-            <Disclosure title="Bisherige Zeiten & Details">
-              {onNextRun && result.estimatedSeconds !== undefined ? (
+          );
+        })}
+      </View>
+      <Disclosure
+        title="Bisherige Zeiten & Details"
+        subtitle="Vergleichsläufe und Grenzen der Schätzung"
+      >
+        {results.map(({ km, result }) => (
+          <Section key={km} title={distanceName(km)}>
+            {onNextRun && result.estimatedSeconds !== undefined ? (
+              <Row
+                title="Als Wettkampfziel ansehen"
+                onPress={() => onChoose(km, result.estimatedSeconds!)}
+              />
+            ) : null}
+            {result.history.length ? (
+              result.history.map(run => (
                 <Row
-                  title="Als Wettkampfziel ansehen"
-                  onPress={() => onChoose(km, result.estimatedSeconds!)}
+                  key={run.id}
+                  title={formatGoalTime(run.durationSeconds)}
+                  subtitle={`${formatDistanceKm(
+                    run.distanceMeters / 1000,
+                  )} · ${new Date(run.startTime).toLocaleDateString('de-DE')}`}
+                  onPress={() => onRun(run)}
                 />
-              ) : null}
-              {result.history.length ? (
-                result.history.map(run => (
-                  <Row
-                    key={run.id}
-                    title={formatGoalTime(run.durationSeconds)}
-                    subtitle={`${formatDistanceKm(
-                      run.distanceMeters / 1000,
-                    )} · ${new Date(run.startTime).toLocaleDateString(
-                      'de-DE',
-                    )}`}
-                    onPress={() => onRun(run)}
-                  />
-                ))
-              ) : (
-                <EmptyState
-                  title="Noch keine Zeit"
-                  copy="Zeichne einen Lauf über diese Strecke auf."
+              ))
+            ) : (
+              <Copy muted>Noch keine Zeit über diese Strecke.</Copy>
+            )}
+            {result.sourceRunIds.length ? (
+              <Copy muted>{`Modell ${result.version} · ${counted(
+                result.sourceRunIds.length,
+              )}`}</Copy>
+            ) : null}
+            {result.sourceRunIds.map(id => {
+              const run = runs.find(item => item.id === id);
+              return run ? (
+                <Row
+                  key={`source-${id}`}
+                  title={`${formatDistanceKm(
+                    run.distanceMeters / 1000,
+                  )} · ${formatGoalTime(run.durationSeconds)}`}
+                  subtitle={new Date(run.startTime).toLocaleDateString('de-DE')}
+                  onPress={() => onRun(run)}
                 />
-              )}
-              <Copy muted>
-                Die Schätzung rechnet letzte Läufe auf diese Strecke um und
-                gewichtet die neuesten drei am stärksten.
-              </Copy>
-              <Copy muted>
-                Dein letzter passender Lauf aus den Vergleichsläufen begrenzt
-                den Richtwert: Die Schätzung fällt höchstens so langsam aus.
-              </Copy>
-              <Copy muted>
-                Kürzere Strecken bleiben eine grobe Hochrechnung aus längeren
-                Läufen.
-              </Copy>
-              <Copy muted>
-                Trainingsläufe zeigen keine Wettkampfgrenze; Gelände, Gehphasen
-                und Tagesform bleiben enthalten.
-              </Copy>
-              <Copy
-                muted
-              >{`Modell ${result.version} · ${result.sourceRunIds.length} Vergleichsläufe`}</Copy>
-              {result.sourceRunIds.map(id => {
-                const run = runs.find(item => item.id === id);
-                return run ? (
-                  <Row
-                    key={`source-${id}`}
-                    title={`${formatDistanceKm(
-                      run.distanceMeters / 1000,
-                    )} · ${formatGoalTime(run.durationSeconds)}`}
-                    subtitle={new Date(run.startTime).toLocaleDateString(
-                      'de-DE',
-                    )}
-                    onPress={() => onRun(run)}
-                  />
-                ) : null;
-              })}
-            </Disclosure>
+              ) : null;
+            })}
           </Section>
-        );
-      })}
+        ))}
+        <Section title="So wird geschätzt">
+          <Copy muted>
+            Die Schätzung rechnet letzte Läufe auf die Strecke um und gewichtet
+            die neuesten drei am stärksten. Dein letzter passender Lauf begrenzt
+            sie: Sie fällt höchstens so langsam aus.
+          </Copy>
+          <Copy muted>
+            Kürzere Strecken bleiben eine grobe Hochrechnung aus längeren
+            Läufen. Trainingsläufe zeigen keine Wettkampfgrenze; Gelände,
+            Gehphasen und Tagesform bleiben enthalten.
+          </Copy>
+        </Section>
+      </Disclosure>
     </>
   );
 }
+
+const counted = (count: number) =>
+  `${count} ${count === 1 ? 'Vergleichslauf' : 'Vergleichsläufe'}`;

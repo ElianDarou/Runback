@@ -77,6 +77,7 @@ class MainActivity : Activity() {
         WearSync.schedule(this)
         render()
         handleRemoteRecordingIntent(intent)
+        handleRemoteMotionIntent(intent)
     }
 
     override fun onNewIntent(intent: Intent?) {
@@ -84,6 +85,7 @@ class MainActivity : Activity() {
         if (intent != null) {
             setIntent(intent)
             handleRemoteRecordingIntent(intent)
+            handleRemoteMotionIntent(intent)
         }
     }
 
@@ -128,6 +130,7 @@ class MainActivity : Activity() {
 
     private fun home() {
         text("RUNBACK", 13, green, bold = true)
+        if (MotionCaptureService.activeSession != null) text("Krafttraining · Bewegungen werden aufgezeichnet", 12, green, margin = 4)
         text("Dein nächster Lauf.", 21, ink, bold = true, margin = 6)
         text("Ohne Handy aufzeichnen", 12, muted, margin = 3)
         button("Lauf starten", true, 12) { requestStart() }
@@ -137,6 +140,7 @@ class MainActivity : Activity() {
         button("Zwischenstände ansagen", false, 6) { chooseAnnouncements() }
         button("Läufe", false, 6) { page = "history"; render() }
         sync = text(WearSync.status, 11, muted, margin = 12)
+        MotionSync.pendingCount(this).takeIf { it > 0 }?.let { text("$it Krafttrainings warten aufs Handy", 11, muted, margin = 4) }
         button("Übertragen", false, 8) {
             sync?.text = "Verbindung wird geprüft …"
             WearSync.retry(this) { runOnUiThread { sync?.text = WearSync.status } }
@@ -348,6 +352,21 @@ class MainActivity : Activity() {
             WearCommandGate.release(store, runId, commandId, commandSequence)
             sendRemoteAck(uri, action, runId, commandId, commandSequence, "error", error.message ?: "Aufzeichnung konnte nicht synchronisiert werden.")
         }
+    }
+
+    /**
+     * Das Handy öffnet die Uhr-App, wenn es eine Krafteinheit mit Bewegungs-
+     * aufzeichnung startet: Aus dem Hintergrund darf der Dienst nicht immer starten.
+     */
+    private fun handleRemoteMotionIntent(intent: Intent?) {
+        val uri = intent?.data ?: return
+        if (uri.scheme != "runback" || uri.host != "motion" || uri.getQueryParameter("action") != "start") return
+        val sessionId = uri.getQueryParameter("sessionId")?.takeIf { it.matches(Regex("[A-Za-z0-9_-]{1,100}")) } ?: return
+        val wrist = uri.getQueryParameter("wrist")?.takeIf { it in setOf("left", "right") } ?: "unknown"
+        runCatching { MotionCaptureService.send(this, MotionCaptureService.START, sessionId, wrist) }
+            .onFailure { MotionSync.reportStatus(this, sessionId, "error", "Uhr konnte die Aufzeichnung nicht starten.") }
+        // Der Dienst startet auf seinem eigenen Thread; danach zeigt die Startseite den Hinweis.
+        handler.postDelayed({ if (page == "home" && store.active() == null) render() }, 800L)
     }
 
     private fun confirmRemoteCommand(uri: Uri, runId: String, action: String, commandId: String?, sequence: Long, attempt: Int = 0) {

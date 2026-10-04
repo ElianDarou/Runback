@@ -188,9 +188,10 @@ describe('Verlauf', () => {
 
     expect(text).toContain('Einheiten');
     expect(text).toContain('Statistik');
-    // Beide Trainingsarten sind aus derselben Liste erreichbar.
-    expect(text).toContain('Laufen');
-    expect(text).toContain('Krafttraining');
+    // Läufe, Radfahrten und Krafteinheiten teilen sich eine Liste; ohne
+    // Einheiten gibt es nichts zu filtern.
+    expect(text).toContain('Hier beginnt deine Historie');
+    expect(text).not.toContain('Alle');
     // Importieren bleibt eine Einstellung, keine Zeile in der Historie.
     expect(text).not.toContain('Importieren');
     expect(text).not.toContain('Vorhandene Läufe importieren');
@@ -493,7 +494,7 @@ describe('Funktionen', () => {
     const tree = await render();
     await tap(tree, 'Einstellungen');
     await tapText(tree, 'Funktionen');
-    expect(screenText(tree)).toContain('Aus heißt weg');
+    expect(screenText(tree)).toContain('deine Daten bleiben');
     await flip(tree, 'Planung als Tab');
     expect(settingsSaved().features?.planning.enabled).toBe(false);
     expect(tabLabels(tree)).not.toContain('Plan');
@@ -762,7 +763,8 @@ describe('Laufberichte gesammelt exportieren', () => {
   it('exports the inclusive date range from settings, including runs outside the loaded list', async () => {
     const tree = await setup();
     await tap(tree, 'Einstellungen');
-    await tap(tree, 'Importieren, sichern & löschen');
+    await tap(tree, 'Deine Daten');
+    await tap(tree, 'Laufberichte exportieren');
     const input = (label: string) =>
       tree.root.findAll(
         node =>
@@ -789,7 +791,8 @@ describe('Laufberichte gesammelt exportieren', () => {
   it('rejects invalid and empty ranges before creating an archive', async () => {
     const tree = await setup();
     await tap(tree, 'Einstellungen');
-    await tap(tree, 'Importieren, sichern & löschen');
+    await tap(tree, 'Deine Daten');
+    await tap(tree, 'Laufberichte exportieren');
     const input = (label: string) =>
       tree.root.findAll(
         node =>
@@ -810,5 +813,95 @@ describe('Laufberichte gesammelt exportieren', () => {
     expect(screenText(tree)).toContain('Wähle mindestens einen Lauf');
     expect(native.beginRunArchive).not.toHaveBeenCalled();
     await act(async () => tree.unmount());
+  });
+});
+
+describe('Laufart nachtragen', () => {
+  const run = (id: string, day: number, purpose: string) => ({
+    id,
+    startTime: new Date(2026, 9, day, 7).getTime(),
+    endTime: new Date(2026, 9, day, 7, 40).getTime(),
+    durationSeconds: 2400,
+    distanceMeters: 7000,
+    purpose: purpose as any,
+    source: 'test',
+    status: 'complete',
+  });
+  let activeTree: TestRenderer.ReactTestRenderer | undefined;
+  afterEach(async () => {
+    await act(async () => activeTree?.unmount());
+    activeTree = undefined;
+    jest.mocked(native.state).mockReset();
+    jest
+      .mocked(native.state)
+      .mockImplementation(() =>
+        Promise.resolve({
+          runs: [],
+          recording: null,
+          settings: { onboardedAt: 1, purpose: 'free', minutes: 30 },
+          capabilities: {},
+        } as any),
+      );
+  });
+
+  it('fragt Lauf für Lauf, geht erst nach dem Speichern weiter und zählt „Einfach laufen“ als Antwort', async () => {
+    let runs = [run('neu', 2, 'unknown'), run('alt', 1, 'unknown')];
+    jest.mocked(native.state).mockImplementation(() =>
+      Promise.resolve({
+        runs: runs.map(item => ({ ...item })),
+        recording: null,
+        settings: { onboardedAt: 1 },
+        capabilities: {},
+      } as any),
+    );
+    jest.mocked(native.feedback).mockImplementation(async (id, patch: any) => {
+      runs = runs.map(item =>
+        item.id === id ? { ...item, purpose: patch.purpose } : item,
+      );
+    });
+    const tree = await render();
+    activeTree = tree;
+    await tap(tree, 'Coach');
+    expect(screenText(tree)).toContain('Bei 2 Läufen fehlt die Laufart.');
+    await tap(tree, 'Laufart nachtragen');
+    expect(screenText(tree)).toContain('Noch 2 Läufe ohne Laufart');
+    const chips = () =>
+      tree.root
+        .findAllByType(ChipGroup)
+        .find(group => String(group.props.label).startsWith('Laufart von'))!;
+    await act(async () => chips().props.onChange('free'));
+    expect(native.feedback).toHaveBeenCalledWith('neu', {
+      purpose: 'free',
+      purposeConfirmed: true,
+      purposeHint: null,
+    });
+    expect(screenText(tree)).toContain('Noch 1 Lauf ohne Laufart');
+    await tap(tree, 'Überspringen');
+    expect(screenText(tree)).toContain('1 Lauf bleibt ohne Laufart.');
+  });
+
+  it('bleibt beim Lauf, wenn das Speichern scheitert', async () => {
+    jest.mocked(native.state).mockImplementation(() =>
+      Promise.resolve({
+        runs: [run('neu', 2, 'unknown')],
+        recording: null,
+        settings: { onboardedAt: 1 },
+        capabilities: {},
+      } as any),
+    );
+    jest
+      .mocked(native.feedback)
+      .mockRejectedValueOnce(new Error('Speicher voll.'));
+    const tree = await render();
+    activeTree = tree;
+    await tap(tree, 'Coach');
+    await tap(tree, 'Laufart nachtragen');
+    const chips = tree.root
+      .findAllByType(ChipGroup)
+      .find(group => String(group.props.label).startsWith('Laufart von'))!;
+    await act(async () => chips.props.onChange('easy'));
+    const text = screenText(tree);
+    expect(text).toContain('Speicher voll.');
+    expect(text).toContain('Noch 1 Lauf ohne Laufart');
   });
 });

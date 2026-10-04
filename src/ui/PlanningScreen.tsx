@@ -51,7 +51,9 @@ import {
   Notice,
   Row,
   Section,
+  Segmented,
   Title,
+  ToggleChips,
   color,
   radius,
   space,
@@ -983,14 +985,20 @@ export function PlanningScreen({
     const key = isoDate(date);
     const sessions = sessionsByDate[key] ?? [];
     const available = availableMinutes(key, index);
+    const past = key < today;
+    // Das Zeitbudget steht nur an Tagen, an denen es etwas sagt: Rhythmustage
+    // und eigens gesetzte Ausnahmen.
+    const budgetShown =
+      displayState.routine.days.includes(index) ||
+      Object.prototype.hasOwnProperty.call(displayState.availability, key);
     if (!sessions.length) {
       return (
         <Pressable
           key={key}
           accessibilityRole="button"
           accessibilityLabel={`Einheit am ${WEEKDAY_LONG[index]} hinzufügen`}
-          accessibilityState={{ disabled: working || key < today }}
-          disabled={working || key < today}
+          accessibilityState={{ disabled: working || past }}
+          disabled={working || past}
           onPress={() => openEditor(undefined, key)}
           style={({ pressed }) => [
             styles.emptyDayRow,
@@ -998,12 +1006,16 @@ export function PlanningScreen({
           ]}
         >
           <View style={styles.dayHeadingText}>
-            <Text style={styles.dayTitle}>{fullDateLabel(date)}</Text>
-            <Text style={styles.dayMeta}>
-              {formatMinutes(available)} verfügbar
+            <Text style={[styles.dayTitle, past && styles.mutedText]}>
+              {fullDateLabel(date)}
             </Text>
+            {budgetShown && !past ? (
+              <Text style={styles.dayMeta}>
+                {formatMinutes(available)} verfügbar
+              </Text>
+            ) : null}
           </View>
-          <Text style={styles.addText}>Einheit hinzufügen</Text>
+          {past ? null : <Text style={styles.addText}>+</Text>}
         </Pressable>
       );
     }
@@ -1012,20 +1024,29 @@ export function PlanningScreen({
         <View style={styles.dayHeading}>
           <View style={styles.dayHeadingText}>
             <Text style={styles.dayTitle}>{fullDateLabel(date)}</Text>
-            <Text style={styles.dayMeta}>
-              {formatMinutes(available)} verfügbar
-            </Text>
+            {budgetShown && !past ? (
+              <Text style={styles.dayMeta}>
+                {formatMinutes(available)} verfügbar
+              </Text>
+            ) : null}
           </View>
+          {past ? null : (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Einheit am ${WEEKDAY_LONG[index]} hinzufügen`}
+              accessibilityState={{ disabled: working }}
+              disabled={working}
+              onPress={() => openEditor(undefined, key)}
+              style={({ pressed }) => [
+                styles.addButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.addText}>+</Text>
+            </Pressable>
+          )}
         </View>
         {sessions.map(renderSession)}
-        <Button
-          title="Einheit hinzufügen"
-          secondary
-          small
-          disabled={working || key < today}
-          onPress={() => openEditor(undefined, key)}
-          label={`Einheit am ${WEEKDAY_LONG[index]} hinzufügen`}
-        />
       </View>
     );
   };
@@ -1073,7 +1094,7 @@ export function PlanningScreen({
   const renderActuals = () => {
     if (!freeRuns.length && !freeStrength.length) return null;
     return (
-      <Section title="Ungeplant in diesem Zeitraum">
+      <Section title="Ohne Plan trainiert">
         <Card>
           {freeRuns.map(run => (
             <Row
@@ -1185,10 +1206,13 @@ export function PlanningScreen({
                 {dateLabel(weekDates[0])} – {dateLabel(weekDates[6])}
               </Text>
               <Text style={styles.periodMeta}>
-                {weekSessionCount === 1
-                  ? '1 Einheit'
-                  : `${weekSessionCount} Einheiten`}{' '}
-                · {formatMinutes(summaryMinutes)}
+                {weekSessionCount === 0
+                  ? 'Nichts geplant'
+                  : `${
+                      weekSessionCount === 1
+                        ? '1 Einheit'
+                        : `${weekSessionCount} Einheiten`
+                    } · ${formatMinutes(summaryMinutes)}`}
               </Text>
             </Pressable>
             <Pressable
@@ -1203,18 +1227,6 @@ export function PlanningScreen({
             </Pressable>
           </View>
           <Card style={styles.weekCard}>{weekDates.map(renderDayRow)}</Card>
-          <Button
-            title="Einheit hinzufügen"
-            secondary={!weekSessionCount}
-            disabled={working || weekDateKeys[6] < today}
-            onPress={() =>
-              openEditor(
-                undefined,
-                weekDateKeys.find(key => key >= today) ?? weekDateKeys[0],
-              )
-            }
-            label="Einheit in dieser Woche hinzufügen"
-          />
           {showSuggest ? (
             <Button
               title="Woche vorschlagen lassen"
@@ -1288,7 +1300,6 @@ export function PlanningScreen({
               </View>
             ))}
           </View>
-          <Copy muted>Tippe auf einen Tag, um seine Woche zu öffnen.</Copy>
           <Button
             title="Zurück zur Woche"
             secondary
@@ -1314,7 +1325,7 @@ export function PlanningScreen({
 
       {renderActuals()}
 
-      <Section title="Einstellen">
+      <Section title="Mehr">
         <Row
           title="Zeit & Rhythmus"
           subtitle={`${
@@ -1329,14 +1340,20 @@ export function PlanningScreen({
         {onManageTemplates ? (
           <Row
             title="Vorlagen"
-            subtitle={`${templates.length} Kraftvorlagen · Laufvorlagen`}
+            subtitle={
+              templates.length
+                ? `${templates.length} ${
+                    templates.length === 1 ? 'Kraftvorlage' : 'Kraftvorlagen'
+                  } · Laufvorlagen`
+                : 'Kraft- und Laufvorlagen'
+            }
             onPress={onManageTemplates}
           />
         ) : null}
         {onOpenRoutePlanner ? (
           <Row
             title="Route planen"
-            subtitle="Strecke vorab festlegen und beim Lauf folgen"
+            subtitle="Strecke festlegen und beim Lauf folgen"
             onPress={onOpenRoutePlanner}
           />
         ) : null}
@@ -1379,8 +1396,13 @@ export function PlanningScreen({
                 <>
                   <Copy>
                     {proposal.addedSessions.length +
-                      proposal.movedSessions.length}{' '}
-                    Änderungen für diese Woche.
+                      proposal.movedSessions.length ===
+                    1
+                      ? '1 Änderung für diese Woche.'
+                      : `${
+                          proposal.addedSessions.length +
+                          proposal.movedSessions.length
+                        } Änderungen für diese Woche.`}
                   </Copy>
                   {proposal.addedSessions.map(session => (
                     <Row
@@ -1405,12 +1427,19 @@ export function PlanningScreen({
                   {proposal.warnings.map(warning => (
                     <Notice key={warning}>{warning}</Notice>
                   ))}
-                  {proposal.rationale.length ? (
-                    <Copy muted>{proposal.rationale[0]}</Copy>
-                  ) : null}
+                  {/* Datierte Einträge sind das Protokoll der Routine („2026-09-28:
+                      …“); was sich ändert, steht schon in den Zeilen darüber.
+                      Ein Satz zum Aufbau trägt dagegen eine Begründung. */}
+                  {proposal.rationale
+                    .filter(line => !/^\d{4}-\d{2}-\d{2}:/.test(line))
+                    .slice(0, 1)
+                    .map(line => (
+                      <Copy muted key={line}>
+                        {line}
+                      </Copy>
+                    ))}
                   <Button
                     title="Vorschlag übernehmen"
-                    secondary
                     disabled={working}
                     onPress={() => void applyProposal()}
                   />
@@ -1832,16 +1861,15 @@ export function PlanningScreen({
                 <Text style={styles.closeText}>×</Text>
               </Pressable>
             </View>
-            <ChipGroup
+            <Segmented
               options={SCOPE_OPTIONS}
               value={scope}
               onChange={setScope}
               label="Zeitbudget ändern für"
-              disabled={working}
             />
             {scope === 'week' ? (
               <>
-                <Copy muted>Jeder Tag bleibt eine eigene Ausnahme.</Copy>
+                <Copy muted>Gilt nur für diese Woche.</Copy>
                 {weekDateKeys.map((date, index) => (
                   <Field key={date} label={WEEKDAY_LONG[index]}>
                     <Input
@@ -1861,13 +1889,13 @@ export function PlanningScreen({
             ) : (
               <>
                 <Field label="Wöchentliche Tage">
-                  <ChipGroup
+                  <ToggleChips
                     options={WEEKDAY_SHORT.map((label, value) => ({
                       value: String(value),
                       label,
                     }))}
-                    value=""
-                    onChange={value => {
+                    values={routineDaysDraft.map(String)}
+                    onToggle={value => {
                       const day = Number(value);
                       setRoutineDaysDraft(current =>
                         current.includes(day)
@@ -1878,13 +1906,6 @@ export function PlanningScreen({
                     label="Wochentage im Rhythmus"
                   />
                 </Field>
-                <View style={styles.selectedDays}>
-                  {routineDaysDraft.map(day => (
-                    <Text key={day} style={styles.selectedDay}>
-                      ✓ {WEEKDAY_SHORT[day]}
-                    </Text>
-                  ))}
-                </View>
                 <Field label="Übliches Zeitbudget in Minuten">
                   <Input
                     label="Übliche Minuten"
@@ -1912,7 +1933,6 @@ export function PlanningScreen({
                     ? 'Verfügbarkeit speichern'
                     : 'Rhythmus speichern'
                 }
-                secondary
                 disabled={working}
                 onPress={() => void saveAdjustment()}
               />
@@ -1946,7 +1966,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  addText: { color: color.green, ...typography.label },
+  addText: { color: color.green, fontSize: 26, lineHeight: 30 },
+  addButton: {
+    minWidth: 48,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   sessionLocked: { color: color.muted, ...typography.label },
   calendarRow: { flexDirection: 'row', gap: space.xxs },
   modalScroll: { maxHeight: '90%', flexGrow: 0 },
@@ -2121,12 +2147,4 @@ const styles = StyleSheet.create({
   },
   moveChoiceText: { color: color.text, ...typography.body },
   moveChoiceMeta: { color: color.muted, ...typography.label },
-  selectedDays: {
-    minHeight: 48,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: space.xs,
-    alignItems: 'center',
-  },
-  selectedDay: { color: color.green, ...typography.label },
 });

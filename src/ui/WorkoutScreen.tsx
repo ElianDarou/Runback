@@ -118,12 +118,15 @@ const SetRow = memo(function SetRow({
   suggestion,
   active,
   showRir,
+  markPlanned,
   onComplete,
   onEdit,
 }: {
   set: LoggedSet;
   position: number;
   reference: string | null;
+  /** Unter dem Kopf „Zuletzt“ kennzeichnet die Zeile eine bloße Vorgabe. */
+  markPlanned: boolean;
   suggestion: SetSuggestion | null;
   active: boolean;
   /** Ohne das Feld bleibt die Reserve unbekannt; gespeicherte Werte bleiben. */
@@ -195,9 +198,10 @@ const SetRow = memo(function SetRow({
         <Text numberOfLines={1} style={styles.referenceText}>
           {reference || plannedLabel(set)}
         </Text>
-        <Text style={styles.referenceHint}>
-          {reference ? 'zuletzt' : 'Vorgabe'}
-        </Text>
+        {/* Der Spaltenkopf nennt die Herkunft; nur Abweichungen stehen hier. */}
+        {markPlanned && !reference ? (
+          <Text style={styles.referenceHint}>Vorgabe</Text>
+        ) : null}
       </View>
       <TextInput
         accessibilityLabel={`Gewicht für Satz ${position}${
@@ -301,26 +305,21 @@ function ProgressionNote({
             missing === 1 ? 'Trainingstag' : 'Trainingstage'
           } bis zur ersten Einschätzung des Verlaufs.`
         : 'Der Verlauf ist noch nicht belastbar einzuschätzen.'
-      : assessment.verdict === 'increase'
-      ? 'Der Verlauf zeigt nach oben. Eine kleine Steigerung ist begründet.'
+      : // Nur Beobachtung: Eine Handlung („steigern“, „reduzieren“) gibt es
+      // allein als Empfehlung im Coach (Grundregeln 3 und 15).
+      assessment.verdict === 'increase'
+      ? 'Der Verlauf zeigt nach oben.'
       : assessment.verdict === 'reduce'
-      ? 'Der Verlauf zeigt nach unten. Beim nächsten Mal vorsichtig reduzieren.'
+      ? 'Der Verlauf zeigt nach unten.'
       : assessment.verdict === 'plateau'
       ? `Seit ${Math.round(
           assessment.plateau.spanWeeks,
         )} Wochen nachweislich stabil.`
       : 'Noch nicht klar: Änderung und Stillstand sind beide möglich. So weitermachen ist eine eigene Entscheidung.';
-  const target = assessment.suggestion?.targetRange;
   return (
     <View style={styles.progression}>
       <Text style={styles.progressionHeadline}>{headline}</Text>
       <Text style={styles.progressionDetail}>{detail}</Text>
-      {target ? (
-        <Text style={styles.progressionDetail}>
-          Nächstes Mal etwa {formatWeight(target.targetKg)} kg × {target.reps} (
-          {formatWeight(target.minKg)}–{formatWeight(target.maxKg)} kg).
-        </Text>
-      ) : null}
       <Text style={styles.progressionSource}>
         Schätzung aus {assessment.series.length}{' '}
         {assessment.series.length === 1 ? 'Einheit' : 'Einheiten'}, keine
@@ -557,7 +556,8 @@ export function WorkoutScreen({
             <View style={styles.columns}>
               <Text style={[styles.columnLabel, styles.columnNumber]}>#</Text>
               <Text style={[styles.columnLabel, styles.columnReference]}>
-                Zuletzt
+                {/* Ohne frühere Sätze steht dort die Vorgabe, nicht „zuletzt“. */}
+                {references.some(Boolean) ? 'Zuletzt' : 'Vorgabe'}
               </Text>
               <Text style={[styles.columnLabel, styles.columnInput]}>kg</Text>
               <Text style={[styles.columnLabel, styles.columnInput]}>Wdh.</Text>
@@ -575,6 +575,7 @@ export function WorkoutScreen({
                   onEdit={edit}
                   position={position + 1}
                   reference={references[position]}
+                  markPlanned={references.some(Boolean)}
                   suggestion={suggestions[position]}
                   showRir={showRir}
                   set={set}
@@ -662,8 +663,8 @@ const styles = StyleSheet.create({
     borderBottomColor: color.line,
   },
   headerButton: {
-    width: 40,
-    height: 40,
+    width: 48,
+    height: 48,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
@@ -674,7 +675,7 @@ const styles = StyleSheet.create({
   headerTitle: { color: color.text, fontSize: 17, fontWeight: '600' },
   headerMeta: { color: color.muted, fontSize: 13 },
   finish: {
-    minHeight: 40,
+    minHeight: 48,
     paddingHorizontal: 14,
     borderRadius: 8,
     alignItems: 'center',
@@ -782,7 +783,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  checkLarge: { width: 44, height: 44 },
+  checkLarge: { width: 48, height: 48 },
   checkDone: { backgroundColor: color.green, borderColor: color.green },
   checkMark: { color: color.ink, fontSize: 18, fontWeight: '700' },
 

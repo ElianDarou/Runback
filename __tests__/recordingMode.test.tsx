@@ -172,7 +172,7 @@ describe('Freie Aufzeichnung auf Heute', () => {
     expect(home).not.toContain('Sportart');
     expect(home).not.toContain('Zweck');
     expect(findPressable('Lauf starten')).toBeTruthy();
-    expect(findPressable('Los')).toBeUndefined();
+    expect(findPressable('Aufzeichnung starten')).toBeUndefined();
 
     await tap('Lauf starten');
     const sheet = screenText();
@@ -185,7 +185,7 @@ describe('Freie Aufzeichnung auf Heute', () => {
     expect(stored.settings.sport).toBe('cycling');
 
     await tap('Tempowechsel');
-    await tap('Los');
+    await tap('Aufzeichnung starten');
     expect(nativeCall).toHaveBeenCalledWith(
       'startRun',
       'intervals',
@@ -213,9 +213,9 @@ describe('Freie Aufzeichnung auf Heute', () => {
 
     await tap('Stattdessen etwas anderes starten');
     expect(screenText()).toContain('Radfahren');
-    expect(findPressable('Los')).toBeTruthy();
+    expect(findPressable('Aufzeichnung starten')).toBeTruthy();
 
-    await tap('Los');
+    await tap('Aufzeichnung starten');
     expect(nativeCall).toHaveBeenCalledWith(
       'startRun',
       'free',
@@ -237,7 +237,7 @@ describe('Freie Aufzeichnung auf Heute', () => {
 
     await tapText('Laufen nach');
     expect(screenText()).toContain('Wie möchtest du laufen?');
-    expect(findPressable('Los')).toBeUndefined();
+    expect(findPressable('Aufzeichnung starten')).toBeUndefined();
     await tap('Tempo');
     expect(screenText()).toContain('Minuten pro Kilometer');
     await tap('Ziel übernehmen');
@@ -248,8 +248,8 @@ describe('Freie Aufzeichnung auf Heute', () => {
     });
 
     // Zurück auf Heute steht das Sheet wieder offen, wo man es verlassen hat.
-    expect(findPressable('Los')).toBeTruthy();
-    await tap('Los');
+    expect(findPressable('Aufzeichnung starten')).toBeTruthy();
+    await tap('Aufzeichnung starten');
     expect(nativeCall).toHaveBeenCalledWith(
       'startRun',
       'free',
