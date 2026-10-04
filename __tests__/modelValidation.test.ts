@@ -55,7 +55,7 @@ describe('Modellprüfung', () => {
     expect(result.holdout.personalMedianMae).not.toBeNull();
     expect(result.holdout.repeatLastMae).not.toBeNull();
     expect(result.calibration.bins).toHaveLength(5);
-    expect(result.model_version).toBe('muscle-model-v2');
+    expect(result.model_version).toBe('muscle-model-v3');
   });
 
   it('bleibt bei fehlender Datengrundlage gesperrt und nennt Gründe', () => {
@@ -64,7 +64,7 @@ describe('Modellprüfung', () => {
     expect(verdict.reasons.length).toBeGreaterThan(0);
     expect(verdict.checks.failures.passes).toBe(true);
     expect(verdict.regions_version).toBe('regions-v1');
-    expect(verdict.catalog_version).toBe('catalog-v1');
+    expect(verdict.catalog_version).toBe('catalog-v2');
   });
 
   it('zählt Meldungen eines Erholungsverlaufs als einen Block und verlangt einen spürbaren Gewinn', () => {

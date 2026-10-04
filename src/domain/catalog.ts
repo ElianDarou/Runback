@@ -1,8 +1,9 @@
 import type { Exercise } from './strength';
 import { CATALOG_VERSION } from './strength';
+import { databaseCatalog, EQUIPMENT_LABEL, IMPORT_EXERCISE_ALIASES } from './catalogData';
 
 /**
- * Startkatalog der Übungen, Version `catalog-v1`.
+ * Versionierter Übungskatalog mit lokaler Free-Exercise-DB-Auswahl.
  *
  * `shares` verteilt die Beanspruchung über Basisregionen aus `regions-v1` und
  * summiert sich auf 1. `eccentric` ist der Exzentrik- und Dehnungsfaktor
@@ -354,26 +355,113 @@ const entries: Omit<Exercise, 'origin' | 'catalogVersion'>[] = [
   },
 ];
 
-export const CATALOG: Exercise[] = entries.map(entry => ({
-  ...entry,
-  origin: 'catalog' as const,
+// Diese Exportnamen lassen das Gerät oder die Ausführung offen; die Lücke bleibt erhalten.
+const unspecified: Exercise[] = [
+  {
+    id: 'chest_fly_unspecified',
+    name: 'Fliegende (Gerät unbekannt)',
+    equipment: 'unknown',
+    shares: {},
+    origin: 'catalog',
+  },
+  {
+    id: 'cable_triceps_extension_unspecified',
+    name: 'Trizepsstrecken (Kabel)',
+    equipment: 'cable',
+    shares: {},
+    origin: 'catalog',
+  },
+  {
+    id: 'wide_pull_up',
+    name: 'Klimmzug mit breitem Griff',
+    equipment: 'bodyweight',
+    shares: {},
+    origin: 'catalog',
+  },
+];
+
+export const CATALOG: Exercise[] = databaseCatalog(
+  [
+    ...entries.map(entry => ({
+      ...entry,
+      origin: 'catalog' as const,
+      catalogVersion: CATALOG_VERSION,
+    })),
+    ...unspecified,
+  ],
+  CATALOG_VERSION,
+).map(exercise => ({
+  ...exercise,
   catalogVersion: CATALOG_VERSION,
+  aliases: [
+    ...(exercise.aliases ?? []),
+    ...(IMPORT_EXERCISE_ALIASES[exercise.id] ?? []),
+  ],
 }));
 
 const byId = new Map(CATALOG.map(exercise => [exercise.id, exercise]));
-
-/** Katalogübung oder undefined. Eigene Übungen liegen nicht hier. */
 export function catalogExercise(id: string): Exercise | undefined {
   return byId.get(id);
 }
 
-/** Namenssuche für die Übungsauswahl, ohne Beachtung von Groß- und Kleinschreibung. */
-export function searchCatalog(query: string, limit = 20): Exercise[] {
-  const needle = query.trim().toLowerCase();
-  if (!needle) {
-    return CATALOG.slice(0, limit);
+export function normalizeExerciseName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/ä/g, 'ae')
+    .replace(/ö/g, 'oe')
+    .replace(/ü/g, 'ue')
+    .replace(/ß/g, 'ss')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+const names = new Map<string, Set<string>>();
+for (const exercise of CATALOG) {
+  for (const name of [exercise.name, ...(exercise.aliases ?? [])]) {
+    const key = normalizeExerciseName(name);
+    const ids = names.get(key) ?? new Set<string>();
+    ids.add(exercise.id);
+    names.set(key, ids);
   }
-  return CATALOG.filter(exercise =>
-    exercise.name.toLowerCase().includes(needle),
-  ).slice(0, limit);
+}
+
+/** Nur ein eindeutiger vollständiger Name darf Historie und Katalog verbinden. */
+export function resolveCatalogExercise(name: string): Exercise | undefined {
+  const ids = names.get(normalizeExerciseName(name));
+  return ids?.size === 1 ? byId.get(Array.from(ids)[0]) : undefined;
+}
+
+/** Suchwörter dürfen deutsch oder englisch sein; Gerät und Muskelgruppe helfen beim Finden. */
+export function searchCatalog(query: string, limit = 20): Exercise[] {
+  const needle = normalizeExerciseName(query);
+  const words = needle.split(' ').filter(Boolean);
+  const count = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : 20;
+  return CATALOG.map((exercise, order) => {
+    const labels = [exercise.name, ...(exercise.aliases ?? [])].map(
+      normalizeExerciseName,
+    );
+    const text = normalizeExerciseName(
+      [
+        exercise.name,
+        ...(exercise.aliases ?? []),
+        EQUIPMENT_LABEL[exercise.equipment],
+        ...(exercise.muscleGroups ?? []),
+      ].join(' '),
+    );
+    return {
+      exercise,
+      order,
+      match: words.every(word => text.includes(word)),
+      rank: labels.includes(needle)
+        ? 0
+        : labels.some(label => label.startsWith(needle))
+        ? 1
+        : 2,
+    };
+  })
+    .filter(item => item.match)
+    .sort((a, b) => a.rank - b.rank || a.order - b.order)
+    .slice(0, count)
+    .map(item => item.exercise);
 }

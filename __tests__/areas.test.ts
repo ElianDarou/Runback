@@ -261,3 +261,13 @@ describe('Zwei Bereiche', () => {
 // Typprobe: die Snapshot-Struktur bleibt serialisierbar.
 const _probe: StrengthRecommendation['criteria']['method'] = 'strength-e1rm-v2';
 void _probe;
+
+
+it('sperrt eine parallele Prüfung auch bei unbekannten Muskelregionen', () => {
+  const recommendation = strengthRecommendationFor(legSessions, 'barbell_back_squat', now).recommendation!;
+  const unknown = { ...recommendation, regions: [] };
+  const running = acceptRecommendation(runRecommendation('r', 30 * DAY), 1000);
+  expect(influencedAreas(unknown)).toEqual(['running']);
+  expect(couplingGate(unknown, [running]).blocked).toMatch(/Laufen/);
+  expect(couplingGate(unknown, []).modelVersion).toBe('coupling-v2');
+});

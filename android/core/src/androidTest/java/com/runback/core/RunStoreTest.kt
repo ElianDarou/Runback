@@ -312,4 +312,69 @@ class RunStoreTest {
         assertNotNull(store.detail(id))
         assertEquals(1, store.listRuns().length())
     }
+    @Test
+    fun strongReimportPreservesOriginalSetsAndActiveTraining() {
+        val workout = StrengthWorkout("strong:test", 1234, "Push", durationSec = 60.0,
+            extra = "{\"durationKnown\":true,\"modelVersion\":\"strong-import-v3\"}")
+        val sets = listOf(StrengthSet("Bench", 1, 60.0, "kg", 8, restSeconds = 90.0))
+        val original = StrengthImport.document(workout, sets)
+        store.putDocument("strength_active", JSONObject().put("id", "ongoing"))
+        assertEquals("imported", store.addStrengthWorkout(workout, sets, original).getString("status"))
+        val changed = listOf(StrengthSet("Bench", 1, 40.0, "kg", 8))
+        assertEquals("duplicate", store.addStrengthWorkout(workout, changed, StrengthImport.document(workout, changed)).getString("status"))
+        assertEquals(1, store.strengthSummary().getInt("workouts"))
+        assertEquals(480.0, store.strengthSummary().getJSONArray("recent").getJSONObject(0).getDouble("volume"), 0.0)
+        val imported = store.strengthImportCandidates().getJSONArray("workouts").getJSONObject(0)
+        assertEquals(60.0, imported.getJSONArray("sets").getJSONObject(0).getDouble("weight"), 0.0)
+        assertEquals(90.0, imported.getJSONArray("sets").getJSONObject(0).getDouble("restSeconds"), 0.0)
+        assertEquals("ongoing", store.getDocument("strength_active")!!.getString("id"))
+    }
+
+    @Test
+    fun strongCandidatesUseLatestNamesAndLeaveUnknownQuantitiesNull() {
+        val sets = listOf(StrengthSet("Bench", 1, 60.0, "unknown", 8))
+        val old = StrengthWorkout("strong:old", 1234, "Push", extra = "{\"durationKnown\":false}")
+        val recent = old.copy(id = "strong:recent", time = 5678, name = " push ")
+        listOf(old, recent).forEach { store.addStrengthWorkout(it, sets, StrengthImport.document(it, sets)) }
+        val candidates = store.strengthImportCandidates().getJSONArray("workouts")
+        assertEquals(1, candidates.length())
+        assertEquals("strong:recent", candidates.getJSONObject(0).getString("id"))
+        assertTrue(candidates.getJSONObject(0).isNull("durationSeconds"))
+        val summary = store.strengthSummary().getJSONArray("recent").getJSONObject(0)
+        assertTrue(summary.isNull("volume"))
+        assertTrue(summary.isNull("durationSec"))
+    }
+
+    @Test
+    fun strongReimportAddsNewInterpretationBesideLegacyOriginals() {
+        val legacy = StrengthWorkout("strong:legacy", 1234, "A")
+        store.addStrengthWorkout(legacy, listOf(StrengthSet("Squat", 1, 20.0, "kg", 8)))
+        val parsed = StrengthImport.document(legacy, listOf(StrengthSet("Squat", 1, 30.0, "kg", 8, restSeconds = 90.0)))
+        store.addStrengthWorkout(legacy, listOf(StrengthSet("Squat", 1, 30.0, "kg", 8)), parsed)
+        assertEquals(160.0, store.strengthSummary().getJSONArray("recent").getJSONObject(0).getDouble("volume"), 0.0)
+        assertEquals(30.0, store.strengthImportCandidates().getJSONArray("workouts").getJSONObject(0)
+            .getJSONArray("sets").getJSONObject(0).getDouble("weight"), 0.0)
+    }
+
+    @Test
+    fun strongBackupRestoresSetsPausesProvenanceAndTemplates() {
+        val workout = StrengthWorkout("strong:backup", 1234, "A", durationSec = 60.0,
+            extra = "{\"durationKnown\":true,\"modelVersion\":\"strong-import-v3\",\"workoutNotes\":\"Notiz\"}")
+        val sets = listOf(StrengthSet("Bench", 1, 60.0, "kg", 8, rpe = 9.0, restSeconds = 90.0, kind = "warmup"))
+        store.addStrengthWorkout(workout, sets, StrengthImport.document(workout, sets))
+        val template = JSONObject().put("templates", JSONArray().put(JSONObject().put("id", "import-template:a")))
+        store.putDocument("strength_templates", template)
+        val backup = ByteArrayOutputStream().also(store::backup).toByteArray()
+        store.clearAllData()
+        assertTrue(store.restore(ByteArrayInputStream(backup)).getBoolean("restored"))
+        val imported = store.strengthImportCandidates().getJSONArray("workouts").getJSONObject(0)
+        assertEquals("strong-import-v3", imported.getString("modelVersion"))
+        assertEquals("Notiz", imported.getString("workoutNotes"))
+        val set = imported.getJSONArray("sets").getJSONObject(0)
+        assertEquals(90.0, set.getDouble("restSeconds"), 0.0)
+        assertEquals("warmup", set.getString("kind"))
+        assertEquals(9.0, set.getDouble("rpe"), 0.0)
+        assertEquals(template.toString(), store.getDocument("strength_templates")!!.toString())
+    }
+
 }

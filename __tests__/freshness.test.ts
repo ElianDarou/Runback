@@ -252,7 +252,7 @@ describe('Reiz- und Frischemodell', () => {
     }
     expect(result.model_version).toBe(MUSCLE_MODEL_CONSTANTS.modelVersion);
     expect(result.regions_version).toBe('regions-v1');
-    expect(result.catalog_version).toBe('catalog-v1');
+    expect(result.catalog_version).toBe('catalog-v2');
   });
 
   it('markiert eine Zukunftsauswertung ausdrücklich als Prognose', () => {

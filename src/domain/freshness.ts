@@ -29,9 +29,10 @@ import { catalogExercise } from './catalog';
  *
  * v2: kein Ersatz-Körpergewicht, keine Planwerte als Ist, RIR nur aus
  * Nutzereingabe oder unabhängiger Referenz, Epley nur bis zwölf Wdh.
+ * v3: Datenbankübungen ohne Zahlenmodell und unbekannte Lastarten liefern keinen Reiz.
  */
 export const MUSCLE_MODEL_CONSTANTS = Object.freeze({
-  modelVersion: 'muscle-model-v2',
+  modelVersion: 'muscle-model-v3',
   effectiveRepLambda: 4,
   relativeLoadGamma: 1,
   fastRiseHours: 0.5,
@@ -405,6 +406,9 @@ const setLoad = (set: LoggedSet, exercise: Exercise, options: SetStimulusOptions
   const loadKind = set.planned.loadKind;
   const reasons: string[] = [];
   const uncertain = false;
+  if (loadKind === 'unknown') {
+    return { weightKg: null, uncertain: true, reasons: ['Die Lastart ist unbekannt.'] };
+  }
   if (loadKind === 'kg') {
     return {
       weightKg: finite(raw) && raw > 0 ? raw : null,
@@ -617,8 +621,12 @@ export function calculateSetStimulus(
   if (exercise.origin !== 'catalog') {
     uncertaintyReasons.push('Eigene Übung: Anteile sind keine Katalogannahme.');
   }
+  if (!finite(exercise.eccentric) || !finiteShareSet(exercise)) {
+    uncertaintyReasons.push('Muskelanteile oder Belastungsfaktor dieser Übung sind unbekannt.');
+  }
   const stimulus =
-    nEff > 0 && relativeLoad !== null && set.completedAt !== undefined
+    nEff > 0 && relativeLoad !== null && set.completedAt !== undefined &&
+      finite(exercise.eccentric) && finiteShareSet(exercise)
       ? nEff * relativeLoad ** MUSCLE_MODEL_CONSTANTS.relativeLoadGamma * exercise.eccentric
       : null;
   // Feste Zuschläge, keine geschätzte Streuung.
