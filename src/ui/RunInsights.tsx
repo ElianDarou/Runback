@@ -371,7 +371,7 @@ export function RunInsights({
                 ? `Kadenz ${formatSignedPercent(fatigue.cadenceChangePercent)}`
                 : null,
               fatigue.strideChangePercent !== undefined
-                ? `Schritt ${formatSignedPercent(fatigue.strideChangePercent)}`
+                ? `Schrittlänge ${formatSignedPercent(fatigue.strideChangePercent)}`
                 : null,
             ]
               .filter(Boolean)
