@@ -1,6 +1,6 @@
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { Text } from 'react-native';
+import { BackHandler, Text, TextInput } from 'react-native';
 
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
@@ -31,6 +31,9 @@ jest.mock('../src/native', () => {
       saveSettings: jest.fn(() => Promise.resolve()),
       feedback: jest.fn(() => Promise.resolve()),
       strength: jest.fn(() => Promise.resolve(emptyStrengthState())),
+      saveStrengthTemplates: jest.fn(templates =>
+        Promise.resolve({ ...emptyStrengthState(), templates }),
+      ),
       strengthSessions: jest.fn(() => Promise.resolve([])),
       sorenessReports: jest.fn(() => Promise.resolve([])),
       saveStrengthSession: jest.fn(() => Promise.resolve()),
@@ -51,6 +54,9 @@ import {
   buildRunAnalysisExport,
 } from '../src/domain/runReport';
 import type { RunSummary } from '../src/domain';
+import { createTemplate, addTemplateExercise } from '../src/domain/plans';
+import { catalogExercise } from '../src/domain/catalog';
+import { emptyStrengthState } from '../src/domain/strength';
 
 const DAY = 86400000;
 /** Zwei vergleichbare Vorläufe: erst der Median mehrerer Läufe trägt eine Empfehlung. */
@@ -483,6 +489,110 @@ describe('Fokus', () => {
     await act(async () => {
       tree.unmount();
     });
+  });
+});
+
+describe('Vorlagenverwaltung', () => {
+  it('öffnet über Einstellungen die vorhandene Verwaltung und speichert Bearbeiten, Duplizieren und Löschen', async () => {
+    const template = addTemplateExercise(
+      createTemplate(100, 'Oberkörper', []),
+      catalogExercise('barbell_bench_press')!,
+    );
+    jest.mocked(native.strength).mockResolvedValueOnce({
+      ...emptyStrengthState(),
+      templates: [template],
+    });
+    jest.mocked(native.saveStrengthTemplates).mockClear();
+    const tree = await render();
+    try {
+      await tap(tree, 'Einstellungen');
+      await tap(tree, 'Vorlagen verwalten');
+      expect(screenText(tree)).toContain('Kraftvorlagen');
+      expect(screenText(tree)).toContain('Oberkörper');
+      expect(native.saveStrengthTemplates).not.toHaveBeenCalled();
+
+      await tap(tree, 'Oberkörper bearbeiten');
+      await act(async () => {
+        tree.root
+          .findAllByType(TextInput)
+          .find((node) => node.props.accessibilityLabel === 'Name des Plans')!
+          .props.onChangeText('Push');
+      });
+      await tap(tree, 'Plan speichern');
+      expect(
+        jest.mocked(native.saveStrengthTemplates).mock.calls.at(-1)![0][0].name,
+      ).toBe('Push');
+      await tap(tree, 'Push duplizieren');
+      const duplicated = jest
+        .mocked(native.saveStrengthTemplates)
+        .mock.calls.at(-1)![0];
+      expect(duplicated).toHaveLength(2);
+      expect(duplicated[0].id).toBe(template.id);
+      expect(duplicated[1].id).not.toBe(template.id);
+      const writes = jest.mocked(native.saveStrengthTemplates).mock.calls
+        .length;
+      await tap(tree, 'Push löschen');
+      expect(native.saveStrengthTemplates).toHaveBeenCalledTimes(writes);
+      await tap(tree, 'Löschen abbrechen');
+      expect(native.saveStrengthTemplates).toHaveBeenCalledTimes(writes);
+      await tap(tree, 'Push löschen');
+      await tap(tree, 'Löschen von Push bestätigen');
+      expect(
+        jest.mocked(native.saveStrengthTemplates).mock.calls.at(-1)![0],
+      ).toEqual([duplicated[1]]);
+      await tap(tree, 'Zurück');
+      expect(screenText(tree)).toContain('Geräte & Verbindungen');
+      expect(screenText(tree)).toContain('Vorlagen verwalten');
+      await tap(tree, 'Plan');
+      await tap(tree, 'Vorlagen');
+      expect(screenText(tree)).toContain(duplicated[1].name);
+      await tap(tree, 'Zurück');
+      expect(screenText(tree)).not.toContain('Geräte & Verbindungen');
+      expect(screenText(tree)).toContain('Vorlagen');
+    } finally {
+      await act(async () => tree.unmount());
+    }
+  });
+
+  it('öffnet ohne Planung und Krafttraining Laufvorlagen und kehrt per Android-Zurück zu Einstellungen zurück', async () => {
+    jest.mocked(native.state).mockResolvedValueOnce({
+      runs: [],
+      recording: null,
+      capabilities: {},
+      settings: {
+        onboardedAt: 1,
+        features: {
+          areas: { running: true, strength: false },
+          planning: { enabled: false },
+        },
+        presets: [
+          {
+            id: 'run-template',
+            name: 'Feierabend',
+            purpose: 'easy',
+            minutes: 20,
+            cues: false,
+          },
+        ],
+      } as any,
+    });
+    const backSpy = jest.spyOn(BackHandler, 'addEventListener');
+    const tree = await render();
+    try {
+      expect(tabLabels(tree)).not.toContain('Plan');
+      await tap(tree, 'Einstellungen');
+      await tap(tree, 'Vorlagen verwalten');
+      expect(screenText(tree)).toContain('Feierabend');
+      const back = backSpy.mock.calls.at(-1)![1];
+      await act(async () => {
+        expect(back()).toBe(true);
+      });
+      expect(screenText(tree)).toContain('Vorlagen verwalten');
+      expect(screenText(tree)).toContain('Geräte & Verbindungen');
+    } finally {
+      await act(async () => tree.unmount());
+      backSpy.mockRestore();
+    }
   });
 });
 
