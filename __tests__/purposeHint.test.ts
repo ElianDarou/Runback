@@ -3,11 +3,12 @@ import {
   purposeHintReason,
   suggestRunPurpose,
 } from '../src/domain/purposeHint';
+import type { MaxHeartRate } from '../src/domain/insights';
 import type { RunSummary, SegmentAggregate } from '../src/domain/types';
 
 const DAY = 24 * 60 * 60 * 1000;
 const START = Date.UTC(2026, 9, 1, 7);
-const MAX = 190;
+const MAX: MaxHeartRate = { value: 190, source: 'setting' };
 
 const kmSegments = (paces: number[]): SegmentAggregate[] =>
   paces.map(pace => ({ distanceMeters: 1000, durationSeconds: pace }));
@@ -44,6 +45,7 @@ describe('suggestRunPurpose', () => {
     expect(hint?.purpose).toBe('race');
     expect(hint?.signals).toEqual(['heart_rate_high', 'pace_even']);
     expect(hint?.model_version).toBe(PURPOSE_HINT_VERSION);
+    expect(hint?.maxHeartRate).toEqual(MAX);
   });
 
   it('schlägt bei niedrigem Puls eine ruhige Runde vor', () => {
@@ -70,6 +72,9 @@ describe('suggestRunPurpose', () => {
     );
     expect(hint?.purpose).toBe('long');
     expect(hint?.signals).toContain('longer_than_usual');
+    expect(hint?.baselineRunIds).toEqual(['old-0', 'old-1', 'old-2', 'old-3']);
+    // Ohne Puls wurde kein Maxpuls benutzt, also steht keiner in der Spur.
+    expect(hint?.maxHeartRate).toBeUndefined();
   });
 
   it('bleibt ohne Vergleichsläufe bei einer ruhigen Runde', () => {
@@ -96,12 +101,78 @@ describe('suggestRunPurpose', () => {
     expect(hint?.signals).toContain('pace_varied');
   });
 
-  it('schlägt auf hügeliger Strecke keinen Tempowechsel vor', () => {
+  const intervalRun = (patch: Partial<RunSummary>) =>
+    run({
+      avgHeartRate: 168,
+      heartRateCoverage: 0.9,
+      distanceMeters: 6000,
+      segments: kmSegments([240, 380, 240, 380, 240, 380]),
+      ...patch,
+    });
+
+  it('liest die Höhe aus der nativen Aufzeichnung', () => {
+    const elevation = (ascentMeters: number) => ({
+      model_version: 'elevation-1',
+      available: true as const,
+      source: 'barometer' as const,
+      reference: 'start' as const,
+      ascentMeters,
+      descentMeters: ascentMeters,
+      rejectedSamples: 0,
+      hysteresisMeters: 2,
+    });
+    expect(
+      suggestRunPurpose(intervalRun({ elevation: elevation(200) }), [], MAX),
+    ).toBeUndefined();
+    expect(
+      suggestRunPurpose(intervalRun({ elevation: elevation(20) }), [], MAX)
+        ?.purpose,
+    ).toBe('intervals');
+  });
+
+  it('schlägt auf hügeliger oder unbekannter Strecke keinen Tempowechsel vor', () => {
+    expect(
+      suggestRunPurpose(intervalRun({ elevationGainMeters: 300 }), [], MAX),
+    ).toBeUndefined();
+    expect(suggestRunPurpose(intervalRun({}), [], MAX)).toBeUndefined();
+    expect(
+      suggestRunPurpose(
+        intervalRun({
+          elevationGainMeters: 300,
+          elevation: {
+            model_version: 'elevation-1',
+            available: false,
+            reason: 'Kein Barometer',
+          },
+        }),
+        [],
+        MAX,
+      ),
+    ).toBeUndefined();
+  });
+
+  it('braucht für Tempowechsel Puls oder eine Angabe zur Atmung', () => {
+    expect(
+      suggestRunPurpose(
+        intervalRun({
+          avgHeartRate: undefined,
+          heartRateCoverage: undefined,
+          elevationGainMeters: 10,
+        }),
+        [],
+        MAX,
+      ),
+    ).toBeUndefined();
+  });
+
+  it('hält stetiges Nachlassen eines harten Laufs nicht für Tempowechsel', () => {
     expect(
       suggestRunPurpose(
         run({
-          elevationGainMeters: 300,
-          segments: kmSegments([240, 380, 240, 380, 240, 380]),
+          avgHeartRate: 172,
+          heartRateCoverage: 0.95,
+          elevationGainMeters: 10,
+          segments: kmSegments([240, 270, 300, 350, 400]),
         }),
         [],
         MAX,

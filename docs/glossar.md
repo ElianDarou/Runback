@@ -30,7 +30,7 @@ rechts wozu es dient. Nur Begriffe, die im Produkt wirklich vorkommen.
 | Trainingstag | `collapseToDays` | Zwei Einheiten am selben Tag zählen im Kraftverlauf einmal. |
 | Datenqualität | `QualityReport` | Wie vollständig und passend die Daten für genau diese Aussage sind. |
 | Laufart | `RunPurpose` | Wie ein Lauf gemeint war: Einfach laufen (`free`), Ruhig (`easy`), Lange Runde (`long`), Tempowechsel (`intervals`), Auf Zeit (`race`, auch die tägliche Hausrunde auf Bestzeit). Noch offen (`unknown`) ist keine Wahl, sondern der Zustand bis zur Angabe. |
-| Vorschlag zur Laufart | `suggestRunPurpose` | Nach dem Lauf aus Puls gegen Maxpuls oder Atmung, Temposchwankung und Länge. Nur Vorschau; gilt erst nach „Stimmt“ und trägt dann seine Version. |
+| Vorschlag zur Laufart | `suggestRunPurpose` | Nach dem Lauf aus Puls gegen Maxpuls oder Atmung, Temposchwankung (Tempowechsel nur mit mehrfachem Hin und Her auf bekannt flacher Strecke) und Länge. Nur Vorschau; gilt erst nach „Stimmt“ und speichert dann Version, Signale, Maxpuls mit Herkunft und Vergleichsläufe. Eine eigene Wahl löscht diese Spur. |
 | Sportart | `Sport` | `running`, `cycling`; fehlt das Feld, gilt Laufen. |
 | Effort | `EffortEstimate` | Modellierte äußere Anforderung eines Laufs. Kein Fitness- oder Ermüdungswert. |
 | Tempoindex | `EffortEstimate` | Einfaches Tempomaß relativ zu 3 m/s. Keine Leistung, kein Score. |

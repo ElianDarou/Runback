@@ -516,7 +516,44 @@ describe('Laufart nach dem Lauf', () => {
     expect(native.feedback).toHaveBeenCalledWith('five', {
       purpose: 'race',
       purposeConfirmed: true,
-      purposeHint: 'runback-purpose-hint-1',
+      purposeHint: {
+        model_version: 'runback-purpose-hint-2',
+        purpose: 'race',
+        signals: ['heart_rate_high'],
+        maxHeartRate: { value: 190, source: 'setting' },
+      },
+    });
+  });
+
+  it('löscht bei eigener Wahl die Spur eines Vorschlags und zeigt sie sonst unter Herkunft', async () => {
+    stored.runs = [
+      normalizeRun({
+        ...finished({ id: 'hinted' }),
+        feedback: {
+          purpose: 'race',
+          purposeConfirmed: true,
+          purposeHint: {
+            model_version: 'runback-purpose-hint-2',
+            purpose: 'race',
+            signals: ['heart_rate_high'],
+            maxHeartRate: { value: 190, source: 'setting' },
+          },
+        },
+      }),
+    ];
+    await mount();
+    await openRun();
+    expect(screenText()).not.toContain('Wie war der Lauf gemeint?');
+    await tap('Daten & Herkunft');
+    expect(screenText()).toContain(
+      'Vorschlag bestätigt · runback-purpose-hint-2 · Maxpuls 190 (eingestellt)',
+    );
+    await tap('Bearbeiten & verwalten');
+    await tapText('Tempowechsel');
+    expect(native.feedback).toHaveBeenCalledWith('hinted', {
+      purpose: 'intervals',
+      purposeConfirmed: true,
+      purposeHint: null,
     });
   });
 

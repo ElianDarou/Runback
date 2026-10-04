@@ -98,7 +98,11 @@ import { RunIntegrations } from './RunIntegrations';
 import { KilometerTable, RunSeriesPanel } from './RunCharts';
 import { RunInsights, toneFor } from './RunInsights';
 import { maxHeartRate, recentComparison } from '../domain/insights';
-import { purposeHintReason, suggestRunPurpose } from '../domain/purposeHint';
+import {
+  purposeHintProvenance,
+  purposeHintReason,
+  suggestRunPurpose,
+} from '../domain/purposeHint';
 import {
   compassLabel,
   kilometerSplits,
@@ -3375,6 +3379,8 @@ export function RunbackApp({
           .join(' · ')
       : '';
     // Jede Wahl hier ist ausdrücklich; danach fragt die Seite nicht mehr nach.
+    // Eine eigene Wahl löscht die Spur eines früher bestätigten Vorschlags;
+    // das Ereignisprotokoll im Speicher behält sie.
     const purposeChips = (
       <Field label="Laufart">
         <ChipGroup
@@ -3382,7 +3388,11 @@ export function RunbackApp({
           options={purposes.map(p => ({ value: p.value, label: p.label }))}
           value={selectablePurpose(selected.purpose)}
           onChange={value =>
-            updateFeedback({ purpose: value, purposeConfirmed: true })
+            updateFeedback({
+              purpose: value,
+              purposeConfirmed: true,
+              purposeHint: null,
+            })
           }
           disabled={busy}
         />
@@ -3396,7 +3406,7 @@ export function RunbackApp({
       ? suggestRunPurpose(
           selected,
           runningRuns,
-          maxHeartRate(settings.maxHeartRate, runningRuns)?.value,
+          maxHeartRate(settings.maxHeartRate, runningRuns),
         )
       : undefined;
     if (feelingOnly) {
@@ -3605,13 +3615,13 @@ export function RunbackApp({
                   {purposeHintReason(purposeHint)}.
                 </Copy>
                 <Button
-                  small
+                  secondary
                   title="Stimmt"
                   onPress={() =>
                     updateFeedback({
                       purpose: purposeHint.purpose,
                       purposeConfirmed: true,
-                      purposeHint: purposeHint.model_version,
+                      purposeHint: purposeHintProvenance(purposeHint),
                     })
                   }
                   disabled={busy}
@@ -3706,6 +3716,22 @@ export function RunbackApp({
             />
             {snapshot ? (
               <Row title="Modell" subtitle={snapshot.model_version} />
+            ) : null}
+            {selected.purposeHint ? (
+              <Row
+                title="Laufart"
+                subtitle={`Vorschlag bestätigt · ${
+                  selected.purposeHint.model_version
+                }${
+                  selected.purposeHint.maxHeartRate
+                    ? ` · Maxpuls ${selected.purposeHint.maxHeartRate.value} (${
+                        selected.purposeHint.maxHeartRate.source === 'setting'
+                          ? 'eingestellt'
+                          : 'geschätzt'
+                      })`
+                    : ''
+                }`}
+              />
             ) : null}
             {snapshot ? (
               <Section title="Modellierte Anforderung">
@@ -4230,11 +4256,11 @@ export function RunbackApp({
   );
 
   // Vorlagen an einem Ort: Kraftvorlagen (Übungsfolgen) und Laufvorlagen
-  // (Zweck und Zeit für den Start). Beide erscheinen im Start-Sheet.
+  // (Laufart und Zeit für den Start). Beide erscheinen im Start-Sheet.
   const renderPresets = () => (
     <>
       <Copy muted>
-        Eine Laufvorlage setzt Zweck und Zeit beim Start. Die aktuelle Wahl
+        Eine Laufvorlage setzt Laufart und Zeit beim Start. Die aktuelle Wahl
         speicherst du hier als neue Vorlage.
       </Copy>
       <Section title="Aktuelle Einstellung speichern">
@@ -4479,7 +4505,7 @@ export function RunbackApp({
       <Title>Wie Runback rechnet</Title>
       <Section title="Was bereits möglich ist">
         <Copy>
-          Basiswerte, Datenqualität und Einordnung des Laufzwecks werden lokal
+          Basiswerte, Datenqualität und Einordnung der Laufart werden lokal
           aus deinen gespeicherten Daten berechnet.
         </Copy>
         <Copy muted>

@@ -1691,7 +1691,7 @@ export function PlanningScreen({
                         current ? { ...current, title } : current,
                       )
                     }
-                    placeholder="Zum Beispiel Lockerer Lauf"
+                    placeholder="Zum Beispiel Ruhige Runde"
                   />
                 </Field>
                 <Field label="Dauer in Minuten">

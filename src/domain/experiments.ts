@@ -290,7 +290,7 @@ export function evaluateExperiment(
     return {
       ...result,
       verdict: 'improved',
-      summary: `Bei erhaltenem Zweck und Umfang lief die zweite Hälfte in ${test.positives} von ${outcomes.length} umgesetzten Läufen gleichmäßiger als in den Vergleichsläufen; das ist häufiger als zufällig. Über Tempo oder Fitness sagt das nichts.${causal}`,
+      summary: `Bei gleicher Laufart und gleichem Umfang lief die zweite Hälfte in ${test.positives} von ${outcomes.length} umgesetzten Läufen gleichmäßiger als in den Vergleichsläufen; das ist häufiger als zufällig. Über Tempo oder Fitness sagt das nichts.${causal}`,
     };
   }
   if (test.pValue <= c.signTestAlpha && test.negatives > test.positives) {
