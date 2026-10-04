@@ -58,6 +58,7 @@ import { createTemplate, addTemplateExercise } from '../src/domain/plans';
 import { catalogExercise } from '../src/domain/catalog';
 import { emptyStrengthState } from '../src/domain/strength';
 import { parseStrongCsvPreview } from '../src/domain/vendorImports';
+import { importedStrengthSession } from '../src/domain/strengthImports';
 
 const DAY = 86400000;
 /** Zwei vergleichbare Vorläufe: erst der Median mehrerer Läufe trägt eine Empfehlung. */
@@ -1152,5 +1153,34 @@ describe('Laufart nachtragen', () => {
     const text = screenText(tree);
     expect(text).toContain('Speicher voll.');
     expect(text).toContain('Noch 1 Lauf ohne Laufart');
+  });
+});
+
+describe('Krafthistorie nach Import', () => {
+  it('aktualisiert Verlauf und Statistik direkt nach dem Import', async () => {
+    const sessions = parseStrongCsvPreview(
+      `Date;Workout Name;Exercise Name;Set Order;Weight (kg);Reps\n${Date.now() - DAY};Import Push;Bench Press (Barbell);1;80;8`,
+    ).workouts.map(importedStrengthSession);
+    const previousCall = jest.mocked(nativeCall).getMockImplementation();
+    const previousSessions = jest.mocked(native.strengthSessions).getMockImplementation();
+    jest.mocked(nativeCall).mockImplementation(async method => (
+      method === 'importFiles' ? { state: 'done', strength: 1 } : {}
+    ) as never);
+    jest.mocked(native.strengthSessions).mockResolvedValueOnce([]).mockResolvedValueOnce(sessions);
+    const tree = await render();
+    try {
+      await tap(tree, 'Einstellungen');
+      await tap(tree, 'Deine Daten');
+      await tap(tree, 'Dateien importieren');
+      await tap(tree, 'Verlauf');
+      expect(screenText(tree)).toContain('Import Push');
+      await tap(tree, 'Statistik');
+      expect(screenText(tree)).toContain('Bankdrücken');
+      expect(screenText(tree)).not.toContain('Noch keine Läufe');
+    } finally {
+      await act(async () => tree.unmount());
+      jest.mocked(nativeCall).mockImplementation(previousCall!);
+      jest.mocked(native.strengthSessions).mockImplementation(previousSessions!);
+    }
   });
 });

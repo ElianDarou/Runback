@@ -1281,6 +1281,12 @@ export function RunbackApp({
           setImportStatus(result);
           if (result.state !== 'running') {
             void refresh();
+            void native.strengthSessions(500)
+              .then(sessions => {
+                setStrengthSessions(sessions);
+                setStrengthHistoryAvailable(true);
+              })
+              .catch(() => setStrengthHistoryAvailable(false));
           }
         })
         .catch(() => {});
@@ -1882,6 +1888,8 @@ export function RunbackApp({
         const result = await nativeCall<any>('importFiles');
         setImportStatus(result.cancelled ? null : result);
         await refresh();
+        setStrengthSessions(await native.strengthSessions(500));
+        setStrengthHistoryAvailable(true);
       } finally {
         clearInterval(timer);
       }

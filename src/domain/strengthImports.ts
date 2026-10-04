@@ -1,9 +1,89 @@
 import { resolveCatalogExercise } from './catalog';
-import type { PlannedSet, WorkoutTemplate } from './strength';
+import type { PlannedSet, StrengthSession, WorkoutTemplate } from './strength';
 import { CATALOG_VERSION } from './strength';
 import type { StrongWorkout } from './vendorImports';
 
 export const STRENGTH_IMPORT_TEMPLATE_VERSION = 'strength-import-template-v2';
+export const STRENGTH_IMPORT_SESSION_VERSION = 'strength-import-session-v1';
+
+/** Nur eine Ansicht der Originale: Satzabschluss bekannt, Satzzeit und RIR unbekannt. */
+export function importedStrengthSession(
+  workout: StrongWorkout,
+): StrengthSession {
+  const exercises: StrengthSession['exercises'] = [];
+  workout.sets.forEach((set, index) => {
+    const exercise = resolveCatalogExercise(set.exercise);
+    const exerciseId =
+      exercise?.id ??
+      `imported:${encodeURIComponent(
+        set.exercise.trim().toLowerCase().replace(/\s+/g, ' '),
+      )}`;
+    const kg =
+      set.weight !== null && set.weight >= 0
+        ? set.weightUnit === 'kg'
+          ? set.weight
+          : set.weightUnit === 'lb'
+          ? set.weight * 0.45359237
+          : undefined
+        : undefined;
+    const bodyweight = exercise?.equipment === 'bodyweight';
+    const planned: PlannedSet = {
+      kind:
+        set.kind && set.kind !== 'normal'
+          ? set.kind
+          : set.seconds !== null && set.reps === null
+          ? 'timed'
+          : 'normal',
+      loadKind:
+        bodyweight && (set.weight === null || set.weight === 0)
+          ? 'bodyweight'
+          : bodyweight && kg !== undefined
+          ? 'bodyweight_plus'
+          : kg !== undefined
+          ? 'kg'
+          : 'unknown',
+    };
+    const logged = {
+      id: `${workout.id ?? `${workout.time}|${workout.name}`}:set:${index}`,
+      planned,
+      completed: true,
+      actualReps: set.reps ?? undefined,
+      actualSeconds: set.seconds ?? undefined,
+      actualWeightKg: kg,
+    };
+    const previous = exercises[exercises.length - 1];
+    if (previous?.exerciseId === exerciseId) previous.sets.push(logged);
+    else
+      exercises.push({
+        exerciseId,
+        name: exercise?.name ?? set.exercise,
+        sets: [logged],
+      });
+  });
+  const duration = workout.durationSeconds;
+  return {
+    id: workout.id ?? `${workout.time}|${workout.name}`,
+    kind: 'strength',
+    name: workout.name,
+    startTime: workout.time,
+    endTime:
+      duration !== null && Number.isFinite(duration) && duration > 0
+        ? workout.time + duration * 1000
+        : undefined,
+    status: 'finished',
+    exercises,
+    currentExercise: 0,
+    note: workout.workoutNotes || undefined,
+    modelVersion: STRENGTH_IMPORT_SESSION_VERSION,
+    catalogVersion: CATALOG_VERSION,
+    importSource: {
+      workoutId: workout.id ?? `${workout.time}|${workout.name}`,
+      source: workout.source ?? 'strong',
+      importVersion: workout.modelVersion ?? 'unknown',
+      incomplete: workout.incomplete === true,
+    },
+  };
+}
 export interface ImportedTemplate {
   template: WorkoutTemplate;
   source: StrongWorkout;

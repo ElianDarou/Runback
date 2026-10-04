@@ -16,6 +16,7 @@ import { isAccidentalRun, isRun } from './sport';
  */
 
 const FOUR_WEEKS = 28;
+export const DEVELOPMENT_VERSION = 'development-v2';
 
 /**
  * The app deliberately loads bounded history pages for the overview screens.
@@ -54,7 +55,7 @@ export interface StrengthHistoryItem {
   id: string;
   name: string;
   startTime: number;
-  endTime: number;
+  endTime?: number;
   completedSets: number;
   volumeKg: number;
 }
@@ -100,6 +101,7 @@ export interface DevelopmentComparison {
 }
 
 export interface DevelopmentFacts {
+  version: typeof DEVELOPMENT_VERSION;
   planPosition: PlanPosition | null;
   /** Synonyme für Aufrufer, die die beiden Fenster als `periods` lesen. */
   current: DevelopmentPeriod;
@@ -203,18 +205,25 @@ const actualSetValues = (session: StrengthSession, now: number) => {
   for (const exercise of session.exercises || []) {
     for (const set of exercise.sets || []) {
       const completedAt = set.completedAt;
+      const importedCompletion = Boolean(
+        session.importSource &&
+          set.completed === true &&
+          completedAt === undefined,
+      );
       if (
         set.skipped ||
-        !validTimestamp(completedAt) ||
-        completedAt > now ||
-        !validTimestamp(startTime) ||
-        !validTimestamp(endTime) ||
-        completedAt < startTime ||
-        completedAt > endTime
+        (!importedCompletion &&
+          (!validTimestamp(completedAt) ||
+            completedAt > now ||
+            !validTimestamp(startTime) ||
+            !validTimestamp(endTime) ||
+            completedAt < startTime ||
+            completedAt > endTime))
       ) {
         continue;
       }
       const hasActual =
+        importedCompletion ||
         (finite(set.actualReps) && set.actualReps > 0) ||
         (finite(set.actualSeconds) && set.actualSeconds > 0);
       if (!hasActual) {
@@ -234,13 +243,24 @@ const actualSetValues = (session: StrengthSession, now: number) => {
   return { completedSets, volumeKg };
 };
 
-const isCompletedStrength = (session: StrengthSession, now: number): boolean =>
-  session.status === 'finished' &&
-  validTimestamp(session.startTime) &&
-  validTimestamp(session.endTime) &&
-  session.startTime <= now &&
-  session.endTime <= now &&
-  session.endTime >= session.startTime;
+const isCompletedStrength = (
+  session: StrengthSession,
+  now: number,
+): boolean => {
+  if (
+    session.status !== 'finished' ||
+    !validTimestamp(session.startTime) ||
+    session.startTime > now
+  ) {
+    return false;
+  }
+  if (session.importSource && session.endTime === undefined) return true;
+  return (
+    validTimestamp(session.endTime) &&
+    session.endTime <= now &&
+    session.endTime >= session.startTime
+  );
+};
 
 const actualStrength = (
   sessions: StrengthSession[],
@@ -470,7 +490,7 @@ export function buildDevelopmentFacts(
       id: session.id,
       name: session.name,
       startTime: session.startTime,
-      endTime: session.endTime as number,
+      endTime: session.endTime,
       completedSets,
       volumeKg,
     }));
@@ -493,6 +513,7 @@ export function buildDevelopmentFacts(
     limits.push('Kein ausdrücklich gespeicherter Planabschnitt vorhanden.');
   }
   return {
+    version: DEVELOPMENT_VERSION,
     planPosition: planPositionFor(input.schedule, now),
     current,
     previous,

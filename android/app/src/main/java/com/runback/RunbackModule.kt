@@ -134,7 +134,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
 
     @ReactMethod fun getStrengthState(promise: Promise) = task(promise) { strengthState() }
     @ReactMethod fun getStrengthSessions(limit: Int, promise: Promise) = task(promise) {
-        JSONObject().put("sessions", store.strengthSessions(limit))
+        JSONObject().put("sessions", store.strengthSessions(limit)).put("imports", store.strengthImports(limit))
     }
     @ReactMethod fun saveStrengthTemplates(json: String, promise: Promise) = task(promise) {
         store.putDocument("strength_templates", JSONObject().put("templates", JSONArray(json))); strengthState()
@@ -161,7 +161,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         strengthState()
     }
     @ReactMethod fun getStrengthSession(id: String, promise: Promise) = task(promise) {
-        store.getDocument("strength_session_$id") ?: error("Einheit nicht gefunden")
+        store.getDocument("strength_session_$id") ?: store.strengthImport(id) ?: error("Einheit nicht gefunden")
     }
     @ReactMethod fun deleteStrengthSession(id: String, promise: Promise) = task(promise) {
         store.deleteStrengthSession(id)

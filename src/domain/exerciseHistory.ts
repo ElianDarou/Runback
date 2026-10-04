@@ -13,7 +13,7 @@ import { exerciseBreakdown, type BestSet } from './strengthSession';
  * versionierten Kraftverlauf (`progression.ts`); hier wird sie nur in
  * Worte übersetzt, nie neu bewertet.
  */
-export const EXERCISE_HISTORY_VERSION = 'exercise-history-v1';
+export const EXERCISE_HISTORY_VERSION = 'exercise-history-v2';
 
 export interface ExerciseSessionPoint {
   sessionId: string;

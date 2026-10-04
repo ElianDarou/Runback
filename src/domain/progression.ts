@@ -1,12 +1,13 @@
 import { exactLowerRank, finite, median, robustScale } from './inference';
-import { epley1RM, type LoggedSet, type StrengthSession } from './strength';
+import { isSetCompleted, epley1RM, type LoggedSet, type StrengthSession } from './strength';
 
 /**
  * v2: exakte Kendall-Verteilung statt Normalapproximation bei kleinem n,
  * Richtungsaussage erst ab fünf Trainingstagen, Plateau als Äquivalenzprüfung,
  * Relevanzschwelle 4 % statt 2 % (Test-Retest-Streuung von 1RM ≈ 2–3 %).
  */
-export const PROGRESSION_MODEL_VERSION = 'strength-progression-v2';
+export const PROGRESSION_MODEL_VERSION = 'strength-progression-v3';
+// v3 zählt auch importierte Ist-Sätze ohne Abhakzeit; die Prüfregel bleibt gleich.
 export const PROGRESSION_CHECK_METHOD = 'strength-e1rm-v2';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAY_MS;
@@ -79,7 +80,7 @@ export function bestWorkingSet(
 
 function isCompletedWorkingSet(set: LoggedSet): boolean {
   return (
-    set.completedAt !== undefined &&
+    isSetCompleted(set) &&
     !set.skipped &&
     (set.planned.kind === 'normal' || set.planned.kind === 'failure') &&
     set.planned.loadKind === 'kg' &&

@@ -20,6 +20,8 @@ import type {
   WorkoutTemplate,
 } from './domain/strength';
 import { summarize } from './domain/strength';
+import { importedStrengthSession } from './domain/strengthImports';
+import type { StrongWorkout } from './domain/vendorImports';
 import type { ScheduleState } from './domain/schedule';
 import { normalizeRunTarget, type RunTarget } from './domain/runTarget';
 import type {
@@ -350,13 +352,27 @@ export const native = {
     );
   },
   async strengthSession(id: string): Promise<StrengthSession> {
-    return (await nativeCall<any>('getStrengthSession', id)) as StrengthSession;
+    const raw = await nativeCall<any>('getStrengthSession', id);
+    return raw?.kind === 'strength' ? raw : importedStrengthSession(raw);
   },
   async strengthSessions(limit = 100): Promise<StrengthSession[]> {
     const raw = await nativeCall<any>('getStrengthSessions', limit);
-    return Array.isArray(raw?.sessions)
-      ? (raw.sessions as StrengthSession[])
+    const sessions: StrengthSession[] = Array.isArray(raw?.sessions)
+      ? raw.sessions
       : [];
+    const imported: StrongWorkout[] = Array.isArray(raw?.imports)
+      ? raw.imports
+      : [];
+    const unique = new Map(sessions.map(session => [session.id, session]));
+    imported.forEach(workout => {
+      const session = importedStrengthSession(workout);
+      if (!unique.has(session.id)) {
+        unique.set(session.id, session);
+      }
+    });
+    return Array.from(unique.values())
+      .sort((a, b) => b.startTime - a.startTime || b.id.localeCompare(a.id))
+      .slice(0, Math.max(1, Math.min(500, limit)));
   },
   /** Puls einer Krafteinheit von der Uhr, mit Darstellungsreihe; sonst undefined. */
   async strengthHeart(id: string): Promise<StrengthHeart | undefined> {

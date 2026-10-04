@@ -5,6 +5,13 @@ import org.json.JSONObject
 
 /** Importabbild neben den Originalen; fehlende Werte bleiben JSON-null. */
 object StrengthImport {
+    fun legacyDocument(workout: StrengthWorkout, sets: List<StrengthSet>): JSONObject {
+        val extra = JSONObject(workout.extra)
+        if (!extra.has("durationKnown")) extra.put("durationKnown", workout.durationSec > 0)
+        // Satzart und Pausen wurden früher nicht gespeichert; fehlende Metadaten bleiben offen.
+        return document(workout.copy(extra = extra.toString()), sets)
+            .put("modelVersion", extra.optString("modelVersion", "unknown"))
+    }
     fun document(workout: StrengthWorkout, sets: List<StrengthSet>): JSONObject {
         val extra = JSONObject(workout.extra)
         return JSONObject().put("id", workout.id).put("time", workout.time).put("name", workout.name)

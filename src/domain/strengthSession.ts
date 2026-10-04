@@ -3,6 +3,7 @@ import type { Rating } from './insights';
 import { bestWorkingSet, MINIMUM_RELEVANT_CHANGE_PERCENT } from './progression';
 import {
   epley1RM,
+  isSetCompleted,
   formatWeight,
   sessionProgress,
   type LoggedSet,
@@ -18,7 +19,7 @@ import type { StrengthHeartSummary } from './strengthHeart';
  * Gezählt wird nur, was abgehakt wurde; Planwerte erscheinen nie als
  * Ist-Werte. Ohne Grundlage gibt es `undefined` statt einer Zahl.
  */
-export const STRENGTH_SESSION_VERSION = 'strength-session-v1';
+export const STRENGTH_SESSION_VERSION = 'strength-session-v2';
 const DAY = 24 * 60 * 60 * 1000;
 /** Vergleichsfenster für „deine letzten Einheiten“. */
 export const SESSION_COMPARISON_DAYS = 120;
@@ -31,7 +32,7 @@ export const EXERCISE_COMPARISON_MAX = 5;
 export const MAX_SET_GAP_SECONDS = 15 * 60;
 
 const done = (set: LoggedSet) =>
-  set.completedAt !== undefined && !set.skipped;
+  isSetCompleted(set) && !set.skipped;
 
 /** Dauer von Start bis Ende; ohne Ende unbekannt, nicht 0. */
 export function sessionDurationSeconds(
@@ -146,7 +147,7 @@ export function exerciseBreakdown(
         skippedSets += 1;
         continue;
       }
-      if (set.completedAt === undefined) {
+      if (!isSetCompleted(set)) {
         continue;
       }
       if (set.planned?.kind === 'warmup') {
