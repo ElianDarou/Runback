@@ -130,7 +130,14 @@ class MainActivity : Activity() {
 
     private fun home() {
         text("RUNBACK", 13, green, bold = true)
-        if (MotionCaptureService.activeSession != null) text("Krafttraining · Bewegungen werden aufgezeichnet", 12, green, margin = 4)
+        if (MotionCaptureService.activeSession != null) {
+            val what = when {
+                MotionCaptureService.recordsHeart && MotionCaptureService.recordsMotion -> "Puls und Bewegungen werden aufgezeichnet"
+                MotionCaptureService.recordsHeart -> "Puls wird gemessen"
+                else -> "Bewegungen werden aufgezeichnet"
+            }
+            text("Krafttraining · $what", 12, green, margin = 4)
+        }
         text("Dein nächster Lauf.", 21, ink, bold = true, margin = 6)
         text("Ohne Handy aufzeichnen", 12, muted, margin = 3)
         button("Lauf starten", true, 12) { requestStart() }
@@ -355,15 +362,17 @@ class MainActivity : Activity() {
     }
 
     /**
-     * Das Handy öffnet die Uhr-App, wenn es eine Krafteinheit mit Bewegungs-
-     * aufzeichnung startet: Aus dem Hintergrund darf der Dienst nicht immer starten.
+     * Das Handy öffnet die Uhr-App, wenn es eine Krafteinheit mit Puls- oder
+     * Bewegungsaufzeichnung startet: Aus dem Hintergrund darf der Dienst nicht immer starten.
      */
     private fun handleRemoteMotionIntent(intent: Intent?) {
         val uri = intent?.data ?: return
         if (uri.scheme != "runback" || uri.host != "motion" || uri.getQueryParameter("action") != "start") return
         val sessionId = uri.getQueryParameter("sessionId")?.takeIf { it.matches(Regex("[A-Za-z0-9_-]{1,100}")) } ?: return
         val wrist = uri.getQueryParameter("wrist")?.takeIf { it in setOf("left", "right") } ?: "unknown"
-        runCatching { MotionCaptureService.send(this, MotionCaptureService.START, sessionId, wrist) }
+        val motion = uri.getQueryParameter("motion") != "false"
+        val heartRate = uri.getQueryParameter("heartRate") == "true"
+        runCatching { MotionCaptureService.send(this, MotionCaptureService.START, sessionId, wrist, motion, heartRate) }
             .onFailure { MotionSync.reportStatus(this, sessionId, "error", "Uhr konnte die Aufzeichnung nicht starten.") }
         // Der Dienst startet auf seinem eigenen Thread; danach zeigt die Startseite den Hinweis.
         handler.postDelayed({ if (page == "home" && store.active() == null) render() }, 800L)

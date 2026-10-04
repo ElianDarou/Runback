@@ -113,6 +113,8 @@ export function DeviceSettings({
     enabled: false,
     wrist: 'unknown',
   };
+  // Fehlt der Wert, misst die Uhr den Puls (wie Kotlin `MotionSessions.config`).
+  const heartRate = motionSettings.heartRate !== false;
   const saveMotion = (patch: Partial<MotionCaptureSettings>) =>
     save({ motionCapture: { ...motionSettings, ...patch } });
   return (
@@ -164,9 +166,22 @@ export function DeviceSettings({
         )}
         <Copy muted>Die Uhr zeichnet auch ohne Telefon auf.</Copy>
       </Section>
-      <Section title="Bewegungen im Krafttraining">
+      <Section title="Uhr im Krafttraining">
         <Row
-          title="Mit der Uhr mitschreiben"
+          title="Puls messen"
+          subtitle="Zeigt Puls je Satz und Erholung in der Pause."
+          trailing={
+            <Switch
+              accessibilityLabel="Puls im Krafttraining mit der Uhr messen"
+              value={heartRate}
+              onValueChange={value => saveMotion({ heartRate: value })}
+              trackColor={{ false: color.line, true: color.green }}
+              thumbColor={heartRate ? color.ink : color.muted}
+            />
+          }
+        />
+        <Row
+          title="Bewegungen mitschreiben"
           subtitle="Sammelt Daten, damit Runback später Sätze erkennen kann."
           trailing={
             <Switch
@@ -221,7 +236,7 @@ export function DeviceSettings({
               onPress={() =>
                 Alert.alert(
                   'Bewegungsdaten löschen?',
-                  'Deine Sätze bleiben erhalten.',
+                  'Deine Sätze und Pulswerte bleiben erhalten.',
                   [
                     { text: 'Abbrechen', style: 'cancel' },
                     {

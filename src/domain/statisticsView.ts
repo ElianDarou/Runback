@@ -103,7 +103,7 @@ export interface RunStatisticsView {
   runs: Run[];
 }
 
-const RANGE_WEEKS: Record<Exclude<StatsRange, 'all'>, number> = {
+export const RANGE_WEEKS: Record<Exclude<StatsRange, 'all'>, number> = {
   '4w': 4,
   '12w': 12,
   '1y': 52,
@@ -116,7 +116,7 @@ export const STATS_RANGES: { value: StatsRange; label: string }[] = [
   { value: 'all', label: 'Alles' },
 ];
 
-const RANGE_COMPARISONS: Record<StatsRange, string> = {
+export const RANGE_COMPARISONS: Record<StatsRange, string> = {
   '4w': 'die 4 Wochen davor',
   '12w': 'die 12 Wochen davor',
   '1y': 'das Jahr davor',
@@ -128,7 +128,7 @@ const dayFormat = new Intl.DateTimeFormat('de-DE', {
   day: '2-digit',
   month: '2-digit',
 });
-const dayLongFormat = new Intl.DateTimeFormat('de-DE', {
+export const dayLongFormat = new Intl.DateTimeFormat('de-DE', {
   day: '2-digit',
   month: '2-digit',
   year: 'numeric',
@@ -166,13 +166,13 @@ function yearStart(timestamp: number) {
 }
 
 // Kalendarisches Weiterzählen, damit Sommerzeit die Grenzen nicht verschiebt.
-function addWeeks(timestamp: number, weeks: number) {
+export function addWeeks(timestamp: number, weeks: number) {
   const date = new Date(timestamp);
   date.setDate(date.getDate() + weeks * 7);
   return date.getTime();
 }
 
-function startOf(timestamp: number, unit: BucketUnit) {
+export function startOf(timestamp: number, unit: BucketUnit) {
   return unit === 'week'
     ? mondayStart(timestamp)
     : unit === 'month'
@@ -180,7 +180,7 @@ function startOf(timestamp: number, unit: BucketUnit) {
     : yearStart(timestamp);
 }
 
-function advance(timestamp: number, unit: BucketUnit, steps: number) {
+export function advance(timestamp: number, unit: BucketUnit, steps: number) {
   if (unit === 'week') {
     return addWeeks(timestamp, steps);
   }
@@ -190,7 +190,7 @@ function advance(timestamp: number, unit: BucketUnit, steps: number) {
     : new Date(date.getFullYear() + steps, 0, 1).getTime();
 }
 
-function bucketLabels(startTime: number, unit: BucketUnit) {
+export function bucketLabels(startTime: number, unit: BucketUnit) {
   const start = new Date(startTime);
   if (unit === 'week') {
     const end = new Date(addWeeks(startTime, 1) - 1);
@@ -271,7 +271,7 @@ function buildBucket(
   };
 }
 
-function makeDelta(current: number | null, previous: number | null): StatsDelta {
+export function makeDelta(current: number | null, previous: number | null): StatsDelta {
   if (current === null || previous === null || previous === 0) {
     return { current, previous, changeRatio: null, direction: 'unknown' };
   }
@@ -286,7 +286,10 @@ function makeDelta(current: number | null, previous: number | null): StatsDelta 
   };
 }
 
-function distinctDays(runs: Run[]): number {
+/** Geteilt mit der Kraftstatistik: zählt Einträge mit Startzeit. */
+type Dated = { startTime: number };
+
+export function distinctDays(runs: Dated[]): number {
   const days = new Set<string>();
   runs.forEach(run => {
     const date = new Date(run.startTime);
@@ -295,8 +298,8 @@ function distinctDays(runs: Run[]): number {
   return days.size;
 }
 
-function buildConsistency(
-  runs: Run[],
+export function buildConsistency(
+  runs: Dated[],
   windowStart: number,
   windowEnd: number,
 ): StatsConsistency {
@@ -445,7 +448,7 @@ function purposeShares(runs: Run[]): PurposeShare[] {
     .sort((a, b) => b.distanceKm - a.distanceKm || b.runCount - a.runCount);
 }
 
-function unitFor(
+export function unitFor(
   range: StatsRange,
   windowStart: number,
   windowEnd: number,
@@ -508,6 +511,24 @@ function totalsFor(runs: Run[], weeks: number): StatsTotals {
 }
 
 /**
+ * Der Zeitraum endet mit dem Ende der laufenden Woche, damit die aktuelle
+ * Woche sichtbar ist statt erst am Montag darauf zu erscheinen. „Alles“
+ * beginnt mit der Woche des ersten Eintrags.
+ */
+export function statsWindow(
+  range: StatsRange,
+  earliest: number | null,
+  now: number,
+): { windowStart: number; windowEnd: number } {
+  const windowEnd = addWeeks(mondayStart(now), 1);
+  const windowStart =
+    range === 'all'
+      ? mondayStart(earliest ?? now)
+      : addWeeks(mondayStart(now), -(RANGE_WEEKS[range] - 1));
+  return { windowStart, windowEnd };
+}
+
+/**
  * Vollständige Sicht für die Statistikseite: ein wählbarer Zeitraum, in dem
  * alles konsistent gerechnet ist.
  */
@@ -518,13 +539,11 @@ export function buildStatisticsView(
 ): RunStatisticsView {
   const referenceNow = Number.isFinite(now) ? now : Date.now();
   const all = dedupe(runs, referenceNow);
-  // Der Zeitraum endet mit dem Ende der laufenden Woche, damit die aktuelle
-  // Woche sichtbar ist statt erst am Montag darauf zu erscheinen.
-  const windowEnd = addWeeks(mondayStart(referenceNow), 1);
-  const windowStart =
-    range === 'all'
-      ? mondayStart(all.length ? all[0].startTime : referenceNow)
-      : addWeeks(mondayStart(referenceNow), -(RANGE_WEEKS[range] - 1));
+  const { windowStart, windowEnd } = statsWindow(
+    range,
+    all.length ? all[0].startTime : null,
+    referenceNow,
+  );
   const inRange = all.filter(
     run => run.startTime >= windowStart && run.startTime < windowEnd,
   );

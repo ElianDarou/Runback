@@ -7,10 +7,15 @@ Nichts davon fließt in Auswertungen, Frische oder Empfehlungen ein. Eine
 spätere Erkennung erscheint nur als Vorschlag, den du bestätigst — eine
 Schätzung ersetzt nie eine Eingabe.
 
+Unabhängig davon misst die Uhr im Krafttraining den **Puls** (Standard an).
+Er kommt in derselben Datei ans Handy und erscheint auf der Detailseite der
+Einheit und in der Statistik — aber in keiner Empfehlung.
+
 ## Aufzeichnen
 
-1. **Einstellungen → Geräte & Verbindungen → Bewegungen im Krafttraining**:
-   „Mit der Uhr mitschreiben“ einschalten und das Handgelenk wählen.
+1. **Einstellungen → Geräte & Verbindungen → Uhr im Krafttraining**:
+   „Bewegungen mitschreiben“ einschalten und das Handgelenk wählen.
+   „Puls messen“ ist davon unabhängig.
 2. Krafttraining auf dem Handy starten. Die Uhr startet die Aufzeichnung;
    lässt Android das aus dem Hintergrund nicht zu, öffnet sich die
    Runback-App auf der Uhr kurz.
@@ -28,6 +33,8 @@ Stunden hört die Uhr von selbst auf.
 | Was | Wo | Woher |
 |---|---|---|
 | Beschleunigung (m/s², mit Schwerkraft) und Gyroskop (rad/s), 50 Hz | Uhr → Handy, Datei `files/motion/<id>.rbm.gz` | Sensoren der Uhr |
+| Puls (bpm) mit Genauigkeit des Sensors, ungefiltert | Dieselbe Datei (ab Version 2) | Pulssensor der Uhr |
+| Puls zusammengefasst (5-s-Fenster) | Dokument `strength_heart_<id>`, im Backup | Aus der Datei gerechnet |
 | Abhaken, Zurücknehmen, Überspringen, Übungswechsel | Dokument `motion_<id>` | Gespeicherte Stände der Einheit |
 | Uhrenabgleich (Ping Handy ↔ Uhr) | Dokument `motion_<id>` | Beim Start, bei jedem abgehakten Satz, am Ende |
 | Sätze mit Gewicht, Wiederholungen, RIR | Krafteinheit, wie immer | Deine Eingaben |
@@ -46,6 +53,7 @@ manifest.json             Format, Versionen, Zeitpunkt des Exports
 sessions.csv              eine Zeile je Einheit
 <session_id>/accel.csv    t_ms,x,y,z
 <session_id>/gyro.csv     t_ms,x,y,z
+<session_id>/heart.csv    t_ms,bpm,accuracy (nur Rohdateien ab Version 2)
 <session_id>/sets.csv     ein Satz je Zeile, Endstand aus der App
 <session_id>/events.csv   t_ms,event,exercise_index,exercise_id,exercise_name,set_index,set_id
 <session_id>/meta.json    Kopf der Rohdatei (Uhrmodell, Sensoren), Pings, Einheit als JSON
@@ -64,7 +72,13 @@ nicht angegebene Werte (z. B. `rir`) bleiben leer — nie `0`.
 **`sessions.csv`**: `session_id, start_unix_ms, end_unix_ms, name, wrist,
 rate_hz, watch_model, raw_available, raw_truncated, clock_aligned,
 clock_offset_ms, clock_uncertainty_ms, accel_samples, gyro_samples,
-sets_logged, sets_completed, events`. `raw_truncated = 1` heißt: Die Datei
+sets_logged, sets_completed, events, heart_samples`. `heart_samples` ist
+leer, wenn die Rohdatei älter als Version 2 ist.
+
+**`heart.csv`**: `accuracy` ist der Sensorstatus von Android (−1 kein
+Kontakt, 0 unzuverlässig, 1–3 niedrig bis hoch). Runback wertet erst ab 1
+und zwischen 30 und 230 bpm aus. Einheiten, in denen nur der Puls gemessen
+wurde, stehen nicht im Export der Bewegungsdaten. `raw_truncated = 1` heißt: Die Datei
 endet mitten in einem Datensatz (z. B. Akku leer); alles davor ist gültig.
 
 **`sets.csv`**: `exercise_index, exercise_id, exercise_name, set_index,

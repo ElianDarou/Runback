@@ -19,7 +19,8 @@ import kotlin.math.roundToLong
  */
 object MotionExport {
     const val FORMAT = "runback-motion-export"
-    const val VERSION = 1
+    /** 2: `heart.csv` und Spalte `heart_samples` (Rohdatei ab Version 2). */
+    const val VERSION = 2
 
     class Session(
         /** Dokument `motion_<id>` vom Handy: Ereignisse, Pings, Status. */
@@ -54,7 +55,7 @@ object MotionExport {
     private val SESSION_COLUMNS = listOf(
         "session_id", "start_unix_ms", "end_unix_ms", "name", "wrist", "rate_hz", "watch_model",
         "raw_available", "raw_truncated", "clock_aligned", "clock_offset_ms", "clock_uncertainty_ms",
-        "accel_samples", "gyro_samples", "sets_logged", "sets_completed", "events",
+        "accel_samples", "gyro_samples", "sets_logged", "sets_completed", "events", "heart_samples",
     )
 
     private fun writeSession(zip: ZipOutputStream, session: Session): List<String> {
@@ -67,7 +68,7 @@ object MotionExport {
         val end = strength?.optLong("endTime")?.takeIf { it > 0 } ?: meta.optLong("stoppedAt").takeIf { it > 0 }
         val clock = MotionLabels.clockOffset(meta.optJSONArray("pings"))
         var header: JSONObject? = null
-        val counts = IntArray(3)
+        val counts = IntArray(4)
         var truncated = false
         session.raw?.let { open ->
             // Je Messart ein Durchgang: zwei ZIP-Einträge lassen sich nicht gleichzeitig schreiben,
@@ -79,6 +80,12 @@ object MotionExport {
                         counts[kind.toInt()] = writeImu(zip, "$id/${if (kind == MotionFormat.KIND_ACCEL) "accel" else "gyro"}.csv", reader, kind, start, clock)
                         truncated = truncated || reader.truncated
                     }
+                }
+            }
+            // Puls gibt es erst ab Version 2 der Rohdatei; ältere Dateien bekommen keine leere Tabelle.
+            open().use { input ->
+                MotionFormat.Reader(input).use { reader ->
+                    if (reader.version >= 2) counts[MotionFormat.KIND_HEART.toInt()] = writeHeart(zip, "$id/heart.csv", reader, start, clock)
                 }
             }
         }
@@ -120,6 +127,7 @@ object MotionExport {
             sets.first.toString(),
             sets.second.toString(),
             events.length().toString(),
+            if ((header?.optInt("formatVersion", 1) ?: 0) >= 2) counts[MotionFormat.KIND_HEART.toInt()].toString() else "",
         )
     }
 
@@ -153,6 +161,36 @@ object MotionExport {
                 line.append(decimal(watchWall - offset - start)).append(',')
                     .append(record.x).append(',').append(record.y).append(',').append(record.z).append('\n')
                 out.append(line)
+                count++
+            }
+        }
+        return count
+    }
+
+    /** Puls als `t_ms,bpm,accuracy`, ungefiltert; `accuracy` ist der Sensorstatus von Android. */
+    private fun writeHeart(
+        zip: ZipOutputStream,
+        name: String,
+        reader: MotionFormat.Reader,
+        start: Long,
+        clock: MotionLabels.ClockOffset?,
+    ): Int {
+        var count = 0
+        val offset = clock?.offsetMs ?: 0.0
+        var anchorElapsed = Long.MIN_VALUE
+        var anchorWall = 0L
+        entry(zip, name) { out ->
+            out.write("t_ms,bpm,accuracy\n")
+            while (true) {
+                val record = reader.next() ?: break
+                if (record.kind == MotionFormat.KIND_ANCHOR) {
+                    anchorElapsed = record.time
+                    anchorWall = record.wallMs
+                    continue
+                }
+                if (record.kind != MotionFormat.KIND_HEART || anchorElapsed == Long.MIN_VALUE) continue
+                val watchWall = anchorWall + (record.time - anchorElapsed) / 1_000_000.0
+                out.write("${decimal(watchWall - offset - start)},${decimal(record.x.toDouble())},${record.accuracy}\n")
                 count++
             }
         }

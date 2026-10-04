@@ -1,32 +1,36 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import type { Run } from '../native';
-import { sessionProgress, type StrengthSession } from '../domain/strength';
+import type { StrengthSession } from '../domain/strength';
+import type { StrengthHeartSummary } from '../domain/strengthHeart';
+import type {
+  StrengthRecord,
+  StrengthStatsMetric,
+} from '../domain/strengthStatistics';
 import {
   bucketValue,
   buildStatisticsView,
   STATS_RANGES,
   type StatsBucket,
-  type StatsDelta,
   type StatsMetric,
   type StatsRange,
   type StatsRecord,
 } from '../domain/statisticsView';
+import { ChipGroup, Segmented, Copy, EmptyState, Section } from './components';
 import {
-  ChipGroup,
-  Chevron,
-  Segmented,
-  Copy,
-  EmptyState,
-  Row,
-  Section,
-  Stat,
-  color,
-  radius,
-  space,
-  type as type_,
-} from './components';
-import { STATS_MODULES, type StatsModule } from '../domain/features';
+  Chart,
+  ChartDetail,
+  DASH,
+  Panel,
+  ShareRow,
+  Tile,
+  ValueRow,
+  decimal,
+  formatDuration,
+  statsStyles,
+} from './StatsParts';
+import { STATS_MODULES, type Area, type StatsModule } from '../domain/features';
+import { StrengthStatistics, STRENGTH_METRICS } from './StrengthStatistics';
 
 /**
  * Statistik in drei Tiefen:
@@ -40,13 +44,17 @@ import { STATS_MODULES, type StatsModule } from '../domain/features';
  * Die Zeitraumauswahl steht über allem und gilt für alles darunter. Es gibt
  * keine zweite Auswahl, die nur einen Abschnitt betrifft.
  *
- * Laufen und Krafttraining werden im selben Zeitraum gezeigt, aber nicht
- * verrechnet: Kilometer und Sätze sind keine gemeinsame Größe.
+ * Laufen und Krafttraining sind getrennte Bereiche: Haben beide Daten, wählt
+ * ein `Segmented` oben den Bereich, der Zeitraum gilt für beide. Verrechnet
+ * wird nichts — Kilometer und Sätze sind keine gemeinsame Größe.
  */
 
 export interface StatisticsView {
   range: StatsRange;
   metric: StatsMetric;
+  /** Zuletzt gewählter Bereich; zählt nur, wenn beide Bereiche Daten haben. */
+  area?: Area;
+  strengthMetric?: StrengthStatsMetric;
 }
 
 export const defaultStatisticsView: StatisticsView = {
@@ -57,7 +65,12 @@ export const defaultStatisticsView: StatisticsView = {
 /** Die Einstellungen kommen als ungeprüftes JSON aus dem nativen Speicher.
  *  Unbekanntes fällt auf die Voreinstellung zurück, statt die Seite zu leeren. */
 export function readStatisticsView(value: unknown): StatisticsView {
-  const raw = (value ?? {}) as { range?: unknown; metric?: unknown };
+  const raw = (value ?? {}) as {
+    range?: unknown;
+    metric?: unknown;
+    area?: unknown;
+    strengthMetric?: unknown;
+  };
   return {
     range: STATS_RANGES.some(entry => entry.value === raw.range)
       ? (raw.range as StatsRange)
@@ -65,8 +78,20 @@ export function readStatisticsView(value: unknown): StatisticsView {
     metric: METRICS.some(entry => entry.value === raw.metric)
       ? (raw.metric as StatsMetric)
       : defaultStatisticsView.metric,
+    area:
+      raw.area === 'running' || raw.area === 'strength' ? raw.area : undefined,
+    strengthMetric: STRENGTH_METRICS.some(
+      entry => entry.value === raw.strengthMetric,
+    )
+      ? (raw.strengthMetric as StrengthStatsMetric)
+      : undefined,
   };
 }
+
+const AREAS: { value: Area; label: string }[] = [
+  { value: 'running', label: 'Laufen' },
+  { value: 'strength', label: 'Krafttraining' },
+];
 
 const METRICS: {
   value: StatsMetric;
@@ -81,19 +106,8 @@ const METRICS: {
   { value: 'effort', label: 'Gefühl', shape: 'point' },
 ];
 
-const DASH = '–';
-
-const decimal = (value: number, digits = 1) =>
-  value.toFixed(digits).replace('.', ',');
-
 const formatKm = (value: number) => `${decimal(value, value >= 100 ? 0 : 1)}`;
 
-const formatDuration = (seconds: number) => {
-  const whole = Math.max(0, Math.round(seconds));
-  const hours = Math.floor(whole / 3600);
-  const minutes = Math.floor((whole % 3600) / 60);
-  return hours ? `${hours} h ${minutes} min` : `${minutes} min`;
-};
 
 const formatPace = (seconds: number | null) => {
   if (seconds === null || !Number.isFinite(seconds)) {
@@ -102,39 +116,6 @@ const formatPace = (seconds: number | null) => {
   const whole = Math.max(0, Math.round(seconds));
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
 };
-
-const kilogramFormat = new Intl.NumberFormat('de-DE', {
-  maximumFractionDigits: 0,
-});
-const formatKilograms = (value: number) => kilogramFormat.format(value);
-
-/** Krafteinheiten desselben Zeitraums. Reine Summen aus bestätigten Sätzen —
- *  Planwerte zählen nicht mit. */
-function strengthTotals(
-  sessions: StrengthSession[],
-  windowStart: number,
-  windowEnd: number,
-) {
-  const inRange = sessions.filter(
-    session =>
-      session.status === 'finished' &&
-      session.startTime >= windowStart &&
-      session.startTime < windowEnd,
-  );
-  let sets = 0;
-  let volumeKg = 0;
-  let seconds = 0;
-  for (const session of inRange) {
-    const progress = sessionProgress(session);
-    sets += progress.completedSets;
-    volumeKg += progress.volumeKg;
-    seconds += Math.max(
-      0,
-      ((session.endTime ?? session.startTime) - session.startTime) / 1000,
-    );
-  }
-  return { count: inRange.length, sets, volumeKg, seconds };
-}
 
 /** Ein Wert samt Einheit — die einzige Stelle, an der eine Kennzahl in Text
  *  übersetzt wird. Sie wird für Kacheln, Achse und Detailzeile benutzt. */
@@ -168,9 +149,13 @@ const metricLabel = (metric: StatsMetric) =>
 export function Statistics({
   runs,
   sessions = [],
+  heart = {},
   view = defaultStatisticsView,
   onViewChange,
   onOpenRecord,
+  onOpenSession,
+  onOpenStrengthRecord,
+  onOpenExercise,
   busy = false,
   embedded = false,
   modules = STATS_MODULES,
@@ -178,12 +163,17 @@ export function Statistics({
   showStrength = true,
 }: {
   runs: Run[];
-  /** Abgeschlossene Krafteinheiten. Ohne sie bleibt der Abschnitt weg. */
+  /** Abgeschlossene Krafteinheiten. Ohne sie gibt es den Bereich hier nicht. */
   sessions?: StrengthSession[];
+  /** Puls der Krafteinheiten von der Uhr, nach Einheit. */
+  heart?: Record<string, StrengthHeartSummary>;
   /** Zuletzt gewählter Zeitraum und Kennzahl. */
   view?: StatisticsView;
   onViewChange?: (view: StatisticsView) => void;
   onOpenRecord?: (record: StatsRecord) => void;
+  onOpenSession?: (id: string) => void;
+  onOpenStrengthRecord?: (record: StrengthRecord) => void;
+  onOpenExercise?: (exerciseId: string) => void;
   busy?: boolean;
   /** Als Teil einer Seite, die den Titel schon trägt (Verlauf). */
   embedded?: boolean;
@@ -206,31 +196,6 @@ export function Statistics({
     [runs, active.range],
   );
   const [selected, setSelected] = useState<number | null>(null);
-  const strength = useMemo(
-    () => strengthTotals(sessions, stats.windowStart, stats.windowEnd),
-    [sessions, stats.windowStart, stats.windowEnd],
-  );
-  const strengthSection =
-    showStrength && sessions.some(session => session.status === 'finished') ? (
-      <Section title="Krafttraining">
-        <ValueRow label="Einheiten" value={String(strength.count)} />
-        <ValueRow label="Bestätigte Sätze" value={String(strength.sets)} />
-        <ValueRow
-          label="Volumen"
-          value={
-            strength.volumeKg > 0
-              ? `${formatKilograms(strength.volumeKg)} kg`
-              : DASH
-          }
-        />
-        <ValueRow
-          label="Zeit"
-          value={strength.seconds > 0 ? formatDuration(strength.seconds) : DASH}
-        />
-        <Copy muted>Volumen zählt nur bestätigte Sätze mit Gewicht.</Copy>
-      </Section>
-    ) : null;
-
   // Eine Kennzahl, für die es keine Daten gibt, wird nicht angeboten — und
   // eine bereits gewählte fällt auf die Distanz zurück.
   const metrics = METRICS.filter(
@@ -242,18 +207,60 @@ export function Statistics({
     ? active.metric
     : 'distance';
 
-  if (!showRunning) {
+  // Ein Bereich, der abgewählt ist oder keine Daten hat, erscheint nicht —
+  // auch nicht als Leerzustand neben dem anderen.
+  const hasStrength =
+    showStrength && sessions.some(session => session.status === 'finished');
+  const hasRunning = showRunning && runs.length > 0;
+  const area: Area =
+    hasRunning && hasStrength
+      ? active.area ?? 'running'
+      : hasStrength || !showRunning
+      ? 'strength'
+      : 'running';
+  const title = embedded ? null : (
+    <Text accessibilityRole="header" style={styles.title}>
+      Statistik
+    </Text>
+  );
+  const areaPicker =
+    hasRunning && hasStrength ? (
+      <Segmented
+        label="Bereich"
+        options={AREAS}
+        value={area}
+        onChange={next => {
+          setSelected(null);
+          setView({ ...active, area: next });
+        }}
+      />
+    ) : null;
+
+  if (area === 'strength') {
     return (
       <View style={styles.page}>
-        {embedded ? null : (
-          <Text accessibilityRole="header" style={styles.title}>
-            Statistik
-          </Text>
-        )}
-        {strengthSection ?? (
+        {title}
+        {areaPicker}
+        {hasStrength ? (
+          <StrengthStatistics
+            sessions={sessions}
+            heart={heart}
+            range={active.range}
+            metric={active.strengthMetric}
+            onRangeChange={range => setView({ ...active, range })}
+            onMetricChange={strengthMetric =>
+              setView({ ...active, strengthMetric })
+            }
+            onOpenSession={onOpenSession}
+            onOpenRecord={onOpenStrengthRecord}
+            onOpenExercise={onOpenExercise}
+            busy={busy}
+            modules={modules}
+          />
+        ) : (
           <EmptyState
             title="Noch keine Krafteinheit"
-            copy="Sobald ein Training abgeschlossen ist, stehen hier Einheiten, Sätze und Volumen."
+            copy="Sobald ein Training abgeschlossen ist, stehen hier Einheiten, Sätze, Muskeln und Übungen."
           />
         )}
       </View>
@@ -262,27 +269,19 @@ export function Statistics({
   if (!runs.length) {
     return (
       <View style={styles.page}>
-        {embedded ? null : (
-          <Text accessibilityRole="header" style={styles.title}>
-            Statistik
-          </Text>
-        )}
+        {title}
         <EmptyState
           title="Noch keine Läufe"
           copy="Sobald ein Lauf abgeschlossen oder importiert ist, entsteht hier deine Entwicklung."
         />
-        {strengthSection}
       </View>
     );
   }
 
   return (
     <View style={styles.page}>
-      {embedded ? null : (
-        <Text accessibilityRole="header" style={styles.title}>
-          Statistik
-        </Text>
-      )}
+      {title}
+      {areaPicker}
 
       <Segmented
         label="Zeitraum"
@@ -331,8 +330,14 @@ export function Statistics({
           onChange={next => setView({ ...active, metric: next })}
         />
         <Chart
-          buckets={stats.buckets}
-          metric={metric}
+          points={stats.buckets.map(bucket => ({
+            key: bucket.startTime,
+            label: bucket.label,
+            fullLabel: bucket.fullLabel,
+            value: bucketValue(bucket, metric),
+          }))}
+          title={metricLabel(metric)}
+          format={value => formatMetric(metric, value)}
           shape={METRICS.find(entry => entry.value === metric)?.shape ?? 'bar'}
           selected={selected}
           onSelect={index =>
@@ -359,26 +364,17 @@ export function Statistics({
               }
             >
               {stats.purposes.map(share => (
-                <View key={share.purpose} style={styles.shareRow}>
-                  <View style={styles.shareHead}>
-                    <Text style={styles.shareLabel}>{share.label}</Text>
-                    <Text style={styles.rowValue}>
-                      {formatKm(share.distanceKm)} km ·{' '}
-                      {Math.round(share.share * 100)} %
-                    </Text>
-                  </View>
-                  <View style={styles.shareTrack}>
-                    <View
-                      style={[
-                        styles.shareFill,
-                        { width: `${Math.max(share.share * 100, 1)}%` },
-                      ]}
-                    />
-                  </View>
-                  <Text style={styles.shareMeta}>
-                    {share.runCount} {share.runCount === 1 ? 'Lauf' : 'Läufe'}
-                  </Text>
-                </View>
+                <ShareRow
+                  key={share.purpose}
+                  label={share.label}
+                  value={`${formatKm(share.distanceKm)} km · ${Math.round(
+                    share.share * 100,
+                  )} %`}
+                  share={share.share}
+                  meta={`${share.runCount} ${
+                    share.runCount === 1 ? 'Lauf' : 'Läufe'
+                  }`}
+                />
               ))}
             </Panel>
           ) : null}
@@ -513,172 +509,6 @@ export function Statistics({
           ) : null}
         </Section>
       ) : null}
-
-      {strengthSection}
-    </View>
-  );
-}
-
-/** Kennzahl mit Vergleich. Der Pfeil ist die Richtung, der Prozentwert die
- *  Größe — Farbe trägt hier keine Information. */
-function Tile({
-  value,
-  unit,
-  label,
-  delta,
-}: {
-  value: string;
-  unit: string;
-  label: string;
-  delta: StatsDelta;
-}) {
-  const arrow =
-    delta.direction === 'up' ? '▲' : delta.direction === 'down' ? '▼' : '';
-  const percent =
-    delta.changeRatio === null
-      ? DASH
-      : `${Math.abs(Math.round(delta.changeRatio * 100))} %`;
-  const spoken =
-    delta.direction === 'up'
-      ? `${percent} mehr`
-      : delta.direction === 'down'
-      ? `${percent} weniger`
-      : delta.direction === 'flat'
-      ? 'unverändert'
-      : 'kein Vergleich möglich';
-  return (
-    <View
-      accessible
-      accessibilityLabel={`${label}: ${value} ${unit}, ${spoken}`}
-      style={styles.tile}
-    >
-      <Stat value={value} label={unit ? `${label} · ${unit}` : label} />
-      {/* Ohne Vergleichszeitraum gibt es keinen Pfeil — und keinen Platzhalter. */}
-      {delta.direction === 'unknown' ? null : (
-        <Text style={styles.tileDelta}>
-          {delta.direction === 'flat' ? '± 0 %' : `${arrow} ${percent}`}
-        </Text>
-      )}
-    </View>
-  );
-}
-
-/**
- * Ein Diagramm, eine Achse. Balken für Kennzahlen mit echtem Nullpunkt,
- * Punkte für Tempo und Gefühl — dort wäre ein Balken ab null eine Lüge über
- * die Größenordnung. Der ausgewählte Wert ist grün, alle anderen sind Fläche.
- */
-function Chart({
-  buckets,
-  metric,
-  shape,
-  selected,
-  onSelect,
-}: {
-  buckets: StatsBucket[];
-  metric: StatsMetric;
-  shape: 'bar' | 'point';
-  selected: number | null;
-  onSelect: (index: number) => void;
-}) {
-  const values = buckets.map(bucket => bucketValue(bucket, metric));
-  const present = values.filter(
-    (value): value is number => value !== null && Number.isFinite(value),
-  );
-  const max = present.length ? Math.max(...present) : 0;
-  const min = present.length ? Math.min(...present) : 0;
-  // Punkte bekommen etwas Luft, damit der beste und der schlechteste Wert
-  // nicht auf dem Rand kleben.
-  const padding =
-    shape === 'point' ? Math.max((max - min) * 0.2, max * 0.02) : 0;
-  const low = shape === 'bar' ? 0 : min - padding;
-  const high = shape === 'bar' ? max : max + padding;
-  const span = high - low;
-  const mean = present.length
-    ? present.reduce((sum, value) => sum + value, 0) / present.length
-    : null;
-  const share = (value: number) =>
-    span > 0 ? Math.min(Math.max((value - low) / span, 0), 1) : 0.5;
-
-  // Bei vielen Balken trägt nicht jeder eine Beschriftung, sonst überlappen sie.
-  const step = Math.ceil(buckets.length / 7);
-  const scale = present.length
-    ? shape === 'bar'
-      ? `0 bis ${formatMetric(metric, max).value}`
-      : `${formatMetric(metric, min).value} bis ${
-          formatMetric(metric, max).value
-        }`
-    : 'keine Werte';
-
-  return (
-    <View style={styles.chartBlock}>
-      <View style={styles.chartHead}>
-        <Text style={styles.chartScale}>{`Skala ${scale} ${
-          formatMetric(metric, max).unit
-        }`}</Text>
-        {mean === null ? null : (
-          <Text style={styles.chartScale}>
-            {`Ø ${formatMetric(metric, mean).value}`}
-          </Text>
-        )}
-      </View>
-      <View
-        accessibilityRole="adjustable"
-        accessibilityLabel={`${metricLabel(metric)} je Zeitraum, ${
-          buckets.length
-        } Werte`}
-        style={styles.chart}
-      >
-        {buckets.map((bucket, index) => {
-          const value = values[index];
-          const isSelected = selected === index;
-          const height = value === null ? 0 : share(value) * 100;
-          const readout = formatMetric(metric, value);
-          return (
-            <Pressable
-              key={bucket.startTime}
-              accessibilityRole="button"
-              accessibilityLabel={`${bucket.fullLabel}: ${readout.value} ${readout.unit}`}
-              accessibilityState={{ selected: isSelected }}
-              onPress={() => onSelect(index)}
-              style={styles.column}
-            >
-              <View style={styles.plot}>
-                {value === null ? null : shape === 'bar' ? (
-                  <View
-                    style={[
-                      styles.bar,
-                      { height: `${Math.max(height, 1.5)}%` },
-                      isSelected && styles.markSelected,
-                    ]}
-                  />
-                ) : (
-                  <View
-                    style={[
-                      styles.dot,
-                      { bottom: `${height}%` },
-                      isSelected && styles.markSelected,
-                    ]}
-                  />
-                )}
-              </View>
-              <Text
-                numberOfLines={1}
-                style={[styles.tick, isSelected && styles.tickSelected]}
-              >
-                {isSelected || index % step === 0 ? bucket.label : ''}
-              </Text>
-            </Pressable>
-          );
-        })}
-        {mean === null ? null : (
-          // Liegt über den Marken und deckt genau die Zeichenfläche ab, nicht
-          // die Spalte samt Beschriftung.
-          <View pointerEvents="none" style={styles.meanLayer}>
-            <View style={[styles.mean, { bottom: `${share(mean) * 100}%` }]} />
-          </View>
-        )}
-      </View>
     </View>
   );
 }
@@ -697,15 +527,12 @@ function BucketDetail({
   }
   const highlighted = formatMetric(metric, bucketValue(bucket, metric));
   return (
-    <View accessibilityLiveRegion="polite" style={styles.detail}>
-      <Text style={styles.detailTitle}>{bucket.fullLabel}</Text>
-      <Text style={styles.detailValue}>
-        {`${metricLabel(metric)} ${highlighted.value} ${
-          highlighted.unit
-        }`.trim()}
-      </Text>
-      <Text style={styles.detailMeta}>
-        {[
+    <ChartDetail
+      title={bucket.fullLabel}
+      value={`${metricLabel(metric)} ${highlighted.value} ${
+        highlighted.unit
+      }`.trim()}
+      meta={[
           `${bucket.runCount} ${bucket.runCount === 1 ? 'Lauf' : 'Läufe'}`,
           `${formatKm(bucket.distanceKm)} km`,
           formatDuration(bucket.durationSeconds),
@@ -716,186 +543,10 @@ function BucketDetail({
             ? null
             : `Gefühl ${decimal(bucket.effort)} / 10`,
         ]
-          .filter(Boolean)
-          .join(' · ')}
-      </Text>
-    </View>
-  );
-}
-
-/** Eingeklappter Abschnitt. Der Titel trägt schon einen Wert, damit auch der
- *  geschlossene Zustand etwas sagt; `⌄` verspricht Inhalt an dieser Stelle. */
-function Panel({
-  title,
-  summary,
-  children,
-}: React.PropsWithChildren<{ title: string; summary: string }>) {
-  const [open, setOpen] = useState(false);
-  return (
-    <View style={styles.panel}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`${title}, ${summary}`}
-        accessibilityState={{ expanded: open }}
-        onPress={() => setOpen(value => !value)}
-        style={({ pressed }) => [styles.panelHead, pressed && styles.pressed]}
-      >
-        <View style={styles.panelText}>
-          <Text style={styles.panelTitle}>{title}</Text>
-          <Text style={styles.panelSummary}>{summary}</Text>
-        </View>
-        <Chevron open={open} />
-      </Pressable>
-      {open ? <View style={styles.panelBody}>{children}</View> : null}
-    </View>
-  );
-}
-
-/** Beschriftung und Wert. `Row` ist der Baustein; der Wert hängt als
- *  `trailing` daran, damit keine zweite Zeilenvariante entsteht. */
-function ValueRow({
-  label,
-  value,
-  meta,
-  onPress,
-  disabled,
-}: {
-  label: string;
-  value: string;
-  meta?: string | null;
-  onPress?: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <Row
-      title={label}
-      subtitle={meta ?? undefined}
-      onPress={onPress}
-      disabled={disabled}
-      trailing={<Text style={styles.rowValue}>{value}</Text>}
+        .filter(Boolean)
+        .join(' · ')}
     />
   );
 }
 
-const styles = StyleSheet.create({
-  page: { gap: space.md },
-  title: { color: color.text, ...type_.title, letterSpacing: -0.6 },
-  tiles: { flexDirection: 'row', gap: space.sm, paddingTop: space.xs },
-  tile: { flex: 1, gap: space.xxs },
-  tileDelta: {
-    color: color.text,
-    ...type_.micro,
-    fontVariant: ['tabular-nums'],
-  },
-  compare: { ...type_.label, fontWeight: '400' },
-
-  chartBlock: { gap: space.xs },
-  chartHead: { flexDirection: 'row', justifyContent: 'space-between' },
-  chartScale: {
-    color: color.muted,
-    ...type_.micro,
-    fontVariant: ['tabular-nums'],
-  },
-  chart: { flexDirection: 'row', gap: space.xxs, alignItems: 'flex-end' },
-  meanLayer: { position: 'absolute', left: 0, right: 0, top: 0, height: 132 },
-  mean: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    height: 1,
-    backgroundColor: color.muted,
-    opacity: 0.5,
-  },
-  column: { flex: 1, alignItems: 'center', gap: space.xxs, minHeight: 48 },
-  plot: { width: '100%', height: 132, justifyContent: 'flex-end' },
-  bar: { width: '100%', backgroundColor: color.line, borderRadius: radius.sm },
-  dot: {
-    position: 'absolute',
-    left: '50%',
-    width: 10,
-    height: 10,
-    marginLeft: -5,
-    marginBottom: -5,
-    borderRadius: radius.pill,
-    backgroundColor: color.line,
-  },
-  markSelected: { backgroundColor: color.green },
-  // Breiter als die Spalte, damit „13.09.“ nicht abgeschnitten wird; es
-  // trägt ohnehin nur jede zweite oder dritte Spalte eine Beschriftung.
-  tick: {
-    width: 56,
-    textAlign: 'center',
-    height: 16,
-    color: color.muted,
-    ...type_.micro,
-    fontSize: 10,
-    fontVariant: ['tabular-nums'],
-  },
-  tickSelected: { color: color.text },
-
-  detail: {
-    backgroundColor: color.surface,
-    borderRadius: radius.md,
-    padding: space.md,
-    gap: space.xxs,
-  },
-  detailTitle: { color: color.muted, ...type_.label, fontWeight: '400' },
-  detailValue: {
-    color: color.text,
-    ...type_.body,
-    fontWeight: '600',
-    fontVariant: ['tabular-nums'],
-  },
-  detailMeta: {
-    color: color.muted,
-    ...type_.label,
-    fontWeight: '400',
-    fontVariant: ['tabular-nums'],
-  },
-
-  panel: {
-    borderBottomWidth: 1,
-    borderBottomColor: color.line,
-  },
-  panelHead: {
-    minHeight: 64,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.sm,
-    paddingVertical: space.sm,
-  },
-  panelText: { flex: 1, gap: space.xxs },
-  panelTitle: { color: color.text, ...type_.body, fontWeight: '500' },
-  panelSummary: {
-    color: color.muted,
-    ...type_.label,
-    fontWeight: '400',
-    fontVariant: ['tabular-nums'],
-  },
-  panelBody: { paddingBottom: space.md, gap: space.xs },
-  pressed: { opacity: 0.72 },
-
-  shareRow: { gap: space.xxs, paddingVertical: space.xs },
-  shareLabel: { color: color.text, ...type_.body },
-  shareHead: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    gap: space.xs,
-  },
-  shareTrack: {
-    height: 6,
-    borderRadius: radius.pill,
-    backgroundColor: color.line,
-    overflow: 'hidden',
-  },
-  shareFill: { height: '100%', backgroundColor: color.green },
-  shareMeta: { color: color.muted, ...type_.micro },
-
-  rowValue: {
-    color: color.text,
-    ...type_.body,
-    fontWeight: '500',
-    fontVariant: ['tabular-nums'],
-  },
-});
+const styles = statsStyles;
