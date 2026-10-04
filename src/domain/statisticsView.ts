@@ -57,6 +57,8 @@ export interface StatsRecord {
   value: string;
   detail: string | null;
   runId: string | null;
+  /** Genau die Läufe, die den Bestwert tragen; bereits gefiltert und dedupliziert. */
+  runIds: string[];
 }
 
 export interface StatsTotals {
@@ -364,6 +366,7 @@ function buildRecords(runs: Run[], weekBuckets: StatsBucket[]): StatsRecord[] {
       value: formatKm(longest.distanceMeters / 1000),
       detail: dayLongFormat.format(new Date(longest.startTime)),
       runId: longest.id || null,
+      runIds: longest.id ? [longest.id] : [],
     });
   }
   const longestTime = runs.reduce<Run | null>(
@@ -377,6 +380,7 @@ function buildRecords(runs: Run[], weekBuckets: StatsBucket[]): StatsRecord[] {
       value: formatDurationValue(longestTime.durationSeconds),
       detail: dayLongFormat.format(new Date(longestTime.startTime)),
       runId: longestTime.id || null,
+      runIds: longestTime.id ? [longestTime.id] : [],
     });
   }
   // Bestes Tempo nur über Läufe ab 5 km. Kürzere Strecken sind nicht
@@ -397,6 +401,7 @@ function buildRecords(runs: Run[], weekBuckets: StatsBucket[]): StatsRecord[] {
         new Date(fastest.startTime),
       )}`,
       runId: fastest.id || null,
+      runIds: fastest.id ? [fastest.id] : [],
     });
   }
   const bestWeek = weekBuckets.reduce<StatsBucket | null>(
@@ -410,6 +415,14 @@ function buildRecords(runs: Run[], weekBuckets: StatsBucket[]): StatsRecord[] {
       value: formatKm(bestWeek.distanceKm),
       detail: bestWeek.fullLabel,
       runId: null,
+      runIds: runs
+        .filter(
+          run =>
+            run.id &&
+            run.startTime >= bestWeek.startTime &&
+            run.startTime < bestWeek.endTime,
+        )
+        .map(run => run.id),
     });
   }
   return result;
