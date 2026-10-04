@@ -46,7 +46,7 @@ jest.mock('../src/native', () => {
 });
 
 import { RunbackApp } from '../src/ui/RunbackApp';
-import { native } from '../src/native';
+import { native, nativeCall } from '../src/native';
 import { ChipGroup, Row } from '../src/ui/components';
 import { acceptRecommendation, analyzeRun } from '../src/domain';
 import {
@@ -57,6 +57,7 @@ import type { RunSummary } from '../src/domain';
 import { createTemplate, addTemplateExercise } from '../src/domain/plans';
 import { catalogExercise } from '../src/domain/catalog';
 import { emptyStrengthState } from '../src/domain/strength';
+import { parseStrongCsvPreview } from '../src/domain/vendorImports';
 
 const DAY = 86400000;
 /** Zwei vergleichbare Vorläufe: erst der Median mehrerer Läufe trägt eine Empfehlung. */
@@ -493,6 +494,70 @@ describe('Fokus', () => {
 });
 
 describe('Vorlagenverwaltung', () => {
+  it('speichert gelöschte Importvorschläge getrennt von Vorlagen und zeigt sie nach dem Neustart nicht erneut', async () => {
+    const workouts = parseStrongCsvPreview(
+      'Date;Workout Name;Exercise Name;Set Order;Weight (kg);Reps\n2024-01-01 18:00:00;Push;Bench Press (Barbell);1;60;8\n2024-01-02 18:00:00;Pull;Deadlift (Barbell);1;80;6',
+    ).workouts;
+    const before = JSON.stringify(workouts);
+    const previousNativeCall = jest.mocked(nativeCall).getMockImplementation();
+    jest
+      .mocked(nativeCall)
+      .mockImplementation(
+        async (method) =>
+          (method === 'getStrengthImportCandidates' ? { workouts } : {}) as never,
+      );
+    const savedTemplate = createTemplate(100, 'Meine Vorlage', []);
+    jest.mocked(native.strength).mockResolvedValue({
+      ...emptyStrengthState(),
+      templates: [savedTemplate],
+    });
+    jest.mocked(native.saveStrengthTemplates).mockClear();
+    jest.mocked(native.saveSettings).mockClear();
+    let tree = await render();
+    try {
+      await tap(tree, 'Einstellungen');
+      await tap(tree, 'Vorlagen verwalten');
+      await tap(tree, 'Push');
+      await tap(tree, 'Vorschlag löschen');
+      expect(native.saveSettings).not.toHaveBeenCalled();
+      jest.mocked(native.saveSettings).mockRejectedValueOnce(new Error('db'));
+      await tap(tree, 'Löschen bestätigen');
+      expect(screenText(tree)).toContain(
+        'Vorschlag konnte nicht gelöscht werden.',
+      );
+      expect(screenText(tree)).toContain('Push');
+      await tap(tree, 'Löschen bestätigen');
+      const settings = jest.mocked(native.saveSettings).mock.calls.at(-1)![0];
+      expect(settings.dismissedStrengthImportTemplateIds).toEqual([
+        'import-template:strong:push',
+      ]);
+      expect(settings.minutes).toBe(30);
+      expect(native.saveStrengthTemplates).not.toHaveBeenCalled();
+      expect(JSON.stringify(workouts)).toBe(before);
+      expect(screenText(tree)).not.toContain('Push');
+      expect(screenText(tree)).toContain('Pull');
+      expect(screenText(tree)).toContain('Meine Vorlage');
+
+      await act(async () => tree.unmount());
+      jest.mocked(native.state).mockResolvedValueOnce({
+        runs: [],
+        recording: null,
+        settings,
+        capabilities: {},
+      });
+      tree = await render();
+      await tap(tree, 'Einstellungen');
+      await tap(tree, 'Vorlagen verwalten');
+      expect(screenText(tree)).not.toContain('Push');
+      expect(screenText(tree)).toContain('Pull');
+      expect(screenText(tree)).toContain('Meine Vorlage');
+    } finally {
+      await act(async () => tree.unmount());
+      jest.mocked(native.strength).mockResolvedValue(emptyStrengthState());
+      jest.mocked(nativeCall).mockImplementation(previousNativeCall!);
+    }
+  });
+
   it('öffnet über Einstellungen die vorhandene Verwaltung und speichert Bearbeiten, Duplizieren und Löschen', async () => {
     const template = addTemplateExercise(
       createTemplate(100, 'Oberkörper', []),

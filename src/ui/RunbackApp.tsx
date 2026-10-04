@@ -4534,7 +4534,18 @@ export function RunbackApp({
           <ImportedTemplates
             refreshKey={`${importStatus?.state ?? ''}:${importStatus?.strength ?? ''}:${importStatus?.strengthDuplicates ?? ''}`}
             templates={strength.templates}
+            dismissedIds={settings.dismissedStrengthImportTemplateIds ?? []}
             busy={busy}
+            onDismiss={async id => {
+              await persist({
+                dismissedStrengthImportTemplateIds: Array.from(
+                  new Set([
+                    ...(stateRef.current.settings.dismissedStrengthImportTemplateIds ?? []),
+                    id,
+                  ]),
+                ),
+              });
+            }}
             onSave={async template => {
               const next = acceptImportedTemplate(
                 strengthRef.current.templates,

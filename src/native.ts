@@ -70,6 +70,8 @@ export interface Settings {
   presets?: Preset[];
   experiments?: Experiment[];
   dismissedRecommendations?: string[];
+  /** Gelöschte Importvorschläge; Originaleinheiten und gespeicherte Vorlagen bleiben erhalten. */
+  dismissedStrengthImportTemplateIds?: string[];
   adherence?: Record<string, Adherence>;
   postponedUntil?: number;
   [key: string]: unknown;
