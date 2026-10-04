@@ -12,6 +12,7 @@ import type { RouteCoordinate, RoutePlan } from './domain/routes';
 import type { RunTimeline } from './domain/runReport';
 import type { RunSeries } from './domain/runSeries';
 import { normalizeSport } from './domain/sport';
+import { normalizePurpose } from './domain/runTitle';
 import type {
   StrengthSession,
   StrengthState,
@@ -81,6 +82,8 @@ export interface Run extends RunSummary {
   route?: RoutePoint[];
   events?: { type?: string; at?: number; message?: string }[];
   target?: RunTarget;
+  /** Laufart ausdrücklich gewählt oder bestätigt; dann fragt die Detailseite nicht mehr. */
+  purposeConfirmed?: boolean;
 }
 export interface Capabilities {
   gps?: boolean;
@@ -160,7 +163,8 @@ export function normalizeRun(raw: any): Run {
       raw.durationSeconds ?? raw.durationSec ?? (raw.elapsedMs || 0) / 1000,
     distanceMeters: raw.distanceMeters ?? raw.distanceM ?? 0,
     source: raw.source || 'phone',
-    purpose: feedback.purpose ?? raw.purpose ?? 'unknown',
+    purpose: normalizePurpose(feedback.purpose ?? raw.purpose),
+    purposeConfirmed: feedback.purposeConfirmed === true,
     sport: normalizeSport(feedback.sport ?? raw.sport),
     samples: raw.samples ?? raw.rawSampleCount ?? 0,
     sourceVersion: raw.sourceVersion || 'native-v1',

@@ -97,7 +97,8 @@ import {
 import { RunIntegrations } from './RunIntegrations';
 import { KilometerTable, RunSeriesPanel } from './RunCharts';
 import { RunInsights, toneFor } from './RunInsights';
-import { recentComparison } from '../domain/insights';
+import { maxHeartRate, recentComparison } from '../domain/insights';
+import { purposeHintReason, suggestRunPurpose } from '../domain/purposeHint';
 import {
   compassLabel,
   kilometerSplits,
@@ -200,6 +201,7 @@ import {
   hasNamedPurpose,
   purposeLabel,
   runTitle,
+  selectablePurpose,
 } from '../domain/runTitle';
 import {
   buildRunAnalysisExport,
@@ -2339,17 +2341,23 @@ export function RunbackApp({
               />
             </Field>
           ) : null}
-          <Field label="Zweck">
+          <Field label="Wie willst du laufen?">
             <ChipGroup
-              label="Zweck dieser Aufzeichnung"
+              label="Laufart dieser Aufzeichnung"
               options={purposes.map(p => ({
                 value: p.value,
                 label: p.label,
               }))}
-              value={purpose}
+              value={selectablePurpose(purpose)}
               onChange={value => save({ purpose: value })}
               disabled={busy}
             />
+            <Copy muted>
+              {
+                purposes.find(p => p.value === selectablePurpose(purpose))
+                  ?.description
+              }
+            </Copy>
           </Field>
           {sport === 'running' ? (
             <Field label="Handy trägst du">
@@ -2864,8 +2872,8 @@ export function RunbackApp({
       : !runningRuns.length
       ? 'Dafür fehlt noch ein aufgezeichneter Lauf.'
       : needsPurpose
-      ? 'Dafür fehlt bei mindestens einem Lauf der Trainingszweck.'
-      : 'Vorschläge entstehen aus lockeren und langen Läufen mit mindestens vier gleichmäßigen Abschnitten ab 500 m.';
+      ? 'Dafür fehlt bei mindestens einem Lauf die Laufart.'
+      : 'Vorschläge entstehen aus ruhigen und langen Runden mit mindestens vier gleichmäßigen Abschnitten ab 500 m.';
     const past = (settings.experiments || []).filter(
       (e): e is Experiment<Recommendation> =>
         (e.status === 'completed' || e.status === 'aborted') &&
@@ -2965,7 +2973,7 @@ export function RunbackApp({
                   : runningRuns.length
                   ? {
                       title: needsPurpose
-                        ? 'Zweck deiner Läufe ergänzen'
+                        ? 'Laufart deiner Läufe ergänzen'
                         : 'Einheiten ansehen',
                       onPress: () => switchTab('Verlauf'),
                     }
@@ -3366,18 +3374,31 @@ export function RunbackApp({
           .filter(Boolean)
           .join(' · ')
       : '';
+    // Jede Wahl hier ist ausdrücklich; danach fragt die Seite nicht mehr nach.
     const purposeChips = (
-      <Field label="Zweck">
+      <Field label="Laufart">
         <ChipGroup
-          label="Trainingszweck dieser Aufzeichnung"
+          label="Laufart dieser Aufzeichnung"
           options={purposes.map(p => ({ value: p.value, label: p.label }))}
-          value={selected.purpose}
-          onChange={value => updateFeedback({ purpose: value })}
+          value={selectablePurpose(selected.purpose)}
+          onChange={value =>
+            updateFeedback({ purpose: value, purposeConfirmed: true })
+          }
           disabled={busy}
         />
       </Field>
     );
-    const askPurpose = isRun(selected) && !hasNamedPurpose(selected.purpose);
+    const askPurpose =
+      isRun(selected) &&
+      !hasNamedPurpose(selected.purpose) &&
+      !selected.purposeConfirmed;
+    const purposeHint = askPurpose
+      ? suggestRunPurpose(
+          selected,
+          runningRuns,
+          maxHeartRate(settings.maxHeartRate, runningRuns)?.value,
+        )
+      : undefined;
     if (feelingOnly) {
       return (
         <>
@@ -3576,9 +3597,29 @@ export function RunbackApp({
           </Card>
         ) : null}
         {askPurpose ? (
-          <Section title="Wofür war dieser Lauf?">
+          <Section title="Wie war der Lauf gemeint?">
+            {purposeHint ? (
+              <>
+                <Copy>
+                  Sah aus wie: {purposeLabel(purposeHint.purpose)} —{' '}
+                  {purposeHintReason(purposeHint)}.
+                </Copy>
+                <Button
+                  small
+                  title="Stimmt"
+                  onPress={() =>
+                    updateFeedback({
+                      purpose: purposeHint.purpose,
+                      purposeConfirmed: true,
+                      purposeHint: purposeHint.model_version,
+                    })
+                  }
+                  disabled={busy}
+                />
+              </>
+            ) : null}
             <Copy muted>
-              Mit Zweck kann Runback den Lauf einordnen und vergleichen.
+              Danach vergleichen wir den Lauf mit ähnlichen Läufen.
             </Copy>
             {purposeChips}
           </Section>
@@ -3700,9 +3741,9 @@ export function RunbackApp({
           </Disclosure>
           <Disclosure
             title="Bearbeiten & verwalten"
-            subtitle="Art und Zweck ändern, exportieren, löschen"
+            subtitle="Sportart und Laufart ändern, exportieren, löschen"
           >
-            <Field label="Art">
+            <Field label="Sportart">
               <ChipGroup
                 label="Sportart dieser Aufzeichnung"
                 options={SPORTS.filter(

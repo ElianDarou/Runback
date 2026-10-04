@@ -160,10 +160,10 @@ describe('Heute', () => {
     expect(text).not.toContain('Dein Fokus');
     expect(text).not.toContain('Dein Ziel');
     expect(text).not.toContain('Laufvorlagen');
-    // Der Zweck wird erst im Moment des Startens gewählt.
+    // Die Laufart wird erst im Moment des Startens gewählt.
     expect(text).not.toContain('Zweck');
     await tap(tree, 'Lauf starten');
-    expect(screenText(tree)).toContain('Zweck');
+    expect(screenText(tree)).toContain('Wie willst du laufen?');
     await act(async () => {
       tree.unmount();
     });
@@ -624,7 +624,7 @@ describe('Lauf-Detail', () => {
     const tree = await render();
     try {
       await tap(tree, 'Verlauf');
-      await tapText(tree, 'Locker');
+      await tapText(tree, 'Ruhige Runde');
       const text = screenText(tree);
       expect(text).toContain('Bewegung');
       expect(text).toContain('2,50 km · 12:30 ohne Gehpause');

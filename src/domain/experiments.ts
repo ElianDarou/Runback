@@ -182,7 +182,7 @@ export function evaluateExperiment(
       continue;
     }
     if (run.purpose !== experiment.recommendation.purpose) {
-      exclude('Anderer Laufzweck.');
+      exclude('Andere Laufart.');
       continue;
     }
     if (

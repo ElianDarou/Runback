@@ -1,6 +1,7 @@
 import type { Run } from '../native';
 import type { RunPurpose } from './types';
 import { medianOrNull } from './inference';
+import { normalizePurpose, purposeLabel } from './runTitle';
 import { average, mondayStart, validRun } from './statistics';
 
 /**
@@ -120,14 +121,6 @@ const RANGE_COMPARISONS: Record<StatsRange, string> = {
   all: 'den Zeitraum davor',
 };
 
-const PURPOSE_LABELS: Record<RunPurpose, string> = {
-  easy: 'Locker',
-  long: 'Lang',
-  intervals: 'Intervalle',
-  race: 'Wettkampf',
-  free: 'Frei',
-  unknown: 'Ohne Zweck',
-};
 
 const dayFormat = new Intl.DateTimeFormat('de-DE', {
   day: '2-digit',
@@ -419,8 +412,7 @@ function purposeShares(runs: Run[]): PurposeShare[] {
   const totalKm = runs.reduce((sum, run) => sum + run.distanceMeters / 1000, 0);
   const groups = new Map<RunPurpose, Run[]>();
   runs.forEach(run => {
-    const purpose: RunPurpose =
-      run.purpose && PURPOSE_LABELS[run.purpose] ? run.purpose : 'unknown';
+    const purpose = normalizePurpose(run.purpose);
     groups.set(purpose, (groups.get(purpose) || []).concat(run));
   });
   return Array.from(groups.entries())
@@ -431,7 +423,7 @@ function purposeShares(runs: Run[]): PurposeShare[] {
       );
       return {
         purpose,
-        label: PURPOSE_LABELS[purpose],
+        label: purposeLabel(purpose),
         runCount: group.length,
         distanceKm,
         share: totalKm > 0 ? distanceKm / totalKm : 0,

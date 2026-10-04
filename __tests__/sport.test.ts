@@ -83,7 +83,7 @@ describe('titles by sport', () => {
     // Ein benannter Zweck gilt für beide Sportarten.
     expect(
       runTitle({ startTime: at(6), purpose: 'intervals', sport: 'cycling' }),
-    ).toBe('Intervalle');
+    ).toBe('Tempowechsel');
   });
 });
 

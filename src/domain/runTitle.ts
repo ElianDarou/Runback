@@ -7,7 +7,7 @@
  * dieser Reihenfolge:
  *
  * 1. einen sprechenden Namen aus der Quelle,
- * 2. den Trainingszweck, sobald er festgelegt ist,
+ * 2. die Laufart, sobald sie festgelegt ist,
  * 3. die Tageszeit des Starts.
  *
  * Siehe docs/design-language.md, Abschnitt „Zahlen“.
@@ -21,24 +21,71 @@ export interface RunPurposeOption {
   description: string;
 }
 
+/**
+ * Laufarten zur Auswahl. „Offen“ (`unknown`) ist keine Wahl, sondern der
+ * Zustand, bis der Nutzer etwas angibt; er sieht dafür „Einfach laufen“.
+ * Die Werte bleiben gleich, damit gespeicherte Läufe und die Uhr gültig bleiben.
+ */
 export const RUN_PURPOSES: RunPurposeOption[] = [
-  { value: 'free', label: 'Frei', description: 'Ohne feste Vorgabe' },
-  { value: 'easy', label: 'Locker', description: 'Ruhig und gleichmäßig' },
-  { value: 'long', label: 'Lang', description: 'Zeit auf den Beinen' },
+  {
+    value: 'free',
+    label: 'Einfach laufen',
+    description: 'Ohne Vorgabe — das Tempo wird nicht bewertet',
+  },
+  {
+    value: 'easy',
+    label: 'Ruhig',
+    description: 'Entspannt, du könntest dabei reden',
+  },
+  {
+    value: 'long',
+    label: 'Lange Runde',
+    description: 'Länger als sonst, in ruhigem Tempo',
+  },
   {
     value: 'intervals',
-    label: 'Intervalle',
-    description: 'Belastung und Erholung im Wechsel',
+    label: 'Tempowechsel',
+    description: 'Schnelle Stücke mit Pausen dazwischen',
   },
-  { value: 'race', label: 'Wettkampf', description: 'Laufen auf Leistung' },
-  { value: 'unknown', label: 'Offen', description: 'Zweck später ergänzen' },
+  {
+    value: 'race',
+    label: 'Auf Zeit',
+    description: 'So schnell es heute geht — Wettkampf oder deine Hausrunde',
+  },
 ];
 
+const PURPOSE_LABELS: Record<RunPurpose, string> = {
+  free: 'Einfach laufen',
+  easy: 'Ruhig',
+  long: 'Lange Runde',
+  intervals: 'Tempowechsel',
+  race: 'Auf Zeit',
+  unknown: 'Noch offen',
+};
+
+/** Als Lauftitel klingt ein Adjektiv allein seltsam („Ruhig“). */
+const PURPOSE_TITLES: Partial<Record<RunPurpose, string>> = {
+  easy: 'Ruhige Runde',
+};
+
 export function purposeLabel(value: RunPurpose | undefined): string {
-  return RUN_PURPOSES.find(p => p.value === value)?.label || 'Lauf';
+  return (value && PURPOSE_LABELS[value]) || 'Lauf';
 }
 
-/** Ein Zweck, der etwas über den Lauf aussagt — „frei“ und „offen“ tun das nicht. */
+/** Ältere Uhr-Versionen schreiben `quality` oder `interval` für Tempowechsel. */
+export function normalizePurpose(value: unknown): RunPurpose {
+  if (value === 'quality' || value === 'interval') return 'intervals';
+  return typeof value === 'string' && value in PURPOSE_LABELS
+    ? (value as RunPurpose)
+    : 'unknown';
+}
+
+/** Wert für die Auswahl: „Noch offen“ erscheint dort als „Einfach laufen“. */
+export function selectablePurpose(value: RunPurpose | undefined): RunPurpose {
+  return !value || value === 'unknown' ? 'free' : value;
+}
+
+/** Eine Laufart, die etwas über den Lauf aussagt — „frei“ und „offen“ tun das nicht. */
 export function hasNamedPurpose(purpose: RunPurpose | undefined): boolean {
   return purpose !== undefined && purpose !== 'unknown' && purpose !== 'free';
 }
@@ -153,7 +200,7 @@ export function runTitle(run: {
     return (run.name as string).trim();
   }
   if (hasNamedPurpose(run.purpose)) {
-    return purposeLabel(run.purpose);
+    return PURPOSE_TITLES[run.purpose!] ?? purposeLabel(run.purpose);
   }
   return dayPartTitle(run.startTime, run.sport);
 }

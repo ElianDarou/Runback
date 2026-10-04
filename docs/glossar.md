@@ -29,7 +29,8 @@ rechts wozu es dient. Nur Begriffe, die im Produkt wirklich vorkommen.
 | Stabil | `PlateauStatus` `stable` | Kraftverlauf, der nachweislich eng um null liegt. „Noch nicht klar“ ist kein Plateau. |
 | Trainingstag | `collapseToDays` | Zwei Einheiten am selben Tag zählen im Kraftverlauf einmal. |
 | Datenqualität | `QualityReport` | Wie vollständig und passend die Daten für genau diese Aussage sind. |
-| Zweck | `RunPurpose` | Wofür eine Einheit gedacht war: locker, lang, Intervalle, Wettkampf, frei, unbekannt. |
+| Laufart | `RunPurpose` | Wie ein Lauf gemeint war: Einfach laufen (`free`), Ruhig (`easy`), Lange Runde (`long`), Tempowechsel (`intervals`), Auf Zeit (`race`, auch die tägliche Hausrunde auf Bestzeit). Noch offen (`unknown`) ist keine Wahl, sondern der Zustand bis zur Angabe. |
+| Vorschlag zur Laufart | `suggestRunPurpose` | Nach dem Lauf aus Puls gegen Maxpuls oder Atmung, Temposchwankung und Länge. Nur Vorschau; gilt erst nach „Stimmt“ und trägt dann seine Version. |
 | Sportart | `Sport` | `running`, `cycling`; fehlt das Feld, gilt Laufen. |
 | Effort | `EffortEstimate` | Modellierte äußere Anforderung eines Laufs. Kein Fitness- oder Ermüdungswert. |
 | Tempoindex | `EffortEstimate` | Einfaches Tempomaß relativ zu 3 m/s. Keine Leistung, kein Score. |
@@ -37,7 +38,7 @@ rechts wozu es dient. Nur Begriffe, die im Produkt wirklich vorkommen.
 | Wiederholungen im Tank | `actualRir` | Freiwillige Nutzerangabe je Satz. Fehlt sie, bleibt sie unbekannt und wird nicht geschätzt. |
 | Relevanzmatrix | `prioritization.ts` | Versionierte Gewichte je Fokus-Art und Handlungsklasse. |
 | Handlungsklasse | `ActionClass` | Art einer Empfehlung, z. B. Startdisziplin (`calmer_start`), Last einer Übung (`strength_load`). |
-| Einheit | `StrengthSession` / `RunSummary` | Trainingseinheit beliebiger Art mit Zeit, Zweck und Herkunft. |
+| Einheit | `StrengthSession` / `RunSummary` | Trainingseinheit beliebiger Art mit Zeit, Laufart und Herkunft. |
 | Satz | `PlannedSet` / `LoggedSet` | Kleinste Krafteinheit: Übung, Wiederholungen/Dauer, Last, Pause. |
 | Plan | `WorkoutTemplate` | Vorlage aus Einheiten-Slots. Vorschlag, keine Verpflichtung. |
 | Durchgeführt | `LoggedSet`, Status `finished` | Was tatsächlich erfasst wurde; bei Abweichung vom Plan immer maßgeblich. |
@@ -68,7 +69,7 @@ rechts wozu es dient. Nur Begriffe, die im Produkt wirklich vorkommen.
 | Pulszonen | `heartRateZones` | Zeit in fünf Zonen als Anteil vom Maxpuls (60/70/80/90 %). |
 | Ermüdungsmuster | `fatiguePattern` | Letztes gegen erstes Drittel: Tempo, Puls, Kadenz, Schrittlänge. Antwort in Worten: eher Beine, eher Kreislauf, bewusst, stabil. |
 | Wind am Tempo / Wärme am Tempo | `environmentCost` | Grobe Schätzung in s/km aus Gegenwind je Fenster bzw. Temperatur über 15 °C. |
-| Deine letzten Läufe | `recentRuns` | Bis zu acht Läufe derselben Art aus 120 Tagen davor, bevorzugt gleicher Zweck; ab drei gibt es einen Vergleich gegen den Median. |
+| Deine letzten Läufe | `recentRuns` | Bis zu acht Läufe derselben Art aus 120 Tagen davor, bevorzugt gleiche Laufart; ab drei gibt es einen Vergleich gegen den Median. |
 | Besser · wie zuletzt · etwas schlechter · schlechter | `Rating`, `StatTone` | Farbe und Pfeil einer Zahl gegenüber dem Median der letzten Läufe. Nie Farbe allein. |
 | Laufstil | `gait.ts`, Kotlin `Gait` | Beobachtungen aus Beschleunigungssensor und Gyroskop je Gerät (Handy, Uhr), je 10-s-Abschnitt gerechnet, Rohwerte in hoher Rate werden nicht gespeichert. Keine Effizienzzahl, keine Empfehlung. |
 | Trageort | `gaitPlacement`, `GaitPlacement` | Wo das Handy beim Laufen steckt (Hand, Gürtel, Tasche, Oberarm, Oberkörper, weiß nicht); die Uhr sitzt am Handgelenk. Bestimmt, welche Laufstil-Werte es gibt. Passt das Signal nicht dazu, fehlen die Werte dieses Geräts. |
@@ -87,7 +88,8 @@ Laufempfehlung, Änderung (→ Empfehlung) · Prüfbedingung, Erfolgskriterium
 · inconclusive (→ noch nicht klar) · Invariante (→ Grundregel) ·
 Gesamtumfang (→ Belastung; war nur Distanz in anderer Einheit) · Plateau als
 „kein Nachweis“ (→ stabil nur mit Nachweis) · Standardabweichung der Frische
-(→ grobe Spanne).
+(→ grobe Spanne) · Zweck, Trainingszweck, Locker, Lang, Intervalle,
+Wettkampf als Laufart (→ Laufart: Ruhig, Lange Runde, Tempowechsel, Auf Zeit).
 
 **In einem Satz:** Ein Ziel kann einen Fokus nahelegen; der Fokus hilft, eine
 Empfehlung auszuwählen. Nur die Empfehlung wird auf Umsetzung, Ergebnis und

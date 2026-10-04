@@ -29,7 +29,13 @@ jest.mock('../src/native', () => {
   };
 });
 
-import { native, nativeCall, type AppState, type Run } from '../src/native';
+import {
+  native,
+  nativeCall,
+  normalizeRun,
+  type AppState,
+  type Run,
+} from '../src/native';
 import { RunbackApp } from '../src/ui/RunbackApp';
 import { DistanceTimes } from '../src/ui/DistanceTimes';
 import { RunTargetScreen } from '../src/ui/RunTargetScreen';
@@ -173,12 +179,12 @@ describe('Freie Aufzeichnung auf Heute', () => {
     expect(sheet).toContain('Laufen');
     expect(sheet).toContain('Radfahren');
     expect(sheet).toContain('Krafttraining');
-    expect(sheet).toContain('Zweck');
+    expect(sheet).toContain('Wie willst du laufen?');
 
     await tap('Radfahren');
     expect(stored.settings.sport).toBe('cycling');
 
-    await tap('Intervalle');
+    await tap('Tempowechsel');
     await tap('Los');
     expect(nativeCall).toHaveBeenCalledWith(
       'startRun',
@@ -304,11 +310,11 @@ describe('Radfahrten in Einheiten und Detail', () => {
     expect(text).toContain('Fahrgefühl');
     expect(text).not.toContain('Nächster Schritt');
     expect(text).not.toContain('Tempoindex');
-    // Art und Zweck ändern ist eine Ausnahme und liegt eingeklappt unten.
+    // Sport- und Laufart ändern ist eine Ausnahme und liegt eingeklappt unten.
     expect(findPressable('Laufen')).toBeUndefined();
 
     await tap('Bearbeiten & verwalten');
-    expect(screenText()).toContain('Art');
+    expect(screenText()).toContain('Sportart');
     await tap('Laufen');
     expect(native.feedback).toHaveBeenCalledWith('ride', { sport: 'running' });
   });
@@ -340,7 +346,7 @@ describe('Funktionen der Aufzeichnung', () => {
     expect(sheet).not.toContain('Radfahren');
     expect(sheet).not.toContain('Art der Einheit');
     expect(sheet).not.toContain('Laufen nach');
-    expect(sheet).toContain('Zweck');
+    expect(sheet).toContain('Wie willst du laufen?');
   });
 
   it('zeigt während der Aufzeichnung nur gewählte Kennzahlen', async () => {
@@ -475,4 +481,63 @@ it('previews a next-run pace and a race goal without changing persisted settings
     secondsPerKm: 300,
   });
   expect(stored.settings.runTarget).toBeUndefined();
+});
+
+describe('Laufart nach dem Lauf', () => {
+  const openRun = async () => {
+    await tap('Verlauf');
+    const row = pressables().find(node =>
+      (node.props.accessibilityLabel || '').startsWith('Lauf:'),
+    );
+    expect(row).toBeTruthy();
+    await act(async () => {
+      row!.props.onPress();
+    });
+  };
+
+  it('schlägt die Laufart vor und speichert sie erst nach „Stimmt“', async () => {
+    stored.settings = { ...stored.settings, maxHeartRate: 190 };
+    stored.runs = [
+      finished({
+        id: 'five',
+        distanceMeters: 5000,
+        durationSeconds: 1250,
+        avgHeartRate: 172,
+        heartRateCoverage: 0.95,
+      }),
+    ];
+    await mount();
+    await openRun();
+    expect(screenText()).toContain('Wie war der Lauf gemeint?');
+    expect(screenText()).toContain('Sah aus wie: Auf Zeit — hoher Puls.');
+    expect(native.feedback).not.toHaveBeenCalled();
+
+    await tap('Stimmt');
+    expect(native.feedback).toHaveBeenCalledWith('five', {
+      purpose: 'race',
+      purposeConfirmed: true,
+      purposeHint: 'runback-purpose-hint-1',
+    });
+  });
+
+  it('liest Tempowechsel älterer Uhr-Versionen richtig', () => {
+    expect(normalizeRun({ ...finished({}), purpose: 'quality' }).purpose).toBe(
+      'intervals',
+    );
+    expect(normalizeRun(finished({})).purposeConfirmed).toBe(false);
+  });
+
+  it('fragt nicht mehr, wenn „Einfach laufen“ ausdrücklich gewählt wurde', async () => {
+    // So kommt der Lauf über normalizeRun aus dem nativen Speicher.
+    stored.runs = [
+      normalizeRun({
+        ...finished({ id: 'free-run', purpose: 'unknown' }),
+        feedback: { purpose: 'free', purposeConfirmed: true },
+      }),
+    ];
+    expect(stored.runs[0].purposeConfirmed).toBe(true);
+    await mount();
+    await openRun();
+    expect(screenText()).not.toContain('Wie war der Lauf gemeint?');
+  });
 });

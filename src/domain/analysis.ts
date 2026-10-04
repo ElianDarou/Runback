@@ -433,7 +433,7 @@ export function analyzeRun(
       : 'Dieser Lauf ist gespeichert; Zeit oder Distanz reichen für eine Tempoauswertung nicht aus.',
     focus: 'Noch nicht ausreichend beurteilbar.',
     nextAction:
-      'Beim nächsten Lauf den Zweck angeben und geeignete Abschnitte aufzeichnen.',
+      'Beim nächsten Lauf die Laufart angeben und geeignete Abschnitte aufzeichnen.',
     state: 'insufficient',
     quality,
     effort,
@@ -455,30 +455,30 @@ export function analyzeRun(
   }
   if (run.purpose === 'unknown' || run.purpose === 'free') {
     result.focus =
-      'Ohne beabsichtigten Laufzweck bewerten wir wechselndes Tempo nicht als Fehler.';
+      'Ohne gewählte Laufart bewerten wir wechselndes Tempo nicht als Fehler.';
     result.question = {
       id: `purpose-${run.id}`,
       text: 'War das wechselnde Tempo beabsichtigt?',
       reason:
-        'Der Laufzweck entscheidet, ob eine gleichmäßigere Einteilung sinnvoll ist.',
+        'Die Laufart entscheidet, ob eine gleichmäßigere Einteilung sinnvoll ist.',
     };
     result.nextAction =
-      'Ergänze bei Bedarf den Laufzweck; die Rückfrage ist freiwillig.';
+      'Ergänze bei Bedarf die Laufart; die Rückfrage ist freiwillig.';
     return result;
   }
   if (run.purpose === 'intervals' || run.purpose === 'race') {
     return {
       ...result,
-      focus: 'Temposchwankungen können zu diesem Laufzweck gehören.',
+      focus: 'Temposchwankungen können zu dieser Laufart gehören.',
       nextAction:
-        'Für diesen Laufzweck gibt es noch keine ausreichend geprüfte Empfehlung.',
+        'Für diese Laufart gibt es noch keine ausreichend geprüfte Empfehlung.',
     };
   }
   if (!pacing) {
     result.focus =
       'Für die Einteilung fehlen mindestens vier geeignete Abschnitte ab 500 m.';
     result.nextAction =
-      'Zweck und geplanten Umfang beibehalten; aus diesen Daten folgt noch keine Änderung.';
+      'Laufart und geplanten Umfang beibehalten; aus diesen Daten folgt noch keine Änderung.';
     return result;
   }
   result.classification = `Die zweite Laufhälfte war ${Math.abs(
@@ -505,14 +505,14 @@ export function analyzeRun(
         state: 'maintain',
         focus: 'Du hast zum Ende nicht deutlich an Tempo verloren.',
         nextAction:
-          'Die bisherige Einteilung für diesen Laufzweck beibehalten. Andere Trainingsaspekte bleiben offen.',
+          'Die bisherige Einteilung für diese Laufart beibehalten. Andere Trainingsaspekte bleiben offen.',
       };
     }
     return {
       ...result,
       focus: `Heute hat die zweite Hälfte deutlich nachgelassen. Ein einzelner Lauf trägt keine Empfehlung; es fehlen vergleichbare Läufe (${baseline.length} von ${MINIMUM_BASELINE_RUNS}).`,
       nextAction:
-        'Zweck und Umfang beibehalten. Entschieden wird über den Median mehrerer vergleichbarer flacher Läufe, nicht über einen Ausreißer.',
+        'Laufart und Umfang beibehalten. Entschieden wird über den Median mehrerer vergleichbarer flacher Läufe, nicht über einen Ausreißer.',
     };
   }
   if (medianFade < FADE_TRIGGER_PERCENT) {
@@ -523,7 +523,7 @@ export function analyzeRun(
         1,
       )} % langsamer. Das ist kein Muster, das eine Änderung trägt.`,
       nextAction:
-        'Die bisherige Einteilung für diesen Laufzweck beibehalten. Andere Trainingsaspekte bleiben offen.',
+        'Die bisherige Einteilung für diese Laufart beibehalten. Andere Trainingsaspekte bleiben offen.',
     };
   }
   const opening =
@@ -536,16 +536,16 @@ export function analyzeRun(
     id: `calmer-start:${run.id}:${MODEL_VERSION}`,
     kind: 'calmer_start',
     title: 'Ruhiger beginnen',
-    action: `Beginne den nächsten vergleichbar flachen ${
-      run.purpose === 'long' ? 'langen' : 'lockeren'
-    } Lauf in der ersten Hälfte etwa 5 % ruhiger (${formatPace(
+    action: `Beginne die nächste vergleichbar flache ${
+      run.purpose === 'long' ? 'lange' : 'ruhige'
+    } Runde in der ersten Hälfte etwa 5 % ruhiger (${formatPace(
       opening,
-    )} min/km). Behalte Zweck und geplanten Umfang bei.`,
+    )} min/km). Behalte Laufart und geplanten Umfang bei.`,
     reason: `In ${baseline.length} vergleichbaren Läufen war die zweite Hälfte im Median ${medianFade.toFixed(
       1,
     )} % langsamer. Probiere einen ruhigeren Start aus; Gelände, Wetter und Tagesform können mitwirken.`,
     purpose: run.purpose,
-    goal: 'Gleichmäßigere Einteilung: weniger später Tempoabfall bei erhaltenem Zweck und Umfang. Das ist keine Aussage über Leistungsfähigkeit.',
+    goal: 'Gleichmäßigere Einteilung: weniger später Tempoabfall bei gleicher Laufart und gleichem Umfang. Das ist keine Aussage über Leistungsfähigkeit.',
     criteria: {
       method: PACING_METHOD,
       baselineRunIds: baseline.map(item => item.run.id),
@@ -569,7 +569,7 @@ export function analyzeRun(
       reviewAfterRuns: 3,
       maxDays: 56,
       exclusions: [
-        'Abweichender Zweck',
+        'Andere Laufart',
         'Dauer außerhalb ±20 % oder Distanz außerhalb ±15 %',
         'Fehlende oder unzureichende Abschnitte',
         'Unbekannte oder nicht flache Steigung',
