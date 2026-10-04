@@ -151,6 +151,65 @@ describe('buildStatisticsView', () => {
     expect(pace?.runId).toBe('long');
   });
 
+  it.each(['4w', '1y', 'all'] as const)(
+    'links records to their exact source runs in %s',
+    range => {
+      const monday = new Date(2026, 2, 2).getTime();
+      const view = buildStatisticsView(
+        [
+          run({ id: 'before', startTime: monday - 1, distanceMeters: 1000 }),
+          run({ id: 'distance', startTime: monday, distanceMeters: 12000 }),
+          run({
+            id: 'duration',
+            startTime: monday + days(2),
+            durationSeconds: 7200,
+          }),
+          run({
+            id: 'pace',
+            startTime: monday + days(7) - 1,
+            distanceMeters: 5000,
+            durationSeconds: 1200,
+            canonicalId: 'same-run',
+          }),
+          run({
+            id: 'duplicate',
+            startTime: monday + days(7) - 1,
+            canonicalId: 'same-run',
+          }),
+          run({
+            id: 'next-week',
+            startTime: monday + days(7),
+            distanceMeters: 1000,
+          }),
+          run({
+            id: 'cycling',
+            startTime: monday,
+            sport: 'cycling',
+            distanceMeters: 50000,
+          }),
+          run({
+            id: 'unfinished',
+            startTime: monday,
+            status: 'paused',
+            distanceMeters: 50000,
+          }),
+        ],
+        range,
+        NOW,
+      );
+
+      expect(view.records.map(record => [record.id, record.runIds])).toEqual([
+        ['longest-distance', ['distance']],
+        ['longest-duration', ['duration']],
+        ['fastest-pace', ['pace']],
+        ['best-week', ['distance', 'duration', 'pace']],
+      ]);
+      expect(
+        view.records.find(record => record.id === 'best-week')?.value,
+      ).toBe('27,0 km');
+    },
+  );
+
   it('counts weekly streaks without breaking on the young current week', () => {
     const view = buildStatisticsView(
       [
