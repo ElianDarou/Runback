@@ -37,6 +37,15 @@ rechts wozu es dient. Nur Begriffe, die im Produkt wirklich vorkommen.
 | Belastung | `sessionLoad` | RPE × Bewegungsminuten, je Skala (Beine, Atmung) getrennt. Kein Gesamtwert aus beiden. |
 | Wiederholungen im Tank | `actualRir` | Freiwillige Nutzerangabe je Satz. Fehlt sie, bleibt sie unbekannt und wird nicht geschätzt. |
 | Bewegungsdaten | `MotionSessions`, `MotionExport` | Optional mitgeschriebene Bewegungen der Uhr im Krafttraining plus Abhakzeiten. Nur Trainingsdaten für spätere Satzerkennung, fließen in keine Auswertung ein. |
+| Puls im Krafttraining | Kotlin `StrengthHeart`, `strengthHeart.ts` | Puls der Uhr während einer Krafteinheit, in Fenstern ab 5 s (höchstens 600). Fenster ohne Wert bleiben leer. Standard an, abschaltbar unter Geräte. |
+| Puls am Satzende | `SetHeart.peakBpm` | Höchster Pulswert von 30 s vor bis 15 s nach dem Abhaken eines Satzes. |
+| Abfall in der ersten Pausenminute | `SetHeart.recoveryBpm` | Puls am Satzende minus Puls eine Minute nach dem Abhaken. Zählt nur, wenn der nächste Satz frühestens zwei Minuten später abgehakt wurde; Median ab drei Sätzen. |
+| Satzabstand | `setGaps` | Vom Abhaken eines Satzes bis zum Abhaken des nächsten derselben Übung. Enthält Pause und Satz; eine reine Pausenzeit ist unbekannt. |
+| Arbeitssatz | `isWorkingSet` | Abgehakter, nicht übersprungener Satz ohne Aufwärmen. |
+| Muskelgruppe | `muscleGroups.ts` | Zwölf grobe Gruppen für die Kraftstatistik. Ein Arbeitssatz zählt für jede Gruppe mit mindestens 25 % Anteil; ohne Katalogwerte die Hauptmuskeln der Datenbank, sonst „ohne Zuordnung“. |
+| Geschätztes Maximum | `epley1RM`, `BestSet.e1rm` | Einwiederholungsmaximum nach Epley aus einem Arbeitssatz mit Last bis zwölf Wiederholungen. Schätzung, keine Messung. |
+| Steigt · Stabil · Fällt · Noch nicht klar | `exerciseTrend` | Richtung einer Übung aus dem Kraftverlauf (`progression.ts`), als Label übersetzt. |
+| Übungsverlauf | `exerciseHistory` | Alle Einheiten einer Übung mit bestem Satz, Volumen und Bestwerten. |
 | Relevanzmatrix | `prioritization.ts` | Versionierte Gewichte je Fokus-Art und Handlungsklasse. |
 | Handlungsklasse | `ActionClass` | Art einer Empfehlung, z. B. Startdisziplin (`calmer_start`), Last einer Übung (`strength_load`). |
 | Einheit | `StrengthSession` / `RunSummary` | Trainingseinheit beliebiger Art mit Zeit, Laufart und Herkunft. |
@@ -62,6 +71,7 @@ rechts wozu es dient. Nur Begriffe, die im Produkt wirklich vorkommen.
 | Höhenmeter | `ElevationSummary` | Auf-/Abstieg aus Barometer, sonst aus GPS mit bekannter vertikaler Genauigkeit; sonst „nicht bestimmbar“. |
 | Fehlstart | `isAccidentalRun` | Unter 60 s und unter 100 m. Bleibt gespeichert, zählt aber nicht als Training. |
 | Einblicke | `insights.ts` | Tiefere Auswertung eines Laufs auf der Detailseite: Bewegung, Pacing, Puls, Ermüdung, Bedingungen, Vergleich. Beobachtung, keine Empfehlung. |
+| Detail einer Krafteinheit | `strengthSession.ts` | Gegenstück für Krafteinheiten: Übungen gegen frühere Einheiten, Puls, Muskeln, Pausen, Vergleich mit derselben Vorlage (ab drei Einheiten). |
 | Zeitbudget | `timeBudgetShares` | Ein Balken aus gelaufen, gegangen, gestanden; Pausen daneben. |
 | Puls-Drift | `heartRateDrift` | Puls je Geschwindigkeit in der zweiten Hälfte gegenüber der ersten, ohne den ersten Kilometer. Unter 5 % „aerob solide“. |
 | Meter je Herzschlag | `metersPerBeat` | Strecke geteilt durch alle Herzschläge in Bewegung. Vergleichbar über Läufe. |

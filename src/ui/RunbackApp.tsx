@@ -35,6 +35,13 @@ import {
 import { Onboarding } from './Onboarding';
 import { Statistics, readStatisticsView } from './Statistics';
 import type { StatsRecord } from '../domain/statisticsView';
+import type { StrengthRecord } from '../domain/strengthStatistics';
+import type {
+  StrengthHeart,
+  StrengthHeartSummary,
+} from '../domain/strengthHeart';
+import { StrengthSessionDetail } from './StrengthSessionDetail';
+import { ExerciseDetail } from './ExerciseDetail';
 import { PlanningScreen } from './PlanningScreen';
 import { DevelopmentScreen } from './DevelopmentScreen';
 import { GoalProgress } from './GoalProgress';
@@ -87,13 +94,11 @@ import {
   editSet as editStrengthSet,
   emptyStrengthState,
   finishSession,
-  formatWeight,
   selectExercise,
   summarize,
   startSession,
   templateForDay,
   type Exercise,
-  type SessionExercise,
   type StrengthSession,
   type StrengthState,
   type WorkoutTemplate,
@@ -276,7 +281,9 @@ type Page =
   | 'focus-strength'
   | 'goal'
   | 'session'
+  | 'exercise'
   | 'record-runs'
+  | 'record-sessions'
   | 'templates'
   | 'muscle-map'
   | 'settings'
@@ -292,6 +299,15 @@ type Page =
   | 'features'
   | 'features-home';
 /** Wohin „‹ Zurück“ von einer Seite führt. Fehlt der Eintrag, zur Hauptseite. */
+/** Seiten, die man aus einer Krafteinheit, Übung oder Statistik heraus öffnet;
+ *  „Zurück“ führt über `trail` dorthin, woher man kam. */
+const DEPTH_PAGES: Page[] = ['session', 'exercise', 'record-sessions'];
+interface Trail {
+  page: Page;
+  session: StrengthSession | null;
+  exercise: string | null;
+  record: StrengthRecord | null;
+}
 const PARENT_PAGE: Partial<Record<Page, Page>> = {
   devices: 'settings',
   'run-audio': 'settings',
@@ -452,29 +468,6 @@ const groupUnitsByWeek = (units: Unit[], today: string): UnitListItem[] => {
   return items;
 };
 
-/** Bestätigte Sätze einer Übung als Wertekette. Übersprungene werden benannt,
- *  nicht verschwiegen. */
-const setsLine = (exercise: SessionExercise) => {
-  const parts = exercise.sets
-    .filter(set => set.completedAt !== undefined || set.skipped)
-    .map(set => {
-      if (set.skipped) {
-        return 'übersprungen';
-      }
-      if (set.actualWeightKg && set.actualReps) {
-        return `${formatWeight(set.actualWeightKg)} kg × ${set.actualReps}`;
-      }
-      if (set.actualReps) {
-        return `${set.actualReps} Wdh.`;
-      }
-      if (set.actualSeconds) {
-        return `${set.actualSeconds} s`;
-      }
-      return 'ohne Werte';
-    });
-  return parts.length ? parts.join(' · ') : 'Kein bestätigter Satz';
-};
-
 const UnitRow = memo(function UnitRow({
   unit,
   open,
@@ -579,6 +572,23 @@ export function RunbackApp({
   );
   const [selectedSession, setSelectedSession] =
     useState<StrengthSession | null>(null);
+  // Krafttraining in die Tiefe: Übung, Bestwert und woher man kam. Eine
+  // Einheit oder Übung lässt sich aus der jeweils anderen öffnen; „Zurück“
+  // führt dorthin zurück statt zur Hauptseite.
+  const [selectedExercise, setSelectedExercise] = useState<string | null>(
+    null,
+  );
+  const [selectedStrengthRecord, setSelectedStrengthRecord] =
+    useState<StrengthRecord | null>(null);
+  const [trail, setTrail] = useState<Trail[]>([]);
+  // Puls der Krafteinheiten von der Uhr: Kurzformen für die Statistik, die
+  // Reihe nur für die offene Einheit.
+  const [heartSummaries, setHeartSummaries] = useState<
+    Record<string, StrengthHeartSummary>
+  >({});
+  const [sessionHeart, setSessionHeart] = useState<StrengthHeart | undefined>(
+    undefined,
+  );
   const [exportSelection, setExportSelection] = useState<string[] | null>(null);
   const [exportFrom, setExportFrom] = useState('');
   const [exportTo, setExportTo] = useState('');
@@ -1088,6 +1098,36 @@ export function RunbackApp({
       })
       .catch(() => {});
   }, []);
+  // Der Puls kommt von der Uhr erst nach dem Training an; deshalb bei jedem
+  // Wechsel des Tabs und nach neuen Einheiten nachfragen. Ohne Uhr bleibt es leer.
+  useEffect(() => {
+    if (!showStrength) return;
+    let cancelled = false;
+    native
+      .strengthHeartSummaries?.()
+      .then(next => {
+        if (!cancelled) setHeartSummaries(next);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [strengthSessions, tab, showStrength]);
+  const selectedSessionId = selectedSession?.id;
+  useEffect(() => {
+    setSessionHeart(undefined);
+    if (!selectedSessionId) return;
+    let cancelled = false;
+    native
+      .strengthHeart?.(selectedSessionId)
+      .then(next => {
+        if (!cancelled) setSessionHeart(next);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSessionId]);
   const loadProseReady = useCallback(() => {
     void nativeCall<{ enabled?: boolean; hasKey?: boolean }>('getProseSettings')
       .then(value => setProseReady(Boolean(value?.enabled && value?.hasKey)))
@@ -1205,10 +1245,7 @@ export function RunbackApp({
           return true;
         }
         if (page !== 'main') {
-          setPage(
-            page === 'templates' ? templatesParent : PARENT_PAGE[page] ?? 'main',
-          );
-          setSelectedSession(null);
+          leaveDepthRef.current();
           return true;
         }
         if (tab !== 'Heute') {
@@ -1286,6 +1323,7 @@ export function RunbackApp({
         openRun(unit.run.id);
         return;
       }
+      setTrail([]);
       setSelectedSession(unit.session);
       setPage('session');
     },
@@ -1297,9 +1335,12 @@ export function RunbackApp({
       setTemplatesParent(page);
     }
     setPage(next);
+    setTrail([]);
     if (next !== 'session') {
       setSelectedSession(null);
     }
+    setSelectedExercise(null);
+    setSelectedStrengthRecord(null);
     // Bestehende Nutzer sehen bis zum ersten Besuch einen Hinweis auf Heute;
     // der erste Besuch schreibt die Standardwerte und beendet ihn.
     if (next === 'features' && !settings.features) {
@@ -1347,6 +1388,9 @@ export function RunbackApp({
     setSelected(null);
     setFeelingOnly(false);
     setSelectedSession(null);
+    setSelectedExercise(null);
+    setSelectedStrengthRecord(null);
+    setTrail([]);
     setError('');
     setMessage('');
   };
@@ -1354,6 +1398,61 @@ export function RunbackApp({
     setCoachArea(area);
     setCriteriaOpen(false);
     switchTab('Coach');
+  };
+  // Eine Ebene zurück: aus der Tiefe des Krafttrainings dorthin, woher man
+  // kam, sonst zur festen Elternseite.
+  const leavePage = () => {
+    const last = DEPTH_PAGES.includes(page) ? trail[trail.length - 1] : undefined;
+    if (last) {
+      setTrail(trail.slice(0, -1));
+      setSelectedSession(last.session);
+      setSelectedExercise(last.exercise);
+      setSelectedStrengthRecord(last.record);
+      setPage(last.page);
+      return;
+    }
+    setTrail([]);
+    setPage(
+      page === 'templates' ? templatesParent : PARENT_PAGE[page] ?? 'main',
+    );
+    setSelectedSession(null);
+    setSelectedExercise(null);
+    setSelectedStrengthRecord(null);
+  };
+  const leaveDepthRef = useRef(leavePage);
+  leaveDepthRef.current = leavePage;
+  const openDepth = (
+    next: Page,
+    change: {
+      session?: StrengthSession;
+      exercise?: string;
+      record?: StrengthRecord;
+    },
+  ) => {
+    setExportSelection(null);
+    setTrail(current => [
+      ...current,
+      {
+        page,
+        session: selectedSession,
+        exercise: selectedExercise,
+        record: selectedStrengthRecord,
+      },
+    ]);
+    if (change.session) setSelectedSession(change.session);
+    if (change.exercise) setSelectedExercise(change.exercise);
+    if (change.record) setSelectedStrengthRecord(change.record);
+    setPage(next);
+  };
+  const openSessionById = (id: string) => {
+    const session = strengthSessions.find(entry => entry.id === id);
+    if (session) openDepth('session', { session });
+  };
+  const openExercise = (exerciseId: string) =>
+    openDepth('exercise', { exercise: exerciseId });
+  const openStrengthRecord = (record: StrengthRecord) => {
+    if (record.sessionIds.length === 1) openSessionById(record.sessionIds[0]);
+    else openDepth('record-sessions', { record });
   };
   const leaveDetail = () => {
     if (selected) {
@@ -1365,10 +1464,7 @@ export function RunbackApp({
     if (page === 'models' || page === 'devices') {
       loadProseReady();
     }
-    setPage(
-      page === 'templates' ? templatesParent : PARENT_PAGE[page] ?? 'main',
-    );
-    setSelectedSession(null);
+    leavePage();
   };
   const changeFeatures = (next: Features) => {
     const at = Date.now();
@@ -4570,73 +4666,17 @@ export function RunbackApp({
 
   // Detail einer Krafteinheit. Gezeigt wird, was bestätigt wurde — Planwerte
   // erscheinen hier nicht als Ist-Werte (T-6).
-  const renderSession = () => {
-    if (!selectedSession) {
-      return null;
-    }
-    const session = selectedSession;
-    const summary = summarize(session);
-    const seconds = sessionSeconds(session);
-    const confirmedSets = session.exercises.flatMap(exercise =>
-      exercise.sets.filter(
-        set => set.completedAt !== undefined && !set.skipped,
-      ),
-    );
-    const weighed = {
-      total: confirmedSets.length,
-      withWeight: confirmedSets.filter(
-        set => (set.actualWeightKg ?? 0) > 0 && (set.actualReps ?? 0) > 0,
-      ).length,
-    };
-    return (
-      <>
-        <Title>{session.name || 'Krafttraining'}</Title>
-        <Copy muted>{date(session.startTime)}</Copy>
-        <View style={styles.metrics}>
-          <Stat value={String(summary.completedSets)} label="Sätze" />
-          <Stat value={seconds ? duration(seconds) : '–'} label="Dauer" />
-          <Stat
-            value={
-              summary.volumeKg > 0
-                ? kilogramFormat.format(summary.volumeKg)
-                : '–'
-            }
-            label="Volumen kg"
-          />
-        </View>
-        <Section title="Übungen">
-          {session.exercises.length ? (
-            session.exercises.map((exercise, index) => (
-              <Row
-                key={`${exercise.exerciseId}-${index}`}
-                title={exercise.name}
-                subtitle={setsLine(exercise)}
-              />
-            ))
-          ) : (
-            <Copy muted>In dieser Einheit ist keine Übung erfasst.</Copy>
-          )}
-        </Section>
-        {session.note ? (
-          <Section title="Notiz">
-            <Copy>{session.note}</Copy>
-          </Section>
-        ) : null}
-        {/* Das Volumen nennt seine Lücke, statt vollständig zu wirken. */}
-        {weighed.total > 0 &&
-        weighed.withWeight > 0 &&
-        weighed.withWeight < weighed.total ? (
-          <Copy muted>
-            {`Volumen aus ${weighed.withWeight} von ${counted(
-              weighed.total,
-              'Satz',
-              'Sätzen',
-            )} mit Gewicht.`}
-          </Copy>
-        ) : null}
-      </>
-    );
-  };
+  const renderSession = () =>
+    selectedSession ? (
+      <StrengthSessionDetail
+        session={selectedSession}
+        history={finishedSessions}
+        heart={sessionHeart}
+        heartSummaries={heartSummaries}
+        onOpenExercise={openExercise}
+        busy={busy}
+      />
+    ) : null;
 
   // Muskelkarte: zuerst, was du selbst gemeldet hast; die gerechnete
   // Frische bleibt daneben, solange sie gesperrt ist, als „unbekannt“.
@@ -4748,6 +4788,40 @@ export function RunbackApp({
 
   const content = selected ? (
     renderDetail()
+  ) : page === 'exercise' && selectedExercise ? (
+    <ExerciseDetail
+      exerciseId={selectedExercise}
+      sessions={finishedSessions}
+      onOpenSession={openSessionById}
+      busy={busy}
+    />
+  ) : page === 'record-sessions' && selectedStrengthRecord ? (
+    <>
+      <Title>{selectedStrengthRecord.label}</Title>
+      <Copy muted>{selectedStrengthRecord.detail}</Copy>
+      <Stat value={selectedStrengthRecord.value} label="Bestwert" />
+      <Section title="Einheiten">
+        {finishedSessions
+          .filter(session =>
+            selectedStrengthRecord.sessionIds.includes(session.id),
+          )
+          .sort((a, b) => b.startTime - a.startTime)
+          .map(session => (
+            <Row
+              key={session.id}
+              title={session.name || 'Krafttraining'}
+              subtitle={unitSummary({
+                kind: 'strength',
+                key: session.id,
+                session,
+                at: session.startTime,
+              })}
+              onPress={() => openDepth('session', { session })}
+              disabled={busy}
+            />
+          ))}
+      </Section>
+    </>
   ) : page === 'record-runs' && selectedRecord ? (
     <>
       <Title>{selectedRecord.label}</Title>
@@ -4920,6 +4994,10 @@ export function RunbackApp({
         embedded
         runs={runningRuns}
         sessions={finishedSessions}
+        heart={heartSummaries}
+        onOpenSession={openSessionById}
+        onOpenStrengthRecord={openStrengthRecord}
+        onOpenExercise={openExercise}
         view={statisticsView}
         onViewChange={next => save({ statisticsView: next })}
         busy={busy}

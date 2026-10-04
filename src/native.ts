@@ -27,6 +27,12 @@ import type {
   StructuredSorenessItem,
 } from './domain/sorenessInput';
 import type { FeatureSettings } from './domain/features';
+import {
+  readStrengthHeart,
+  readStrengthHeartSummaries,
+  type StrengthHeart,
+  type StrengthHeartSummary,
+} from './domain/strengthHeart';
 
 export interface Preset {
   id: string;
@@ -54,7 +60,7 @@ export interface Settings {
   sport?: Sport;
   /** Wo das Handy beim Laufen steckt; Kotlin liest es beim Start für den Laufstil. */
   gaitPlacement?: GaitPlacement;
-  /** Bewegungen der Uhr im Krafttraining mitschreiben; Kotlin liest es beim Start einer Einheit. */
+  /** Puls und Bewegungen der Uhr im Krafttraining; Kotlin liest es beim Start einer Einheit. */
   motionCapture?: MotionCaptureSettings;
   trainingDays?: number[];
   cues?: boolean;
@@ -76,12 +82,16 @@ export interface Settings {
 }
 export type MotionWrist = 'left' | 'right' | 'unknown';
 export interface MotionCaptureSettings {
+  /** Bewegungen mitschreiben (Rohdaten für spätere Satzerkennung). */
   enabled: boolean;
   wrist: MotionWrist;
+  /** Puls messen; fehlt der Wert, ist er an (Kotlin `MotionSessions.config`). */
+  heartRate?: boolean;
 }
 /** Zähler aus `MotionSessions.status`; die Rohdaten selbst bleiben nativ. */
 export interface MotionStatus {
   enabled: boolean;
+  heartRate?: boolean;
   wrist: MotionWrist;
   sessions: number;
   received: number;
@@ -345,6 +355,18 @@ export const native = {
     return Array.isArray(raw?.sessions)
       ? (raw.sessions as StrengthSession[])
       : [];
+  },
+  /** Puls einer Krafteinheit von der Uhr, mit Darstellungsreihe; sonst undefined. */
+  async strengthHeart(id: string): Promise<StrengthHeart | undefined> {
+    return readStrengthHeart(await nativeCall<unknown>('getStrengthHeart', id));
+  },
+  /** Kurzformen ohne Reihe für alle Einheiten mit Puls, nach Einheit. */
+  async strengthHeartSummaries(): Promise<
+    Record<string, StrengthHeartSummary>
+  > {
+    return readStrengthHeartSummaries(
+      await nativeCall<unknown>('getStrengthHeartSummaries'),
+    );
   },
   async deleteStrengthSession(id: string): Promise<StrengthState> {
     return normalizeStrength(

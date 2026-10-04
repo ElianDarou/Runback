@@ -169,6 +169,12 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         strengthState()
     }
 
+    // Puls einer Krafteinheit von der Uhr: Zusammenfassung mit höchstens 600 Fenstern, ohne Rohwerte.
+    @ReactMethod fun getStrengthHeart(id: String, promise: Promise) = task(promise) { MotionSessions.heart(context, store, id) }
+    @ReactMethod fun getStrengthHeartSummaries(promise: Promise) = task(promise) {
+        JSONObject().put("sessions", MotionSessions.heartSummaries(context, store))
+    }
+
     // Bewegungsdaten aus dem Krafttraining: Status, Export als ZIP und Löschen.
     // Rohsamples bleiben nativ; JS sieht nur Zähler.
     @ReactMethod fun getMotionStatus(promise: Promise) = task(promise) { MotionSessions.status(context, store) }

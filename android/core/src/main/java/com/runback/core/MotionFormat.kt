@@ -18,16 +18,23 @@ import java.io.OutputStream
  *     0 Uhrzeit-Anker: int64 elapsedRealtimeNanos · int64 Wanduhr der Uhr in ms
  *     1 Beschleunigung (m/s², inkl. Schwerkraft): int64 Sensorzeit ns · 3 × float32
  *     2 Gyroskop (rad/s): int64 Sensorzeit ns · 3 × float32
+ *     3 Puls (ab Version 2): int64 Sensorzeit ns · float32 bpm · int8 Genauigkeit des Sensors
  *
  * Sensorzeit und Anker teilen die Zeitbasis `elapsedRealtimeNanos`; die
  * Wanduhrzeit eines Messwerts folgt aus dem letzten Anker davor.
+ *
+ * Version 2 ergänzt nur die Pulsart; Dateien der Version 1 bleiben lesbar.
+ * Welche Arten eine Datei enthält, steht im Kopf unter `capture`.
  */
 object MotionFormat {
-    const val VERSION = 1
+    const val VERSION = 2
+    /** Älteste Version, die der Leser noch versteht. */
+    const val MIN_READ_VERSION = 1
     const val FORMAT = "runback-motion"
     const val KIND_ANCHOR: Byte = 0
     const val KIND_ACCEL: Byte = 1
     const val KIND_GYRO: Byte = 2
+    const val KIND_HEART: Byte = 3
     private val MAGIC = "RBMOTION".toByteArray(Charsets.US_ASCII)
     private const val MAX_HEADER_BYTES = 64 * 1024
 
@@ -59,6 +66,14 @@ object MotionFormat {
             data.writeFloat(z)
         }
 
+        /** Pulswert der Uhr; `accuracy` ist `SensorManager.SENSOR_STATUS_*`, ungefiltert. */
+        fun heart(timestampNanos: Long, bpm: Float, accuracy: Int) {
+            data.writeByte(KIND_HEART.toInt())
+            data.writeLong(timestampNanos)
+            data.writeFloat(bpm)
+            data.writeByte(accuracy.coerceIn(-128, 127))
+        }
+
         fun flush() = data.flush()
         override fun close() = data.close()
     }
@@ -72,11 +87,14 @@ object MotionFormat {
         var x = 0f
         var y = 0f
         var z = 0f
+        /** Nur für Puls: Genauigkeit des Sensors; der Wert steht in `x`. */
+        var accuracy = 0
     }
 
     class Reader(input: InputStream) : AutoCloseable {
         private val data = DataInputStream(input.buffered())
         val header: JSONObject
+        val version: Int
         /** Wahr, wenn die Datei mitten in einem Datensatz endet (z. B. Akku leer). */
         var truncated = false
             private set
@@ -86,8 +104,8 @@ object MotionFormat {
             val magic = ByteArray(MAGIC.size)
             data.readFully(magic)
             require(magic.contentEquals(MAGIC)) { "Keine Runback-Bewegungsdatei" }
-            val version = data.readInt()
-            require(version == VERSION) { "Unbekannte Version der Bewegungsdatei: $version" }
+            version = data.readInt()
+            require(version in MIN_READ_VERSION..VERSION) { "Unbekannte Version der Bewegungsdatei: $version" }
             val length = data.readInt()
             require(length in 2..MAX_HEADER_BYTES) { "Ungültiger Kopf der Bewegungsdatei" }
             val bytes = ByteArray(length)
@@ -111,6 +129,12 @@ object MotionFormat {
                         record.x = data.readFloat()
                         record.y = data.readFloat()
                         record.z = data.readFloat()
+                    }
+                    KIND_HEART -> {
+                        require(version >= 2) { "Puls in einer Datei der Version $version" }
+                        record.time = data.readLong()
+                        record.x = data.readFloat()
+                        record.accuracy = data.readByte().toInt()
                     }
                     else -> throw IllegalArgumentException("Unbekannte Datensatzart $kind")
                 }

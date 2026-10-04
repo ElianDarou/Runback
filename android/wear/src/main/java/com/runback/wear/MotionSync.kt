@@ -37,7 +37,10 @@ object MotionSync {
         val id = payload.getString("sessionId")
         when (payload.getString("action")) {
             "start" -> try {
-                MotionCaptureService.send(context, MotionCaptureService.START, id, payload.optString("wrist", "unknown"))
+                MotionCaptureService.send(
+                    context, MotionCaptureService.START, id, payload.optString("wrist", "unknown"),
+                    motion = payload.optBoolean("motion", true), heartRate = payload.optBoolean("heartRate", false),
+                )
             } catch (_: Exception) {
                 // Android erlaubt den Start aus dem Hintergrund nicht immer; das Handy öffnet dann die App (MainActivity).
                 reportStatus(context, id, "waiting", "Öffne Runback auf der Uhr.")

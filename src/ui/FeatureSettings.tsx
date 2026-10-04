@@ -386,7 +386,7 @@ export function FeatureSettings({
             />
           </Disclosure>
         ) : null}
-        {running ? (
+        {running || strength ? (
           <Disclosure
             title="Statistik · Tiefer schauen"
             subtitle={`${
@@ -396,7 +396,14 @@ export function FeatureSettings({
             {STATS_MODULES.map(module => (
               <Row
                 key={module}
-                title={STATS_MODULE_LABELS[module]}
+                title={
+                  // Laufen verteilt nach Laufart, Krafttraining nach Muskelgruppe.
+                  module === 'distribution' && strength
+                    ? running
+                      ? 'Verteilung und Muskeln'
+                      : 'Muskeln'
+                    : STATS_MODULE_LABELS[module]
+                }
                 trailing={toggle(hasModule(module), value =>
                   setModule(module, value),
                 )}

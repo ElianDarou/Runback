@@ -136,6 +136,7 @@ class MotionDataTest {
             anchor(5_000_000_000L, 1_001_250L)
             sample(MotionFormat.KIND_ACCEL, 5_020_000_000L, 1f, 2f, 3f)
             sample(MotionFormat.KIND_GYRO, 5_040_000_000L, 0.5f, 0f, -0.5f)
+            heart(5_030_000_000L, 121.5f, 3)
         }
         val meta = JSONObject().put("sessionId", "session-1").put("wrist", "left").put("startedAt", 1_000_000L)
             .put("events", JSONArray().put(JSONObject().put("t", 1_002_000L).put("type", "set_completed")
@@ -156,6 +157,7 @@ class MotionDataTest {
 
         assertEquals("t_ms,x,y,z\n1020,1.0,2.0,3.0\n", files["session-1/accel.csv"])
         assertEquals("t_ms,x,y,z\n1040,0.5,0.0,-0.5\n", files["session-1/gyro.csv"])
+        assertEquals("t_ms,bpm,accuracy\n1030,121.5,3\n", files["session-1/heart.csv"])
         val sets = files["session-1/sets.csv"]!!.lines()
         assertTrue(sets[1].startsWith("0,bench,Bankdrücken,0,a1,normal,,8,,,8,60,,,0,2000,90"))
         // Nicht abgehakter Satz: keine erfundenen Werte.
@@ -163,9 +165,9 @@ class MotionDataTest {
         assertTrue(files["session-1/events.csv"]!!.contains("2000,set_completed,0,bench,\"Bankdrücken, eng\",0,a1"))
 
         val summary = files["sessions.csv"]!!.lines()
-        assertTrue(summary[1].startsWith("session-1,1000000,1060000,Push,left,50,,1,0,1,250,10,1,1,3,1,1"))
+        assertEquals("session-1,1000000,1060000,Push,left,50,,1,0,1,250,10,1,1,3,1,1,1", summary[1])
         // Ohne Rohdatei und ohne Ping: Zeilen bleiben leer statt 0.
-        assertTrue(summary[2].startsWith("session-2,1000000,,,left,,,0,0,0,,,,,0,0,1"))
+        assertEquals("session-2,1000000,,,left,,,0,0,0,,,,,0,0,1,", summary[2])
         assertFalse(files.containsKey("session-2/accel.csv"))
         assertEquals(MotionExport.FORMAT, JSONObject(files["manifest.json"]!!).getString("format"))
     }
