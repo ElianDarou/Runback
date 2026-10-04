@@ -21,11 +21,15 @@ import {
 export function ImportedTemplates({
   templates,
   onSave,
+  onDismiss,
+  dismissedIds = [],
   busy,
   refreshKey = '',
 }: {
   templates: WorkoutTemplate[];
   onSave: (template: WorkoutTemplate) => Promise<void>;
+  onDismiss: (id: string) => Promise<void>;
+  dismissedIds?: readonly string[];
   busy: boolean;
   refreshKey?: string;
 }) {
@@ -33,6 +37,7 @@ export function ImportedTemplates({
   const [selected, setSelected] = useState<ImportedTemplate | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState('');
   const [omitted, setOmitted] = useState(0);
   const [retry, setRetry] = useState(0);
@@ -60,8 +65,8 @@ export function ImportedTemplates({
     };
   }, [retry, refreshKey]);
   const candidates = useMemo(
-    () => importedTemplateCandidates(workouts, templates),
-    [workouts, templates],
+    () => importedTemplateCandidates(workouts, templates, dismissedIds),
+    [workouts, templates, dismissedIds],
   );
   const incomplete = workouts.filter(workout => workout.incomplete).length;
   const save = async () => {
@@ -73,6 +78,20 @@ export function ImportedTemplates({
       setSelected(null);
     } catch {
       setError('Vorlage konnte nicht gespeichert werden.');
+    } finally {
+      setSaving(false);
+    }
+  };
+  const dismiss = async () => {
+    if (!selected || saving || busy) return;
+    setSaving(true);
+    setError('');
+    try {
+      await onDismiss(selected.template.id);
+      setSelected(null);
+      setConfirmDelete(false);
+    } catch {
+      setError('Vorschlag konnte nicht gelöscht werden.');
     } finally {
       setSaving(false);
     }
@@ -117,6 +136,7 @@ export function ImportedTemplates({
           subtitle={`${candidate.template.exercises.length} Übungen · ${candidate.source.sets.length} Sätze`}
           onPress={() => {
             setSelected(candidate);
+            setConfirmDelete(false);
             setError('');
           }}
         />
@@ -125,7 +145,10 @@ export function ImportedTemplates({
         visible={selected !== null}
         title={selected?.template.name ?? 'Vorlage prüfen'}
         onClose={() => {
-          if (!saving) setSelected(null);
+          if (!saving) {
+            setSelected(null);
+            setConfirmDelete(false);
+          }
         }}
       >
         {selected ? (
@@ -200,11 +223,43 @@ export function ImportedTemplates({
                 {selected.template.importSource?.workoutId}
               </Copy>
             </Disclosure>
-            <Button
-              title={saving ? 'Wird übernommen' : 'Vorlage übernehmen'}
-              onPress={() => void save()}
-              disabled={saving || busy}
-            />
+            {confirmDelete ? (
+              <>
+                <Copy muted>
+                  Lösche diesen Vorschlag dauerhaft; die importierte Einheit
+                  bleibt erhalten.
+                </Copy>
+                <Button
+                  danger
+                  title={saving ? 'Wird gelöscht' : 'Löschen bestätigen'}
+                  onPress={() => void dismiss()}
+                  disabled={saving || busy}
+                />
+                <Button
+                  secondary
+                  title="Behalten"
+                  onPress={() => {
+                    setConfirmDelete(false);
+                    setError('');
+                  }}
+                  disabled={saving || busy}
+                />
+              </>
+            ) : (
+              <>
+                <Button
+                  title={saving ? 'Wird übernommen' : 'Vorlage übernehmen'}
+                  onPress={() => void save()}
+                  disabled={saving || busy}
+                />
+                <Button
+                  danger
+                  title="Vorschlag löschen"
+                  onPress={() => setConfirmDelete(true)}
+                  disabled={saving || busy}
+                />
+              </>
+            )}
           </>
         ) : null}
       </Sheet>

@@ -121,6 +121,30 @@ describe('Strong-Export und Vorlagen', () => {
     });
     expect(candidate.warnings.length).toBeGreaterThan(0);
   });
+  it('hält gelöschte Vorschläge nach erneutem Import verborgen, ohne Originale oder andere Vorlagen zu ändern', () => {
+    const removed = candidates[0];
+    const dismissed = [removed.template.id];
+    const originals = JSON.stringify(parsed.workouts);
+    const saved = [{ ...removed.template, id: 'my-plan', name: 'Eigene Vorlage' }];
+    const remaining = importedTemplateCandidates(parsed.workouts, [], dismissed);
+    expect(remaining.map(item => item.template.id)).toEqual(
+      candidates.slice(1).map(item => item.template.id),
+    );
+    const newer = {
+      ...removed.source,
+      id: 'new-import',
+      name: `  ${removed.source.name.toUpperCase()}  `,
+      time: removed.source.time + 86400000,
+    };
+    expect(importedTemplateCandidates([newer, removed.source], [], dismissed))
+      .toEqual([]);
+    expect(importedTemplateCandidates([newer], saved, dismissed)).toEqual([]);
+    expect(saved[0].name).toBe('Eigene Vorlage');
+    expect(JSON.stringify(parsed.workouts)).toBe(originals);
+    expect(dismissed).toEqual([removed.template.id]);
+    expect(importedTemplateCandidates([{ ...newer, source: 'other' }], [], dismissed))
+      .toHaveLength(1);
+  });
   it('konvertiert Pfund und bekannte Strecken, setzt aber keine Gewichte voraus', () => {
     const csv =
       'Date;Workout Name;Exercise Name;Set Order;Weight (lbs);Reps;Distance (km);Seconds\n2024-01-01 18:00:00;A;Bench Press (Barbell);1;100;8;;\n2024-01-01 18:00:00;A;Plank;2;;;;30';

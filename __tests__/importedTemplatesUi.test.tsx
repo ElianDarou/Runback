@@ -21,7 +21,7 @@ function texts(tree: TestRenderer.ReactTestRenderer) {
 async function render(onSave: (template: WorkoutTemplate) => Promise<void> = jest.fn(async (_template: WorkoutTemplate) => {})) {
   (nativeCall as jest.Mock).mockResolvedValue({ workouts });
   let tree!: TestRenderer.ReactTestRenderer;
-  await act(async () => { tree = TestRenderer.create(<ImportedTemplates templates={[]} onSave={onSave} busy={false} />); });
+  await act(async () => { tree = TestRenderer.create(<ImportedTemplates onDismiss={jest.fn()} templates={[]} onSave={onSave} busy={false} />); });
   return tree;
 }
 it('zeigt erst die Vorschau und speichert nur nach der eigenen Übernahmeaktion', async () => {
@@ -47,19 +47,168 @@ it('lässt die Vorschau nach einem Speicherfehler zum erneuten Versuch offen', a
   expect(tree.root.findByType(Sheet).props.visible).toBe(true);
   expect(texts(tree)).toContain('Vorlage konnte nicht gespeichert werden.');
 });
+it('löscht Vorschläge erst nach Bestätigung und hält sie nach erneutem Öffnen verborgen', async () => {
+  (nativeCall as jest.Mock).mockResolvedValue({ workouts });
+  const onSave = jest.fn();
+  let dismissedIds: string[] = [];
+  const onDismiss = jest.fn(async (id: string) => {
+    dismissedIds = [id];
+  });
+  let tree!: TestRenderer.ReactTestRenderer;
+  const props = { templates: [], onSave, onDismiss, busy: false };
+  await act(async () => {
+    tree = TestRenderer.create(<ImportedTemplates {...props} />);
+  });
+  const press = async (title: string) => {
+    await act(async () => {
+      tree.root
+        .findAllByType(Button)
+        .find((button) => button.props.title === title)!
+        .props.onPress();
+    });
+  };
+  try {
+    await act(async () => {
+      tree.root.findByType(Row).props.onPress();
+    });
+    await press('Vorschlag löschen');
+    expect(onDismiss).not.toHaveBeenCalled();
+    expect(texts(tree)).toContain('importierte Einheit bleibt erhalten');
+    await press('Behalten');
+    expect(onDismiss).not.toHaveBeenCalled();
+    await press('Vorschlag löschen');
+    await press('Löschen bestätigen');
+    expect(onDismiss).toHaveBeenCalledWith('import-template:strong:push');
+    expect(onSave).not.toHaveBeenCalled();
+    await act(async () => {
+      tree.update(<ImportedTemplates {...props} dismissedIds={dismissedIds} />);
+    });
+    expect(tree.toJSON()).toBeNull();
+    await act(async () => {
+      tree.unmount();
+    });
+    await act(async () => {
+      tree = TestRenderer.create(
+        <ImportedTemplates {...props} dismissedIds={dismissedIds} />,
+      );
+    });
+    expect(tree.toJSON()).toBeNull();
+  } finally {
+    await act(async () => {
+      tree.unmount();
+    });
+  }
+});
+it('hält beim Löschfehler die Bestätigung offen und erlaubt einen erneuten Versuch', async () => {
+  (nativeCall as jest.Mock).mockResolvedValue({ workouts });
+  const onDismiss = jest
+    .fn()
+    .mockRejectedValueOnce(new Error('db'))
+    .mockResolvedValue(undefined);
+  const onSave = jest.fn();
+  let tree!: TestRenderer.ReactTestRenderer;
+  await act(async () => {
+    tree = TestRenderer.create(
+      <ImportedTemplates
+        templates={[]}
+        onSave={onSave}
+        onDismiss={onDismiss}
+        busy={false}
+      />,
+    );
+  });
+  const press = async (title: string) => {
+    await act(async () => {
+      tree.root
+        .findAllByType(Button)
+        .find((button) => button.props.title === title)!
+        .props.onPress();
+    });
+  };
+  try {
+    await act(async () => {
+      tree.root.findByType(Row).props.onPress();
+    });
+    await press('Vorschlag löschen');
+    await press('Löschen bestätigen');
+    expect(tree.root.findByType(Sheet).props.visible).toBe(true);
+    expect(texts(tree)).toContain('Vorschlag konnte nicht gelöscht werden.');
+    await press('Löschen bestätigen');
+    expect(onDismiss).toHaveBeenCalledTimes(2);
+    expect(onSave).not.toHaveBeenCalled();
+    expect(tree.root.findByType(Sheet).props.visible).toBe(false);
+  } finally {
+    await act(async () => {
+      tree.unmount();
+    });
+  }
+});
+it('sperrt beide Aktionen und das Schließen während des Löschens', async () => {
+  (nativeCall as jest.Mock).mockResolvedValue({ workouts });
+  let finish!: () => void;
+  const onDismiss = jest.fn(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  let tree!: TestRenderer.ReactTestRenderer;
+  await act(async () => {
+    tree = TestRenderer.create(
+      <ImportedTemplates
+        templates={[]}
+        onSave={jest.fn()}
+        onDismiss={onDismiss}
+        busy={false}
+      />,
+    );
+  });
+  try {
+    await act(async () => {
+      tree.root.findByType(Row).props.onPress();
+    });
+    await act(async () => {
+      tree.root
+        .findAllByType(Button)
+        .find((button) => button.props.title === 'Vorschlag löschen')!
+        .props.onPress();
+    });
+    await act(async () => {
+      tree.root
+        .findAllByType(Button)
+        .find((button) => button.props.title === 'Löschen bestätigen')!
+        .props.onPress();
+    });
+    expect(
+      tree.root.findAllByType(Button).every((button) => button.props.disabled),
+    ).toBe(true);
+    await act(async () => {
+      tree.root.findByType(Sheet).props.onClose();
+    });
+    expect(tree.root.findByType(Sheet).props.visible).toBe(true);
+    await act(async () => {
+      finish();
+    });
+    expect(tree.root.findByType(Sheet).props.visible).toBe(false);
+  } finally {
+    await act(async () => {
+      tree.unmount();
+    });
+  }
+});
 it('blendet bereits übernommene Vorlagen nach dem Speichern aus', async () => {
   let templates: WorkoutTemplate[] = [];
   const onSave = async (template: WorkoutTemplate) => { templates = [template]; };
   const tree = await render(onSave);
   await act(async () => { tree.root.findByType(Row).props.onPress(); });
   await act(async () => { tree.root.findAllByType(Button).find(button => button.props.title === 'Vorlage übernehmen')!.props.onPress(); });
-  await act(async () => { tree.update(<ImportedTemplates templates={templates} onSave={onSave} busy={false} />); });
+  await act(async () => { tree.update(<ImportedTemplates onDismiss={jest.fn()} templates={templates} onSave={onSave} busy={false} />); });
   expect(tree.toJSON()).toBeNull();
 });
 it('zeigt Ladefehler mit einer erneuten Aktion und erfindet keinen leeren Erfolg', async () => {
   (nativeCall as jest.Mock).mockRejectedValueOnce(new Error('bridge'));
   let tree!: TestRenderer.ReactTestRenderer;
-  await act(async () => { tree = TestRenderer.create(<ImportedTemplates templates={[]} onSave={jest.fn()} busy={false} />); });
+  await act(async () => { tree = TestRenderer.create(<ImportedTemplates onDismiss={jest.fn()} templates={[]} onSave={jest.fn()} busy={false} />); });
   expect(texts(tree)).toContain('Vorlagen konnten nicht geladen werden.');
   (nativeCall as jest.Mock).mockResolvedValueOnce({ workouts });
   await act(async () => { tree.root.findByType(Button).props.onPress(); });
@@ -83,7 +232,7 @@ it('macht den vollständigen Katalog erreichbar und sucht englische Namen', asyn
 it('aktualisiert eine bereits geöffnete Vorschau, wenn der Import fertig ist', async () => {
   (nativeCall as jest.Mock).mockResolvedValueOnce({ workouts: [] });
   let tree!: TestRenderer.ReactTestRenderer;
-  const props = { templates: [], onSave: jest.fn(), busy: false };
+  const props = { templates: [], onSave: jest.fn(), onDismiss: jest.fn(), busy: false };
   await act(async () => { tree = TestRenderer.create(<ImportedTemplates {...props} refreshKey="running:0" />); });
   expect(tree.toJSON()).toBeNull();
   (nativeCall as jest.Mock).mockResolvedValueOnce({ workouts });
