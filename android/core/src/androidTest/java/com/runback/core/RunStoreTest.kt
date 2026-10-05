@@ -38,6 +38,27 @@ class RunStoreTest {
     }
 
     @Test
+    fun strengthImportHistoryKeepsAllWorkoutsAndReadsLegacyRows() {
+        val sets = listOf(StrengthSet("Bench Press (Barbell)", 1, weight = 80.0, reps = 8))
+        val first = StrengthWorkout("strong:first", 1000, "Push", source = "strong")
+        val second = first.copy(id = "strong:second", time = 2000)
+        val old = first.copy(id = "strong:legacy", time = 500, durationSec = 3600.0)
+        store.addStrengthWorkout(first, sets, StrengthImport.document(first, sets))
+        store.addStrengthWorkout(second, sets, StrengthImport.document(second, sets))
+        store.addStrengthWorkout(old, sets)
+        assertEquals("duplicate", store.addStrengthWorkout(first, sets).getString("status"))
+        val history = store.strengthImports(500)
+        assertEquals(3, history.length())
+        assertEquals("strong:second", history.getJSONObject(0).getString("id"))
+        assertEquals("strong:first", history.getJSONObject(1).getString("id"))
+        assertEquals(1, store.strengthImports(1).length())
+        assertEquals(3600.0, store.strengthImport("strong:legacy")!!.getDouble("durationSeconds"), 0.0)
+        assertNull(store.getDocument("strength_import_strong:legacy"))
+        assertEquals(0, store.strengthSessions(500).length())
+        assertNull(store.strengthImport("missing"))
+    }
+
+    @Test
     fun lifecycleStatusAndDurationAreMonotonic() {
         val started = store.start("easy", "test")
         assertEquals("recording", started.getString("status"))

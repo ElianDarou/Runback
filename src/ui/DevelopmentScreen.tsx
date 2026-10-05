@@ -250,7 +250,7 @@ function StrengthHistoryCard({
         />
         <Stat
           label="kg bewegt"
-          value={numberFormatter.format(Math.round(history.volumeKg))}
+          value={history.volumeKg > 0 ? numberFormatter.format(Math.round(history.volumeKg)) : '–'}
         />
       </View>
       <View style={styles.historyList}>

@@ -70,6 +70,8 @@ export interface LoggedSet {
   actualWeightKg?: number;
   /** Gemeldete Wiederholungen im Tank (RIR). Nutzereingabe, nie geschätzt. */
   actualRir?: number;
+  /** Importierter Ist-Satz ohne bekannte Abhakzeit. */
+  completed?: boolean;
   completedAt?: number;
   /** Vom Nutzer übersprungen. Kein Fehler, nur eine Angabe zur Umsetzung. */
   skipped?: boolean;
@@ -101,7 +103,16 @@ export interface StrengthSession {
   note?: string;
   modelVersion: string;
   catalogVersion: string;
+  importSource?: {
+    workoutId: string;
+    source: string;
+    importVersion: string;
+    incomplete: boolean;
+  };
 }
+
+export const isSetCompleted = (set: LoggedSet): boolean =>
+  set.completed === true || set.completedAt !== undefined;
 
 export interface TemplateExercise {
   exerciseId: string;
@@ -258,11 +269,12 @@ export function completeSet(
   if (!exercise || !set) {
     return session;
   }
-  if (set.completedAt !== undefined) {
+  if (isSetCompleted(set)) {
     // Erneutes Tippen nimmt den Abschluss zurück; die Werte bleiben stehen.
     const reopened = replaceSet(exercise, setId, {
       ...set,
       completedAt: undefined,
+      completed: undefined,
     });
     return {
       ...replaceExercise(session, exerciseIndex, reopened),
@@ -309,6 +321,7 @@ export function skipSet(
     replaceSet(exercise, setId, {
       ...set,
       skipped: !set.skipped,
+      completed: undefined,
       completedAt: undefined,
     }),
   );
@@ -409,16 +422,13 @@ export interface ExerciseProgress {
 
 export function exerciseProgress(exercise: SessionExercise): ExerciseProgress {
   const relevant = exercise.sets.filter(set => !set.skipped);
-  const completed = relevant.filter(
-    set => set.completedAt !== undefined,
-  ).length;
+  const completed = relevant.filter(isSetCompleted).length;
   return {
     completed,
     total: relevant.length,
     done: relevant.length > 0 && completed === relevant.length,
-    activeSetId: exercise.sets.find(
-      set => set.completedAt === undefined && !set.skipped,
-    )?.id,
+    activeSetId: exercise.sets.find(set => !isSetCompleted(set) && !set.skipped)
+      ?.id,
   };
 }
 
@@ -436,7 +446,7 @@ export function sessionProgress(session: StrengthSession): {
         continue;
       }
       totalSets += 1;
-      if (set.completedAt === undefined) {
+      if (!isSetCompleted(set)) {
         continue;
       }
       completedSets += 1;
@@ -482,7 +492,7 @@ export function referenceSet(
       candidate => candidate.exerciseId === exerciseId,
     );
     const set = exercise?.sets.filter(
-      candidate => candidate.completedAt !== undefined,
+      candidate => isSetCompleted(candidate),
     )[setIndex];
     if (set && (set.actualWeightKg || set.actualReps || set.actualSeconds)) {
       return set;
@@ -553,7 +563,7 @@ export function sessionBest1RM(
   }
   let best: number | null = null;
   for (const set of exercise.sets) {
-    if (set.completedAt === undefined || set.planned.kind === 'warmup') {
+    if (!isSetCompleted(set) || set.planned.kind === 'warmup') {
       continue;
     }
     const estimate = epley1RM(set.actualWeightKg || 0, set.actualReps || 0);

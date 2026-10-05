@@ -1,6 +1,6 @@
 import { catalogExercise, resolveCatalogExercise } from './catalog';
 import type { RegionBase } from './regions';
-import type { LoggedSet, StrengthSession } from './strength';
+import { isSetCompleted, type LoggedSet, type StrengthSession } from './strength';
 
 /**
  * Grobe Muskelgruppen für die Kraftstatistik: „Wie viele Sätze bekommt meine
@@ -13,7 +13,7 @@ import type { LoggedSet, StrengthSession } from './strength';
  * zählen ihre Hauptmuskeln. Ohne beides bleibt der Satz „ohne Zuordnung“ —
  * geraten wird nicht.
  */
-export const MUSCLE_GROUPS_VERSION = 'muscle-groups-v1';
+export const MUSCLE_GROUPS_VERSION = 'muscle-groups-v2';
 export const PRIMARY_SHARE = 0.25;
 
 export type MuscleGroup =
@@ -141,7 +141,7 @@ function order(groups: MuscleGroup[]): MuscleGroup[] {
 /** Abgehakt, nicht übersprungen, kein Aufwärmsatz. */
 export function isWorkingSet(set: LoggedSet): boolean {
   return (
-    set.completedAt !== undefined &&
+    isSetCompleted(set) &&
     !set.skipped &&
     set.planned?.kind !== 'warmup'
   );

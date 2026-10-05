@@ -719,6 +719,34 @@ class RunStore(context: Context) : DocumentStore {
             }
         }
     }
+    /** Historie, nicht Vorlagen: auch ältere Einheiten mit demselben Namen zählen. */
+    fun strengthImports(limit: Int = 100): JSONArray = locked {
+        JSONArray().also { result ->
+            db.rawQuery("SELECT id FROM strength_workouts ORDER BY time DESC,id DESC LIMIT ?",
+                arrayOf(limit.coerceIn(1, 500).toString())).use { rows ->
+                while (rows.moveToNext()) strengthImport(rows.getString(0))?.let(result::put)
+            }
+        }
+    }
+    fun strengthImport(id: String): JSONObject? = locked {
+        getDocument("strength_import_$id")?.let { return@locked it }
+        // Frühere Importe haben nur Tabellenzeilen; eine Leseansicht ändert keine Originale.
+        val workout = db.rawQuery("SELECT time,name,durationSec,source,extra FROM strength_workouts WHERE id=?",
+            arrayOf(id)).use { rows ->
+            if (!rows.moveToFirst()) return@locked null
+            StrengthWorkout(id, rows.getLong(0), rows.getString(1), rows.getDouble(2), rows.getString(3), rows.getString(4))
+        }
+        val sets = ArrayList<StrengthSet>()
+        db.rawQuery("SELECT exercise,set_order,weight,weight_unit,reps,distance,seconds,rpe,notes FROM strength_sets WHERE workout_id=? ORDER BY seq",
+            arrayOf(id)).use { rows ->
+            while (rows.moveToNext()) {
+                fun number(column: Int) = if (rows.isNull(column)) null else rows.getDouble(column)
+                sets.add(StrengthSet(rows.getString(0), rows.getInt(1), number(2), rows.getString(3),
+                    if (rows.isNull(4)) null else rows.getInt(4), number(5), number(6), number(7), rows.getString(8)))
+            }
+        }
+        StrengthImport.legacyDocument(workout, sets)
+    }
     fun settings(): JSONObject = getDocument("settings") ?: JSONObject().put("rawBudgetMb",512).put("weatherEnabled",false)
     fun saveSettings(value: JSONObject) { putDocument("settings",value) }
     fun saveFeedback(id: String, value: JSONObject) = locked {

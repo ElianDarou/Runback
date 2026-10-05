@@ -260,7 +260,7 @@ export function Statistics({
         ) : (
           <EmptyState
             title="Noch keine Krafteinheit"
-            copy="Sobald ein Training abgeschlossen ist, stehen hier Einheiten, Sätze, Muskeln und Übungen."
+            copy="Sobald ein Training abgeschlossen oder importiert ist, stehen hier Einheiten, Sätze, Muskeln und Übungen."
           />
         )}
       </View>

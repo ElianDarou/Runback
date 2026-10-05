@@ -2,7 +2,7 @@ import { exerciseTrend, type ExerciseTrend } from './exerciseHistory';
 import { finite, medianOrNull } from './inference';
 import { muscleDistribution, type MuscleDistribution } from './muscleGroups';
 import { assessExerciseProgression } from './progression';
-import { sessionProgress, type StrengthSession } from './strength';
+import { isSetCompleted, sessionProgress, type StrengthSession } from './strength';
 import type { StrengthHeartSummary } from './strengthHeart';
 import {
   exerciseBreakdown,
@@ -38,7 +38,7 @@ import {
  * Gezählt werden nur abgeschlossene Einheiten und abgehakte Sätze. Reine
  * Funktionen; die einzige Zeitquelle ist `now`.
  */
-export const STRENGTH_STATS_VERSION = 'strength-stats-v1';
+export const STRENGTH_STATS_VERSION = 'strength-stats-v2';
 
 export type StrengthStatsMetric =
   | 'sessions'
@@ -56,8 +56,8 @@ export interface StrengthBucket {
   sessionCount: number;
   /** Abgehakte Sätze, wie in der Einheit gezählt (mit Aufwärmen). */
   sets: number;
-  volumeKg: number;
-  durationSeconds: number;
+  volumeKg: number | null;
+  durationSeconds: number | null;
   /** Mittel der Einheiten mit Puls; ohne Puls `null`. */
   averageBpm: number | null;
 }
@@ -164,11 +164,23 @@ function buildBucket(
   let sets = 0;
   let volumeKg = 0;
   let durationSeconds = 0;
+  let hasVolume = sessions.length === 0;
+  let hasDuration = sessions.length === 0;
   sessions.forEach(session => {
     const progress = sessionProgress(session);
     sets += progress.completedSets;
     volumeKg += progress.volumeKg;
-    durationSeconds += sessionDurationSeconds(session) ?? 0;
+    const duration = sessionDurationSeconds(session);
+    if (duration !== undefined) {
+      durationSeconds += duration;
+      hasDuration = true;
+    }
+    hasVolume ||= session.exercises.some(exercise =>
+      exercise.sets.some(set =>
+        isSetCompleted(set) && !set.skipped &&
+        finite(set.actualWeightKg) && finite(set.actualReps),
+      ),
+    );
   });
   return {
     startTime,
@@ -176,8 +188,8 @@ function buildBucket(
     ...bucketLabels(startTime, unit),
     sessionCount: sessions.length,
     sets,
-    volumeKg,
-    durationSeconds,
+    volumeKg: hasVolume ? volumeKg : null,
+    durationSeconds: hasDuration ? durationSeconds : null,
     averageBpm: average(heartOf(sessions, heart).map(entry => entry.averageBpm)),
   };
 }
@@ -230,7 +242,7 @@ function totalsFor(
     session.exercises.forEach(exercise =>
       exercise.sets.forEach(set => {
         if (
-          set.completedAt !== undefined &&
+          isSetCompleted(set) &&
           !set.skipped &&
           set.planned?.kind !== 'warmup' &&
           finite(set.actualRir)
@@ -462,8 +474,14 @@ export function buildStrengthStatisticsView(
     deltas: {
       sessions: against(totals.sessionCount, before.sessionCount),
       sets: against(totals.sets, before.sets),
-      volume: against(totals.volumeKg, before.volumeKg),
-      duration: against(totals.durationSeconds, before.durationSeconds),
+      volume: against(
+        totals.volumeKg > 0 ? totals.volumeKg : null,
+        before.volumeKg > 0 ? before.volumeKg : null,
+      ),
+      duration: against(
+        totals.durationSeconds > 0 ? totals.durationSeconds : null,
+        before.durationSeconds > 0 ? before.durationSeconds : null,
+      ),
     },
     comparisonLabel: compare ? RANGE_COMPARISONS[range] : null,
     muscles: { ...muscleDistribution(inRange), weekCount: weekBuckets.length },

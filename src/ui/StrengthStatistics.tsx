@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import type { StatsModule } from '../domain/features';
 import type { StatsRange } from '../domain/statisticsView';
 import { STATS_RANGES } from '../domain/statisticsView';
-import type { StrengthSession } from '../domain/strength';
+import { isSetCompleted, type StrengthSession } from '../domain/strength';
 import type { StrengthHeartSummary } from '../domain/strengthHeart';
 import { setLabel } from '../domain/strengthSession';
 import {
@@ -177,7 +177,8 @@ export function StrengthStatistics({
           />
         ) : (
           <Tile
-            value={formatDuration(totals.durationSeconds)}
+            value={stats.available.duration
+              ? formatDuration(totals.durationSeconds) : DASH}
             unit=""
             label="Zeit"
             delta={stats.deltas.duration}
@@ -466,7 +467,7 @@ function sessionLine(
   const sets = session.exercises.reduce(
     (sum, exercise) =>
       sum +
-      exercise.sets.filter(set => set.completedAt !== undefined && !set.skipped)
+      exercise.sets.filter(set => isSetCompleted(set) && !set.skipped)
         .length,
     0,
   );
@@ -529,8 +530,9 @@ function BucketDetail({
       meta={[
         counted(bucket.sessionCount, 'Einheit', 'Einheiten'),
         counted(bucket.sets, 'Satz', 'Sätze'),
-        bucket.volumeKg > 0 ? `${kilograms.format(bucket.volumeKg)} kg` : null,
-        bucket.durationSeconds > 0
+        bucket.volumeKg !== null && bucket.volumeKg > 0
+          ? `${kilograms.format(bucket.volumeKg)} kg` : null,
+        bucket.durationSeconds !== null && bucket.durationSeconds > 0
           ? formatDuration(bucket.durationSeconds)
           : null,
         bucket.averageBpm === null ? null : `Ø ${bpm(bucket.averageBpm)}`,

@@ -10,6 +10,7 @@ import type { Rating } from '../domain/insights';
 import { muscleDistribution } from '../domain/muscleGroups';
 import {
   formatWeight,
+  isSetCompleted,
   sessionProgress,
   type SessionExercise,
   type StrengthSession,
@@ -96,7 +97,7 @@ const signedPercent = (value: number) => {
  *  nicht verschwiegen. */
 export function setsChain(exercise: SessionExercise): string {
   const parts = exercise.sets
-    .filter(set => set.completedAt !== undefined || set.skipped)
+    .filter(set => isSetCompleted(set) || set.skipped)
     .map(set => {
       if (set.skipped) {
         return 'übersprungen';
@@ -150,7 +151,7 @@ export function StrengthSessionDetail({
   const gaps = useMemo(() => setGaps(session), [session]);
   const topGroup = muscles.groups[0];
   const confirmed = session.exercises.flatMap(exercise =>
-    exercise.sets.filter(set => set.completedAt !== undefined && !set.skipped),
+    exercise.sets.filter(set => isSetCompleted(set) && !set.skipped),
   );
   const withWeight = confirmed.filter(
     set => (set.actualWeightKg ?? 0) > 0 && (set.actualReps ?? 0) > 0,
@@ -165,6 +166,11 @@ export function StrengthSessionDetail({
           new Date(session.startTime),
         )}${end ? `–${timeFormat.format(new Date(end))}` : ''}`}
       </Copy>
+      {session.importSource ? (
+        <Copy muted>
+          {`Importiert aus ${session.importSource.source === 'strong' ? 'Strong' : session.importSource.source}${session.importSource.incomplete ? ' · Unvollständig' : ''}`}
+        </Copy>
+      ) : null}
       <View style={styles.metrics}>
         <Stat
           value={seconds === undefined ? DASH : formatDuration(seconds)}
@@ -404,6 +410,7 @@ export function StrengthSessionDetail({
           {[
             session.modelVersion,
             session.catalogVersion,
+            session.importSource?.importVersion,
             STRENGTH_SESSION_VERSION,
             heart ? heart.model_version : null,
             heart ? STRENGTH_HEART_INSIGHTS_VERSION : null,
