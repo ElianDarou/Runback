@@ -22,6 +22,11 @@ import type {
 import { summarize } from './domain/strength';
 import { importedStrengthSession } from './domain/strengthImports';
 import type { StrongWorkout } from './domain/vendorImports';
+import {
+  readImportBatches,
+  type ImportBatch,
+  type ImportChoice,
+} from './domain/importReview';
 import type { ScheduleState } from './domain/schedule';
 import { normalizeRunTarget, type RunTarget } from './domain/runTarget';
 import type {
@@ -385,6 +390,22 @@ export const native = {
     return readStrengthHeartSummaries(
       await nativeCall<unknown>('getStrengthHeartSummaries'),
     );
+  },
+  /** Speichert eine geprüfte Vorschau aus `importFiles` mit der Wahl des Nutzers. */
+  async commitImport(token: string, choice: ImportChoice): Promise<any> {
+    return nativeCall<any>('commitImport', token, JSON.stringify(choice));
+  },
+  async discardImport(token: string): Promise<any> {
+    return nativeCall<any>('discardImport', token);
+  },
+  async importBatches(): Promise<ImportBatch[]> {
+    return readImportBatches(await nativeCall<unknown>('getImportBatches'));
+  },
+  async deleteImportBatch(id: string): Promise<{
+    deleted?: { runs: number; strength: number; wellness: number };
+    kept?: number;
+  }> {
+    return nativeCall<any>('deleteImportBatch', id);
   },
   async deleteStrengthSession(id: string): Promise<StrengthState> {
     return normalizeStrength(

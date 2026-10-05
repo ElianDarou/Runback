@@ -396,7 +396,7 @@ export function Onboarding({
               onPress={onCancelImport}
             />
           ) : null}
-          {status.imported !== undefined ? (
+          {status.imported !== undefined && status.state !== 'review' ? (
             <Copy>
               {[
                 `Importiert: ${status.imported}`,

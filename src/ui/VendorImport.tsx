@@ -18,6 +18,7 @@ export function VendorImport({
   onCancelImport,
   onOpenDocs,
   onOpenTemplates,
+  onOpenImports,
   busy,
   importStatus,
 }: {
@@ -25,6 +26,7 @@ export function VendorImport({
   onCancelImport: () => void;
   onOpenDocs?: () => void;
   onOpenTemplates?: () => void;
+  onOpenImports?: () => void;
   busy: boolean;
   importStatus: any;
 }) {
@@ -67,8 +69,10 @@ export function VendorImport({
       </>
     ) : null;
 
+  // Während der Prüfung ist noch nichts gespeichert; die Zahlen stehen im Sheet.
   const result =
-    status.imported !== undefined || status.wellness !== undefined ? (
+    status.state !== 'review' &&
+    (status.imported !== undefined || status.wellness !== undefined) ? (
       <Copy>
         Läufe: {status.imported ?? 0} importiert · {status.duplicates ?? 0}{' '}
         doppelt
@@ -82,6 +86,7 @@ export function VendorImport({
           ? ` · ${status.strengthDuplicates} Krafteinheiten doppelt`
           : ''}
         {status.nonRunning ? ` · ${status.nonRunning} keine Läufe` : ''}
+        {status.excluded ? ` · ${status.excluded} nicht gewählt` : ''}
         {status.skipped !== undefined
           ? ` · ${status.skipped} übersprungen`
           : ''}
@@ -182,8 +187,17 @@ export function VendorImport({
       {progress}
       {result}
       {errors}
-      {status.strength !== undefined && onOpenTemplates ? (
+      {status.strength !== undefined &&
+      status.state !== 'review' &&
+      onOpenTemplates ? (
         <Row title="Vorlagen ansehen" onPress={onOpenTemplates} />
+      ) : null}
+      {onOpenImports ? (
+        <Row
+          title="Deine Importe"
+          subtitle="Frühere Importe ansehen oder löschen"
+          onPress={onOpenImports}
+        />
       ) : null}
       <Section title="Quelle">
         {VENDOR_INFOS.map(item => {

@@ -25,6 +25,7 @@ import java.time.Instant
 import java.time.OffsetDateTime
 import java.util.Locale
 import java.util.Date
+import java.util.UUID
 import com.garmin.fit.Activity
 import com.garmin.fit.ActivityMesg
 import com.garmin.fit.DateTime
@@ -50,40 +51,192 @@ class ActivityImporter(private val context: Context, private val store: RunStore
     private val lock = Any()
     private var progress = JSONObject().put("state", "idle")
     private var expandedBytes = 0L
+    @Volatile private var preview: Preview? = null
+    @Volatile private var options: ImportOptions? = null
+    @Volatile private var batchId: String? = null
+    @Volatile private var staged: Staged? = null
 
     fun cancel() { cancelled.set(true) }
     fun status(): JSONObject = synchronized(lock) { JSONObject(progress.toString()) }
     private fun update(block: (JSONObject) -> Unit) = synchronized(lock) { block(progress) }
     private fun checkCancelled() { if (cancelled.get()) throw CancellationException("Import abgebrochen") }
 
-    fun importUris(uris: List<Uri>): JSONObject {
+    /**
+     * Erster Schritt: Dateien privat ablegen und nur lesen. Nichts wird gespeichert; die
+     * Vorschau zeigt, was neu wäre, damit der Nutzer vor dem Speichern wählt.
+     */
+    fun prepare(uris: List<Uri>): JSONObject {
         check(running.compareAndSet(false, true)) { "Ein Import läuft bereits" }
         cancelled.set(false)
         expandedBytes = 0
-        update { progress = JSONObject().put("state", "running").put("totalFiles", uris.size)
-            .put("processed", 0).put("imported", 0).put("duplicates", 0).put("deleted", 0)
-            .put("failed", 0).put("skipped", 0).put("nonRunning", 0).put("errors", JSONArray()) }
+        stagingRoot().deleteRecursively()
+        staged = null
+        resetProgress("running", uris.size)
+        val token = UUID.randomUUID().toString()
+        val dir = File(stagingRoot(), token)
+        val files = ArrayList<Pair<File, String>>()
+        val collector = Preview()
         try {
             require(uris.size <= MAX_ENTRIES) { "Zu viele Dateien (maximal $MAX_ENTRIES)" }
-            for (uri in uris) {
+            check(dir.mkdirs()) { "Importordner kann nicht angelegt werden" }
+            uris.forEachIndexed { index, uri ->
                 checkCancelled()
                 val name = displayName(uri)
                 try {
-                    val file = File.createTempFile("runback-import-", ".tmp", context.cacheDir)
-                    try {
-                        context.contentResolver.openInputStream(uri)?.use { copyBounded(it, file, MAX_ARCHIVE_BYTES, false) }
-                            ?: error("Datei kann nicht geöffnet werden")
-                        if (name.lowercase(Locale.ROOT).endsWith(".zip") || isZip(file)) importZip(file)
-                        else processFile(file, name)
-                    } finally { file.delete() }
+                    val file = File(dir, "file-$index.tmp")
+                    context.contentResolver.openInputStream(uri)?.use { copyBounded(it, file, MAX_ARCHIVE_BYTES, false) }
+                        ?: error("Datei kann nicht geöffnet werden")
+                    files.add(file to name)
                 } catch (e: CancellationException) { throw e }
                 catch (e: Exception) { recordError(name, e) }
             }
-            update { it.put("state", "completed") }
-        } catch (_: CancellationException) { update { it.put("state", "cancelled") } }
-        catch (e: Exception) { recordError("Import", e); update { it.put("state", "failed") } }
-        finally { running.set(false) }
+            preview = collector
+            processStaged(files)
+            staged = Staged(token, dir, files)
+            update { it.put("state", "review").put("token", token).put("files", JSONArray(files.map { f -> f.second.take(120) }.take(20)))
+                .put("preview", collector.toJson()) }
+        } catch (_: CancellationException) { dir.deleteRecursively(); update { it.put("state", "cancelled") } }
+        catch (e: Exception) { dir.deleteRecursively(); recordError("Import", e); update { it.put("state", "failed") } }
+        finally { preview = null; running.set(false) }
         return status()
+    }
+
+    /** Zweiter Schritt: dieselben Dateien mit den Wahlen des Nutzers speichern, als ein Import. */
+    fun commit(token: String, choice: JSONObject): JSONObject {
+        check(running.compareAndSet(false, true)) { "Ein Import läuft bereits" }
+        val current = staged
+        if (current == null || current.token != token) { running.set(false); error("Die Vorschau ist abgelaufen. Wähle die Dateien erneut.") }
+        cancelled.set(false)
+        expandedBytes = 0
+        resetProgress("running", current.files.size)
+        val id = UUID.randomUUID().toString()
+        val batch = JSONObject().put("id", id).put("createdAt", System.currentTimeMillis()).put("modelVersion", BATCH_VERSION)
+            .put("files", JSONArray(current.files.map { it.second.take(120) }.take(20))).put("fileCount", current.files.size)
+            .put("templateSuggestions", choice.optBoolean("templateSuggestions", true)).put("choice", choice).put("state", "running")
+        try {
+            options = ImportOptions.from(choice)
+            batchId = id
+            store.saveImportBatch(batch)
+            processStaged(current.files)
+            update { it.put("state", "completed").put("batchId", id) }
+        } catch (_: CancellationException) { update { it.put("state", "cancelled").put("batchId", id) } }
+        catch (e: Exception) { recordError("Import", e); update { it.put("state", "failed").put("batchId", id) } }
+        finally {
+            val vendors = status().optJSONObject("vendors")?.keys()?.asSequence()?.toList().orEmpty()
+            runCatching { store.finishImportBatch(batch.put("state", status().optString("state")).put("vendors", JSONArray(vendors))) }
+            options = null; batchId = null; staged = null
+            current.dir.deleteRecursively()
+            running.set(false)
+        }
+        return status()
+    }
+
+    fun discard(token: String): JSONObject {
+        check(!running.get()) { "Ein Import läuft bereits" }
+        staged?.takeIf { it.token == token }?.let { it.dir.deleteRecursively(); staged = null }
+        update { progress = JSONObject().put("state", "idle") }
+        return status()
+    }
+
+    private fun stagingRoot() = File(context.cacheDir, "import-staging")
+
+    private fun resetProgress(state: String, files: Int) = update {
+        progress = JSONObject().put("state", state).put("totalFiles", files)
+            .put("processed", 0).put("imported", 0).put("duplicates", 0).put("deleted", 0)
+            .put("failed", 0).put("skipped", 0).put("nonRunning", 0).put("excluded", 0).put("errors", JSONArray())
+    }
+
+    private fun processStaged(files: List<Pair<File, String>>) {
+        for ((file, name) in files) {
+            checkCancelled()
+            try {
+                if (name.lowercase(Locale.ROOT).endsWith(".zip") || isZip(file)) importZip(file)
+                else processFile(file, name)
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { recordError(name, e) }
+        }
+    }
+
+    // ---- Schreiben nur über diese Stellen: Vorschau zählt, Übernahme filtert nach Wahl. ----
+
+    private fun saveRun(summary: JSONObject, samples: JSONArray, hash: String): JSONObject {
+        preview?.let { return it.noteRun(store.previewRunStatus(summary, hash)) }
+        if (options?.runs == false) return JSONObject().put("status", "excluded")
+        return store.addImportedRun(summary, samples, hash, batchId)
+    }
+
+    private fun saveSummaryRun(summary: JSONObject, hash: String): JSONObject {
+        preview?.let { return it.noteRun(store.previewRunStatus(summary, hash)) }
+        if (options?.runs == false) return JSONObject().put("status", "excluded")
+        return store.addSummaryRun(summary, hash, batchId)
+    }
+
+    private fun saveWellness(rows: List<com.runback.core.WellnessRow>): Int {
+        preview?.let { collector ->
+            val counts = store.newWellnessCounts(rows)
+            counts.forEach { (kind, count) -> collector.wellness.merge(kind, count, Int::plus) }
+            return counts.values.sum()
+        }
+        val kinds = options?.wellnessKinds
+        return store.addWellnessBatch(if (kinds == null) rows else rows.filter { it.kind in kinds }, batchId)
+    }
+
+    private fun saveStrength(workout: com.runback.core.StrengthWorkout, sets: List<com.runback.core.StrengthSet>): JSONObject {
+        val extra = JSONObject(workout.extra)
+        val suspect = extra.optJSONObject("durationCheck")?.optBoolean("suspect") == true
+        preview?.let { collector ->
+            if (store.strengthWorkoutExists(workout.id)) { collector.strengthDuplicates++; return JSONObject().put("status", "duplicate") }
+            collector.addStrength(JSONObject().put("id", workout.id).put("time", workout.time).put("name", workout.name)
+                .put("source", workout.source).put("sets", sets.size)
+                .put("durationSeconds", if (extra.optBoolean("durationKnown")) workout.durationSec else JSONObject.NULL)
+                .put("durationSuspect", suspect).put("incomplete", extra.optBoolean("incomplete")))
+            return JSONObject().put("status", "imported")
+        }
+        val chosen = options
+        if (chosen != null && (!chosen.strength || workout.id in chosen.excludedStrength)) return JSONObject().put("status", "excluded")
+        val stored = if (suspect && (chosen == null || workout.id !in chosen.keepDuration))
+            com.runback.core.StrongDuration.reject(workout, "default") else workout
+        return store.addStrengthWorkout(stored, sets, com.runback.core.StrengthImport.document(stored, sets), batchId)
+    }
+
+    private class Staged(val token: String, val dir: File, val files: List<Pair<File, String>>)
+
+    /** Was der Nutzer in der Vorschau gewählt hat; fehlende Felder bedeuten „alles“. */
+    private class ImportOptions(
+        val runs: Boolean,
+        val strength: Boolean,
+        val wellnessKinds: Set<String>?,
+        val excludedStrength: Set<String>,
+        val keepDuration: Set<String>,
+    ) {
+        companion object {
+            fun from(choice: JSONObject): ImportOptions {
+                fun strings(key: String): Set<String>? = choice.optJSONArray(key)?.let { array ->
+                    (0 until array.length()).map { array.optString(it) }.filter { it.isNotBlank() }.toSet() }
+                return ImportOptions(choice.optBoolean("runs", true), choice.optBoolean("strength", true),
+                    strings("wellnessKinds"), strings("excludedStrengthIds").orEmpty(), strings("keepDurationIds").orEmpty())
+            }
+        }
+    }
+
+    private class Preview {
+        var runsNew = 0
+        var runsDuplicate = 0
+        var runsDeleted = 0
+        var strengthDuplicates = 0
+        var strengthOmitted = 0
+        val wellness = java.util.TreeMap<String, Int>()
+        private val strength = ArrayList<JSONObject>()
+        fun noteRun(status: String): JSONObject {
+            when (status) { "imported" -> runsNew++; "duplicate" -> runsDuplicate++; "deleted" -> runsDeleted++ }
+            return JSONObject().put("status", status)
+        }
+        fun addStrength(entry: JSONObject) { if (strength.size < MAX_PREVIEW_STRENGTH) strength.add(entry) else strengthOmitted++ }
+        fun toJson(): JSONObject = JSONObject()
+            .put("runs", JSONObject().put("new", runsNew).put("duplicates", runsDuplicate).put("deleted", runsDeleted))
+            .put("wellness", JSONObject().also { obj -> wellness.forEach { (kind, count) -> if (count > 0) obj.put(kind, count) } })
+            .put("strength", JSONObject().put("duplicates", strengthDuplicates).put("omitted", strengthOmitted)
+                .put("workouts", JSONArray(strength.sortedByDescending { it.optLong("time") })))
     }
 
     private fun displayName(uri: Uri): String = try {
@@ -174,8 +327,8 @@ class ActivityImporter(private val context: Context, private val store: RunStore
             increment("processed")
             return
         }
-        val result = store.addImportedRun(summary, builder.samples, sha256(file))
-        if (result.optString("status") == "imported") {
+        val result = saveRun(summary, builder.samples, sha256(file))
+        if (result.optString("status") == "imported" && preview == null) {
             val id = result.optString("id", result.optJSONObject("run")?.optString("id") ?: "")
             if (id.isNotBlank()) store.storeImportedSource(id, original, name)
         }
@@ -237,6 +390,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
             "imported" -> { increment("imported"); noteVendor(vendor, 1, 0, 0, 0) }
             "duplicate" -> { increment("duplicates"); noteVendor(vendor, 0, 1, 0, 0) }
             "deleted" -> increment("deleted")
+            "excluded" -> increment("excluded")
             else -> error("Unbekanntes Importergebnis")
         }
     }
@@ -254,11 +408,14 @@ class ActivityImporter(private val context: Context, private val store: RunStore
         for (workout in parsed.workouts) {
             checkCancelled()
             val sets = parsed.setsByWorkout[workout.id] ?: emptyList()
-            val result = store.addStrengthWorkout(workout, sets, com.runback.core.StrengthImport.document(workout, sets))
-            if (result.optString("status") == "duplicate") {
-                update { it.put("strengthDuplicates", it.optInt("strengthDuplicates") + 1) }
-                noteVendor("strong", 0, 1, 0, 0)
-            } else noteVendor("strong", 0, 0, 0, 1)
+            when (saveStrength(workout, sets).optString("status")) {
+                "duplicate" -> {
+                    update { it.put("strengthDuplicates", it.optInt("strengthDuplicates") + 1) }
+                    noteVendor("strong", 0, 1, 0, 0)
+                }
+                "excluded" -> increment("excluded")
+                else -> noteVendor("strong", 0, 0, 0, 1)
+            }
         }
         return true
     }
@@ -302,7 +459,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
                 unit, "strong", JSONObject().put("file", name.take(120)).toString()))
         }
         if (rows.isEmpty()) return false
-        noteVendor("strong", 0, 0, store.addWellnessBatch(rows), 0)
+        noteVendor("strong", 0, 0, saveWellness(rows), 0)
         return true
     }
 
@@ -311,7 +468,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
         for (draft in parsed.runs) {
             checkCancelled()
             if (!acceptDraft(draft, draft.sourceActivityType)) continue
-            recordImported(store.addSummaryRun(summaryFromDraft(draft),
+            recordImported(saveSummaryRun(summaryFromDraft(draft),
                 "vendor:fitbit:${sha256(file)}:${draft.sourceActivityId ?: draft.startTime}"), "fitbit")
         }
         if (parsed.runs.isEmpty()) increment("skipped")
@@ -473,7 +630,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
             else -> return false
         }
         if (rows.isEmpty()) return false
-        noteVendor("fitbit", 0, 0, store.addWellnessBatch(rows), 0)
+        noteVendor("fitbit", 0, 0, saveWellness(rows), 0)
         return true
     }
 
@@ -486,7 +643,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
         for (draft in parsed.runs) {
             checkCancelled()
             val summary = summaryFromDraft(draft)
-            recordImported(store.addSummaryRun(summary, "vendor:$source:${sha256(file)}:${draft.startTime}"), source)
+            recordImported(saveSummaryRun(summary, "vendor:$source:${sha256(file)}:${draft.startTime}"), source)
         }
         if (parsed.runs.isEmpty()) increment("skipped")
         return true
@@ -557,7 +714,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
                         VendorImports.parseDoubleFlexible(get(cHr))?.takeIf { it in 30.0..240.0 },
                         VendorImports.parseDoubleFlexible(get(cCal)))
                     if (!acceptDraft(draft, type)) continue
-                    recordImported(store.addSummaryRun(summaryFromDraft(draft),
+                    recordImported(saveSummaryRun(summaryFromDraft(draft),
                         "vendor:mi_fitness:${sha256(file)}:$start"), "mi_fitness")
                 }
                 return true
@@ -577,7 +734,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
                         VendorImports.wellnessId(wellnessKind, time, "mi_fitness", value),
                         wellnessKind, time, 0L, value, unit, "mi_fitness", "{}"))
                 }
-                val inserted = store.addWellnessBatch(rows)
+                val inserted = saveWellness(rows)
                 noteVendor("mi_fitness", 0, 0, inserted, 0)
                 return true
             }
@@ -637,7 +794,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
             )
             if (!acceptDraft(draft, type)) continue
             found = true
-            recordImported(store.addSummaryRun(summaryFromDraft(draft),
+            recordImported(saveSummaryRun(summaryFromDraft(draft),
                 "vendor:mi_fitness:$name:${draft.sourceActivityId}"), "mi_fitness")
         }
         return found
@@ -844,7 +1001,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
                 add(bucket.kind, bucket.day, value = aggregateValue, unit = bucket.unit, extra = extra)
             }
         if (rows.isEmpty()) return false
-        noteVendor("mi_fitness", 0, 0, store.addWellnessBatch(rows), 0)
+        noteVendor("mi_fitness", 0, 0, saveWellness(rows), 0)
         return true
     }
 
@@ -884,7 +1041,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
                     "Samsung Health Lauf", "samsung_health", null,
                     VendorImports.parseDoubleFlexible(get(cCal)))
                 if (!acceptDraft(draft)) continue
-                recordImported(store.addSummaryRun(summaryFromDraft(draft),
+                recordImported(saveSummaryRun(summaryFromDraft(draft),
                     "vendor:samsung:${sha256(file)}:$start"), "samsung")
             }
             return true
@@ -905,7 +1062,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
                     "sleep_stage", start, end, minutes, "min", "samsung",
                     "{\"stage\":\"$stage\"}"))
             }
-            noteVendor("samsung", 0, 0, store.addWellnessBatch(rows), 0)
+            noteVendor("samsung", 0, 0, saveWellness(rows), 0)
             return true
         }
         // Generic wellness kinds: heart_rate, sleep, weight, steps, stress, spo2, hrv.
@@ -935,7 +1092,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
                 VendorImports.wellnessId(kind, start, "samsung", value),
                 kind, start, end, value, unit, "samsung", "{}"))
         }
-        noteVendor("samsung", 0, 0, store.addWellnessBatch(rows), 0)
+        noteVendor("samsung", 0, 0, saveWellness(rows), 0)
         return true
     }
 
@@ -998,7 +1155,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
             }
         } catch (_: Exception) { return false }
         if (rows.isEmpty()) return false
-        noteVendor("fitbit", 0, 0, store.addWellnessBatch(rows.take(VendorImports.MAX_JSON_WELLNESS)), 0)
+        noteVendor("fitbit", 0, 0, saveWellness(rows.take(VendorImports.MAX_JSON_WELLNESS)), 0)
         return true
     }
 
@@ -1006,7 +1163,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
         val parsed = VendorImports.parseFitbitExerciseJson(text, "fitbit")
         for (draft in parsed.runs) {
             checkCancelled()
-            recordImported(store.addSummaryRun(summaryFromDraft(draft),
+            recordImported(saveSummaryRun(summaryFromDraft(draft),
                 "vendor:fitbit:exercise:${draft.sourceActivityId ?: draft.startTime}"), "fitbit")
         }
         if (parsed.runs.isEmpty()) increment("skipped")
@@ -1067,7 +1224,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
                 "fitbit", extra.toString())
         }.take(VendorImports.MAX_JSON_WELLNESS)
         if (rows.isEmpty()) return false
-        noteVendor("fitbit", 0, 0, store.addWellnessBatch(rows), 0)
+        noteVendor("fitbit", 0, 0, saveWellness(rows), 0)
         return true
     }
 
@@ -1216,7 +1373,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
                     val draft = VendorImports.RunDraft(start, end, duration, distance,
                         obj.optString("name", "Google Fit Lauf").take(120), "google_fit")
                     if (!acceptDraft(draft, type)) continue
-                    when (store.addSummaryRun(summaryFromDraft(draft), "vendor:google_fit:$start").optString("status")) {
+                    when (saveSummaryRun(summaryFromDraft(draft), "vendor:google_fit:$start").optString("status")) {
                         "imported" -> runs++
                         "duplicate" -> dups++
                         else -> {}
@@ -1231,7 +1388,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
             }
         } catch (_: Exception) { return false }
         if (runs == 0 && rows.isEmpty()) return false
-        if (rows.isNotEmpty()) store.addWellnessBatch(rows)
+        if (rows.isNotEmpty()) saveWellness(rows)
         noteVendor("google_fit", runs, dups, rows.size, 0)
         if (runs > 0) repeat(runs) { increment("imported") }
         if (dups > 0) repeat(dups) { increment("duplicates") }
@@ -1260,7 +1417,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
                         obj.optDouble("avgHr", Double.NaN).takeIf { it in 30.0..240.0 },
                         obj.optDouble("calories", Double.NaN).takeIf { it in 0.0..20000.0 })
                     if (!acceptDraft(draft, type)) continue
-                    when (store.addSummaryRun(summaryFromDraft(draft), "vendor:garmin:$start").optString("status")) {
+                    when (saveSummaryRun(summaryFromDraft(draft), "vendor:garmin:$start").optString("status")) {
                         "imported" -> runs++
                         "duplicate" -> dups++
                         else -> {}
@@ -1285,7 +1442,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
             }
         } catch (_: Exception) { return false }
         if (runs == 0 && rows.isEmpty()) return false
-        if (rows.isNotEmpty()) store.addWellnessBatch(rows)
+        if (rows.isNotEmpty()) saveWellness(rows)
         noteVendor("garmin", runs, dups, rows.size, 0)
         repeat(runs) { increment("imported") }
         repeat(dups) { increment("duplicates") }
@@ -1295,7 +1452,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
     private fun importGenericWellnessJson(text: String, name: String): Boolean {
         val rows = GenericWellnessJson.parse(text, ::checkCancelled)
         if (rows.isEmpty()) return false
-        noteVendor("generic", 0, 0, store.addWellnessBatch(rows), 0)
+        noteVendor("generic", 0, 0, saveWellness(rows), 0)
         return true
     }
 
@@ -1336,7 +1493,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
                                         VendorImports.plausibleRunSpeed(distance, duration)) {
                                         val draft = VendorImports.RunDraft(start, end, duration, distance,
                                             "Apple Health Lauf", "apple_health")
-                                        when (store.addSummaryRun(summaryFromDraft(draft),
+                                        when (saveSummaryRun(summaryFromDraft(draft),
                                             "vendor:apple:$start").optString("status")) {
                                             "imported" -> runs++
                                             "duplicate" -> dups++
@@ -1362,7 +1519,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
                 parser.nextToken()
             }
         }
-        if (rows.isNotEmpty()) store.addWellnessBatch(rows)
+        if (rows.isNotEmpty()) saveWellness(rows)
         noteVendor("apple_health", runs, dups, rows.size, 0)
         repeat(runs) { increment("imported") }
         repeat(dups) { increment("duplicates") }
@@ -1707,6 +1864,8 @@ class ActivityImporter(private val context: Context, private val store: RunStore
         private const val MAX_TIMESERIES_VALUES = 100000
         private const val MAX_SLEEP_STAGE_ROWS = 5000
         private const val DAY_MILLIS = 24L * 60 * 60 * 1000
+        private const val MAX_PREVIEW_STRENGTH = 2000
+        const val BATCH_VERSION = "import-batch-v1"
         private val FITBIT_CONTEXT_CSV_KINDS = setOf(
             "sleep_csv", "sleep_score_csv", "sleep_stage_csv", "hrv", "vo2max", "vo2max_csv",
             "steps", "calories", "active_minutes", "active_energy",

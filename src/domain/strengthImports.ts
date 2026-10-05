@@ -81,6 +81,11 @@ export function importedStrengthSession(
       source: workout.source ?? 'strong',
       importVersion: workout.modelVersion ?? 'unknown',
       incomplete: workout.incomplete === true,
+      ...(workout.durationRejected &&
+      typeof workout.reportedDurationSeconds === 'number' &&
+      workout.reportedDurationSeconds > 0
+        ? { rejectedDurationSeconds: workout.reportedDurationSeconds }
+        : {}),
     },
   };
 }

@@ -2,6 +2,7 @@ package com.runback.imports
 
 import com.runback.core.StrengthSet
 import com.runback.core.StrengthWorkout
+import com.runback.core.StrongDuration
 import com.runback.core.WellnessRow
 import java.time.Instant
 import java.time.LocalDate
@@ -495,6 +496,9 @@ object VendorImports {
                 .put("incomplete", group.incomplete).put("weightUnit", weightUnit)
                 .put("timeInterpretation", "local_device_time_unless_export_has_offset")
                 .put("sourceWorkoutNumber", key.number)
+                .put("durationCheck", JSONObject().put("modelVersion", StrongDuration.MODEL_VERSION)
+                    .put("limitSeconds", StrongDuration.limitSeconds(group.sets.size))
+                    .put("suspect", StrongDuration.isSuspect(group.duration, group.sets.size)))
             workouts.add(StrengthWorkout(id, key.time, key.name, group.duration ?: 0.0, source, extra.toString()))
             setsByWorkout[id] = group.sets
         }

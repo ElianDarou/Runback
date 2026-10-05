@@ -580,6 +580,28 @@ export function detectVendorForFile(fileName: string): VendorId {
 
 export const STRONG_IMPORT_VERSION = 'strong-import-v3';
 
+/**
+ * Strong exportiert je Satz keine Uhrzeit, nur Start und „Workout beenden“.
+ * Das echte Ende einer vergessenen Einheit steht deshalb nicht in der Datei.
+ * Erkennbar ist nur eine Dauer, die zu keiner Satzzahl passt: großzügig
+ * 30 Minuten Rahmen plus 6 Minuten je Satz. Gleiche Regel in Kotlin
+ * (`StrongDuration`).
+ */
+export const STRONG_DURATION_MODEL = 'strong-duration-v1';
+export function strongDurationLimitSeconds(sets: number): number {
+  return 30 * 60 + 6 * 60 * Math.max(0, sets);
+}
+export function isStrongDurationSuspect(
+  durationSeconds: number | null,
+  sets: number,
+): boolean {
+  return (
+    durationSeconds !== null &&
+    Number.isFinite(durationSeconds) &&
+    durationSeconds > strongDurationLimitSeconds(sets)
+  );
+}
+
 export interface StrongSet {
   exercise: string;
   setOrder: number;
@@ -604,6 +626,15 @@ export interface StrongWorkout {
   sets: StrongSet[];
   workoutNotes: string;
   incomplete?: boolean;
+  /** Vorschau: Dauer passt zu keiner Satzzahl. */
+  durationSuspect?: boolean;
+  /** Gespeichert: gemeldete Dauer, die als unbekannt gilt, und warum. */
+  reportedDurationSeconds?: number | null;
+  durationRejected?: {
+    reason: 'not_finished';
+    modelVersion: string;
+    decidedBy: 'default' | 'user';
+  } | null;
 }
 
 function csvDelimiter(line: string): ',' | ';' {
@@ -889,7 +920,13 @@ export function parseStrongCsvPreview(
   return {
     workouts: Array.from(groups.values())
       .filter(workout => workout.sets.length)
-      .map(({ lastExercise: _last, ...workout }) => workout),
+      .map(({ lastExercise: _last, ...workout }) => ({
+        ...workout,
+        durationSuspect: isStrongDurationSuspect(
+          workout.durationSeconds,
+          workout.sets.length,
+        ),
+      })),
     rows: lines.length - 1,
     skipped,
     restRows,

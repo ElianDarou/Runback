@@ -108,6 +108,8 @@ export interface StrengthSession {
     source: string;
     importVersion: string;
     incomplete: boolean;
+    /** Strong meldete diese Dauer, sie passt aber zu keiner Satzzahl; das Ende ist unbekannt. */
+    rejectedDurationSeconds?: number;
   };
 }
 

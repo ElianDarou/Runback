@@ -1,5 +1,6 @@
 import React, {
   memo,
+  useContext,
   useState,
   type PropsWithChildren,
   type ReactNode,
@@ -8,17 +9,23 @@ import {
   Image as NativeImage,
   KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
+  useWindowDimensions,
   type GestureResponderEvent,
   type ImageStyle,
   type LayoutChangeEvent,
 } from 'react-native';
 import Svg, { Circle, Path, Rect, Text as SvgText } from 'react-native-svg';
+import {
+  SafeAreaInsetsContext,
+  type EdgeInsets,
+} from 'react-native-safe-area-context';
 import type { RoutePoint } from '../native';
 
 /**
@@ -247,6 +254,47 @@ export function Row({
     </Pressable>
   ) : (
     <View style={s.row}>{content}</View>
+  );
+}
+
+/**
+ * Zeile einer Mehrfachauswahl, wenn ein Chip zu wenig Platz für die
+ * Erklärung hat: ✓ in einem Kästchen rechts, `checked` für Screenreader.
+ */
+export function CheckRow({
+  title,
+  subtitle,
+  checked,
+  onToggle,
+  disabled = false,
+}: {
+  title: string;
+  subtitle?: string;
+  checked: boolean;
+  onToggle: (checked: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="checkbox"
+      accessibilityLabel={title}
+      accessibilityState={{ checked, disabled }}
+      disabled={disabled}
+      onPress={() => onToggle(!checked)}
+      style={({ pressed }) => [
+        s.row,
+        disabled && s.disabled,
+        pressed && s.pressed,
+      ]}
+    >
+      <View style={s.rowText}>
+        <Text style={s.rowTitle}>{title}</Text>
+        {subtitle ? <Text style={s.rowSubtitle}>{subtitle}</Text> : null}
+      </View>
+      <View style={[s.checkBox, checked && s.chipSelected]}>
+        <Text style={s.checkMark}>{checked ? '✓' : ''}</Text>
+      </View>
+    </Pressable>
   );
 }
 
@@ -752,6 +800,10 @@ export function Chevron({ open = false }: { open?: boolean }) {
   );
 }
 
+// Ohne Provider (Tests mit Attrappe) gelten Abstände von null.
+const InsetsContext: React.Context<EdgeInsets | null> =
+  SafeAreaInsetsContext ?? React.createContext<EdgeInsets | null>(null);
+
 /**
  * Bottom-Sheet für Entscheidungen im Moment des Tuns: Start einer Einheit,
  * Bearbeiten einer Einheit. Die Seite darunter bleibt sichtbar, damit klar
@@ -767,14 +819,23 @@ export function Sheet({
   title: string;
   onClose: () => void;
 }>) {
+  const insets = useContext(InsetsContext);
+  const { height } = useWindowDimensions();
   return (
     <Modal
       visible={visible}
       transparent
+      // Volle Bildschirmhöhe; den Abstand unten setzt das Sheet selbst.
+      statusBarTranslucent
+      navigationBarTranslucent
       animationType="slide"
       onRequestClose={onClose}
     >
-      <KeyboardAvoidingView behavior="height" style={s.sheetBackdrop}>
+      {/* Android passt das Modal-Fenster selbst an die Tastatur an. */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={s.sheetBackdrop}
+      >
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`${title} schließen`}
@@ -782,8 +843,14 @@ export function Sheet({
           style={s.sheetScrim}
         />
         <ScrollView
-          style={s.sheetScroll}
-          contentContainerStyle={s.sheetCard}
+          // Als Zahl: Ein Prozentwert hielt auf Android nicht, lange Sheets
+          // ragten dann unter den Bildschirmrand und ihr Ende war unerreichbar.
+          style={[s.sheetScroll, { maxHeight: height * 0.88 }]}
+          contentContainerStyle={[
+            s.sheetCard,
+            // Das Sheet reicht bis unter die Navigationsleiste.
+            { paddingBottom: space.lg + (insets?.bottom ?? 0) },
+          ]}
           keyboardShouldPersistTaps="handled"
         >
           <View style={s.sheetGrip} />
@@ -1568,6 +1635,16 @@ export const s = StyleSheet.create({
     backgroundColor: color.greenSoft,
     borderColor: color.green,
   },
+  checkBox: {
+    width: 28,
+    height: 28,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: color.line,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkMark: { color: color.green, ...type.label, fontWeight: '700' },
   chipText: { color: color.muted, ...type.label },
   chipTextSelected: { color: color.text, fontWeight: '600' },
   field: { gap: space.xs },
@@ -1651,7 +1728,7 @@ export const s = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: color.mapOverlay,
   },
-  sheetScroll: { maxHeight: '88%', flexGrow: 0 },
+  sheetScroll: { flexGrow: 0 },
   sheetCard: {
     backgroundColor: color.raised,
     borderTopLeftRadius: radius.lg,

@@ -38,4 +38,23 @@ class StrengthImportTest {
         assertEquals(60.0, document.getDouble("durationSeconds"), 0.0)
         assertEquals(0.0, document.getJSONArray("sets").getJSONObject(0).getDouble("restSeconds"), 0.0)
     }
+    @Test fun unfinishedStrongDurationBecomesUnknownButOriginalStays() {
+        // 18 Sätze: Rahmen 30 + 18 × 6 = 138 Minuten.
+        assertEquals(138 * 60.0, StrongDuration.limitSeconds(18), 0.0)
+        assertFalse(StrongDuration.isSuspect(127 * 60.0, 20))
+        assertTrue(StrongDuration.isSuspect(255 * 60.0, 18))
+        assertTrue(StrongDuration.isSuspect(54578.0, 1))
+        assertFalse(StrongDuration.isSuspect(null, 1))
+        val workout = StrengthWorkout("strong:late", 1234, "Pull", 54578.0, "strong",
+            "{\"durationKnown\":true,\"modelVersion\":\"strong-import-v3\"}")
+        val rejected = StrongDuration.reject(workout, "default")
+        assertEquals(54578.0, rejected.durationSec, 0.0)
+        val document = StrengthImport.document(rejected, listOf(StrengthSet("Row", 1, reps = 8)))
+        assertTrue(document.isNull("durationSeconds"))
+        assertEquals(54578.0, document.getDouble("reportedDurationSeconds"), 0.0)
+        val reason = document.getJSONObject("durationRejected")
+        assertEquals(StrongDuration.MODEL_VERSION, reason.getString("modelVersion"))
+        assertEquals("default", reason.getString("decidedBy"))
+        assertTrue(StrengthImport.document(workout, emptyList()).isNull("reportedDurationSeconds"))
+    }
 }
