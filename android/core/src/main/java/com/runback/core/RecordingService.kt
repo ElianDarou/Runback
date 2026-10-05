@@ -6,8 +6,10 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.hardware.Sensor
@@ -88,6 +90,31 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Runback:Recording").apply {
                 setReferenceCounted(false)
             }
+        registerReceiver(shutdownReceiver, IntentFilter(Intent.ACTION_SHUTDOWN))
+    }
+
+    /**
+     * Gerät fährt herunter (auch bei leerem Akku): letzte Messwerte schreiben
+     * und den Lauf an dieser Stelle unterbrechen, solange noch Zeit ist.
+     */
+    private val shutdownReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val pending = goAsync()
+            worker.post {
+                try {
+                    flush()
+                    if (activeId != null && store.active()?.optString("status") == "recording") {
+                        recording = false
+                        endListening()
+                        store.markInterrupted("Gerät wurde ausgeschaltet. Bisherige Daten sind gesichert.")
+                    }
+                } catch (error: Exception) {
+                    Log.e(TAG, "Could not persist recording before shutdown", error)
+                } finally {
+                    pending.finish()
+                }
+            }
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -865,6 +892,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
     }
 
     override fun onDestroy() {
+        runCatching { unregisterReceiver(shutdownReceiver) }
         routeSpeech?.stop()
         routeSpeech?.shutdown()
         routeSpeech = null

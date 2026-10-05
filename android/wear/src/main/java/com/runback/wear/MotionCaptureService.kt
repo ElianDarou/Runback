@@ -6,8 +6,10 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.Manifest
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.hardware.Sensor
@@ -44,12 +46,15 @@ class MotionCaptureService : Service(), SensorEventListener {
     private var sessionId: String? = null
     private var lastAnchorNanos = 0L
     private var lastFlushNanos = 0L
+    private var lastSyncNanos = 0L
+    private var output: FileOutputStream? = null
 
     override fun onCreate() {
         super.onCreate()
         sensors = getSystemService(SensorManager::class.java)
         thread = HandlerThread("RunbackMotion").also { it.start() }
         worker = Handler(thread.looper)
+        registerReceiver(shutdownReceiver, IntentFilter(Intent.ACTION_SHUTDOWN))
         getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(CHANNEL, "Bewegungen im Krafttraining", NotificationManager.IMPORTANCE_LOW).apply {
                 setShowBadge(false)
@@ -129,7 +134,9 @@ class MotionCaptureService : Service(), SensorEventListener {
                 if (gyro != null) put(describe("gyro", gyro, "rad/s"))
                 if (heart != null) put(describe("heart", heart, "bpm"))
             })
-        writer = MotionFormat.Writer(BufferedOutputStream(FileOutputStream(file), 64 * 1024), header)
+        val stream = FileOutputStream(file)
+        output = stream
+        writer = MotionFormat.Writer(BufferedOutputStream(stream, 64 * 1024), header)
         sessionId = id
         activeSession = id
         writeAnchor(SystemClock.elapsedRealtimeNanos())
@@ -177,6 +184,8 @@ class MotionCaptureService : Service(), SensorEventListener {
             val now = SystemClock.elapsedRealtimeNanos()
             if (now - lastAnchorNanos >= ANCHOR_INTERVAL_NS) writeAnchor(now)
             if (now - lastFlushNanos >= FLUSH_INTERVAL_NS) { output.flush(); lastFlushNanos = now }
+            // flush() erreicht nur den Kernel; erst sync() übersteht ein plötzliches Abschalten.
+            if (now - lastSyncNanos >= SYNC_INTERVAL_NS) { output.flush(); this.output?.fd?.sync(); lastSyncNanos = now }
         } catch (error: Exception) {
             Log.e(TAG, "Motion sample could not be written", error)
             sessionId?.let { MotionSync.reportStatus(this, it, "error", "Speicher der Uhr ist voll.") }
@@ -201,8 +210,9 @@ class MotionCaptureService : Service(), SensorEventListener {
         val current = sessionId
         if (requested != null && current != null && requested != current) return
         sensors.unregisterListener(this)
-        runCatching { writer?.let { writeAnchor(SystemClock.elapsedRealtimeNanos()); it.close() } }
+        runCatching { writer?.let { writeAnchor(SystemClock.elapsedRealtimeNanos()); it.flush(); output?.fd?.sync(); it.close() } }
         writer = null
+        output = null
         sessionId = null
         activeSession = null
         recordsHeart = false
@@ -218,7 +228,18 @@ class MotionCaptureService : Service(), SensorEventListener {
         stopSelf()
     }
 
+    /** Uhr fährt herunter: Datei sauber abschließen; nach dem Start geht sie ans Handy. */
+    private val shutdownReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val pending = goAsync()
+            worker.post {
+                try { if (sessionId != null) finish(sessionId, discard = false) } finally { pending.finish() }
+            }
+        }
+    }
+
     override fun onDestroy() {
+        runCatching { unregisterReceiver(shutdownReceiver) }
         if (sessionId != null) finish(sessionId, discard = false)
         thread.quitSafely()
         super.onDestroy()
@@ -261,6 +282,7 @@ class MotionCaptureService : Service(), SensorEventListener {
         private const val BATCH_LATENCY_US = 1_000_000
         private const val ANCHOR_INTERVAL_NS = 10_000_000_000L
         private const val FLUSH_INTERVAL_NS = 2_000_000_000L
+        private const val SYNC_INTERVAL_NS = 10_000_000_000L
         /** Vergisst das Handy den Stopp, endet die Aufzeichnung spätestens nach drei Stunden. */
         private const val MAX_DURATION_MS = 3L * 60L * 60L * 1000L
 

@@ -1,4 +1,10 @@
-import React, { memo, useCallback, useMemo, useState } from 'react';
+import React, {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import {
   Pressable,
   ScrollView,
@@ -24,15 +30,25 @@ import {
   MINIMUM_SESSIONS_FOR_DIRECTION,
   type ProgressionAssessment,
 } from '../domain/progression';
-import { color, Copy } from './components';
+import { color, Copy, radius, space, SwipeToDelete, type } from './components';
 
 /**
  * Aktive Trainingsansicht: Sätze in Sekunden bestätigen, Abweichungen ohne Wertung erfassen.
  *
  * Aufbau: erledigte Übungen als schmale Zeilen oben, die aktuelle Übung als
  * ausgeklappte Karte in der Mitte, kommende Übungen als schmale Zeilen unten.
- * Eine Zeile antippen wechselt die Übung.
+ * Eine Zeile antippen wechselt die Übung. Ein Satz lässt sich nach links
+ * wegwischen; bis zur nächsten Änderung steht an seiner Stelle „Rückgängig“.
  */
+
+/** So lange bleibt „Rückgängig“ nach dem Löschen eines Satzes stehen. */
+const UNDO_MS = 8000;
+
+interface RemovedSet {
+  exerciseIndex: number;
+  set: LoggedSet;
+  position: number;
+}
 
 const formatClock = (seconds: number) => {
   const whole = Math.max(0, Math.round(seconds));
@@ -170,6 +186,14 @@ const SetRow = memo(function SetRow({
     set.actualRir === undefined ? '' : String(set.actualRir),
   );
   const [touched, setTouched] = useState(false);
+  // Uhr, Benachrichtigung oder ein gelöschter Satz davor ändern Werte und
+  // Vorschläge, während die Zeile stehen bleibt. Ohne eigene Eingabe folgt sie.
+  useEffect(() => {
+    if (touched) return;
+    setWeight(initialWeight === undefined ? '' : formatWeight(initialWeight));
+    setReps(initialReps === undefined ? '' : String(initialReps));
+    setRir(set.actualRir === undefined ? '' : String(set.actualRir));
+  }, [touched, initialWeight, initialReps, set.actualRir]);
   const done = set.completedAt !== undefined;
   const weightIsSuggested =
     !touched &&
@@ -342,6 +366,11 @@ export function WorkoutScreen({
   onEditSet,
   onAddSet,
   onAddExercise,
+  onRemoveSet,
+  onRestoreSet,
+  onPauseRest,
+  onResumeRest,
+  onSkipRest,
   onFinish,
   onMinimize,
 }: {
@@ -378,6 +407,12 @@ export function WorkoutScreen({
   ) => void;
   onAddSet: (exerciseIndex: number) => void;
   onAddExercise: () => void;
+  /** Ohne Rückruf lässt sich kein Satz wegwischen. */
+  onRemoveSet?: (exerciseIndex: number, setId: string) => void;
+  onRestoreSet?: (exerciseIndex: number, set: LoggedSet, position: number) => void;
+  onPauseRest?: () => void;
+  onResumeRest?: () => void;
+  onSkipRest?: () => void;
   onFinish: () => void;
   onMinimize: () => void;
 }) {
@@ -385,7 +420,40 @@ export function WorkoutScreen({
   const current = session.exercises[index];
   const progress = sessionProgress(session);
   const rest = restRemaining(session, now);
+  const restPaused = session.restPausedAt !== undefined;
   const elapsed = Math.max(0, (now - session.startTime) / 1000);
+  const [removed, setRemoved] = useState<RemovedSet | null>(null);
+  useEffect(() => {
+    if (!removed) return;
+    const timer = setTimeout(() => setRemoved(null), UNDO_MS);
+    return () => clearTimeout(timer);
+  }, [removed]);
+  const remove = useCallback(
+    (set: LoggedSet, position: number) => {
+      if (!onRemoveSet) return;
+      onRemoveSet(index, set.id);
+      setRemoved({ exerciseIndex: index, set, position });
+    },
+    [index, onRemoveSet],
+  );
+  const undo =
+    removed && removed.exerciseIndex === index && onRestoreSet ? removed : null;
+  const undoRow = undo ? (
+    <View key="undo" style={styles.undo}>
+      <Text style={styles.undoText}>Satz {undo.position + 1} gelöscht</Text>
+      <Pressable
+        accessibilityLabel={`Satz ${undo.position + 1} wiederherstellen`}
+        accessibilityRole="button"
+        onPress={() => {
+          onRestoreSet?.(undo.exerciseIndex, undo.set, undo.position);
+          setRemoved(null);
+        }}
+        style={({ pressed }) => [styles.undoButton, pressed && styles.pressed]}
+      >
+        <Text style={styles.ghostText}>Rückgängig</Text>
+      </Pressable>
+    </View>
+  ) : null;
 
   const parse = useCallback(
     (weight: string, reps: string, rir: string, timed: boolean) => {
@@ -569,42 +637,85 @@ export function WorkoutScreen({
 
             {current.sets.map((set, position) => (
               <View key={set.id}>
-                <SetRow
-                  active={currentProgress.activeSetId === set.id}
-                  onComplete={complete}
-                  onEdit={edit}
-                  position={position + 1}
-                  reference={references[position]}
-                  markPlanned={references.some(Boolean)}
-                  suggestion={suggestions[position]}
-                  showRir={showRir}
-                  set={set}
-                />
+                {undo && undo.position === position ? undoRow : null}
+                <SwipeToDelete
+                  enabled={Boolean(onRemoveSet) && current.sets.length > 1}
+                  label={`Satz ${position + 1} löschen`}
+                  onDelete={() => remove(set, position)}
+                >
+                  <SetRow
+                    active={currentProgress.activeSetId === set.id}
+                    onComplete={complete}
+                    onEdit={edit}
+                    position={position + 1}
+                    reference={references[position]}
+                    markPlanned={references.some(Boolean)}
+                    suggestion={suggestions[position]}
+                    showRir={showRir}
+                    set={set}
+                  />
+                </SwipeToDelete>
                 {showRestTimer &&
                 rest !== null &&
                 session.restStartedAt !== undefined &&
                 set.completedAt === session.restStartedAt ? (
-                  <View
-                    accessibilityLabel={`Pause, noch ${formatClock(rest)}`}
-                    style={styles.rest}
-                  >
+                  <View style={styles.restBlock}>
                     <View
-                      style={[
-                        styles.restFill,
-                        {
-                          width: `${Math.round(
-                            (1 - rest / (session.restSeconds || 1)) * 100,
-                          )}%`,
-                        },
-                      ]}
-                    />
-                    <Text style={styles.restText}>
-                      Pause {formatClock(rest)}
-                    </Text>
+                      accessibilityLabel={`Pause${
+                        restPaused ? ' angehalten' : ''
+                      }, noch ${formatClock(rest)}`}
+                      style={styles.rest}
+                    >
+                      <View
+                        style={[
+                          styles.restFill,
+                          {
+                            width: `${Math.round(
+                              (1 - rest / (session.restSeconds || 1)) * 100,
+                            )}%`,
+                          },
+                        ]}
+                      />
+                      <Text style={styles.restText}>
+                        {restPaused ? 'Pause angehalten' : 'Pause'}{' '}
+                        {formatClock(rest)}
+                      </Text>
+                    </View>
+                    {onPauseRest && onResumeRest && onSkipRest ? (
+                      <View style={styles.restActions}>
+                        <Pressable
+                          accessibilityLabel={
+                            restPaused ? 'Pause weiterlaufen lassen' : 'Pause anhalten'
+                          }
+                          accessibilityRole="button"
+                          onPress={restPaused ? onResumeRest : onPauseRest}
+                          style={({ pressed }) => [
+                            styles.restButton,
+                            pressed && styles.pressed,
+                          ]}
+                        >
+                          <Text style={styles.ghostText}>
+                            {restPaused ? 'Weiter' : 'Anhalten'}
+                          </Text>
+                        </Pressable>
+                        <Pressable
+                          accessibilityLabel="Pause überspringen"
+                          accessibilityRole="button"
+                          onPress={onSkipRest}
+                          style={({ pressed }) => [
+                            styles.restButton,
+                            pressed && styles.pressed,
+                          ]}
+                        >
+                          <Text style={styles.ghostText}>Überspringen</Text>
+                        </Pressable>
+                      </View>
+                    ) : null}
                   </View>
                 ) : null}
               </View>
             ))}
+            {undo && undo.position >= current.sets.length ? undoRow : null}
 
             {progression ? <ProgressionNote assessment={progression} /> : null}
 
@@ -787,13 +898,40 @@ const styles = StyleSheet.create({
   checkDone: { backgroundColor: color.green, borderColor: color.green },
   checkMark: { color: color.ink, fontSize: 18, fontWeight: '700' },
 
+  restBlock: { gap: space.xs, marginBottom: space.xxs },
+  restActions: { flexDirection: 'row', gap: space.xs },
+  restButton: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: color.line,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  undo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs,
+    minHeight: 60,
+    paddingHorizontal: space.xxs,
+  },
+  undoText: { ...type.label, flex: 1, color: color.muted },
+  undoButton: {
+    minHeight: 48,
+    paddingHorizontal: space.sm,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: color.line,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   rest: {
     height: 34,
     borderRadius: 8,
     backgroundColor: color.surface,
     justifyContent: 'center',
     overflow: 'hidden',
-    marginBottom: 4,
   },
   restFill: {
     position: 'absolute',

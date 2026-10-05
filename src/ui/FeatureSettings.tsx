@@ -356,6 +356,24 @@ export function FeatureSettings({
                 patch('strength', { restTimer: value }),
               )}
             />
+            {features.strength.restTimer ? (
+              <>
+                <Row
+                  title="Vibration am Pausenende"
+                  subtitle="Kurz, kurz, lang — auf der Uhr, sonst am Handy"
+                  trailing={toggle(features.strength.restVibration, value =>
+                    patch('strength', { restVibration: value }),
+                  )}
+                />
+                <Row
+                  title="Ton am Pausenende"
+                  subtitle="Kurz, kurz, lang am Handy"
+                  trailing={toggle(features.strength.restSound, value =>
+                    patch('strength', { restSound: value }),
+                  )}
+                />
+              </>
+            ) : null}
             <Field label="Standardpause für neue Sätze">
               <ChipGroup
                 label="Standardpause für neue Sätze"

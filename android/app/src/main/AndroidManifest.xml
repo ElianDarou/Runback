@@ -8,6 +8,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
+    <!-- Normale Berechtigung; erfüllt die Vorgabe für den Health-Dienst der laufenden Krafteinheit. -->
+    <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
@@ -67,6 +71,8 @@
           <data android:scheme="wear" android:host="*" android:pathPrefix="/runback/" />
         </intent-filter>
       </service>
+      <service android:name=".StrengthSessionService" android:exported="false" android:foregroundServiceType="health" />
+      <receiver android:name=".StrengthActionReceiver" android:exported="false" />
       <activity android:name=".integrations.HealthRationaleActivity" android:exported="true">
         <intent-filter><action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" /></intent-filter>
       </activity>

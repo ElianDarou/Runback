@@ -29,6 +29,7 @@ import android.widget.TextView
 import com.google.android.gms.wearable.Wearable
 import com.runback.core.RecordingService
 import com.runback.core.RunStore
+import com.runback.core.StrengthLive
 import com.runback.core.WearCommandGate
 import com.runback.core.WearProtocol
 import org.json.JSONObject
@@ -54,14 +55,21 @@ class MainActivity : Activity() {
     private var distance: TextView? = null
     private var heart: TextView? = null
     private var sync: TextView? = null
+    private var strengthRest: TextView? = null
+    private var strengthStatus: TextView? = null
+    private var strengthShown = ""
     private var pendingStart = false
     private var permissionStage = 0
     private val tick = object : Runnable {
         override fun run() {
             val active = store.active()
             val state = active?.optString("status") ?: "idle"
+            val strength = if (active == null) StrengthMirror.current(this@MainActivity) else null
+            val strengthKey = strengthKey(strength)
             if (state != lastState && page != "history" && page != "detail") render()
+            else if (page in setOf("home", PAGE_STRENGTH) && strengthKey != strengthShown) render()
             else updateMetrics(active)
+            updateStrengthRest(strength)
             handler.postDelayed(this, 1000)
         }
     }
@@ -75,6 +83,7 @@ class MainActivity : Activity() {
         window.statusBarColor = bg
         window.navigationBarColor = bg
         WearSync.schedule(this)
+        if (intent?.getStringExtra(EXTRA_PAGE) == PAGE_STRENGTH) page = PAGE_STRENGTH
         render()
         handleRemoteRecordingIntent(intent)
         handleRemoteMotionIntent(intent)
@@ -84,6 +93,7 @@ class MainActivity : Activity() {
         super.onNewIntent(intent)
         if (intent != null) {
             setIntent(intent)
+            if (intent.getStringExtra(EXTRA_PAGE) == PAGE_STRENGTH) { page = PAGE_STRENGTH; render() }
             handleRemoteRecordingIntent(intent)
             handleRemoteMotionIntent(intent)
         }
@@ -91,15 +101,16 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        StrengthMirror.listener = { runOnUiThread { if (page in setOf("home", PAGE_STRENGTH)) render() } }
         handler.post(tick)
         // Opening the watch app is an explicit retry point for a queued counterpart command.
         WearSync.retryControl(this, allowRemoteActivity = true)
         WearSync.retry(this)
     }
-    override fun onPause() { handler.removeCallbacks(tick); super.onPause() }
+    override fun onPause() { StrengthMirror.listener = null; handler.removeCallbacks(tick); super.onPause() }
 
     private fun render() {
-        timer = null; distance = null; heart = null; sync = null
+        timer = null; distance = null; heart = null; sync = null; strengthRest = null; strengthStatus = null
         val active = store.active()
         lastState = active?.optString("status") ?: "idle"
         scroll = ScrollView(this).apply {
@@ -122,14 +133,19 @@ class MainActivity : Activity() {
         scroll.addView(content)
         setContentView(scroll)
         scroll.requestFocus()
-        when (page) {
-            "history" -> history()
-            else -> if (active != null) recording(active) else home()
+        val strength = if (active == null) StrengthMirror.current(this) else null
+        strengthShown = strengthKey(strength)
+        when {
+            page == "history" -> history()
+            active != null -> recording(active)
+            strength != null && page in setOf("home", PAGE_STRENGTH) -> strength(strength)
+            else -> home()
         }
     }
 
     private fun home() {
         text("RUNBACK", 13, green, bold = true)
+        if (StrengthMirror.current(this) != null) button("Krafttraining vom Handy", true, 8) { page = PAGE_STRENGTH; render() }
         if (MotionCaptureService.activeSession != null) {
             val what = when {
                 MotionCaptureService.recordsHeart && MotionCaptureService.recordsMotion -> "Puls und Bewegungen werden aufgezeichnet"
@@ -171,6 +187,103 @@ class MainActivity : Activity() {
         text(purposeLabel(active.optString("purpose")), 11, muted, margin = 10)
         text("GPS: Distanz erst bei gültigen Positionen. Aufzeichnung läuft auch bei geschlossenem Display.", 11, muted, margin = 8)
         updateMetrics(active)
+    }
+
+    /**
+     * Krafteinheit vom Handy: nächster Satz, Pause und Übungswechsel. Jede
+     * Aktion geht ans Handy; die Anzeige folgt dem Stand, den es zurückschickt.
+     */
+    private fun strength(state: JSONObject) {
+        page = PAGE_STRENGTH
+        val exercise = state.optJSONObject("exercise")
+        val set = state.optJSONObject("set")
+        val rest = state.optJSONObject("rest")
+        text("KRAFTTRAINING · ${state.optInt("completedSets")}/${state.optInt("totalSets")}", 12, green, true)
+        text(exercise?.optString("name") ?: state.optString("name"), 18, ink, true, 6)
+        val count = state.optInt("exerciseCount")
+        val index = exercise?.optInt("index") ?: 0
+        if (count > 1) row(
+            Triple("‹", index > 0) { send(StrengthMirror.command(StrengthLive.SELECT_EXERCISE, state, "exerciseIndex" to index - 1)) },
+            Triple("›", index < count - 1) { send(StrengthMirror.command(StrengthLive.SELECT_EXERCISE, state, "exerciseIndex" to index + 1)) },
+        )
+        if (set != null) {
+            text("Satz ${set.optInt("number")} von ${exercise?.optInt("total")}", 12, muted, margin = 8)
+            text(set.optString("label"), 20, ink, true, 2)
+        } else if (exercise?.optBoolean("done") == true) {
+            text("Alle Sätze erledigt", 14, muted, margin = 8)
+        }
+        if (rest != null) strengthRest = text("", 22, green, true, 8)
+        updateStrengthRest(state)
+        if (set != null) button("Satz abschließen", true, 10) {
+            send(StrengthMirror.command(StrengthLive.COMPLETE_SET, state, "setId" to set.optString("id"), "exerciseIndex" to index))
+        }
+        if (rest != null) {
+            val paused = rest.optBoolean("paused")
+            button(if (paused) "Pause weiter" else "Pause anhalten", set == null, 6) {
+                send(StrengthMirror.command(if (paused) StrengthLive.RESUME_REST else StrengthLive.PAUSE_REST, state))
+            }
+            button("Pause überspringen", false, 6) { send(StrengthMirror.command(StrengthLive.SKIP_REST, state)) }
+        }
+        if (count > 1) button("Übungen", false, 6) { chooseExercise(state) }
+        strengthStatus = text("", 11, muted, margin = 8)
+        button("Startseite", false, 10) { page = "start"; render() }
+    }
+
+    private fun chooseExercise(state: JSONObject) {
+        val list = state.optJSONArray("exercises") ?: return
+        val labels = (0 until list.length()).map { position ->
+            val item = list.optJSONObject(position)
+            val mark = if (item?.optBoolean("done") == true) "✓ " else ""
+            "$mark${item?.optString("name")} · ${item?.optInt("completed")}/${item?.optInt("total")}"
+        }
+        AlertDialog.Builder(this).setTitle("Übung wählen")
+            .setItems(labels.toTypedArray()) { _, position ->
+                send(StrengthMirror.command(StrengthLive.SELECT_EXERCISE, state, "exerciseIndex" to position))
+            }.setNegativeButton("Zurück", null).show()
+    }
+
+    private fun send(command: JSONObject) {
+        getSystemService(Vibrator::class.java)?.vibrate(VibrationEffect.createOneShot(40, VibrationEffect.DEFAULT_AMPLITUDE))
+        strengthStatus?.text = "Wird ans Handy gesendet …"
+        StrengthMirror.send(this, command) { delivered ->
+            runOnUiThread { if (!delivered) strengthStatus?.text = "Handy nicht erreichbar. Versuche es erneut." }
+        }
+    }
+
+    private fun updateStrengthRest(state: JSONObject?) {
+        val label = strengthRest ?: return
+        val rest = state?.optJSONObject("rest")
+        val remaining = state?.let { StrengthMirror.restRemaining(it) }
+        label.text = when {
+            rest == null || remaining == null -> "Pause vorbei"
+            rest.optBoolean("paused") -> "Pause angehalten · ${clock(remaining)}"
+            else -> "Pause ${clock(remaining)}"
+        }
+    }
+
+    /** Neu zeichnen nur, wenn sich am Stand etwas geändert hat; die Restzeit tickt separat. */
+    private fun strengthKey(state: JSONObject?): String =
+        state?.let { "${it.optString("sessionId")}:${it.optLong("updatedAt")}" } ?: ""
+
+    private fun clock(seconds: Long) = "%d:%02d".format(seconds / 60, seconds % 60)
+
+    private fun row(vararg items: Triple<String, Boolean, () -> Unit>) {
+        val line = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) }
+        }
+        items.forEachIndexed { position, (label, enabled, onClick) ->
+            line.addView(Button(this).apply {
+                text = label; textSize = 18f; isAllCaps = false; isEnabled = enabled
+                setTextColor(if (enabled) ink else muted)
+                background = GradientDrawable().apply { setColor(Color.rgb(27, 36, 30)); cornerRadius = dp(24).toFloat() }
+                minHeight = dp(48); minimumHeight = dp(48)
+                contentDescription = if (position == 0) "Vorherige Übung" else "Nächste Übung"
+                layoutParams = LinearLayout.LayoutParams(0, -2, 1f).apply { if (position > 0) marginStart = dp(8) }
+                setOnClickListener { onClick() }
+            })
+        }
+        content.addView(line)
     }
 
     private fun updateMetrics(active: JSONObject?) {
@@ -597,6 +710,11 @@ class MainActivity : Activity() {
         })
     }
     override fun onBackPressed() {
-        if (page != "home") { page = "home"; render() } else super.onBackPressed()
+        if (page !in setOf("home", PAGE_STRENGTH)) { page = "home"; render() } else super.onBackPressed()
+    }
+
+    companion object {
+        const val EXTRA_PAGE = "page"
+        const val PAGE_STRENGTH = "strength"
     }
 }

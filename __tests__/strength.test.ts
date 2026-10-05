@@ -8,9 +8,16 @@ import {
   exerciseProgress,
   finishSession,
   referenceLabel,
+  clearRest,
+  confirmSet,
+  pauseRest,
   referenceSet,
   removeSet,
+  restEndsAt,
+  restoreSet,
   restRemaining,
+  revise,
+  resumeRest,
   selectExercise,
   sessionBest1RM,
   sessionProgress,
@@ -321,7 +328,98 @@ describe('Übungen wechseln und ergänzen', () => {
   });
 });
 
+describe('Satz bestätigen wie beim Tippen', () => {
+  it('nimmt einen inzwischen auf der Uhr abgehakten Satz nicht zurück', () => {
+    const session = start();
+    const setId = session.exercises[0].sets[1].id;
+    const onWatch = completeSet(session, 0, setId, 1_900);
+    const replayed = confirmSet(onWatch, 0, setId, false, 2_000, {
+      actualReps: 4,
+    });
+    const set = replayed.exercises[0].sets[1];
+    expect(set.completedAt).toBe(1_900);
+    expect(set.actualReps).toBe(4);
+    expect(replayed.restStartedAt).toBe(1_900);
+  });
+
+  it('bestätigt oder öffnet, wenn der Stand noch derselbe ist', () => {
+    const session = start();
+    const setId = session.exercises[0].sets[1].id;
+    const done = confirmSet(session, 0, setId, false, 2_000);
+    expect(done.exercises[0].sets[1].completedAt).toBe(2_000);
+    const reopened = confirmSet(done, 0, setId, true, 3_000);
+    expect(reopened.exercises[0].sets[1].completedAt).toBeUndefined();
+    // Schon geöffnet: Zurücknehmen tut nichts mehr.
+    expect(confirmSet(session, 0, setId, true, 3_000)).toBe(session);
+  });
+});
+
+describe('Stand der Einheit', () => {
+  it('baut jeden gespeicherten Stand auf dem vorherigen auf', () => {
+    const session = start();
+    const first = revise(session, session, () => 0.5);
+    expect(first.revision).toBeTruthy();
+    expect(first.baseRevision).toBeUndefined();
+    const second = revise(first, { ...first, note: 'x' }, () => 0.25);
+    expect(second.baseRevision).toBe(first.revision);
+    expect(second.revision).not.toBe(first.revision);
+    // Eine alte Basis wandert nicht mit.
+    expect(revise(second, second).baseRevision).toBe(second.revision);
+  });
+});
+
 describe('Pause', () => {
+  it('hält an, behält die Restzeit und läuft danach weiter', () => {
+    const session = start();
+    const resting = completeSet(session, 0, session.exercises[0].sets[1].id, 0);
+    expect(restEndsAt(resting)).toBe(180_000);
+    const paused = pauseRest(resting, 60_000);
+    expect(restRemaining(paused, 60_000)).toBe(120);
+    expect(restRemaining(paused, 500_000)).toBe(120);
+    expect(restEndsAt(paused)).toBeNull();
+    // Doppelt anhalten ändert nichts.
+    expect(pauseRest(paused, 70_000)).toBe(paused);
+    const resumed = resumeRest(paused, 100_000);
+    expect(resumed.restPausedMs).toBe(40_000);
+    expect(restEndsAt(resumed)).toBe(220_000);
+    expect(restRemaining(resumed, 110_000)).toBe(110);
+    expect(resumeRest(resumed, 120_000)).toBe(resumed);
+  });
+
+  it('springt beim Überspringen sofort ans Ende', () => {
+    const session = start();
+    const resting = pauseRest(
+      completeSet(session, 0, session.exercises[0].sets[1].id, 0),
+      5_000,
+    );
+    const skipped = clearRest(resting);
+    expect(restRemaining(skipped, 6_000)).toBeNull();
+    expect(skipped.restPausedAt).toBeUndefined();
+    expect(JSON.parse(JSON.stringify(skipped))).not.toHaveProperty('restStartedAt');
+  });
+
+  it('hält eine abgelaufene Pause nicht mehr an', () => {
+    const session = start();
+    const resting = completeSet(session, 0, session.exercises[0].sets[1].id, 0);
+    expect(pauseRest(resting, 400_000)).toBe(resting);
+  });
+
+  it('beendet die Pause, wenn ihr Satz gelöscht wird, und stellt ihn wieder her', () => {
+    const session = start();
+    const set = session.exercises[0].sets[1];
+    const resting = completeSet(session, 0, set.id, 1_000);
+    const removed = removeSet(resting, 0, set.id);
+    expect(removed.exercises[0].sets.map(entry => entry.id)).not.toContain(set.id);
+    expect(restRemaining(removed, 2_000)).toBeNull();
+    const restored = restoreSet(removed, 0, resting.exercises[0].sets[1], 1);
+    expect(restored.exercises[0].sets[1]).toEqual(resting.exercises[0].sets[1]);
+    // Ein zweites Zurückholen legt keinen doppelten Satz an.
+    expect(restoreSet(restored, 0, resting.exercises[0].sets[1], 1)).toBe(restored);
+    // Ein anderer Satz lässt die laufende Pause stehen.
+    const other = removeSet(resting, 0, session.exercises[0].sets[0].id);
+    expect(restRemaining(other, 2_000)).not.toBeNull();
+  });
+
   it('startet nach einem bestätigten Satz und läuft ab', () => {
     const session = start();
     const setId = session.exercises[0].sets[1].id;

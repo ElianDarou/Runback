@@ -1,13 +1,17 @@
 import React, {
   memo,
   useContext,
+  useMemo,
+  useRef,
   useState,
   type PropsWithChildren,
   type ReactNode,
 } from 'react';
 import {
+  Animated,
   Image as NativeImage,
   KeyboardAvoidingView,
+  PanResponder,
   Modal,
   Platform,
   Pressable,
@@ -83,6 +87,91 @@ export const type = {
   label: { fontSize: 14, lineHeight: 20, fontWeight: '500' as const },
   micro: { fontSize: 12, lineHeight: 16, fontWeight: '500' as const },
 };
+
+/** Ab dieser Strecke (oder 40 % der Breite) löscht ein Wischen nach links. */
+const SWIPE_DELETE_MIN = 96;
+
+/**
+ * Zeile, die sich von rechts nach links wegwischen lässt. Dahinter steht, was
+ * passiert („Löschen“); ein kurzer Wisch springt zurück. Für Bildschirmleser
+ * gibt es dieselbe Aktion als `accessibilityActions`.
+ */
+export function SwipeToDelete({
+  children,
+  onDelete,
+  enabled = true,
+  label = 'Löschen',
+  surface = color.raised,
+}: PropsWithChildren<{
+  onDelete: () => void;
+  enabled?: boolean;
+  label?: string;
+  /** Fläche der Zeile; deckt das Label dahinter ab. */
+  surface?: string;
+}>) {
+  const width = useRef(0);
+  const offset = useRef(new Animated.Value(0)).current;
+  const latest = useRef({ onDelete, enabled });
+  latest.current = { onDelete, enabled };
+  const responder = useMemo(() => {
+    const back = () =>
+      Animated.spring(offset, { toValue: 0, useNativeDriver: true }).start();
+    return PanResponder.create({
+      // Nur deutlich waagerechte Bewegungen; senkrecht scrollt die Liste.
+      onMoveShouldSetPanResponderCapture: (_, gesture) =>
+        latest.current.enabled &&
+        gesture.dx < -12 &&
+        Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderMove: (_, gesture) =>
+        offset.setValue(Math.min(0, gesture.dx)),
+      onPanResponderRelease: (_, gesture) => {
+        const threshold = Math.max(SWIPE_DELETE_MIN, width.current * 0.4);
+        if (-gesture.dx >= threshold) {
+          Animated.timing(offset, {
+            toValue: -Math.max(width.current, threshold),
+            duration: 140,
+            useNativeDriver: true,
+          }).start(() => {
+            latest.current.onDelete();
+            offset.setValue(0);
+          });
+        } else {
+          back();
+        }
+      },
+      onPanResponderTerminate: back,
+    });
+  }, [offset]);
+  return (
+    <View
+      accessibilityActions={enabled ? [{ name: 'delete', label }] : []}
+      onAccessibilityAction={event => {
+        if (enabled && event.nativeEvent.actionName === 'delete') onDelete();
+      }}
+      onLayout={(event: LayoutChangeEvent) => {
+        width.current = event.nativeEvent.layout.width;
+      }}
+    >
+      {enabled ? (
+        <View
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          pointerEvents="none"
+          style={s.swipeBehind}
+        >
+          <Text style={s.swipeLabel}>{label}</Text>
+        </View>
+      ) : null}
+      <Animated.View
+        style={{ backgroundColor: surface, transform: [{ translateX: offset }] }}
+        {...responder.panHandlers}
+      >
+        {children}
+      </Animated.View>
+    </View>
+  );
+}
 
 export function Title({ children }: PropsWithChildren) {
   return (
@@ -1565,6 +1654,16 @@ export function RouteOpenActions({
 export type { ReactNode };
 
 export const s = StyleSheet.create({
+  swipeBehind: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    paddingHorizontal: space.md,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: color.danger,
+  },
+  swipeLabel: { ...type.label, color: color.danger },
   title: { color: color.text, ...type.title, letterSpacing: -0.6 },
   button: {
     minHeight: 54,

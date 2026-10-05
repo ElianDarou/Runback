@@ -39,6 +39,57 @@ class RunStoreTest {
     }
 
     @Test
+    fun lostProcessKeepsDataUpToTheLastSampleAndMarksTheGap() {
+        val run = store.start("easy", "wear_os", "running", id = "crash-run")
+        val start = run.getLong("startTime")
+        store.appendSamples("crash-run", listOf(
+            RawSample(start + 1_000, "heartRate", JSONObject().put("bpm", 140.0)),
+            RawSample(start + 9_000, "heartRate", JSONObject().put("bpm", 150.0)),
+        ))
+        // Nach dem Start kein Checkpoint mehr: Gerät ging nach 9 s aus.
+        store.recoverOrphanedRuns(start + 60_000)
+
+        val active = store.active()!!
+        assertEquals("interrupted", active.getString("status"))
+        assertEquals(start + 9_000, active.getLong("endTime"))
+        assertTrue(active.getLong("elapsedMs") in 8_900..9_000)
+        val interrupted = store.detail("crash-run").getJSONArray("events").let { events ->
+            (0 until events.length()).map { events.getJSONObject(it) }.filter { it.getString("type") == "interrupted" }
+        }
+        assertEquals(1, interrupted.size)
+        assertEquals(start + 9_000, interrupted.single().getLong("at"))
+
+        // Eine zweite Meldung (Dienst vom System neu gestartet) verdoppelt nichts.
+        store.markInterrupted("noch einmal")
+        assertEquals(1, store.detail("crash-run").getJSONArray("events").let { events ->
+            (0 until events.length()).count { events.getJSONObject(it).getString("type") == "interrupted" }
+        })
+        val finished = store.finish()!!
+        assertEquals("completed", finished.getString("status"))
+        assertEquals(start + 9_000, finished.getLong("endTime"))
+    }
+
+    @Test
+    fun recoveryAfterResumeDoesNotCountThePauseBefore() {
+        val run = store.start("easy", "wear_os", "running", id = "pause-crash")
+        val start = run.getLong("startTime")
+        store.pause()
+        val paused = store.active()!!.getLong("elapsedMs")
+        Thread.sleep(1_500)
+        store.resume()
+        val resumedAt = store.active()!!.getLong("endTime")
+        store.appendSamples("pause-crash", listOf(RawSample(resumedAt + 4_000, "heartRate", JSONObject().put("bpm", 150.0))))
+        store.recoverOrphanedRuns(resumedAt + 60_000)
+
+        val active = store.active()!!
+        assertEquals("interrupted", active.getString("status"))
+        assertEquals(resumedAt + 4_000, active.getLong("endTime"))
+        // Bisher plus die 4 s nach dem Weiter — nicht die 1,5 s Pause davor.
+        assertEquals(paused + 4_000, active.getLong("elapsedMs"))
+        assertTrue(active.getLong("endTime") > start)
+    }
+
+    @Test
     fun strengthImportHistoryKeepsAllWorkoutsAndReadsLegacyRows() {
         val sets = listOf(StrengthSet("Bench Press (Barbell)", 1, weight = 80.0, reps = 8))
         val first = StrengthWorkout("strong:first", 1000, "Push", source = "strong")

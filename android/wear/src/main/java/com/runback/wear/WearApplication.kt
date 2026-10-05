@@ -26,6 +26,7 @@ class WearApplication : Application() {
         }
         WearSync.retryControl(this)
         WearSync.retry(this)
+        MotionSync.recoverStale(this)
         MotionSync.retry(this)
     }
 }

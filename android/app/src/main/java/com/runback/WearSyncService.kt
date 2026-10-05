@@ -21,6 +21,7 @@ import java.util.zip.ZipFile
 /** Acknowledges a watch transfer only after its complete original bundle is durable. */
 class WearSyncService : WearableListenerService() {
     private val worker = Executors.newSingleThreadExecutor()
+    private val strengthWorker = Executors.newSingleThreadExecutor()
     override fun onDataChanged(events: DataEventBuffer) {
         val items = mutableListOf<DataItem>()
         val motion = mutableListOf<DataItem>()
@@ -48,6 +49,13 @@ class WearSyncService : WearableListenerService() {
             WearProtocol.ACK_PATH -> worker.execute { receiveAck(event.data) }
             // Eigener Pfad, nicht hinter dem Worker: ein Pong soll nicht hinter einer Übertragung warten.
             WearProtocol.MOTION_PATH -> MotionSessions.acceptMessage(this, event.data)
+            // Eigener Pfad wie oben: Ein Tippen auf der Uhr wartet nicht hinter einer Übertragung.
+            WearProtocol.STRENGTH_COMMAND_PATH -> strengthWorker.execute {
+                runCatching { StrengthWorkout.command(this, WearProtocol.decodeStrengthCommand(event.data)) }
+            }
+            WearProtocol.STRENGTH_SEEN_PATH -> strengthWorker.execute {
+                runCatching { StrengthWorkout.watchSeen(this, WearProtocol.decodeStrengthNotice(event.data), event.sourceNodeId) }
+            }
         }
     }
 
