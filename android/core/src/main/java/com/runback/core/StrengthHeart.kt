@@ -3,6 +3,7 @@ package com.runback.core
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.ceil
+import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -119,7 +120,8 @@ object StrengthHeart {
     fun truncate(summary: JSONObject, endMs: Long): JSONObject? {
         val values = summary.optJSONArray("values") ?: return null
         val step = summary.optInt("stepSeconds").takeIf { it > 0 } ?: return null
-        val count = ceil((endMs - summary.optLong("startTime")) / 1000.0 / step).toInt().coerceAtMost(values.length())
+        // Nur vollständig erhaltene Fenster: Ein angeschnittenes enthält womöglich Werte nach dem Ende.
+        val count = floor((endMs - summary.optLong("startTime")) / 1000.0 / step).toInt().coerceAtMost(values.length())
         if (count <= 0) return null
         val kept = JSONArray()
         var filled = 0; var total = 0.0

@@ -62,6 +62,7 @@ class RunStore(context: Context) : DocumentStore {
         null
     }
     private fun present(run: JSONObject): JSONObject {
+        run.remove("endCorrection")
         trimEnd(run.getString("id"))?.let { end -> applyTrim(run, end) }
         val ms = run.optLong("durationMs") + if (run.optString("status") == "recording")
             (SystemClock.elapsedRealtime() - run.optLong("_tick", SystemClock.elapsedRealtime())).coerceAtLeast(0) else 0
@@ -522,10 +523,9 @@ class RunStore(context: Context) : DocumentStore {
             }; previous = p
         }; split()
         if (points.size > 1) run.put("distanceMeters", distance)
-        // Gekürzt vor dem zweiten GPS-Punkt: Die Strecke aus dem verworfenen Teil zählt nicht mehr.
-        else if (trimEnd(id) != null && selectedSamples(id, "gps", until = null).size > 1) run.put("distanceMeters", 0.0)
         // Zeitgewichtet statt nach Sample-Anzahl: unregelmäßige Aufzeichnung verzerrt sonst das Mittel.
-        val durationSeconds = run.optDouble("durationSeconds", Double.NaN)
+        // Abdeckung gegen die geltende Dauer, nach einem gesetzten Ende also die gekürzte.
+        val durationSeconds = present(JSONObject(run.toString())).optDouble("durationSeconds", Double.NaN)
         for ((kind, key, output, coverage) in listOf(
             listOf("heartRate", "bpm", "avgHeartRate", "heartRateCoverage"), listOf("cadence", "rpm", "avgCadence", "cadenceCoverage"))) {
             val times = ArrayList<Long>(); val values = ArrayList<Double>()
@@ -786,6 +786,14 @@ class RunStore(context: Context) : DocumentStore {
         val pausedAfter = pauseIntervals(run.getString("id"), originalEnd).sumOf { range ->
             maxOf(0L, minOf(range.last, originalEnd) - maxOf(range.first, end)) }
         val activeAfter = maxOf(0L, originalEnd - end - pausedAfter)
+        // Werte aus einer Import-Zusammenfassung gelten für die ganze Aufzeichnung und lassen sich
+        // nicht kürzen: Nach dem gesetzten Ende sind sie unbekannt; im Original bleiben sie.
+        val id = run.getString("id")
+        fun hasSamples(kind: String) = db.rawQuery("SELECT 1 FROM samples WHERE run_id=? AND kind=? LIMIT 1", arrayOf(id, kind)).use { it.moveToFirst() }
+        val summaryOnly = mutableListOf("calories", "steps", "elevationGainMeters")
+        if (!hasSamples("heartRate")) summaryOnly += listOf("avgHeartRate", "avgHeartRateMax", "avgHeartRateMin", "heartRateCoverage")
+        if (!hasSamples("cadence")) summaryOnly += listOf("avgCadence", "avgCadenceMax", "avgCadenceMin", "cadenceCoverage")
+        summaryOnly.forEach { run.remove(it) }
         run.put("originalEndTime", originalEnd).put("originalDurationMs", run.optLong("durationMs"))
             .put("endTime", end).put("durationMs", maxOf(0L, run.optLong("durationMs") - activeAfter))
             .put("endCorrection", getDocument("trim_${run.getString("id")}"))
@@ -800,6 +808,10 @@ class RunStore(context: Context) : DocumentStore {
             val samples = db.rawQuery("SELECT 1 FROM samples WHERE run_id=? LIMIT 1", arrayOf(id)).use { it.moveToFirst() }
             require(samples) { "Ohne aufgezeichneten Verlauf lässt sich das Ende nicht prüfen." }
             require(unexplainedPauseMs(run) <= MAX_UNEXPLAINED_PAUSE_MS) { UNEXPLAINED_PAUSE_MESSAGE }
+            // Mit GPS muss die Strecke bis zum Ende messbar bleiben; sonst wäre sie unbekannt, nicht null.
+            val gps = { until: Long -> db.rawQuery("SELECT COUNT(*) FROM samples WHERE run_id=? AND kind='gps' AND time<=?",
+                arrayOf(id, until.toString())).use { it.moveToFirst(); it.getInt(0) } }
+            require(gps(Long.MAX_VALUE) < 2 || gps(endTime) >= 2) { "Vor diesem Ende gibt es noch keine GPS-Strecke. Wähle ein späteres Ende." }
             if (endTime >= originalEnd) deleteDocument("trim_$id")
             else putDocument("trim_$id", JSONObject().put("endTime", endTime).put("setAt", System.currentTimeMillis())
                 .put("by", "user").put("modelVersion", END_CORRECTION_VERSION))
@@ -1324,7 +1336,15 @@ class RunStore(context: Context) : DocumentStore {
     fun exportSession(id: String): File = locked {
         val file=File.createTempFile("runback-session-",".zip",app.cacheDir)
         ZipOutputStream(file.outputStream().buffered()).use { zip ->
-            zip.putNextEntry(ZipEntry("session.json"));zip.write(JSONObject().put("schemaVersion",1).put("run",detail(id))
+            // Ursprüngliche Zeiten plus Korrektur getrennt: Die Gegenseite kann beides wiederherstellen.
+            val run = detail(id)
+            if (run.has("originalEndTime")) {
+                val ms = run.optLong("originalDurationMs")
+                run.put("endTime", run.getLong("originalEndTime")).put("endedAt", run.getLong("originalEndTime")).put("durationMs", ms)
+                    .put("durationSeconds", ms / 1000.0).put("durationSec", ms / 1000.0).put("elapsedMs", ms)
+                run.remove("originalEndTime"); run.remove("originalDurationMs")
+            }
+            zip.putNextEntry(ZipEntry("session.json"));zip.write(JSONObject().put("schemaVersion",1).put("run",run)
                 .put("samples",rawSamples(id)).put("events",events(id)).toString().toByteArray());zip.closeEntry()
         };file
     }
@@ -1414,6 +1434,9 @@ class RunStore(context: Context) : DocumentStore {
                 derive(storedId)
             }
             if (run.optString("status") == "completed") clearRouteAssignment(storedId)
+            run.optJSONObject("endCorrection")?.takeIf { it.optLong("endTime") > 0 && trimEnd(storedId) == null }?.let {
+                putDocument("trim_$storedId", it); derive(storedId)
+            }
             storedId
         }
     }

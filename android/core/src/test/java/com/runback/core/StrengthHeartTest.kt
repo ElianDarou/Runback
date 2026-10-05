@@ -105,11 +105,13 @@ class StrengthHeartTest {
     @Test fun storedSeriesIsCutToAnEarlierEndWithoutRawFile() {
         val summary = JSONObject().put("startTime", 0L).put("stepSeconds", 60).put("samples", 99)
             .put("values", org.json.JSONArray(listOf(100.0, JSONObject.NULL, 140.0, 180.0)))
+        // Ende bei 150 s: Das Fenster 120–180 s ist angeschnitten und fällt weg.
         val cut = StrengthHeart.truncate(summary, 150_000L)!!
-        assertEquals(3, cut.getJSONArray("values").length())
-        assertEquals(120.0, cut.getDouble("averageBpm"), 0.0)
-        assertEquals(140.0, cut.getDouble("maxBpm"), 0.0)
-        assertEquals(0.667, cut.getDouble("coverage"), 0.0)
+        assertEquals(2, cut.getJSONArray("values").length())
+        assertEquals(100.0, cut.getDouble("averageBpm"), 0.0)
+        assertEquals(100.0, cut.getDouble("maxBpm"), 0.0)
+        assertEquals(0.5, cut.getDouble("coverage"), 0.0)
+        assertEquals(3, StrengthHeart.truncate(summary, 180_000L)!!.getJSONArray("values").length())
         assertFalse(cut.has("samples"))
         assertNull(StrengthHeart.truncate(summary, 0L))
     }

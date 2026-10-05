@@ -537,6 +537,7 @@ class RunStoreTest {
         assertTrue(store.series(id, 300, untrimmed = true).getJSONArray("rows").length() >
             store.series(id, 300).getJSONArray("rows").length())
         try { store.setRunEnd(id, start + 31 * 60_000L); fail("after the original end") } catch (_: IllegalArgumentException) {}
+        try { store.setRunEnd(id, start + 5_000L); fail("before the second GPS point") } catch (_: IllegalArgumentException) {}
         store.setRunEnd(id, null)
         assertEquals(1800.0, store.detail(id).getDouble("durationSeconds"), 1.0)
         assertFalse(store.detail(id).has("originalEndTime"))
