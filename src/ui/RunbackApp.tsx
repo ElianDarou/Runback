@@ -237,6 +237,13 @@ import {
   runExportFileNames,
   type RunTimeline,
 } from '../domain/runReport';
+import {
+  isRecordedStrengthSession,
+  STRENGTH_EXPORT_FILES,
+  strengthExportChunk,
+  strengthExportHeaders,
+  strengthExportReadme,
+} from '../domain/strengthExport';
 
 const purposes = RUN_PURPOSES;
 const number = (value: number, digits = 1) =>
@@ -1095,6 +1102,68 @@ export function RunbackApp({
         // Ohne Zeitreihe (Import, Altdaten) bleiben Bericht und Analyse.
       }
       await native.shareFiles(files, `${sportWords(run.sport).noun} teilen`);
+    });
+  };
+  // Alle in Runback aufgezeichneten Krafteinheiten als ein ZIP, ohne Importe.
+  // Je Einheit ein Aufruf; Kotlin hängt an die Dateien an und packt erst am
+  // Ende. Das README steht vorn, sein Inhalt kommt zuletzt (mit den Zählern).
+  const shareStrength = () => {
+    void action(async () => {
+      const ids = await native.recordedStrengthSessionIds();
+      if (!ids.length) throw new Error('Zeichne zuerst eine Krafteinheit auf.');
+      const files = STRENGTH_EXPORT_FILES;
+      const headers = strengthExportHeaders();
+      const settings = stateRef.current.settings;
+      const summary = {
+        exportedAt: Date.now(),
+        sessions: 0,
+        sets: 0,
+        heartSessions: 0,
+        firstStart: undefined as number | undefined,
+        lastStart: undefined as number | undefined,
+        goal: settings.strengthGoal,
+        goalTargetDate: settings.strengthGoalTargetDate,
+        focus: settings.strengthFocus,
+      };
+      const archive = await native.beginExportArchive('runback-krafttraining');
+      try {
+        await native.appendExportArchive(archive, {
+          [files.readme]: '',
+          [files.log]: headers.log,
+          [files.sessions]: headers.sessions,
+          [files.sets]: headers.sets,
+          [files.heart]: headers.heart,
+          [files.jsonl]: '',
+        });
+        for (const [index, id] of ids.entries()) {
+          setExportProgress(`${index + 1} von ${ids.length} Einheiten`);
+          const session = await native.strengthSession(id);
+          if (!isRecordedStrengthSession(session)) continue;
+          const heart = await native.strengthHeart(id).catch(() => undefined);
+          const chunk = strengthExportChunk(session, heart);
+          await native.appendExportArchive(archive, {
+            [files.log]: chunk.log,
+            [files.sessions]: chunk.sessions,
+            [files.sets]: chunk.sets,
+            [files.heart]: chunk.heart,
+            [files.jsonl]: chunk.jsonl,
+          });
+          summary.sessions += 1;
+          summary.sets += chunk.setCount;
+          summary.heartSessions += chunk.heartSessions;
+          summary.firstStart ??= session.startTime;
+          summary.lastStart = session.startTime;
+        }
+        if (!summary.sessions)
+          throw new Error('Zeichne zuerst eine Krafteinheit auf.');
+        await native.appendExportArchive(archive, {
+          [files.readme]: strengthExportReadme(summary),
+        });
+        await native.shareExportArchive(archive, 'Krafttraining teilen');
+      } finally {
+        setExportProgress('');
+        await native.discardExportArchive(archive).catch(() => {});
+      }
     });
   };
 
@@ -4643,6 +4712,21 @@ export function RunbackApp({
                 return native.runIdsInRange(range.from, range.until);
               })
             }
+          />
+        </Disclosure>
+        <Disclosure
+          title="Krafttraining exportieren"
+          subtitle="Alle aufgezeichneten Einheiten als ZIP teilen"
+        >
+          <Copy muted>
+            Sätze, Puls und Trainingslog für Tabellen oder ein Sprachmodell.
+            Importe fehlen.
+          </Copy>
+          <Button
+            secondary
+            title="Krafttraining als ZIP exportieren"
+            disabled={busy}
+            onPress={shareStrength}
           />
         </Disclosure>
         <Disclosure

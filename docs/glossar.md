@@ -93,6 +93,7 @@ rechts wozu es dient. Nur Begriffe, die im Produkt wirklich vorkommen.
 | Bodenkontakt · Aufkommen · Abbremsen | `contactMs`, `impactG`, `brakingMps` | Grobe Rumpfwerte je Schritt: Kontaktzeit, Beschleunigungsspitze in g, Tempo-Schwankung vor–zurück. Nur Gürtel oder Oberkörper, nur zum Vergleich mit dir selbst. |
 | Vorlage | `leanDeg` | Neigung des Oberkörpers beim Laufen gegenüber dem Stehen am Start. Nur Handy am Oberkörper. |
 | Analyse-Export | `buildRunAnalysisExport` | Drei Dateien zum Teilen: Bericht (Markdown), Analyse (JSON), Zeitreihe (CSV, 5 s). |
+| Kraft-Export | `strengthExport.ts` | ZIP aller in Runback aufgezeichneten Krafteinheiten (ohne Importe): Trainingslog (Markdown), Einheiten, Sätze und Puls als CSV, alles als JSONL. Fehlende Werte bleiben leer. |
 | Grundregel | — | Regel, die für alles gilt und nicht gegen eine UI-Abkürzung getauscht wird. |
 
 **Nicht mehr verwendet:** Arbeitsthema, nächste Handlung, Intervention,

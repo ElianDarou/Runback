@@ -51,6 +51,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     private var speechRecognizer: SpeechRecognizer? = null
     private var speechPromise: Promise? = null
     private val analysisArchives = mutableMapOf<String, RunAnalysisArchive>()
+    private val exportArchives = mutableMapOf<String, ExportArchive>()
 
     init {
         StrengthWorkout.listener = { session ->
@@ -545,7 +546,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
 
     private fun exportDirectory(): File = File(context.cacheDir, "exports").apply {
         mkdirs()
-        listFiles()?.filter { it.lastModified() < System.currentTimeMillis() - 24 * 60 * 60 * 1000L }?.forEach { it.delete() }
+        ExportArchive.clean(this, System.currentTimeMillis())
     }
     private fun safeExportName(fileName: String, fallback: String) =
         fileName.replace(Regex("[^A-Za-z0-9._-]"), "-").take(120).ifBlank { fallback }
@@ -657,6 +658,37 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
             } catch (error: Exception) { promise.reject("SHARE_ERROR", error.message, error) }
         }
     }
+    // Allgemeines ZIP aus flachen Dateien, die JS stückweise anhängt (Kraftexport).
+    @ReactMethod fun beginExportArchive(prefix: String, promise: Promise) = task(promise) {
+        val id = UUID.randomUUID().toString()
+        val name = prefix.replace(Regex("[^a-z0-9-]"), "").take(40).ifBlank { "runback-export" }
+        exportArchives[id] = ExportArchive(File(exportDirectory(), "$name-$id.zip"))
+        JSONObject().put("id", id)
+    }
+    @ReactMethod fun appendExportArchive(id: String, filesJson: String, promise: Promise) = task(promise) {
+        val archive = exportArchives[id] ?: error("Der Export ist nicht mehr verfügbar.")
+        require(filesJson.length <= 8_000_000) { "Der Export ist zu groß zum Teilen." }
+        val input = JSONObject(filesJson)
+        archive.append(input.keys().asSequence().associateWithTo(linkedMapOf()) { input.getString(it) })
+        JSONObject().put("appended", true)
+    }
+    @ReactMethod fun discardExportArchive(id: String, promise: Promise) = task(promise) {
+        exportArchives.remove(id)?.discard()
+        JSONObject().put("discarded", true)
+    }
+    @ReactMethod fun shareExportArchive(id: String, title: String, promise: Promise) {
+        worker.execute {
+            try {
+                val archive = exportArchives[id] ?: error("Der Export ist nicht mehr verfügbar.")
+                val file = archive.finish()
+                exportArchives.remove(id)
+                shareUris(listOf(FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)), "application/zip", title, promise)
+            } catch (error: Exception) { promise.reject("SHARE_ERROR", error.message, error) }
+        }
+    }
+    @ReactMethod fun recordedStrengthSessionIds(promise: Promise) = task(promise) {
+        JSONObject().put("ids", JSONArray(store.strengthSessionIds()))
+    }
     @ReactMethod fun runIdsInRange(from: Double, until: Double, promise: Promise) = task(promise) {
         JSONObject().put("ids", runIdsForExport(from, until, store::listRuns))
     }
@@ -739,6 +771,8 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         worker.execute {
             analysisArchives.values.forEach { runCatching { it.discard() } }
             analysisArchives.clear()
+            exportArchives.values.forEach { runCatching { it.discard() } }
+            exportArchives.clear()
         }
         worker.shutdown()
         importWorker.shutdown()
