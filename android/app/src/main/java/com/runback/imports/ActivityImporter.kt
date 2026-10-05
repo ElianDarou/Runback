@@ -1766,11 +1766,11 @@ class ActivityImporter(private val context: Context, private val store: RunStore
     /** Writes an exchange copy from the immutable store data; this is never a backup. */
     fun exportRun(id: String, extension: String, output: OutputStream) {
         val run = store.detail(id)
-        val samples = store.rawSamples(id)
+        // JSON ist die Datensicherung mit allen Originalen; GPX/FIT enden am geltenden Ende.
         when (extension.lowercase(Locale.ROOT)) {
-            "json" -> output.writer(StandardCharsets.UTF_8).apply { write(JSONObject().put("run", run).put("samples", samples).toString(2)); flush() }
-            "gpx" -> writeGpx(run, samples, output)
-            "fit" -> writeFit(run, samples, output)
+            "json" -> output.writer(StandardCharsets.UTF_8).apply { write(JSONObject().put("run", run).put("samples", store.rawSamples(id)).toString(2)); flush() }
+            "gpx" -> writeGpx(run, store.rawSamples(id, corrected = true), output)
+            "fit" -> writeFit(run, store.rawSamples(id, corrected = true), output)
             else -> error("Unterstützt: GPX, JSON, FIT")
         }
     }

@@ -34,6 +34,7 @@ export interface EndLine {
 const HEIGHT = 96;
 const MARGIN = { top: 8, bottom: 6, left: 36, right: 8 };
 const AXIS = 18;
+const STRIP = 40;
 
 const clock = new Intl.DateTimeFormat('de-DE', {
   hour: '2-digit',
@@ -90,21 +91,26 @@ export function EndEditor({
   const span = Math.max(1, rangeEnd - startTime);
   const plotWidth = Math.max(1, width - MARGIN.left - MARGIN.right);
   const xOf = (time: number) =>
-    MARGIN.left + (Math.min(Math.max(time - startTime, 0), span) / span) * plotWidth;
+    MARGIN.left +
+    (Math.min(Math.max(time - startTime, 0), span) / span) * plotWidth;
   const pick = (event: GestureResponderEvent) => {
     const share = (event.nativeEvent.locationX - MARGIN.left) / plotWidth;
     setEnd(clampEnd(startTime + share * span, startTime, rangeEnd));
   };
   const shift = (minutes: number) =>
-    setEnd(current => clampEnd(current + minutes * 60_000, startTime, rangeEnd));
+    setEnd(current =>
+      clampEnd(current + minutes * 60_000, startTime, rangeEnd),
+    );
   const drawable = lines.filter(
     line => line.points.filter(point => point.value !== null).length >= 2,
   );
   const tickMinutes =
     [5, 10, 15, 30, 60, 120].find(step => span / 60_000 / step <= 5) ?? 120;
   const ticks: number[] = [];
-  for (let at = 0; at <= span; at += tickMinutes * 60_000) ticks.push(startTime + at);
+  for (let at = 0; at <= span; at += tickMinutes * 60_000)
+    ticks.push(startTime + at);
   const changed = end !== (currentEnd ?? originalEnd);
+  const marksAfter = marks.filter(time => time > end).length;
 
   const chart = (line: EndLine) => {
     const values = line.points
@@ -123,15 +129,29 @@ export function EndEditor({
         pen = false;
         return;
       }
-      path += `${pen ? 'L' : 'M'}${xOf(point.t).toFixed(1)},${yOf(point.value).toFixed(1)} `;
+      path += `${pen ? 'L' : 'M'}${xOf(point.t).toFixed(1)},${yOf(
+        point.value,
+      ).toFixed(1)} `;
       pen = true;
     });
     return (
       <Svg key={line.key} width={width} height={HEIGHT}>
-        <SvgText x={MARGIN.left - 6} y={MARGIN.top + 8} fontSize={10} fill={color.muted} textAnchor="end">
+        <SvgText
+          x={MARGIN.left - 6}
+          y={MARGIN.top + 8}
+          fontSize={10}
+          fill={color.muted}
+          textAnchor="end"
+        >
           {String(Math.round(high))}
         </SvgText>
-        <SvgText x={MARGIN.left - 6} y={HEIGHT - MARGIN.bottom} fontSize={10} fill={color.muted} textAnchor="end">
+        <SvgText
+          x={MARGIN.left - 6}
+          y={HEIGHT - MARGIN.bottom}
+          fontSize={10}
+          fill={color.muted}
+          textAnchor="end"
+        >
           {String(Math.round(low))}
         </SvgText>
         {marks.map((time, index) => (
@@ -146,7 +166,13 @@ export function EndEditor({
             strokeDasharray="3 3"
           />
         ))}
-        <Path d={path} stroke={line.stroke} strokeWidth={2} fill="none" strokeLinejoin="round" />
+        <Path
+          d={path}
+          stroke={line.stroke}
+          strokeWidth={2}
+          fill="none"
+          strokeLinejoin="round"
+        />
         <Rect
           x={xOf(end)}
           y={MARGIN.top}
@@ -184,10 +210,20 @@ export function EndEditor({
           (end - startTime) / 1000,
         )}`}
       </Text>
-      {drawable.length ? (
+      {drawable.length ? null : <Copy muted>{emptyHint}</Copy>}
+      {marksAfter ? (
+        <Copy muted>{`${marksAfter} ${
+          marksAfter === 1 ? 'abgehakter Satz liegt' : 'abgehakte Sätze liegen'
+        } danach und ${
+          marksAfter === 1 ? 'zählt' : 'zählen'
+        } dann nicht mehr.`}</Copy>
+      ) : null}
+      {drawable.length || marks.length ? (
         <View
           accessibilityRole="adjustable"
-          accessibilityLabel={`Verlauf von ${clock.format(new Date(startTime))} bis ${clock.format(
+          accessibilityLabel={`Verlauf von ${clock.format(
+            new Date(startTime),
+          )} bis ${clock.format(
             new Date(rangeEnd),
           )}. Tippe, wo die Einheit endete.`}
           onLayout={event => setWidth(event.nativeEvent.layout.width)}
@@ -199,10 +235,46 @@ export function EndEditor({
         >
           {drawable.map(line => (
             <View key={line.key}>
-              <Text style={styles.lineLabel}>{`${line.label} (${line.unit})`}</Text>
+              <Text
+                style={styles.lineLabel}
+              >{`${line.label} (${line.unit})`}</Text>
               {chart(line)}
             </View>
           ))}
+          {drawable.length ? null : (
+            <>
+              <Text style={styles.lineLabel}>Abgehakte Sätze</Text>
+              <Svg width={width} height={STRIP}>
+                {marks.map((time, index) => (
+                  <Line
+                    key={`s-${index}`}
+                    x1={xOf(time)}
+                    x2={xOf(time)}
+                    y1={4}
+                    y2={STRIP - 4}
+                    stroke={color.text}
+                    strokeWidth={2}
+                  />
+                ))}
+                <Rect
+                  x={xOf(end)}
+                  y={0}
+                  width={Math.max(0, MARGIN.left + plotWidth - xOf(end))}
+                  height={STRIP}
+                  fill={color.bg}
+                  opacity={0.6}
+                />
+                <Line
+                  x1={xOf(end)}
+                  x2={xOf(end)}
+                  y1={0}
+                  y2={STRIP}
+                  stroke={color.green}
+                  strokeWidth={2}
+                />
+              </Svg>
+            </>
+          )}
           <Svg width={width} height={AXIS}>
             {ticks.map(time => (
               <SvgText
@@ -218,9 +290,7 @@ export function EndEditor({
             ))}
           </Svg>
         </View>
-      ) : (
-        <Copy muted>{emptyHint}</Copy>
-      )}
+      ) : null}
       <Row
         title="Um eine Minute verschieben"
         trailing={
@@ -238,14 +308,25 @@ export function EndEditor({
       {suggestion ? (
         <Button
           secondary
-          title={`${clock.format(new Date(suggestion.time))} übernehmen · ${REASON[suggestion.reason]}`}
+          title={`${clock.format(new Date(suggestion.time))} übernehmen · ${
+            REASON[suggestion.reason]
+          }`}
           onPress={() => setEnd(clampEnd(suggestion.time, startTime, rangeEnd))}
           disabled={busy}
         />
       ) : null}
-      <Button title="Ende speichern" onPress={() => onSave(end)} disabled={busy || !changed} />
+      <Button
+        title="Ende speichern"
+        onPress={() => onSave(end)}
+        disabled={busy || !changed}
+      />
       {onReset ? (
-        <Button secondary title="Ursprüngliches Ende" onPress={onReset} disabled={busy} />
+        <Button
+          secondary
+          title="Ursprüngliches Ende"
+          onPress={onReset}
+          disabled={busy}
+        />
       ) : null}
     </View>
   );

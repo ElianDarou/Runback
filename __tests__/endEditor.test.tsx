@@ -27,7 +27,10 @@ const press = (tree: TestRenderer.ReactTestRenderer, label: string) =>
       .props.onPress(),
   );
 const readout = (tree: TestRenderer.ReactTestRenderer) =>
-  tree.root.findAllByType(Text).map(textContent).find(text => text.startsWith('Ende '));
+  tree.root
+    .findAllByType(Text)
+    .map(textContent)
+    .find(text => text.startsWith('Ende '));
 
 describe('EndEditor', () => {
   const heart = Array.from({ length: 120 }, (_, i) => ({
@@ -44,8 +47,20 @@ describe('EndEditor', () => {
           startTime={START}
           rangeEnd={START + 120 * MIN}
           originalEnd={START + 120 * MIN}
-          suggestion={{ time: START + 70 * MIN, reason: 'last_set', version: END_SUGGESTION_VERSION }}
-          lines={[{ key: 'heart', label: 'Puls', unit: 'bpm', stroke: '#f00', points: heart }]}
+          suggestion={{
+            time: START + 70 * MIN,
+            reason: 'last_set',
+            version: END_SUGGESTION_VERSION,
+          }}
+          lines={[
+            {
+              key: 'heart',
+              label: 'Puls',
+              unit: 'bpm',
+              stroke: '#f00',
+              points: heart,
+            },
+          ]}
           emptyHint="leer"
           busy={false}
           onSave={onSave}
@@ -55,8 +70,11 @@ describe('EndEditor', () => {
     expect(readout(tree)).toBe('Ende 18:00:00 · Dauer 2:00:00');
     // Unverändert lässt sich nichts speichern.
     expect(
-      tree.root.find(node => node.props.accessibilityLabel === 'Ende speichern' && node.props.accessibilityState)
-        .props.accessibilityState.disabled,
+      tree.root.find(
+        node =>
+          node.props.accessibilityLabel === 'Ende speichern' &&
+          node.props.accessibilityState,
+      ).props.accessibilityState.disabled,
     ).toBe(true);
     press(tree, 'Eine Minute früher');
     expect(readout(tree)).toBe('Ende 17:59:00 · Dauer 1:59:00');
@@ -88,5 +106,32 @@ describe('EndEditor', () => {
     expect(readout(tree)).toBe('Ende 17:15:00 · Dauer 1:15:00');
     press(tree, 'Ursprüngliches Ende');
     expect(onReset).toHaveBeenCalled();
+  });
+
+  it('shows ticked sets as a timeline without heart rate and warns about sets after the end', () => {
+    let tree!: TestRenderer.ReactTestRenderer;
+    act(() => {
+      tree = TestRenderer.create(
+        <EndEditor
+          startTime={START}
+          rangeEnd={START + 120 * MIN}
+          originalEnd={START + 120 * MIN}
+          lines={[]}
+          marks={[START + 30 * MIN, START + 119 * MIN]}
+          emptyHint="Kein Puls."
+          busy={false}
+          onSave={jest.fn()}
+        />,
+      );
+    });
+    const texts = () =>
+      tree.root.findAllByType(Text).map(textContent).join(' ');
+    expect(texts()).toContain('Abgehakte Sätze');
+    expect(texts()).not.toContain('liegen danach');
+    press(tree, 'Eine Minute früher');
+    press(tree, 'Eine Minute früher');
+    expect(texts()).toContain(
+      '1 abgehakter Satz liegt danach und zählt dann nicht mehr.',
+    );
   });
 });

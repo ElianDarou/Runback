@@ -36,26 +36,61 @@ const finite = (value: unknown): value is number =>
 export function readEndCorrection(raw: unknown): EndCorrection | undefined {
   const value = raw as Partial<EndCorrection> | null | undefined;
   return value && finite(value.endTime) && value.endTime > 0
-    ? { endTime: value.endTime, setAt: finite(value.setAt) ? value.setAt : undefined }
+    ? {
+        endTime: value.endTime,
+        setAt: finite(value.setAt) ? value.setAt : undefined,
+      }
     : undefined;
 }
 
-/** Krafteinheit mit korrigiertem Ende; ohne gültige Korrektur unverändert. */
+/**
+ * Krafteinheit mit korrigiertem Ende; ohne gültige Korrektur unverändert.
+ * Sätze, die erst nach dem gesetzten Ende abgehakt wurden, zählen wie beim
+ * Lauf nicht mehr; im gespeicherten Original bleiben sie.
+ */
 export function applyStrengthEndCorrection(
   session: StrengthSession,
   raw: unknown,
 ): StrengthSession {
   const correction = readEndCorrection(raw);
   if (!correction || correction.endTime <= session.startTime) return session;
+  const excludedSetTimes = (session.exercises || [])
+    .flatMap(exercise => exercise.sets)
+    .map(set => set.completedAt)
+    .filter((at): at is number => finite(at) && at > correction.endTime);
+  const exercises = (session.exercises || [])
+    .map(exercise => ({
+      ...exercise,
+      sets: exercise.sets.filter(
+        set =>
+          !finite(set.completedAt) || set.completedAt <= correction.endTime,
+      ),
+    }))
+    .filter(exercise => exercise.sets.length > 0);
   return {
     ...session,
+    exercises,
+    currentExercise: Math.min(
+      session.currentExercise ?? 0,
+      Math.max(0, exercises.length - 1),
+    ),
     endTime: correction.endTime,
     endCorrection: {
       endTime: correction.endTime,
       originalEndTime: session.endTime,
       setAt: correction.setAt,
+      ...(excludedSetTimes.length ? { excludedSetTimes } : {}),
     },
   };
+}
+
+/** Abhakzeiten aller Sätze, auch der hinter einem gesetzten Ende. */
+export function strengthSetTimes(session: StrengthSession): number[] {
+  const times = (session.exercises || [])
+    .flatMap(exercise => exercise.sets || [])
+    .filter(set => !set.skipped && finite(set.completedAt))
+    .map(set => set.completedAt as number);
+  return [...times, ...(session.endCorrection?.excludedSetTimes ?? [])];
 }
 
 /** Zuletzt abgehakter Satz einer aufgezeichneten Einheit. Importe kennen keine Satzzeiten. */
@@ -64,12 +99,14 @@ export function strengthEndSuggestion(
   currentEnd: number | undefined,
 ): EndSuggestion | undefined {
   let last: number | undefined;
-  for (const exercise of session.exercises || [])
-    for (const set of exercise.sets || [])
-      if (!set.skipped && finite(set.completedAt) && set.completedAt > session.startTime)
-        last = last === undefined ? set.completedAt : Math.max(last, set.completedAt);
+  for (const time of strengthSetTimes(session))
+    if (time > session.startTime)
+      last = last === undefined ? time : Math.max(last, time);
   if (last === undefined) return undefined;
-  if (currentEnd !== undefined && last > currentEnd - MIN_SUGGESTION_GAP_SECONDS * 1000)
+  if (
+    currentEnd !== undefined &&
+    last > currentEnd - MIN_SUGGESTION_GAP_SECONDS * 1000
+  )
     return undefined;
   return { time: last, reason: 'last_set', version: END_SUGGESTION_VERSION };
 }
@@ -90,10 +127,19 @@ export function runEndSuggestion(
   return { time, reason: 'last_movement', version: END_SUGGESTION_VERSION };
 }
 
-/** Hält ein gewähltes Ende zwischen „eine Minute nach Start“ und dem Ende des Zeitraums. */
-export function clampEnd(time: number, startTime: number, rangeEnd: number): number {
-  const min = startTime + MIN_DURATION_SECONDS * 1000;
-  return Math.round(Math.max(min, Math.min(rangeEnd, time)) / 1000) * 1000;
+/**
+ * Hält ein gewähltes Ende zwischen „eine Minute nach Start“ und dem Ende des
+ * Zeitraums, auf volle Sekunden. Ist der Zeitraum kürzer als eine Minute, gilt
+ * sein Ende.
+ */
+export function clampEnd(
+  time: number,
+  startTime: number,
+  rangeEnd: number,
+): number {
+  const min = Math.min(startTime + MIN_DURATION_SECONDS * 1000, rangeEnd);
+  const rounded = Math.round(time / 1000) * 1000;
+  return Math.max(min, Math.min(rangeEnd, rounded));
 }
 
 export interface TrackPoint {
@@ -117,7 +163,8 @@ export function runTracks(
   series: RunSeries | null | undefined,
 ): { speed: TrackPoint[]; heart: TrackPoint[] } {
   if (!series) return { speed: [], heart: [] };
-  const at = (elapsed: number) => startTime + (elapsed + series.stepSeconds / 2) * 1000;
+  const at = (elapsed: number) =>
+    startTime + (elapsed + series.stepSeconds / 2) * 1000;
   return {
     speed: series.rows.map(row => ({
       t: at(row.elapsedSeconds),

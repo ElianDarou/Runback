@@ -695,7 +695,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         }
     }
     @ReactMethod fun healthExport(id: String, includeRoute: Boolean, promise: Promise) = task(promise) {
-        runBlocking { health.exportRun(store.detail(id), store.rawSamples(id), includeRoute) }
+        runBlocking { health.exportRun(store.detail(id), store.rawSamples(id, corrected = true), includeRoute) }
     }
     @ReactMethod fun healthRequestRoute(sessionId: String, promise: Promise) {
         try {
@@ -707,7 +707,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         } catch (error: Exception) { promise.reject("HEALTH_ROUTE", error.message, error) }
     }
     @ReactMethod fun enrichWeather(id: String, promise: Promise) = task(promise) {
-        runBlocking { WeatherIntegration(context).enrich(store.detail(id), store.rawSamples(id), store.settings().optBoolean("weatherEnabled", false)) }
+        runBlocking { WeatherIntegration(context).enrich(store.detail(id), store.rawSamples(id, corrected = true), store.settings().optBoolean("weatherEnabled", false)) }
             .also { store.putDocument("weather_$id", it) }
     }
 

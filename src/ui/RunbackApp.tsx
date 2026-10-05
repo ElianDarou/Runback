@@ -1354,6 +1354,8 @@ export function RunbackApp({
   // Detailseite sie braucht. Fehlt sie (Import ohne Spur, alter Build), gibt
   // es keinen Verlauf — keine Ersatzdaten.
   const selectedId = selected?.id;
+  // Ein neu gesetztes Ende ändert die Reihe; deshalb auch daran neu laden.
+  const selectedEnd = selected?.endTime;
   useEffect(() => {
     setSeries(null);
     setSeriesIndex(null);
@@ -1369,7 +1371,7 @@ export function RunbackApp({
     return () => {
       cancelled = true;
     };
-  }, [selectedId]);
+  }, [selectedId, selectedEnd]);
   const openUnit = useCallback(
     (unit: Unit) => {
       if (unit.kind === 'run') {

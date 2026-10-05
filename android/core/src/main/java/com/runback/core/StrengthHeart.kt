@@ -112,6 +112,33 @@ object StrengthHeart {
             .put("clockAligned", clockAligned)
     }
 
+    /**
+     * Kürzt eine gespeicherte Reihe auf ein früheres Ende, wenn die Rohdatei nicht mehr da ist.
+     * Die Fenster bleiben, wie sie gerechnet wurden; die Zahl der Rohwerte ist danach unbekannt.
+     */
+    fun truncate(summary: JSONObject, endMs: Long): JSONObject? {
+        val values = summary.optJSONArray("values") ?: return null
+        val step = summary.optInt("stepSeconds").takeIf { it > 0 } ?: return null
+        val count = ceil((endMs - summary.optLong("startTime")) / 1000.0 / step).toInt().coerceAtMost(values.length())
+        if (count <= 0) return null
+        val kept = JSONArray()
+        var filled = 0; var total = 0.0
+        var highest = Double.NEGATIVE_INFINITY; var lowest = Double.POSITIVE_INFINITY
+        for (index in 0 until count) {
+            val value = values.opt(index)
+            if (value !is Number) { kept.put(JSONObject.NULL); continue }
+            val bpm = value.toDouble()
+            kept.put(bpm); filled++; total += bpm
+            highest = max(highest, bpm); lowest = minOf(lowest, bpm)
+        }
+        if (filled == 0) return null
+        val result = JSONObject(summary.toString()).put("values", kept).put("averageBpm", round1(total / filled))
+            .put("maxBpm", round1(highest)).put("minBpm", round1(lowest))
+            .put("coverage", (filled.toDouble() / count * 1000).roundToInt() / 1000.0).put("windowEnd", endMs)
+        result.remove("samples")
+        return result
+    }
+
     /** Kurzform ohne Reihe, für Übersichten über viele Einheiten. */
     fun brief(full: JSONObject): JSONObject {
         val brief = JSONObject(full.toString())

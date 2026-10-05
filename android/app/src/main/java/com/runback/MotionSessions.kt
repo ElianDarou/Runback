@@ -381,8 +381,15 @@ object MotionSessions {
         val file = rawFile(context, id)
         // Der Zwischenspeicher gilt nur für das Fenster, mit dem er gerechnet wurde.
         val sameWindow = stored?.optLong("windowEnd", 0L)?.let { it == 0L && store.getDocument("strength_end_$id") == null || it == end } ?: false
-        if (stored != null && ((stored.optString("model_version") == StrengthHeart.VERSION && sameWindow) || !file.exists())) {
+        if (stored != null && stored.optString("model_version") == StrengthHeart.VERSION && sameWindow) {
             return stored.takeIf { it.optBoolean("available", true) }
+        }
+        if (stored != null && !file.exists()) {
+            // Ohne Rohdatei: ein früheres Ende kürzt die gespeicherte Reihe, ein späteres hat keine Werte mehr dazu.
+            if (!stored.optBoolean("available", true) || end == null) return null
+            val windowEnd = stored.optLong("windowEnd", 0L).takeIf { it > 0 }
+                ?: store.getDocument("strength_session_$id")?.optLong("endTime") ?: return null
+            return if (end < windowEnd) StrengthHeart.truncate(stored, end) else stored
         }
         if (!file.exists()) return null
         val meta = store.getDocument(key(id)) ?: return null

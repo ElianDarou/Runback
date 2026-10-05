@@ -571,4 +571,28 @@ class RunStoreTest {
         store.deleteImportBatch("b")
         assertNull(store.getDocument("strength_end_strong:late"))
     }
+
+    @Test
+    fun dailyHeartAveragesNeverCountAsWorkoutHeartRate() {
+        val start = 1_700_000_000_000L
+        store.addWellnessBatch(listOf(
+            WellnessRow("mi-day", "heart_rate", start, 0L, 72.0, "bpm", "mi_fitness", "{\"aggregate\":\"daily\"}"),
+            WellnessRow("mi-point", "heart_rate", start + 60_000L, 0L, 120.0, "bpm", "mi_fitness", "{}")))
+        val heart = store.importedHeart(start, start + 600_000L)!!
+        assertEquals(120.0, heart.getDouble("maxBpm"), 0.0)
+        assertEquals(120.0, heart.getDouble("minBpm"), 0.0)
+    }
+
+    @Test
+    fun runsWithPausesOfUnknownTimeCannotBeShortened() {
+        val start = System.currentTimeMillis() - 3_600_000
+        val samples = JSONArray()
+        for (i in 0..360) samples.put(JSONObject().put("time", start + i * 10_000L).put("kind", "gps")
+            .put("values", JSONObject().put("latitude", 52.0 + i * 0.00027).put("longitude", 13.0).put("accuracyM", 5.0)))
+        // 60 Minuten Start bis Ende, aber nur 45 Minuten Aufzeichnung und kein Pausenereignis (FIT-Import).
+        val id = store.addImportedRun(JSONObject().put("startTime", start).put("endTime", start + 3_600_000L)
+            .put("durationSeconds", 2_700.0).put("importVersion", "vendor-import-v2"), samples, "fit-pauses").getString("id")
+        assertTrue(store.runEndInfo(id).getString("blockedReason").contains("Pausen"))
+        try { store.setRunEnd(id, start + 1_200_000L); fail("unknown pauses") } catch (_: IllegalArgumentException) {}
+    }
 }

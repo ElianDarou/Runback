@@ -338,9 +338,11 @@ class RunStore(context: Context) : DocumentStore {
         }
         result
     }
-    fun rawSamples(id: String): JSONArray = locked {
+    /** Alle Originale; `corrected` lässt Samples nach einem vom Nutzer gesetzten Ende weg (Export, Wetter). */
+    fun rawSamples(id: String, corrected: Boolean = false): JSONArray = locked {
         val result = JSONArray()
-        db.rawQuery("SELECT time,kind,json FROM samples WHERE run_id=? ORDER BY time,seq", arrayOf(id)).use {
+        val until = (if (corrected) trimEnd(id) else null) ?: Long.MAX_VALUE
+        db.rawQuery("SELECT time,kind,json FROM samples WHERE run_id=? AND time<=? ORDER BY time,seq", arrayOf(id, until.toString())).use {
             while (it.moveToNext()) result.put(JSONObject().put("time", it.getLong(0)).put("kind", it.getString(1)).put("values", JSONObject(it.getString(2))))
         }; result
     }
@@ -520,6 +522,8 @@ class RunStore(context: Context) : DocumentStore {
             }; previous = p
         }; split()
         if (points.size > 1) run.put("distanceMeters", distance)
+        // Gekürzt vor dem zweiten GPS-Punkt: Die Strecke aus dem verworfenen Teil zählt nicht mehr.
+        else if (trimEnd(id) != null && selectedSamples(id, "gps", until = null).size > 1) run.put("distanceMeters", 0.0)
         // Zeitgewichtet statt nach Sample-Anzahl: unregelmäßige Aufzeichnung verzerrt sonst das Mittel.
         val durationSeconds = run.optDouble("durationSeconds", Double.NaN)
         for ((kind, key, output, coverage) in listOf(
@@ -533,6 +537,8 @@ class RunStore(context: Context) : DocumentStore {
                 cuts.any { boundary -> boundary > times[index - 1] && boundary <= times[index] }
             }.toSet()
             run.remove("${output}Max"); run.remove("${output}Min")
+            // Aus Samples gerechnete Mittel neu setzen; ein Wert aus einer Import-Zusammenfassung bleibt.
+            if (times.isEmpty() && selectedSamples(id, kind, until = null).isNotEmpty()) { run.remove(output); run.remove(coverage) }
             RunMath.timeWeightedAverage(times, values, breaks = breaks)?.let { (mean, covered) ->
                 run.put(output, mean)
                 if (durationSeconds.isFinite() && durationSeconds > 0) run.put(coverage, (covered / durationSeconds).coerceIn(0.0, 1.0))
@@ -763,9 +769,20 @@ class RunStore(context: Context) : DocumentStore {
     // ---- Ende korrigieren: neben dem Original, nie statt seiner (Grundregel 1). ----
 
     /** Lauf: Ende und Dauer nach der Korrektur; das Original bleibt unter `original*` sichtbar. */
+    /**
+     * Pausen ohne bekannten Zeitpunkt: Die Aufzeichnungszeit ist deutlich kürzer als Start bis Ende,
+     * aber keine Pause ist als Ereignis gespeichert (etwa FIT-Importe). Dann wäre jede gekürzte
+     * Dauer geraten.
+     */
+    private fun unexplainedPauseMs(run: JSONObject): Long {
+        val originalEnd = run.optLong("endTime"); val start = run.optLong("startTime")
+        val known = pauseIntervals(run.getString("id"), originalEnd).sumOf { maxOf(0L, minOf(it.last, originalEnd) - maxOf(it.first, start)) }
+        return maxOf(0L, originalEnd - start - known - run.optLong("durationMs"))
+    }
     private fun applyTrim(run: JSONObject, end: Long) {
         val originalEnd = run.optLong("endTime")
         if (run.optString("status") == "recording" || end >= originalEnd || end <= run.optLong("startTime")) return
+        if (unexplainedPauseMs(run) > MAX_UNEXPLAINED_PAUSE_MS) return
         val pausedAfter = pauseIntervals(run.getString("id"), originalEnd).sumOf { range ->
             maxOf(0L, minOf(range.last, originalEnd) - maxOf(range.first, end)) }
         val activeAfter = maxOf(0L, originalEnd - end - pausedAfter)
@@ -782,6 +799,7 @@ class RunStore(context: Context) : DocumentStore {
             require(endTime > start && endTime <= originalEnd) { "Das Ende muss zwischen Start und ursprünglichem Ende liegen." }
             val samples = db.rawQuery("SELECT 1 FROM samples WHERE run_id=? LIMIT 1", arrayOf(id)).use { it.moveToFirst() }
             require(samples) { "Ohne aufgezeichneten Verlauf lässt sich das Ende nicht prüfen." }
+            require(unexplainedPauseMs(run) <= MAX_UNEXPLAINED_PAUSE_MS) { UNEXPLAINED_PAUSE_MESSAGE }
             if (endTime >= originalEnd) deleteDocument("trim_$id")
             else putDocument("trim_$id", JSONObject().put("endTime", endTime).put("setAt", System.currentTimeMillis())
                 .put("by", "user").put("modelVersion", END_CORRECTION_VERSION))
@@ -795,6 +813,7 @@ class RunStore(context: Context) : DocumentStore {
         JSONObject().put("startTime", run.optLong("startTime")).put("originalEndTime", run.optLong("endTime"))
             .put("correctedEndTime", trimEnd(id) ?: JSONObject.NULL)
             .put("hasSamples", db.rawQuery("SELECT 1 FROM samples WHERE run_id=? LIMIT 1", arrayOf(id)).use { it.moveToFirst() })
+            .put("blockedReason", if (unexplainedPauseMs(run) > MAX_UNEXPLAINED_PAUSE_MS) UNEXPLAINED_PAUSE_MESSAGE else JSONObject.NULL)
     }
 
     /** Krafteinheit: Start, aufgezeichnetes bzw. gemeldetes Ende und die Korrektur. */
@@ -832,9 +851,12 @@ class RunStore(context: Context) : DocumentStore {
     /** Importierte Pulswerte zwischen `from` und `to`, höchstens 50.000; Tagesmittel zählen nicht. */
     fun importedHeartPoints(from: Long, to: Long): List<ImportedHeart.Point> = locked {
         val result = ArrayList<ImportedHeart.Point>()
+        // Tagesmittel (Mi Fitness ohne Ende, Fitbit mit Ende) sind keine Messung zu einer Uhrzeit.
         db.rawQuery("SELECT source,time,value FROM wellness WHERE kind IN (${ImportedHeart.KINDS.joinToString(",") { "?" }}) " +
-            "AND end_time=0 AND value IS NOT NULL AND time>=? AND time<? ORDER BY time LIMIT 50000",
-            (ImportedHeart.KINDS + listOf(from.toString(), to.toString())).toTypedArray()).use { rows ->
+            "AND end_time=0 AND value IS NOT NULL AND time>=? AND time<? " +
+            "AND (extra NOT LIKE ? OR extra LIKE ?) ORDER BY time LIMIT 50000",
+            (ImportedHeart.KINDS + listOf(from.toString(), to.toString(), "%\"aggregate\"%", "%\"aggregate\":\"minute_average\"%"))
+                .toTypedArray()).use { rows ->
             while (rows.moveToNext()) result.add(ImportedHeart.Point(rows.getString(0), rows.getLong(1), rows.getDouble(2)))
         }
         result
@@ -1433,6 +1455,8 @@ class RunStore(context: Context) : DocumentStore {
     companion object {private val lock=Any();private var helper:Database?=null;private val tables=listOf("runs","samples","events","documents","hashes","tombstones","sources","wellness","strength_workouts","strength_sets","import_items");private val legacyTables=listOf("runs","samples","events","documents","hashes","tombstones","sources");private const val MAX_WELLNESS_BATCH = 50000;private const val MAX_RUN_DURATION_MS = 24L*60*60*1000
         const val LEGACY_BATCH = "legacy:"
         const val END_CORRECTION_VERSION = "end-correction-v1"
+        private const val MAX_UNEXPLAINED_PAUSE_MS = 60_000L
+        private const val UNEXPLAINED_PAUSE_MESSAGE = "Diese Aufzeichnung hat Pausen ohne bekannten Zeitpunkt; eine gekürzte Dauer wäre geraten."
         fun wellnessRowId(row: WellnessRow) = row.id.ifBlank { "wellness:${row.kind}:${row.time}:${row.source}:${row.value}" }.take(220)
        private val KIND_KEYS = mapOf("run" to "runs", "strength" to "strength", "wellness" to "wellness")}
 }

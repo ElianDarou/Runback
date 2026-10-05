@@ -37,6 +37,8 @@ export interface RunEndEditorData {
   originalEndTime: number;
   correctedEndTime?: number;
   series: RunSeries | null;
+  /** Warum sich das Ende nicht sicher kürzen lässt, etwa Pausen ohne Zeitpunkt. */
+  blockedReason?: string;
 }
 import {
   readImportBatches,
@@ -445,6 +447,8 @@ export const native = {
       correctedEndTime:
         typeof corrected === 'number' && corrected > 0 ? corrected : undefined,
       series: raw.hasSamples && raw.series ? (raw.series as RunSeries) : null,
+      blockedReason:
+        typeof raw.blockedReason === 'string' ? raw.blockedReason : undefined,
     };
   },
   async setRunEnd(id: string, endTime: number | null): Promise<void> {

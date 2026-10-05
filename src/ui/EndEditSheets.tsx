@@ -4,6 +4,7 @@ import {
   runEndSuggestion,
   runTracks,
   strengthEndSuggestion,
+  strengthSetTimes,
 } from '../domain/endCorrection';
 import type { StrengthSession } from '../domain/strength';
 import { heartSourceLabel } from '../domain/strengthHeart';
@@ -16,7 +17,11 @@ import { Copy, Notice, Sheet, color } from './components';
 import { EndEditor } from './EndEditor';
 
 /** Lädt beim Öffnen; Fehler stehen im Sheet, damit der Weg zurück klar bleibt. */
-function useEditorData<T>(visible: boolean, load: () => Promise<T>, key: string) {
+function useEditorData<T>(
+  visible: boolean,
+  load: () => Promise<T>,
+  key: string,
+) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState('');
   useEffect(() => {
@@ -26,8 +31,14 @@ function useEditorData<T>(visible: boolean, load: () => Promise<T>, key: string)
     setError('');
     load()
       .then(result => current && setData(result))
-      .catch(e =>
-        current && setError(e instanceof Error ? e.message : 'Der Verlauf ließ sich nicht laden.'),
+      .catch(
+        e =>
+          current &&
+          setError(
+            e instanceof Error
+              ? e.message
+              : 'Der Verlauf ließ sich nicht laden.',
+          ),
       );
     return () => {
       current = false;
@@ -62,16 +73,17 @@ export function StrengthEndSheet({
     try {
       onSaved(await native.setStrengthEnd(session.id, endTime));
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : 'Das Ende ließ sich nicht speichern.');
+      setSaveError(
+        e instanceof Error ? e.message : 'Das Ende ließ sich nicht speichern.',
+      );
     } finally {
       setBusy(false);
     }
   };
-  const originalEnd = data ? data.recordedEndTime ?? data.reportedEndTime : undefined;
-  const marks = session.exercises
-    .flatMap(exercise => exercise.sets)
-    .filter(set => set.completedAt !== undefined && !set.skipped)
-    .map(set => set.completedAt as number);
+  const originalEnd = data
+    ? data.recordedEndTime ?? data.reportedEndTime
+    : undefined;
+  const marks = strengthSetTimes(session);
   return (
     <Sheet visible={visible} title="Ende bearbeiten" onClose={onClose}>
       {error ? <Notice>{error}</Notice> : null}
@@ -137,7 +149,9 @@ export function RunEndSheet({
       await native.setRunEnd(runId, endTime);
       onSaved();
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : 'Das Ende ließ sich nicht speichern.');
+      setSaveError(
+        e instanceof Error ? e.message : 'Das Ende ließ sich nicht speichern.',
+      );
     } finally {
       setBusy(false);
     }
@@ -149,16 +163,25 @@ export function RunEndSheet({
       {saveError ? <Notice>{saveError}</Notice> : null}
       {!data && !error ? <Copy muted>Lade Verlauf …</Copy> : null}
       {data && !data.series ? (
-        <Copy>Ohne aufgezeichneten Verlauf lässt sich das Ende nicht prüfen.</Copy>
+        <Copy>
+          Ohne aufgezeichneten Verlauf lässt sich das Ende nicht prüfen.
+        </Copy>
       ) : null}
-      {data && data.series && tracks ? (
+      {data && data.series && data.blockedReason ? (
+        <Copy>{data.blockedReason}</Copy>
+      ) : null}
+      {data && data.series && !data.blockedReason && tracks ? (
         <EndEditor
           key={`${data.startTime}:${data.correctedEndTime ?? ''}`}
           startTime={data.startTime}
           rangeEnd={data.originalEndTime}
           originalEnd={data.originalEndTime}
           currentEnd={data.correctedEndTime}
-          suggestion={runEndSuggestion(data.startTime, data.series, data.originalEndTime)}
+          suggestion={runEndSuggestion(
+            data.startTime,
+            data.series,
+            data.originalEndTime,
+          )}
           lines={[
             {
               key: 'speed',

@@ -101,4 +101,16 @@ class StrengthHeartTest {
         assertEquals(ImportedHeart.VERSION, summary.getString("linkVersion"))
         assertNull(ImportedHeart.summarize(points, start + 3_600_000L, start + 7_200_000L))
     }
+
+    @Test fun storedSeriesIsCutToAnEarlierEndWithoutRawFile() {
+        val summary = JSONObject().put("startTime", 0L).put("stepSeconds", 60).put("samples", 99)
+            .put("values", org.json.JSONArray(listOf(100.0, JSONObject.NULL, 140.0, 180.0)))
+        val cut = StrengthHeart.truncate(summary, 150_000L)!!
+        assertEquals(3, cut.getJSONArray("values").length())
+        assertEquals(120.0, cut.getDouble("averageBpm"), 0.0)
+        assertEquals(140.0, cut.getDouble("maxBpm"), 0.0)
+        assertEquals(0.667, cut.getDouble("coverage"), 0.0)
+        assertFalse(cut.has("samples"))
+        assertNull(StrengthHeart.truncate(summary, 0L))
+    }
 }

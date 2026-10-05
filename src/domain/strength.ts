@@ -116,6 +116,8 @@ export interface StrengthSession {
     endTime: number;
     originalEndTime?: number;
     setAt?: number;
+    /** Abgehakt nach dem gesetzten Ende; zählen nicht, bleiben im Original. */
+    excludedSetTimes?: number[];
   };
 }
 
