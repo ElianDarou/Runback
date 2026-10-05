@@ -99,13 +99,14 @@ import {
   addExercise,
   addSet,
   clearRest,
-  completeSet as completeStrengthSet,
+  confirmSet,
   pauseRest,
   removeSet as removeStrengthSet,
   revise as reviseSession,
   restoreSet as restoreStrengthSet,
   resumeRest,
   editSet as editStrengthSet,
+  isSetCompleted,
   emptyStrengthState,
   finishSession,
   selectExercise,
@@ -1604,12 +1605,14 @@ export function RunbackApp({
       void native
         .saveStrengthSession(next)
         .then(result => {
-          if (!result.conflict || !result.active) return;
+          // Inzwischen beendet oder eine andere Einheit: nichts wiederbeleben.
+          if (!result.conflict || result.active?.id !== base.id) return;
+          const current = result.active;
           if (attempt < MAX_SAVE_RETRIES) {
-            persistSession(change, result.active, attempt + 1);
+            persistSession(change, current, attempt + 1);
           } else {
-            strengthRef.current = { ...strengthRef.current, active: result.active };
-            setStrength(current => ({ ...current, active: result.active }));
+            strengthRef.current = { ...strengthRef.current, active: current };
+            setStrength(value => ({ ...value, active: current }));
           }
         })
         .catch(e => setError(e.message));
@@ -1624,6 +1627,16 @@ export function RunbackApp({
       }
     },
     [persistSession],
+  );
+  /** Pausenknöpfe gelten der Pause, die beim Tippen lief — nicht einer neueren von der Uhr. */
+  const changeRest = useCallback(
+    (change: (session: StrengthSession) => StrengthSession) => {
+      const restStartedAt = strengthRef.current.active?.restStartedAt;
+      changeSession(s =>
+        s.restStartedAt === restStartedAt ? change(s) : s,
+      );
+    },
+    [changeSession],
   );
   const loadRecentSessions = useCallback(async (state: StrengthState) => {
     const recent = [...state.history]
@@ -1640,7 +1653,8 @@ export function RunbackApp({
       return;
     }
     void action(async () => {
-      const session = startSession(template, Date.now());
+      const created = startSession(template, Date.now());
+      const session = reviseSession(created, created);
       setStrength(current => ({ ...current, active: session }));
       setWorkoutOpen(true);
       setNow(Date.now());
@@ -1660,7 +1674,8 @@ export function RunbackApp({
         reviseSession(base, finishSession(base, endTime)),
       );
       // Abgehakt auf der Uhr, während hier „Beenden“ lief: deren Stand beenden.
-      for (let attempt = 0; next.conflict && next.active; attempt++) {
+      for (let attempt = 0; next.conflict; attempt++) {
+        if (!next.active || next.active.id !== base.id) break;
         if (attempt >= MAX_SAVE_RETRIES) {
           throw new Error('Das Training hat sich gerade geändert. Beende es erneut.');
         }
@@ -1876,7 +1891,12 @@ export function RunbackApp({
             'Die Kraftvorlage fehlt. Wähle in der geplanten Einheit eine vorhandene Vorlage.',
           );
         }
-        const session = startSession(template ?? null, Date.now(), entry.title);
+        const created = startSession(
+          template ?? null,
+          Date.now(),
+          entry.title,
+        );
+        const session = reviseSession(created, created);
         await native.saveStrengthSession(session);
         strengthRef.current = { ...strengthRef.current, active: session };
         setStrength(strengthRef.current);
@@ -5413,14 +5433,19 @@ export function RunbackApp({
           onRestoreSet={(index, set, position) =>
             changeSession(s => restoreStrengthSet(s, index, set, position))
           }
-          onPauseRest={() => changeSession(s => pauseRest(s, Date.now()))}
-          onResumeRest={() => changeSession(s => resumeRest(s, Date.now()))}
-          onSkipRest={() => changeSession(clearRest)}
-          onCompleteSet={(index, setId, values) =>
-            changeSession(s =>
-              completeStrengthSet(s, index, setId, Date.now(), values),
-            )
-          }
+          onPauseRest={() => changeRest(s => pauseRest(s, Date.now()))}
+          onResumeRest={() => changeRest(s => resumeRest(s, Date.now()))}
+          onSkipRest={() => changeRest(clearRest)}
+          onCompleteSet={(index, setId, values) => {
+            // Was beim Tippen galt, entscheidet (confirmSet).
+            const tapped = strengthRef.current.active?.exercises[index]?.sets.find(
+              set => set.id === setId,
+            );
+            if (!tapped) return;
+            const wasDone = isSetCompleted(tapped);
+            const at = Date.now();
+            changeSession(s => confirmSet(s, index, setId, wasDone, at, values));
+          }}
           onEditSet={(index, setId, values) =>
             changeSession(s => editStrengthSet(s, index, setId, values))
           }

@@ -104,7 +104,9 @@ class StrengthSessionService : Service() {
      * Anzeige: Startet der Dienst kurz nach dem Ende neu, kommt das Signal noch.
      */
     private fun schedule(session: JSONObject, now: Long) {
-        val endsAt = if (StrengthWorkout.alerts(store).restTimer) StrengthLive.restEndsAt(session) else null
+        // Schon gemeldet: nicht erneut einplanen, sonst kreist der Rückruf bis zum Ende des Nachlaufs.
+        val endsAt = (if (StrengthWorkout.alerts(store).restTimer) StrengthLive.restEndsAt(session) else null)
+            ?.takeIf { store.getDocument(ALERTED)?.optString("key") != "${session.optString("id")}:$it" }
         if (endsAt == scheduledRestEnd) return
         worker.removeCallbacks(restDone)
         scheduledRestEnd = endsAt

@@ -9,6 +9,7 @@ import {
   finishSession,
   referenceLabel,
   clearRest,
+  confirmSet,
   pauseRest,
   referenceSet,
   removeSet,
@@ -324,6 +325,32 @@ describe('Übungen wechseln und ergänzen', () => {
     const pushUp = CATALOG.find(exercise => exercise.id === 'push_up')!;
     const session = addExercise(startSession(null, 1), pushUp, 2);
     expect(session.exercises[0].sets[0].planned.loadKind).toBe('bodyweight');
+  });
+});
+
+describe('Satz bestätigen wie beim Tippen', () => {
+  it('nimmt einen inzwischen auf der Uhr abgehakten Satz nicht zurück', () => {
+    const session = start();
+    const setId = session.exercises[0].sets[1].id;
+    const onWatch = completeSet(session, 0, setId, 1_900);
+    const replayed = confirmSet(onWatch, 0, setId, false, 2_000, {
+      actualReps: 4,
+    });
+    const set = replayed.exercises[0].sets[1];
+    expect(set.completedAt).toBe(1_900);
+    expect(set.actualReps).toBe(4);
+    expect(replayed.restStartedAt).toBe(1_900);
+  });
+
+  it('bestätigt oder öffnet, wenn der Stand noch derselbe ist', () => {
+    const session = start();
+    const setId = session.exercises[0].sets[1].id;
+    const done = confirmSet(session, 0, setId, false, 2_000);
+    expect(done.exercises[0].sets[1].completedAt).toBe(2_000);
+    const reopened = confirmSet(done, 0, setId, true, 3_000);
+    expect(reopened.exercises[0].sets[1].completedAt).toBeUndefined();
+    // Schon geöffnet: Zurücknehmen tut nichts mehr.
+    expect(confirmSet(session, 0, setId, true, 3_000)).toBe(session);
   });
 });
 

@@ -333,6 +333,32 @@ export function completeSet(
   };
 }
 
+/**
+ * Bestätigt oder öffnet einen Satz so, wie es beim Tippen gemeint war
+ * (`wasDone`). Hat ihn die Uhr inzwischen abgehakt, bleiben Abschluss und
+ * Pause, nur die Werte kommen dazu; nichts wird versehentlich zurückgenommen.
+ */
+export function confirmSet(
+  session: StrengthSession,
+  exerciseIndex: number,
+  setId: string,
+  wasDone: boolean,
+  now: number,
+  values: Pick<
+    LoggedSet,
+    'actualReps' | 'actualWeightKg' | 'actualSeconds' | 'actualRir'
+  > = {},
+): StrengthSession {
+  const set = session.exercises[exerciseIndex]?.sets.find(
+    candidate => candidate.id === setId,
+  );
+  if (!set) return session;
+  if (isSetCompleted(set) === wasDone) {
+    return completeSet(session, exerciseIndex, setId, now, values);
+  }
+  return wasDone ? session : editSet(session, exerciseIndex, setId, values);
+}
+
 export function skipSet(
   session: StrengthSession,
   exerciseIndex: number,

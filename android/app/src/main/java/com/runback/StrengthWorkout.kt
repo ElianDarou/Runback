@@ -34,11 +34,18 @@ object StrengthWorkout {
     /** Meldet der App einen Stand, den nicht sie selbst geschrieben hat. */
     @Volatile var listener: ((JSONObject) -> Unit)? = null
 
-    /** Baut `next` auf dem gespeicherten Stand auf? Ohne Angabe (ältere App, neue Einheit) ja. */
-    private fun fits(stored: JSONObject?, next: JSONObject): Boolean {
-        if (stored == null || stored.optString("id") != next.optString("id")) return true
-        val base = next.optString("baseRevision").takeIf { next.has("baseRevision") && it.isNotBlank() } ?: return true
-        return stored.optString("revision") == base
+    /**
+     * Baut `next` auf dem gespeicherten Stand auf? Mit `baseRevision` muss genau
+     * dieser Stand gespeichert sein — ein Nachzügler belebt so keine beendete
+     * oder fremde Einheit. Ohne Angabe nur, wenn er eine neue Einheit beginnt
+     * oder eine ältere ohne Revision fortschreibt.
+     */
+    internal fun fits(stored: JSONObject?, next: JSONObject): Boolean {
+        val base = next.optString("baseRevision").takeIf { next.has("baseRevision") && it.isNotBlank() }
+        if (base != null) {
+            return stored != null && stored.optString("id") == next.optString("id") && stored.optString("revision") == base
+        }
+        return stored == null || stored.optString("id") != next.optString("id") || stored.optString("revision").isBlank()
     }
 
     /** Speichert aus der App. `false`: veralteter Stand, nichts geschrieben. */
