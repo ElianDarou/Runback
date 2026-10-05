@@ -72,6 +72,7 @@ import { WearRecordingRow } from './WearRecordingRow';
 import { VendorImport } from './VendorImport';
 import { ImportReview } from './ImportReview';
 import { ImportHistory } from './ImportHistory';
+import { RunEndSheet, StrengthEndSheet } from './EndEditSheets';
 import {
   readImportPreview,
   type ImportBatch,
@@ -404,6 +405,10 @@ const unitSummary = (unit: Unit) => {
 type UnitListItem =
   | { type: 'unit'; key: string; unit: Unit }
   | { type: 'week'; key: string; label: string; summary: string };
+const clockFormat = new Intl.DateTimeFormat('de-DE', {
+  hour: '2-digit',
+  minute: '2-digit',
+});
 const shortDate = new Intl.DateTimeFormat('de-DE', {
   day: 'numeric',
   month: 'short',
@@ -623,6 +628,11 @@ export function RunbackApp({
   const [templatesParent, setTemplatesParent] = useState<Page>('main');
   const [note, setNote] = useState('');
   const [importStatus, setImportStatus] = useState<any>(null);
+  // „Ende bearbeiten“: Sheet für den geöffneten Lauf oder die geöffnete Krafteinheit.
+  const [endEdit, setEndEdit] = useState<{
+    kind: 'run' | 'strength';
+    id: string;
+  } | null>(null);
   // Zählt gespeicherte und gelöschte Importe, damit Vorschläge neu laden.
   const [importRevision, setImportRevision] = useState(0);
   const [importBatches, setImportBatches] = useState<ImportBatch[] | null>(
@@ -1142,7 +1152,7 @@ export function RunbackApp({
     return () => {
       cancelled = true;
     };
-  }, [selectedSessionId]);
+  }, [selectedSessionId, selectedSession?.endTime]);
   const loadProseReady = useCallback(() => {
     void nativeCall<{ enabled?: boolean; hasKey?: boolean }>('getProseSettings')
       .then(value => setProseReady(Boolean(value?.enabled && value?.hasKey)))
@@ -1344,6 +1354,8 @@ export function RunbackApp({
   // Detailseite sie braucht. Fehlt sie (Import ohne Spur, alter Build), gibt
   // es keinen Verlauf — keine Ersatzdaten.
   const selectedId = selected?.id;
+  // Ein neu gesetztes Ende ändert die Reihe; deshalb auch daran neu laden.
+  const selectedEnd = selected?.endTime;
   useEffect(() => {
     setSeries(null);
     setSeriesIndex(null);
@@ -1359,7 +1371,7 @@ export function RunbackApp({
     return () => {
       cancelled = true;
     };
-  }, [selectedId]);
+  }, [selectedId, selectedEnd]);
   const openUnit = useCallback(
     (unit: Unit) => {
       if (unit.kind === 'run') {
@@ -4161,8 +4173,22 @@ export function RunbackApp({
           </Disclosure>
           <Disclosure
             title="Bearbeiten & verwalten"
-            subtitle="Sportart und Laufart ändern, löschen"
+            subtitle="Ende, Sportart und Laufart ändern, löschen"
           >
+            {(selected as any).rawSampleCount > 0 ||
+            (selected as any).originalEndTime ? (
+              <Row
+                title="Ende bearbeiten"
+                subtitle={
+                  (selected as any).originalEndTime
+                    ? `Von dir gesetzt · ursprünglich ${clockFormat.format(
+                        new Date((selected as any).originalEndTime),
+                      )}`
+                    : 'Vergessen zu beenden? Wähle im Verlauf, wann Schluss war.'
+                }
+                onPress={() => setEndEdit({ kind: 'run', id: selected.id })}
+              />
+            ) : null}
             <Field label="Sportart">
               <ChipGroup
                 label="Sportart dieser Aufzeichnung"
@@ -4635,6 +4661,36 @@ export function RunbackApp({
         : null,
     [importStatus?.state, importStatus?.preview],
   );
+  const renderEndEdit = () =>
+    endEdit?.kind === 'strength' && selectedSession?.id === endEdit.id ? (
+      <StrengthEndSheet
+        session={selectedSession}
+        visible
+        onClose={() => setEndEdit(null)}
+        onSaved={next => {
+          setEndEdit(null);
+          setSelectedSession(next);
+          void native
+            .strengthSessions(500)
+            .then(setStrengthSessions)
+            .catch(() => {});
+        }}
+      />
+    ) : endEdit?.kind === 'run' && selected?.id === endEdit.id ? (
+      <RunEndSheet
+        runId={endEdit.id}
+        visible
+        onClose={() => setEndEdit(null)}
+        onSaved={() => {
+          setEndEdit(null);
+          void action(async () => {
+            setSelected(await native.run(endEdit.id));
+            await refresh();
+          });
+        }}
+      />
+    ) : null;
+
   const renderImportReview = () => (
     <Sheet
       visible={importPreview !== null}
@@ -4832,6 +4888,7 @@ export function RunbackApp({
         heart={sessionHeart}
         heartSummaries={heartSummaries}
         onOpenExercise={openExercise}
+        onEditEnd={() => setEndEdit({ kind: 'strength', id: selectedSession.id })}
         busy={busy}
       />
     ) : null;
@@ -5672,6 +5729,7 @@ export function RunbackApp({
       {renderStartSheet()}
       {renderPurposeSheet()}
       {renderImportReview()}
+      {renderEndEdit()}
     </View>
   );
 }

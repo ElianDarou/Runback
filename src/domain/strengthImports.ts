@@ -2,6 +2,7 @@ import { resolveCatalogExercise } from './catalog';
 import type { PlannedSet, StrengthSession, WorkoutTemplate } from './strength';
 import { CATALOG_VERSION } from './strength';
 import type { StrongWorkout } from './vendorImports';
+import { applyStrengthEndCorrection } from './endCorrection';
 
 export const STRENGTH_IMPORT_TEMPLATE_VERSION = 'strength-import-template-v2';
 export const STRENGTH_IMPORT_SESSION_VERSION = 'strength-import-session-v1';
@@ -61,7 +62,7 @@ export function importedStrengthSession(
       });
   });
   const duration = workout.durationSeconds;
-  return {
+  return applyStrengthEndCorrection({
     id: workout.id ?? `${workout.time}|${workout.name}`,
     kind: 'strength',
     name: workout.name,
@@ -87,7 +88,7 @@ export function importedStrengthSession(
         ? { rejectedDurationSeconds: workout.reportedDurationSeconds }
         : {}),
     },
-  };
+  }, workout.endCorrection);
 }
 export interface ImportedTemplate {
   template: WorkoutTemplate;

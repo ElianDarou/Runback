@@ -18,6 +18,8 @@ import {
 import {
   heartPoints,
   sessionHeartInsight,
+  isWatchHeart,
+  heartSourceLabel,
   STRENGTH_HEART_INSIGHTS_VERSION,
   type StrengthHeart,
   type StrengthHeartSummary,
@@ -125,6 +127,7 @@ export function StrengthSessionDetail({
   heart,
   heartSummaries,
   onOpenExercise,
+  onEditEnd,
   busy = false,
 }: {
   session: StrengthSession;
@@ -134,6 +137,8 @@ export function StrengthSessionDetail({
   heart?: StrengthHeart;
   heartSummaries: Record<string, StrengthHeartSummary>;
   onOpenExercise?: (exerciseId: string) => void;
+  /** Öffnet „Ende bearbeiten“; fehlt bei laufenden Einheiten. */
+  onEditEnd?: () => void;
   busy?: boolean;
 }) {
   const progress = sessionProgress(session);
@@ -171,7 +176,16 @@ export function StrengthSessionDetail({
           {`Importiert aus ${session.importSource.source === 'strong' ? 'Strong' : session.importSource.source}${session.importSource.incomplete ? ' · Unvollständig' : ''}`}
         </Copy>
       ) : null}
-      {session.importSource?.rejectedDurationSeconds ? (
+      {session.endCorrection ? (
+        <Copy muted>
+          {session.endCorrection.originalEndTime
+            ? `Ende von dir gesetzt · ursprünglich ${timeFormat.format(
+                new Date(session.endCorrection.originalEndTime),
+              )}`
+            : 'Ende von dir gesetzt'}
+        </Copy>
+      ) : null}
+      {session.importSource?.rejectedDurationSeconds && !session.endCorrection ? (
         <Copy muted>
           {`Ende unbekannt — die Einheit wurde erst nach ${formatDuration(
             session.importSource.rejectedDurationSeconds,
@@ -229,6 +243,8 @@ export function StrengthSessionDetail({
             label="Höchster Puls"
             value={`${Math.round(heart.maxBpm)} bpm`}
           />
+          {isWatchHeart(heart) ? (
+          <>
           <ValueRow
             label="Puls am Satzende"
             value={
@@ -251,9 +267,13 @@ export function StrengthSessionDetail({
               'Sätzen',
             )} mit mindestens zwei Minuten Pause`}
           />
+          </>
+          ) : (
+            <Copy muted>{`Puls aus ${heartSourceLabel(heart)}, je Minute gemittelt.`}</Copy>
+          )}
           {heart.coverage < 0.8 ? (
             <Copy muted>
-              {`Die Uhr hatte nur ${Math.round(
+              {`${isWatchHeart(heart) ? 'Die Uhr' : heartSourceLabel(heart)} hatte nur ${Math.round(
                 heart.coverage * 100,
               )} % der Zeit einen Pulswert; Lücken bleiben leer.`}
             </Copy>
@@ -386,6 +406,14 @@ export function StrengthSessionDetail({
         </Section>
       ) : null}
 
+      {onEditEnd && session.status === 'finished' ? (
+        <Row
+          title="Ende bearbeiten"
+          subtitle="Vergessen zu beenden? Wähle im Verlauf, wann Schluss war."
+          onPress={onEditEnd}
+          disabled={busy}
+        />
+      ) : null}
       <Disclosure title="Details" subtitle="Datenbasis und Versionen">
         {confirmed.length > 0 &&
         withWeight > 0 &&
@@ -404,7 +432,7 @@ export function StrengthSessionDetail({
         </Copy>
         {heart ? (
           <Copy muted>
-            {`Puls von der Uhr in ${heart.stepSeconds}-s-Fenstern, ${Math.round(
+            {`Puls von ${isWatchHeart(heart) ? 'der Uhr' : heartSourceLabel(heart)} in ${heart.stepSeconds}-s-Fenstern, ${Math.round(
               heart.coverage * 100,
             )} % abgedeckt${
               heart.clockAligned

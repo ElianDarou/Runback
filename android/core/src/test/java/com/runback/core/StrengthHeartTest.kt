@@ -87,4 +87,32 @@ class StrengthHeartTest {
         )!!
         assertTrue(summary.getJSONArray("values").length() <= StrengthHeart.MAX_ROWS)
     }
+
+    @Test fun importedHeartUsesOneSourceAndMinuteWindows() {
+        val start = 1_000_000L
+        val points = (0 until 30).map { ImportedHeart.Point("fitbit", start + it * 60_000L, 100.0 + it) } +
+            (0 until 5).map { ImportedHeart.Point("google_fit", start + it * 60_000L, 60.0) } +
+            ImportedHeart.Point("fitbit", start - 60_000L, 200.0)
+        val summary = ImportedHeart.summarize(points, start, start + 30 * 60_000L)!!
+        assertEquals("import:fitbit", summary.getString("source"))
+        assertEquals(60, summary.getInt("stepSeconds"))
+        assertEquals(30, summary.getJSONArray("values").length())
+        assertEquals(100.0, summary.getDouble("minBpm"), 0.0)
+        assertEquals(ImportedHeart.VERSION, summary.getString("linkVersion"))
+        assertNull(ImportedHeart.summarize(points, start + 3_600_000L, start + 7_200_000L))
+    }
+
+    @Test fun storedSeriesIsCutToAnEarlierEndWithoutRawFile() {
+        val summary = JSONObject().put("startTime", 0L).put("stepSeconds", 60).put("samples", 99)
+            .put("values", org.json.JSONArray(listOf(100.0, JSONObject.NULL, 140.0, 180.0)))
+        // Ende bei 150 s: Das Fenster 120–180 s ist angeschnitten und fällt weg.
+        val cut = StrengthHeart.truncate(summary, 150_000L)!!
+        assertEquals(2, cut.getJSONArray("values").length())
+        assertEquals(100.0, cut.getDouble("averageBpm"), 0.0)
+        assertEquals(100.0, cut.getDouble("maxBpm"), 0.0)
+        assertEquals(0.5, cut.getDouble("coverage"), 0.0)
+        assertEquals(3, StrengthHeart.truncate(summary, 180_000L)!!.getJSONArray("values").length())
+        assertFalse(cut.has("samples"))
+        assertNull(StrengthHeart.truncate(summary, 0L))
+    }
 }

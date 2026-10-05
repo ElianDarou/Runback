@@ -509,4 +509,91 @@ class RunStoreTest {
         store.deleteImportBatch("kept")
         assertNull(store.strengthImport("strong:backup"))
     }
+
+    private fun movingRun(start: Long, minutes: Int): String {
+        val samples = JSONArray()
+        for (i in 0..minutes * 6) samples.put(JSONObject().put("time", start + i * 10_000L).put("kind", "gps")
+            .put("values", JSONObject().put("latitude", 52.0 + i * 0.00027).put("longitude", 13.0).put("accuracyM", 5.0)))
+        val summary = JSONObject().put("startTime", start).put("endTime", start + minutes * 60_000L)
+            .put("durationSeconds", minutes * 60.0).put("importVersion", "vendor-import-v2")
+        return store.addImportedRun(summary, samples, "trim-$start").getString("id")
+    }
+
+    @Test
+    fun aCorrectedRunEndCutsDurationAndDistanceButKeepsTheOriginals() {
+        val start = System.currentTimeMillis() - 3_600_000
+        val id = movingRun(start, 30)
+        val before = store.detail(id)
+        val corrected = store.setRunEnd(id, start + 20 * 60_000L)
+        assertEquals(start + 20 * 60_000L, corrected.getLong("endTime"))
+        assertEquals(start + 30 * 60_000L, corrected.getLong("originalEndTime"))
+        assertEquals(1200.0, corrected.getDouble("durationSeconds"), 1.0)
+        val after = store.detail(id)
+        assertTrue(after.getDouble("distanceM") < before.getDouble("distanceM") * 0.75)
+        assertEquals(181, store.rawSamples(id).length())
+        assertEquals(1, store.listRuns().length())
+        assertEquals(start + 30 * 60_000L, store.runEndInfo(id).getLong("originalEndTime"))
+        // Der Editor sieht den ganzen Verlauf, die Detailseite nur bis zum Ende.
+        assertTrue(store.series(id, 300, untrimmed = true).getJSONArray("rows").length() >
+            store.series(id, 300).getJSONArray("rows").length())
+        try { store.setRunEnd(id, start + 31 * 60_000L); fail("after the original end") } catch (_: IllegalArgumentException) {}
+        try { store.setRunEnd(id, start + 5_000L); fail("before the second GPS point") } catch (_: IllegalArgumentException) {}
+        store.setRunEnd(id, null)
+        assertEquals(1800.0, store.detail(id).getDouble("durationSeconds"), 1.0)
+        assertFalse(store.detail(id).has("originalEndTime"))
+    }
+
+    @Test
+    fun strengthEndCorrectionsAndImportedHeartFollowTheWindow() {
+        val sets = listOf(StrengthSet("Row", 1, weight = 40.0, reps = 8))
+        val start = 1_700_000_000_000L
+        val workout = StrongDuration.reject(StrengthWorkout("strong:late", start, "Pull", 15_305.0, "strong",
+            "{\"durationKnown\":true}"), "default")
+        store.addStrengthWorkout(workout, sets, StrengthImport.document(workout, sets), "b")
+        store.saveImportBatch(JSONObject().put("id", "b"))
+        val window = store.strengthWindow("strong:late")!!
+        assertNull(window.end)
+        assertEquals(start + 15_305_000L, window.reportedEnd)
+        // Pulsverlauf aus einem anderen Import; ein Tagesmittel (mit Ende) zählt nicht.
+        store.addWellnessBatch((0 until 120).map { WellnessRow("h:$it", "heart_sample", start + it * 60_000L,
+            value = 100.0 + it, unit = "bpm", source = "fitbit") } +
+            WellnessRow("day", "heart_rate", start, start + 86_399_000L, 60.0, "bpm", "fitbit"), "hr")
+        store.saveImportBatch(JSONObject().put("id", "hr"))
+        store.setStrengthEnd("strong:late", start + 75 * 60_000L)
+        assertEquals(start + 75 * 60_000L, store.strengthImport("strong:late")!!.getJSONObject("endCorrection").getLong("endTime"))
+        val heart = store.importedHeart(start, store.strengthWindow("strong:late")!!.end!!)!!
+        assertEquals("import:fitbit", heart.getString("source"))
+        assertEquals(100.0, heart.getDouble("minBpm"), 0.0)
+        assertEquals(174.0, heart.getDouble("maxBpm"), 0.0)
+        try { store.setStrengthEnd("strong:late", start - 1); fail("before start") } catch (_: IllegalArgumentException) {}
+        // Löschen des Puls-Imports nimmt den Puls mit; die Korrektur hängt an der Einheit.
+        store.deleteImportBatch("hr")
+        assertNull(store.importedHeart(start, start + 75 * 60_000L))
+        store.deleteImportBatch("b")
+        assertNull(store.getDocument("strength_end_strong:late"))
+    }
+
+    @Test
+    fun dailyHeartAveragesNeverCountAsWorkoutHeartRate() {
+        val start = 1_700_000_000_000L
+        store.addWellnessBatch(listOf(
+            WellnessRow("mi-day", "heart_rate", start, 0L, 72.0, "bpm", "mi_fitness", "{\"aggregate\":\"daily\"}"),
+            WellnessRow("mi-point", "heart_rate", start + 60_000L, 0L, 120.0, "bpm", "mi_fitness", "{}")))
+        val heart = store.importedHeart(start, start + 600_000L)!!
+        assertEquals(120.0, heart.getDouble("maxBpm"), 0.0)
+        assertEquals(120.0, heart.getDouble("minBpm"), 0.0)
+    }
+
+    @Test
+    fun runsWithPausesOfUnknownTimeCannotBeShortened() {
+        val start = System.currentTimeMillis() - 3_600_000
+        val samples = JSONArray()
+        for (i in 0..360) samples.put(JSONObject().put("time", start + i * 10_000L).put("kind", "gps")
+            .put("values", JSONObject().put("latitude", 52.0 + i * 0.00027).put("longitude", 13.0).put("accuracyM", 5.0)))
+        // 60 Minuten Start bis Ende, aber nur 45 Minuten Aufzeichnung und kein Pausenereignis (FIT-Import).
+        val id = store.addImportedRun(JSONObject().put("startTime", start).put("endTime", start + 3_600_000L)
+            .put("durationSeconds", 2_700.0).put("importVersion", "vendor-import-v2"), samples, "fit-pauses").getString("id")
+        assertTrue(store.runEndInfo(id).getString("blockedReason").contains("Pausen"))
+        try { store.setRunEnd(id, start + 1_200_000L); fail("unknown pauses") } catch (_: IllegalArgumentException) {}
+    }
 }

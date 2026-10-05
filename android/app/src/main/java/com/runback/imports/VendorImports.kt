@@ -867,6 +867,96 @@ object VendorImports {
         }
     }
 
+    // ---- Pulsverlauf aus Importen: Minutenmittel als Wellness-Art "heart_sample" ----
+
+    /** Fasst Pulswerte je Minute zusammen; mehr Auflösung braucht keine Einheit, die nicht von der Uhr kommt. */
+    class HeartMinutes(private val source: String, private val maxMinutes: Int = 600_000) {
+        private val sums = java.util.TreeMap<Long, DoubleArray>()
+        var rejected = 0; private set
+        fun add(timeMs: Long, bpm: Double) {
+            if (timeMs <= 0 || !bpm.isFinite() || bpm !in 30.0..240.0) { rejected++; return }
+            val minute = Math.floorDiv(timeMs, 60_000L) * 60_000L
+            val bucket = sums[minute] ?: if (sums.size >= maxMinutes) { rejected++; return } else DoubleArray(2).also { sums[minute] = it }
+            bucket[0] += bpm; bucket[1] += 1.0
+        }
+        val size get() = sums.size
+        fun rows(): List<WellnessRow> = sums.map { (minute, bucket) ->
+            val bpm = Math.round(bucket[0] / bucket[1] * 10) / 10.0
+            WellnessRow(wellnessId(HEART_SAMPLE_KIND, minute, source, bpm), HEART_SAMPLE_KIND, minute, 0L, bpm, "bpm", source,
+                JSONObject().put("aggregate", "minute_average").put("count", bucket[1].toInt()).toString())
+        }
+    }
+    const val HEART_SAMPLE_KIND = "heart_sample"
+
+    fun isGoogleFitHeartFile(name: String): Boolean =
+        name.lowercase(Locale.ROOT).let { it.endsWith(".json") && it.contains("heart_rate.bpm") }
+
+    /**
+     * Google-Fit-Takeout („All Data/…heart_rate.bpm….json“): `{"Data Points":[{"fitValue":[{"value":{"fpVal":72}}],
+     * "startTimeNanos":…}]}`. Liest Zeichen für Zeichen, damit Jahre an Pulswerten nicht als Ganzes im Speicher liegen.
+     */
+    fun parseGoogleFitHeart(reader: java.io.Reader, onPoint: (Long, Double) -> Unit) {
+        class Frame(val obj: Boolean) {
+            var expectKey = obj; var key: String? = null
+            var startNanos: Long? = null; var fpVal: Double? = null; var type: String? = null
+        }
+        val stack = ArrayList<Frame>()
+        val input = java.io.PushbackReader(java.io.BufferedReader(reader, 64 * 1024), 1)
+        fun nearestObject(): Frame? = stack.lastOrNull { it.obj }
+        fun assign(raw: String, quoted: Boolean) {
+            val frame = stack.lastOrNull() ?: return
+            if (!frame.obj) return
+            when (frame.key) {
+                "fpVal" -> raw.toDoubleOrNull()?.let { if (frame.fpVal == null) frame.fpVal = it }
+                "startTimeNanos" -> raw.toLongOrNull()?.let { frame.startNanos = it }
+                "dataTypeName" -> if (quoted) frame.type = raw
+            }
+            frame.key = null
+        }
+        while (true) {
+            val code = input.read(); if (code < 0) break
+            val c = code.toChar()
+            when {
+                c.isWhitespace() || c == ':' -> {}
+                c == '{' -> stack.add(Frame(true))
+                c == '[' -> stack.add(Frame(false))
+                c == ',' -> stack.lastOrNull()?.let { if (it.obj) it.expectKey = true }
+                c == '}' || c == ']' -> {
+                    val closed = stack.removeLastOrNull() ?: continue
+                    if (!closed.obj) { stack.lastOrNull()?.key = null; continue }
+                    val start = closed.startNanos; val bpm = closed.fpVal
+                    if (start != null && bpm != null && (closed.type == null || closed.type!!.contains("heart_rate"))) {
+                        onPoint(start / 1_000_000L, bpm)
+                    } else if (bpm != null) nearestObject()?.let { if (it.fpVal == null) it.fpVal = bpm }
+                    stack.lastOrNull()?.key = null
+                }
+                c == '"' -> {
+                    val text = StringBuilder()
+                    while (true) {
+                        val next = input.read(); if (next < 0) break
+                        val ch = next.toChar()
+                        if (ch == '\\') { val escaped = input.read(); if (escaped >= 0) text.append(escaped.toChar()); continue }
+                        if (ch == '"') break
+                        if (text.length < 256) text.append(ch)
+                    }
+                    val frame = stack.lastOrNull()
+                    if (frame != null && frame.obj && frame.expectKey) { frame.key = text.toString(); frame.expectKey = false }
+                    else assign(text.toString(), quoted = true)
+                }
+                else -> {
+                    val text = StringBuilder().append(c)
+                    while (true) {
+                        val next = input.read(); if (next < 0) break
+                        val ch = next.toChar()
+                        if (ch == ',' || ch == '}' || ch == ']' || ch.isWhitespace()) { input.unread(next); break }
+                        if (text.length < 64) text.append(ch)
+                    }
+                    assign(text.toString(), quoted = false)
+                }
+            }
+        }
+    }
+
     fun wellnessId(kind: String, time: Long, source: String, value: Double): String =
         "$kind:" + UUID.nameUUIDFromBytes("$kind:$time:$source:$value".toByteArray()).toString()
 

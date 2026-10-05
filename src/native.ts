@@ -21,7 +21,25 @@ import type {
 } from './domain/strength';
 import { summarize } from './domain/strength';
 import { importedStrengthSession } from './domain/strengthImports';
+import { applyStrengthEndCorrection } from './domain/endCorrection';
 import type { StrongWorkout } from './domain/vendorImports';
+
+export interface StrengthEndEditorData {
+  startTime: number;
+  rangeEnd: number;
+  recordedEndTime?: number;
+  reportedEndTime?: number;
+  correctedEndTime?: number;
+  heart?: StrengthHeart;
+}
+export interface RunEndEditorData {
+  startTime: number;
+  originalEndTime: number;
+  correctedEndTime?: number;
+  series: RunSeries | null;
+  /** Warum sich das Ende nicht sicher kürzen lässt, etwa Pausen ohne Zeitpunkt. */
+  blockedReason?: string;
+}
 import {
   readImportBatches,
   type ImportBatch,
@@ -358,7 +376,9 @@ export const native = {
   },
   async strengthSession(id: string): Promise<StrengthSession> {
     const raw = await nativeCall<any>('getStrengthSession', id);
-    return raw?.kind === 'strength' ? raw : importedStrengthSession(raw);
+    return raw?.kind === 'strength'
+      ? applyStrengthEndCorrection(raw, raw.endCorrection)
+      : importedStrengthSession(raw);
   },
   async strengthSessions(limit = 100): Promise<StrengthSession[]> {
     const raw = await nativeCall<any>('getStrengthSessions', limit);
@@ -368,7 +388,12 @@ export const native = {
     const imported: StrongWorkout[] = Array.isArray(raw?.imports)
       ? raw.imports
       : [];
-    const unique = new Map(sessions.map(session => [session.id, session]));
+    const unique = new Map(
+      sessions.map(session => [
+        session.id,
+        applyStrengthEndCorrection(session, (session as any).endCorrection),
+      ]),
+    );
     imported.forEach(workout => {
       const session = importedStrengthSession(workout);
       if (!unique.has(session.id)) {
@@ -390,6 +415,44 @@ export const native = {
     return readStrengthHeartSummaries(
       await nativeCall<unknown>('getStrengthHeartSummaries'),
     );
+  },
+  /** Zeitraum, Enden und Puls für „Ende bearbeiten“ einer Krafteinheit. */
+  async strengthEndEditor(id: string): Promise<StrengthEndEditorData> {
+    const raw = await nativeCall<any>('getStrengthEndEditor', id);
+    const time = (value: unknown) =>
+      typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
+    return {
+      startTime: raw.startTime,
+      rangeEnd: raw.rangeEnd,
+      recordedEndTime: time(raw.recordedEndTime),
+      reportedEndTime: time(raw.reportedEndTime),
+      correctedEndTime: time(raw.correctedEndTime),
+      heart: readStrengthHeart(raw.heart),
+    };
+  },
+  /** `null` stellt das ursprüngliche Ende wieder her. */
+  async setStrengthEnd(id: string, endTime: number | null): Promise<StrengthSession> {
+    const raw = await nativeCall<any>('setStrengthEnd', id, endTime ?? -1);
+    return raw?.kind === 'strength'
+      ? applyStrengthEndCorrection(raw, raw.endCorrection)
+      : importedStrengthSession(raw);
+  },
+  /** Unkorrigierter Verlauf eines Laufs für „Ende bearbeiten“. */
+  async runEndEditor(id: string): Promise<RunEndEditorData> {
+    const raw = await nativeCall<any>('getRunEndEditor', id);
+    const corrected = raw.correctedEndTime;
+    return {
+      startTime: raw.startTime,
+      originalEndTime: raw.originalEndTime,
+      correctedEndTime:
+        typeof corrected === 'number' && corrected > 0 ? corrected : undefined,
+      series: raw.hasSamples && raw.series ? (raw.series as RunSeries) : null,
+      blockedReason:
+        typeof raw.blockedReason === 'string' ? raw.blockedReason : undefined,
+    };
+  },
+  async setRunEnd(id: string, endTime: number | null): Promise<void> {
+    await nativeCall<any>('setRunEnd', id, endTime ?? -1);
   },
   /** Speichert eine geprüfte Vorschau aus `importFiles` mit der Wahl des Nutzers. */
   async commitImport(token: string, choice: ImportChoice): Promise<any> {

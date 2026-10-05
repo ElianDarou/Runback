@@ -174,7 +174,9 @@ class ActivityImporter(private val context: Context, private val store: RunStore
     private fun saveWellness(rows: List<com.runback.core.WellnessRow>): Int {
         preview?.let { return it.noteWellness(rows, store) }
         val kinds = options?.wellnessKinds
-        return store.addWellnessBatch(if (kinds == null) rows else rows.filter { it.kind in kinds }, batchId)
+        // Ein Batch fasst höchstens 50.000 Werte; Pulsverläufe über Jahre sind länger.
+        return (if (kinds == null) rows else rows.filter { it.kind in kinds }).chunked(50_000)
+            .sumOf { chunk -> checkCancelled(); store.addWellnessBatch(chunk, batchId) }
     }
 
     private fun saveStrength(workout: com.runback.core.StrengthWorkout, sets: List<com.runback.core.StrengthSet>): JSONObject {
@@ -1126,6 +1128,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
 
     private fun importVendorJson(file: File, name: String, entryPath: String, vendor: VendorImports.Vendor?): Boolean {
         val lower = name.lowercase(Locale.ROOT)
+        if (VendorImports.isGoogleFitHeartFile(name)) return importGoogleFitHeart(file)
         // Large Takeout archives can be tens of MB of JSON; stream via text with caps.
         val text = readText(file)
         if (text.length > MAX_FILE_BYTES) return false
@@ -1209,6 +1212,8 @@ class ActivityImporter(private val context: Context, private val store: RunStore
             var count: Int = 0,
         )
         val buckets = linkedMapOf<Long, Bucket>()
+        // Neben dem Tagesmittel bleibt der Verlauf je Minute, damit Krafteinheiten ihren Puls finden.
+        val minutes = if (kind == "heart_rate") VendorImports.HeartMinutes("fitbit") else null
         try {
             val trimmed = text.trim()
             val array = if (trimmed.startsWith("[")) JSONArray(trimmed) else return false
@@ -1234,6 +1239,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
                 }
                 if (!valid) continue
                 val rawTime = obj.optString("dateTime", obj.optString("time", ""))
+                minutes?.add(time, value)
                 val bucket = buckets.getOrPut(fitbitDayStart(rawTime, time)) { Bucket() }
                 bucket.first = minOf(bucket.first, time); bucket.last = maxOf(bucket.last, time)
                 bucket.sum += value; bucket.min = minOf(bucket.min, value); bucket.max = maxOf(bucket.max, value)
@@ -1250,7 +1256,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
                 VendorImports.wellnessId(kind, day, "fitbit", aggregate), kind, day, bucket.last,
                 aggregate, if (kind == "heart_rate") "bpm" else if (kind == "steps") "count" else "kcal",
                 "fitbit", extra.toString())
-        }.take(VendorImports.MAX_JSON_WELLNESS)
+        }.take(VendorImports.MAX_JSON_WELLNESS) + minutes?.rows().orEmpty()
         if (rows.isEmpty()) return false
         noteVendor("fitbit", 0, 0, saveWellness(rows), 0)
         return true
@@ -1375,6 +1381,23 @@ class ActivityImporter(private val context: Context, private val store: RunStore
                 return null
             }
         }
+    }
+
+    /** Pulsverlauf aus Google Fit, gestreamt und je Minute gemittelt. */
+    private fun importGoogleFitHeart(file: File): Boolean {
+        val minutes = VendorImports.HeartMinutes("google_fit")
+        var points = 0
+        try {
+            file.inputStream().reader(Charsets.UTF_8).use { reader ->
+                VendorImports.parseGoogleFitHeart(reader) { time, bpm ->
+                    if (++points % 10_000 == 0) checkCancelled()
+                    minutes.add(time, bpm)
+                }
+            }
+        } catch (e: CancellationException) { throw e } catch (_: Exception) { return false }
+        if (minutes.size == 0) return false
+        noteVendor("google_fit", 0, 0, saveWellness(minutes.rows()), 0)
+        return true
     }
 
     private fun importGoogleFitJson(text: String, name: String): Boolean {
@@ -1743,11 +1766,11 @@ class ActivityImporter(private val context: Context, private val store: RunStore
     /** Writes an exchange copy from the immutable store data; this is never a backup. */
     fun exportRun(id: String, extension: String, output: OutputStream) {
         val run = store.detail(id)
-        val samples = store.rawSamples(id)
+        // JSON ist die Datensicherung mit allen Originalen; GPX/FIT enden am geltenden Ende.
         when (extension.lowercase(Locale.ROOT)) {
-            "json" -> output.writer(StandardCharsets.UTF_8).apply { write(JSONObject().put("run", run).put("samples", samples).toString(2)); flush() }
-            "gpx" -> writeGpx(run, samples, output)
-            "fit" -> writeFit(run, samples, output)
+            "json" -> output.writer(StandardCharsets.UTF_8).apply { write(JSONObject().put("run", run).put("samples", store.rawSamples(id)).toString(2)); flush() }
+            "gpx" -> writeGpx(run, store.rawSamples(id, corrected = true), output)
+            "fit" -> writeFit(run, store.rawSamples(id, corrected = true), output)
             else -> error("Unterstützt: GPX, JSON, FIT")
         }
     }

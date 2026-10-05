@@ -73,6 +73,11 @@ export const VENDOR_INFOS: VendorInfo[] = [
         howUsed: 'Wie eigene Läufe, soweit Zeit und Distanz geeignet sind.',
       },
       {
+        label: 'Pulsverlauf (je Minute)',
+        why: 'Puls während Krafteinheiten aus Strong oder ohne Uhr.',
+        howUsed: 'Erscheint bei jeder Einheit in diesem Zeitraum und hilft, ein vergessenes Ende zu finden.',
+      },
+      {
         label: 'Ruhepuls & HRV (nächtlich)',
         why: 'Erholungskontext ohne Tagesform-Behauptung.',
         howUsed: 'Nur Anzeige im Import-Überblick, keine Bewertung.',
@@ -112,6 +117,7 @@ export const VENDOR_INFOS: VendorInfo[] = [
     ],
     filePatterns: [
       'Takeout/Fit mit Sessions und Tageswerten (JSON)',
+      'All Data/…heart_rate.bpm….json (Pulsverlauf)',
       'Optionale TCX/GPX je Training',
     ],
     useful: [
@@ -126,8 +132,13 @@ export const VENDOR_INFOS: VendorInfo[] = [
         howUsed: 'Nur Anzeige.',
       },
       {
-        label: 'Gewicht & Puls (falls protokolliert)',
-        why: 'Körper- und Erholungskontext.',
+        label: 'Pulsverlauf (je Minute)',
+        why: 'Puls während Krafteinheiten aus Strong oder ohne Uhr.',
+        howUsed: 'Erscheint bei jeder Einheit in diesem Zeitraum und hilft, ein vergessenes Ende zu finden.',
+      },
+      {
+        label: 'Gewicht (falls protokolliert)',
+        why: 'Körperkontext.',
         howUsed: 'Nur Anzeige.',
       },
     ],
@@ -630,6 +641,8 @@ export interface StrongWorkout {
   durationSuspect?: boolean;
   /** Gespeichert: gemeldete Dauer, die als unbekannt gilt, und warum. */
   reportedDurationSeconds?: number | null;
+  /** Vom Nutzer gesetztes Ende (Kotlin `strength_end_<id>`), roh. */
+  endCorrection?: unknown;
   durationRejected?: {
     reason: 'not_finished';
     modelVersion: string;

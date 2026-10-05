@@ -3,6 +3,7 @@ package com.runback.core
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.ceil
+import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -53,9 +54,9 @@ object StrengthHeart {
     }
 
     /** Fensterbreite: 5 s, bei langen Einheiten so breit, dass höchstens 600 Fenster entstehen. */
-    fun stepSeconds(durationSeconds: Double): Int {
+    fun stepSeconds(durationSeconds: Double, minStepSeconds: Int = BASE_STEP_SECONDS): Int {
         val needed = durationSeconds / MAX_ROWS
-        return max(BASE_STEP_SECONDS, (ceil(needed / BASE_STEP_SECONDS) * BASE_STEP_SECONDS).toInt())
+        return max(minStepSeconds, (ceil(needed / BASE_STEP_SECONDS) * BASE_STEP_SECONDS).toInt())
     }
 
     /**
@@ -63,10 +64,11 @@ object StrengthHeart {
      * (Handyuhr). Ohne einen einzigen gültigen Wert im Zeitraum `null` —
      * dann gibt es für diese Einheit keinen Puls, keine Ersatzwerte.
      */
-    fun summarize(samples: List<Sample>, startMs: Long, endMs: Long, clockAligned: Boolean): JSONObject? {
+    fun summarize(samples: List<Sample>, startMs: Long, endMs: Long, clockAligned: Boolean,
+                  source: String = "watch", minStepSeconds: Int = BASE_STEP_SECONDS): JSONObject? {
         val durationSeconds = (endMs - startMs) / 1000.0
         if (!(durationSeconds > 0)) return null
-        val step = stepSeconds(durationSeconds)
+        val step = stepSeconds(durationSeconds, minStepSeconds)
         val count = max(1, ceil(durationSeconds / step).toInt())
         val sums = DoubleArray(count)
         val counts = IntArray(count)
@@ -99,7 +101,7 @@ object StrengthHeart {
         }
         return JSONObject()
             .put("model_version", VERSION)
-            .put("source", "watch")
+            .put("source", source)
             .put("startTime", startMs)
             .put("stepSeconds", step)
             .put("values", values)
@@ -111,6 +113,34 @@ object StrengthHeart {
             .put("clockAligned", clockAligned)
     }
 
+    /**
+     * Kürzt eine gespeicherte Reihe auf ein früheres Ende, wenn die Rohdatei nicht mehr da ist.
+     * Die Fenster bleiben, wie sie gerechnet wurden; die Zahl der Rohwerte ist danach unbekannt.
+     */
+    fun truncate(summary: JSONObject, endMs: Long): JSONObject? {
+        val values = summary.optJSONArray("values") ?: return null
+        val step = summary.optInt("stepSeconds").takeIf { it > 0 } ?: return null
+        // Nur vollständig erhaltene Fenster: Ein angeschnittenes enthält womöglich Werte nach dem Ende.
+        val count = floor((endMs - summary.optLong("startTime")) / 1000.0 / step).toInt().coerceAtMost(values.length())
+        if (count <= 0) return null
+        val kept = JSONArray()
+        var filled = 0; var total = 0.0
+        var highest = Double.NEGATIVE_INFINITY; var lowest = Double.POSITIVE_INFINITY
+        for (index in 0 until count) {
+            val value = values.opt(index)
+            if (value !is Number) { kept.put(JSONObject.NULL); continue }
+            val bpm = value.toDouble()
+            kept.put(bpm); filled++; total += bpm
+            highest = max(highest, bpm); lowest = minOf(lowest, bpm)
+        }
+        if (filled == 0) return null
+        val result = JSONObject(summary.toString()).put("values", kept).put("averageBpm", round1(total / filled))
+            .put("maxBpm", round1(highest)).put("minBpm", round1(lowest))
+            .put("coverage", (filled.toDouble() / count * 1000).roundToInt() / 1000.0).put("windowEnd", endMs)
+        result.remove("samples")
+        return result
+    }
+
     /** Kurzform ohne Reihe, für Übersichten über viele Einheiten. */
     fun brief(full: JSONObject): JSONObject {
         val brief = JSONObject(full.toString())
@@ -119,4 +149,30 @@ object StrengthHeart {
     }
 
     private fun round1(value: Double) = (value * 10).roundToInt() / 10.0
+}
+
+/**
+ * Puls aus Importen (Fitbit, Google Fit, Mi Fitness) im Zeitfenster einer Einheit.
+ * Nichts wird fest zugeordnet: Jede Einheit sucht beim Lesen in ihrem eigenen
+ * Fenster, egal in welcher Reihenfolge importiert wurde; ein gelöschter Import
+ * nimmt seinen Puls mit. Quellen werden nicht gemischt — es zählt die mit den
+ * meisten Werten im Fenster. Importe liefern meist Minutenmittel, deshalb
+ * Fenster ab 60 s und keine Satzwerte daraus.
+ */
+object ImportedHeart {
+    const val VERSION = "imported-heart-v1"
+    const val MIN_STEP_SECONDS = 60
+    /** Wellness-Arten mit Einzel- oder Minutenwerten; Tagesmittel haben ein Ende und zählen nicht. */
+    val KINDS = listOf("heart_sample", "heart_rate")
+
+    data class Point(val source: String, val atMs: Long, val bpm: Double)
+
+    fun summarize(points: List<Point>, startMs: Long, endMs: Long): JSONObject? {
+        val inWindow = points.filter { it.atMs in startMs until endMs && it.bpm in StrengthHeart.MIN_BPM..StrengthHeart.MAX_BPM }
+        val source = inWindow.groupingBy { it.source }.eachCount().maxWithOrNull(compareBy<Map.Entry<String, Int>> { it.value }
+            .thenByDescending { it.key })?.key ?: return null
+        val samples = inWindow.filter { it.source == source }.map { StrengthHeart.Sample(it.atMs.toDouble(), it.bpm) }
+        return StrengthHeart.summarize(samples, startMs, endMs, clockAligned = true,
+            source = "import:$source", minStepSeconds = MIN_STEP_SECONDS)?.put("linkVersion", VERSION)
+    }
 }

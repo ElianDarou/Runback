@@ -38,6 +38,8 @@ rechts wozu es dient. Nur Begriffe, die im Produkt wirklich vorkommen.
 | Wiederholungen im Tank | `actualRir` | Freiwillige Nutzerangabe je Satz. Fehlt sie, bleibt sie unbekannt und wird nicht geschätzt. |
 | Bewegungsdaten | `MotionSessions`, `MotionExport` | Optional mitgeschriebene Bewegungen der Uhr im Krafttraining plus Abhakzeiten. Nur Trainingsdaten für spätere Satzerkennung, fließen in keine Auswertung ein. |
 | Puls im Krafttraining | Kotlin `StrengthHeart`, `strengthHeart.ts` | Puls der Uhr während einer Krafteinheit, in Fenstern ab 5 s (höchstens 600). Fenster ohne Wert bleiben leer. Standard an, abschaltbar unter Geräte. |
+| Pulsverlauf aus Importen | Kotlin `ImportedHeart`, Art `heart_sample` | Minutenmittel aus Fitbit, Google Fit oder Mi Fitness. Eine Krafteinheit ohne Uhrpuls zeigt beim Öffnen den Puls ihres Zeitraums, aus genau einer Quelle. Keine Satzwerte daraus. |
+| Ende bearbeiten | `endCorrection.ts`, Kotlin `trim_<id>`, `strength_end_<id>` | Vom Nutzer gesetztes Ende eines Laufs oder einer Krafteinheit, gewählt im Verlauf (Puls, Tempo, abgehakte Sätze). Liegt neben dem Original; Daten danach zählen nicht mehr, bleiben aber gespeichert. Vorschlag: letzte Bewegung bzw. letzter Satz. |
 | Puls am Satzende | `SetHeart.peakBpm` | Höchster Pulswert von 30 s vor bis 15 s nach dem Abhaken eines Satzes. |
 | Abfall in der ersten Pausenminute | `SetHeart.recoveryBpm` | Puls am Satzende minus Puls eine Minute nach dem Abhaken. Zählt nur, wenn der nächste Satz frühestens zwei Minuten später abgehakt wurde; Median ab drei Sätzen. |
 | Satzabstand | `setGaps` | Vom Abhaken eines Satzes bis zum Abhaken des nächsten derselben Übung. Enthält Pause und Satz; eine reine Pausenzeit ist unbekannt. |

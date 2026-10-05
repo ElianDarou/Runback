@@ -62,6 +62,8 @@ class RunStore(context: Context) : DocumentStore {
         null
     }
     private fun present(run: JSONObject): JSONObject {
+        run.remove("endCorrection")
+        trimEnd(run.getString("id"))?.let { end -> applyTrim(run, end) }
         val ms = run.optLong("durationMs") + if (run.optString("status") == "recording")
             (SystemClock.elapsedRealtime() - run.optLong("_tick", SystemClock.elapsedRealtime())).coerceAtLeast(0) else 0
         run.put("durationSeconds", ms / 1000.0).put("durationSec", ms / 1000.0).put("elapsedMs", ms)
@@ -282,9 +284,12 @@ class RunStore(context: Context) : DocumentStore {
             run.put("rawSampleCount", run.optInt("rawSampleCount") + samples.size); write(run)
         }
     }
-    private fun selectedSamples(id: String, kind: String): List<RawSample> {
+    /** Vom Nutzer gesetztes Ende; die Rohsamples danach bleiben gespeichert, zählen aber nicht. */
+    private fun trimEnd(id: String): Long? = getDocument("trim_$id")?.optLong("endTime")?.takeIf { it > 0 }
+    private fun selectedSamples(id: String, kind: String, until: Long? = trimEnd(id)): List<RawSample> {
         val all = ArrayList<RawSample>()
-        db.rawQuery("SELECT time,json FROM samples WHERE run_id=? AND kind=? ORDER BY time,seq", arrayOf(id, kind)).use { rows ->
+        db.rawQuery("SELECT time,json FROM samples WHERE run_id=? AND kind=? AND time<=? ORDER BY time,seq",
+            arrayOf(id, kind, (until ?: Long.MAX_VALUE).toString())).use { rows ->
             while (rows.moveToNext()) all.add(RawSample(rows.getLong(0), kind, JSONObject(rows.getString(1))))
         }
         val boundaries = events(id)
@@ -334,9 +339,11 @@ class RunStore(context: Context) : DocumentStore {
         }
         result
     }
-    fun rawSamples(id: String): JSONArray = locked {
+    /** Alle Originale; `corrected` lässt Samples nach einem vom Nutzer gesetzten Ende weg (Export, Wetter). */
+    fun rawSamples(id: String, corrected: Boolean = false): JSONArray = locked {
         val result = JSONArray()
-        db.rawQuery("SELECT time,kind,json FROM samples WHERE run_id=? ORDER BY time,seq", arrayOf(id)).use {
+        val until = (if (corrected) trimEnd(id) else null) ?: Long.MAX_VALUE
+        db.rawQuery("SELECT time,kind,json FROM samples WHERE run_id=? AND time<=? ORDER BY time,seq", arrayOf(id, until.toString())).use {
             while (it.moveToNext()) result.put(JSONObject().put("time", it.getLong(0)).put("kind", it.getString(1)).put("values", JSONObject(it.getString(2))))
         }; result
     }
@@ -402,10 +409,10 @@ class RunStore(context: Context) : DocumentStore {
     private class DerivedSeries(val start: Long, val end: Long, val timeline: RunTimeline.Result,
                                 val elevation: RunElevation.Outcome, val phases: RunPhases.Result,
                                 val gps: List<RunTimeline.GpsPoint>)
-    private fun deriveSeries(id: String, run: JSONObject): DerivedSeries {
-        val start = run.optLong("startTime"); val recordedEnd = run.optLong("endTime", start)
+    private fun deriveSeries(id: String, run: JSONObject, until: Long? = trimEnd(id)): DerivedSeries {
+        val start = run.optLong("startTime"); val recordedEnd = until ?: run.optLong("endTime", start)
         val gps = ArrayList<RunTimeline.GpsPoint>(); val gpsAltitude = ArrayList<RunElevation.GpsAltitude>()
-        selectedSamples(id, "gps").forEach { sample ->
+        selectedSamples(id, "gps", until).forEach { sample ->
             val v = sample.values
             val lat = v.optDouble("latitude", Double.NaN); val lon = v.optDouble("longitude", Double.NaN)
             if (!lat.isFinite() || !lon.isFinite()) return@forEach
@@ -414,18 +421,19 @@ class RunStore(context: Context) : DocumentStore {
             if (altitude != null) gpsAltitude.add(RunElevation.GpsAltitude(sample.time, altitude,
                 v.optDouble("verticalAccuracyM", Double.NaN).takeIf { it.isFinite() }))
         }
-        fun readings(kind: String, key: String) = selectedSamples(id, kind).mapNotNull { sample ->
+        fun readings(kind: String, key: String) = selectedSamples(id, kind, until).mapNotNull { sample ->
             sample.values.optDouble(key, Double.NaN).takeIf { it.isFinite() }?.let { RunTimeline.Reading(sample.time, it) }
         }
         val heart = readings("heartRate", "bpm"); val cadence = readings("cadence", "rpm")
         val pressure = readings("pressure", "hPa").map { RunElevation.Pressure(it.time, it.value) }
         val lastSample = listOf(gps.lastOrNull()?.time, heart.lastOrNull()?.time, cadence.lastOrNull()?.time).filterNotNull().maxOrNull() ?: start
-        val end = maxOf(recordedEnd, lastSample, start)
+        val end = if (until != null) maxOf(until, start) else maxOf(recordedEnd, lastSample, start)
         val cuts = cuts(id)
         val timeline = RunTimeline.build(start, end, gps, heart, cadence, cuts, fixedStepSeconds = RunPhases.GRID_SECONDS, keepEmpty = true)
         val bins = timeline.rows.size
         val acceleration = ArrayList<RunPhases.Acceleration>()
-        db.rawQuery("SELECT time,json FROM samples WHERE run_id=? AND kind='accelerometer' ORDER BY time,seq", arrayOf(id)).use {
+        db.rawQuery("SELECT time,json FROM samples WHERE run_id=? AND kind='accelerometer' AND time<=? ORDER BY time,seq",
+            arrayOf(id, (until ?: Long.MAX_VALUE).toString())).use {
             while (it.moveToNext()) {
                 val v = JSONObject(it.getString(1))
                 acceleration.add(RunPhases.Acceleration(it.getLong(0), v.optDouble("x"), v.optDouble("y"), v.optDouble("z")))
@@ -516,7 +524,8 @@ class RunStore(context: Context) : DocumentStore {
         }; split()
         if (points.size > 1) run.put("distanceMeters", distance)
         // Zeitgewichtet statt nach Sample-Anzahl: unregelmäßige Aufzeichnung verzerrt sonst das Mittel.
-        val durationSeconds = run.optDouble("durationSeconds", Double.NaN)
+        // Abdeckung gegen die geltende Dauer, nach einem gesetzten Ende also die gekürzte.
+        val durationSeconds = present(JSONObject(run.toString())).optDouble("durationSeconds", Double.NaN)
         for ((kind, key, output, coverage) in listOf(
             listOf("heartRate", "bpm", "avgHeartRate", "heartRateCoverage"), listOf("cadence", "rpm", "avgCadence", "cadenceCoverage"))) {
             val times = ArrayList<Long>(); val values = ArrayList<Double>()
@@ -528,6 +537,8 @@ class RunStore(context: Context) : DocumentStore {
                 cuts.any { boundary -> boundary > times[index - 1] && boundary <= times[index] }
             }.toSet()
             run.remove("${output}Max"); run.remove("${output}Min")
+            // Aus Samples gerechnete Mittel neu setzen; ein Wert aus einer Import-Zusammenfassung bleibt.
+            if (times.isEmpty() && selectedSamples(id, kind, until = null).isNotEmpty()) { run.remove(output); run.remove(coverage) }
             RunMath.timeWeightedAverage(times, values, breaks = breaks)?.let { (mean, covered) ->
                 run.put(output, mean)
                 if (durationSeconds.isFinite() && durationSeconds > 0) run.put(coverage, (covered / durationSeconds).coerceIn(0.0, 1.0))
@@ -585,7 +596,8 @@ class RunStore(context: Context) : DocumentStore {
     private fun gaitSamples(id: String): List<RawSample> {
         val boundaries = events(id)
         val result = ArrayList<RawSample>()
-        db.rawQuery("SELECT time,json FROM samples WHERE run_id=? AND kind='gait' ORDER BY time,seq", arrayOf(id)).use { rows ->
+        db.rawQuery("SELECT time,json FROM samples WHERE run_id=? AND kind='gait' AND time<=? ORDER BY time,seq",
+            arrayOf(id, (trimEnd(id) ?: Long.MAX_VALUE).toString())).use { rows ->
             while (rows.moveToNext()) {
                 val sample = RawSample(rows.getLong(0), "gait", JSONObject(rows.getString(1)))
                 if (!isPausedAt(sample.time, boundaries)) result.add(sample)
@@ -622,8 +634,8 @@ class RunStore(context: Context) : DocumentStore {
      * Zeilenzahl, Position je Fenster, Gegenwind nur mit bekannter Windrichtung
      * aus dem gespeicherten Wetter (`weather_<id>`).
      */
-    fun series(id: String, maxRows: Int = RunSeries.DEFAULT_MAX_ROWS): JSONObject = locked {
-        val derived = deriveSeries(id, read(id))
+    fun series(id: String, maxRows: Int = RunSeries.DEFAULT_MAX_ROWS, untrimmed: Boolean = false): JSONObject = locked {
+        val derived = if (untrimmed) deriveSeries(id, read(id), until = null) else deriveSeries(id, read(id))
         val weather = getDocument("weather_$id")
         val mps = weather?.optDouble("windMps", Double.NaN); val fromDeg = weather?.optDouble("windDirectionDeg", Double.NaN)
         val wind = if (mps != null && mps.isFinite() && fromDeg != null && fromDeg.isFinite()) RunSeries.Wind(mps, fromDeg) else null
@@ -637,7 +649,8 @@ class RunStore(context: Context) : DocumentStore {
     fun timeline(id: String, maxRows: Int = 120): JSONObject = locked {
         val run = read(id)
         val gps = ArrayList<RunTimeline.GpsPoint>()
-        db.rawQuery("SELECT time,json FROM samples WHERE run_id=? AND kind='gps' ORDER BY time,seq", arrayOf(id)).use {
+        val until = (trimEnd(id) ?: Long.MAX_VALUE).toString()
+        db.rawQuery("SELECT time,json FROM samples WHERE run_id=? AND kind='gps' AND time<=? ORDER BY time,seq", arrayOf(id, until)).use {
             while (it.moveToNext()) {
                 val value = JSONObject(it.getString(1))
                 val lat = value.optDouble("latitude", Double.NaN); val lon = value.optDouble("longitude", Double.NaN)
@@ -648,13 +661,13 @@ class RunStore(context: Context) : DocumentStore {
         }
         fun readings(kind: String, key: String): List<RunTimeline.Reading> {
             val result = ArrayList<RunTimeline.Reading>()
-            db.rawQuery("SELECT time,json FROM samples WHERE run_id=? AND kind=? ORDER BY time,seq", arrayOf(id, kind)).use {
+            db.rawQuery("SELECT time,json FROM samples WHERE run_id=? AND kind=? AND time<=? ORDER BY time,seq", arrayOf(id, kind, until)).use {
                 while (it.moveToNext()) { val v = JSONObject(it.getString(1)).optDouble(key, Double.NaN); if (v.isFinite()) result.add(RunTimeline.Reading(it.getLong(0), v)) }
             }
             return result
         }
         val cuts = cuts(id)
-        val start = run.optLong("startTime"); val end = run.optLong("endTime", start)
+        val start = run.optLong("startTime"); val end = trimEnd(id) ?: run.optLong("endTime", start)
         val result = RunTimeline.build(start, end, gps, readings("heartRate", "bpm"), readings("cadence", "rpm"), cuts, maxRows.coerceIn(10, 240))
         JSONObject().put("version", RunTimeline.VERSION).put("stepSeconds", result.stepSeconds).put("rows", JSONArray().apply {
             result.rows.forEach { row ->
@@ -702,7 +715,7 @@ class RunStore(context: Context) : DocumentStore {
                 if (entry.optString("id") != id) kept.put(entry)
             }
             putDocument("strength_index", index.put("sessions", kept))
-            db.delete("documents", "key=?", arrayOf("strength_session_$id"))
+            db.delete("documents", "key IN (?,?)", arrayOf("strength_session_$id", "strength_end_$id"))
         }
     }
     fun strengthSessions(limit: Int = 100): JSONArray = locked {
@@ -715,7 +728,8 @@ class RunStore(context: Context) : DocumentStore {
             .take(limit.coerceIn(1, 500))
         JSONArray().also { result ->
             summaries.forEach { summary ->
-                getDocument("strength_session_${summary.optString("id")}")?.let(result::put)
+                val id = summary.optString("id")
+                getDocument("strength_session_$id")?.let { result.put(withEndCorrection(it, id)) }
             }
         }
     }
@@ -728,12 +742,17 @@ class RunStore(context: Context) : DocumentStore {
             }
         }
     }
-    fun strengthImport(id: String): JSONObject? = locked {
-        getDocument("strength_import_$id")?.let { return@locked it }
+    fun strengthImportIds(limit: Int = 500): List<String> = locked {
+        db.rawQuery("SELECT id FROM strength_workouts ORDER BY time DESC LIMIT ?", arrayOf(limit.toString())).use { rows ->
+            val result = ArrayList<String>(); while (rows.moveToNext()) result.add(rows.getString(0)); result }
+    }
+    fun strengthImport(id: String): JSONObject? = locked { rawStrengthImport(id)?.let { withEndCorrection(it, id) } }
+    private fun rawStrengthImport(id: String): JSONObject? {
+        getDocument("strength_import_$id")?.let { return it }
         // Frühere Importe haben nur Tabellenzeilen; eine Leseansicht ändert keine Originale.
         val workout = db.rawQuery("SELECT time,name,durationSec,source,extra FROM strength_workouts WHERE id=?",
             arrayOf(id)).use { rows ->
-            if (!rows.moveToFirst()) return@locked null
+            if (!rows.moveToFirst()) return null
             StrengthWorkout(id, rows.getLong(0), rows.getString(1), rows.getDouble(2), rows.getString(3), rows.getString(4))
         }
         val sets = ArrayList<StrengthSet>()
@@ -745,7 +764,118 @@ class RunStore(context: Context) : DocumentStore {
                     if (rows.isNull(4)) null else rows.getInt(4), number(5), number(6), number(7), rows.getString(8)))
             }
         }
-        StrengthImport.legacyDocument(workout, sets)
+        return StrengthImport.legacyDocument(workout, sets)
+    }
+    // ---- Ende korrigieren: neben dem Original, nie statt seiner (Grundregel 1). ----
+
+    /** Lauf: Ende und Dauer nach der Korrektur; das Original bleibt unter `original*` sichtbar. */
+    /**
+     * Pausen ohne bekannten Zeitpunkt: Die Aufzeichnungszeit ist deutlich kürzer als Start bis Ende,
+     * aber keine Pause ist als Ereignis gespeichert (etwa FIT-Importe). Dann wäre jede gekürzte
+     * Dauer geraten.
+     */
+    private fun unexplainedPauseMs(run: JSONObject): Long {
+        val originalEnd = run.optLong("endTime"); val start = run.optLong("startTime")
+        val known = pauseIntervals(run.getString("id"), originalEnd).sumOf { maxOf(0L, minOf(it.last, originalEnd) - maxOf(it.first, start)) }
+        return maxOf(0L, originalEnd - start - known - run.optLong("durationMs"))
+    }
+    private fun applyTrim(run: JSONObject, end: Long) {
+        val originalEnd = run.optLong("endTime")
+        if (run.optString("status") == "recording" || end >= originalEnd || end <= run.optLong("startTime")) return
+        if (unexplainedPauseMs(run) > MAX_UNEXPLAINED_PAUSE_MS) return
+        val pausedAfter = pauseIntervals(run.getString("id"), originalEnd).sumOf { range ->
+            maxOf(0L, minOf(range.last, originalEnd) - maxOf(range.first, end)) }
+        val activeAfter = maxOf(0L, originalEnd - end - pausedAfter)
+        // Werte aus einer Import-Zusammenfassung gelten für die ganze Aufzeichnung und lassen sich
+        // nicht kürzen: Nach dem gesetzten Ende sind sie unbekannt; im Original bleiben sie.
+        val id = run.getString("id")
+        fun hasSamples(kind: String) = db.rawQuery("SELECT 1 FROM samples WHERE run_id=? AND kind=? LIMIT 1", arrayOf(id, kind)).use { it.moveToFirst() }
+        val summaryOnly = mutableListOf("calories", "steps", "elevationGainMeters")
+        if (!hasSamples("heartRate")) summaryOnly += listOf("avgHeartRate", "avgHeartRateMax", "avgHeartRateMin", "heartRateCoverage")
+        if (!hasSamples("cadence")) summaryOnly += listOf("avgCadence", "avgCadenceMax", "avgCadenceMin", "cadenceCoverage")
+        summaryOnly.forEach { run.remove(it) }
+        run.put("originalEndTime", originalEnd).put("originalDurationMs", run.optLong("durationMs"))
+            .put("endTime", end).put("durationMs", maxOf(0L, run.optLong("durationMs") - activeAfter))
+            .put("endCorrection", getDocument("trim_${run.getString("id")}"))
+    }
+    /** `null` hebt die Korrektur auf. Nur abgeschlossene Läufe mit Verlauf: ohne Verlauf wäre das Ende geraten. */
+    fun setRunEnd(id: String, endTime: Long?): JSONObject = locked {
+        check(activeId() != id) { "Beende zuerst die Aufzeichnung." }
+        val run = read(id)
+        if (endTime == null) deleteDocument("trim_$id") else {
+            val start = run.optLong("startTime"); val originalEnd = run.optLong("endTime")
+            require(endTime > start && endTime <= originalEnd) { "Das Ende muss zwischen Start und ursprünglichem Ende liegen." }
+            val samples = db.rawQuery("SELECT 1 FROM samples WHERE run_id=? LIMIT 1", arrayOf(id)).use { it.moveToFirst() }
+            require(samples) { "Ohne aufgezeichneten Verlauf lässt sich das Ende nicht prüfen." }
+            require(unexplainedPauseMs(run) <= MAX_UNEXPLAINED_PAUSE_MS) { UNEXPLAINED_PAUSE_MESSAGE }
+            // Mit GPS muss die Strecke bis zum Ende messbar bleiben; sonst wäre sie unbekannt, nicht null.
+            val gps = { until: Long -> db.rawQuery("SELECT COUNT(*) FROM samples WHERE run_id=? AND kind='gps' AND time<=?",
+                arrayOf(id, until.toString())).use { it.moveToFirst(); it.getInt(0) } }
+            require(gps(Long.MAX_VALUE) < 2 || gps(endTime) >= 2) { "Vor diesem Ende gibt es noch keine GPS-Strecke. Wähle ein späteres Ende." }
+            if (endTime >= originalEnd) deleteDocument("trim_$id")
+            else putDocument("trim_$id", JSONObject().put("endTime", endTime).put("setAt", System.currentTimeMillis())
+                .put("by", "user").put("modelVersion", END_CORRECTION_VERSION))
+        }
+        derive(id)
+        present(read(id))
+    }
+    /** Grundlage des Editors: Start, ursprüngliches Ende, Korrektur und ob es einen Verlauf gibt. */
+    fun runEndInfo(id: String): JSONObject = locked {
+        val run = read(id)
+        JSONObject().put("startTime", run.optLong("startTime")).put("originalEndTime", run.optLong("endTime"))
+            .put("correctedEndTime", trimEnd(id) ?: JSONObject.NULL)
+            .put("hasSamples", db.rawQuery("SELECT 1 FROM samples WHERE run_id=? LIMIT 1", arrayOf(id)).use { it.moveToFirst() })
+            .put("blockedReason", if (unexplainedPauseMs(run) > MAX_UNEXPLAINED_PAUSE_MS) UNEXPLAINED_PAUSE_MESSAGE else JSONObject.NULL)
+    }
+
+    /** Krafteinheit: Start, aufgezeichnetes bzw. gemeldetes Ende und die Korrektur. */
+    data class StrengthWindow(val start: Long, val recordedEnd: Long?, val reportedEnd: Long?, val correctedEnd: Long?) {
+        val end: Long? get() = correctedEnd ?: recordedEnd
+    }
+    fun strengthWindow(id: String): StrengthWindow? = locked {
+        val corrected = getDocument("strength_end_$id")?.optLong("endTime")?.takeIf { it > 0 }
+        getDocument("strength_session_$id")?.let { session ->
+            val start = session.optLong("startTime").takeIf { it > 0 } ?: return@locked null
+            val end = session.optLong("endTime").takeIf { it > start }
+            return@locked StrengthWindow(start, end, end, corrected)
+        }
+        val imported = rawStrengthImport(id) ?: return@locked null
+        val start = imported.optLong("time").takeIf { it > 0 } ?: return@locked null
+        val known = imported.optDouble("durationSeconds", Double.NaN).takeIf { it.isFinite() && it > 0 }
+        val reported = imported.optDouble("reportedDurationSeconds", Double.NaN).takeIf { it.isFinite() && it > 0 } ?: known
+        StrengthWindow(start, known?.let { start + (it * 1000).toLong() }, reported?.let { start + (it * 1000).toLong() }, corrected)
+    }
+    fun strengthSession(id: String): JSONObject? = locked { getDocument("strength_session_$id")?.let { withEndCorrection(it, id) } }
+    private fun withEndCorrection(document: JSONObject, id: String): JSONObject {
+        val correction = getDocument("strength_end_$id") ?: return document
+        return JSONObject(document.toString()).put("endCorrection", correction)
+    }
+    /** `null` hebt die Korrektur auf. Höchstens 24 Stunden nach dem Start. */
+    fun setStrengthEnd(id: String, endTime: Long?) = locked {
+        val window = strengthWindow(id) ?: error("Einheit nicht gefunden")
+        if (endTime == null) { deleteDocument("strength_end_$id"); return@locked }
+        require(endTime > window.start && endTime <= window.start + MAX_RUN_DURATION_MS) {
+            "Das Ende muss nach dem Start und höchstens 24 Stunden später liegen." }
+        putDocument("strength_end_$id", JSONObject().put("endTime", endTime).put("setAt", System.currentTimeMillis())
+            .put("by", "user").put("modelVersion", END_CORRECTION_VERSION))
+    }
+
+    /** Importierte Pulswerte zwischen `from` und `to`, höchstens 50.000; Tagesmittel zählen nicht. */
+    fun importedHeartPoints(from: Long, to: Long): List<ImportedHeart.Point> = locked {
+        val result = ArrayList<ImportedHeart.Point>()
+        // Tagesmittel (Mi Fitness ohne Ende, Fitbit mit Ende) sind keine Messung zu einer Uhrzeit.
+        db.rawQuery("SELECT source,time,value FROM wellness WHERE kind IN (${ImportedHeart.KINDS.joinToString(",") { "?" }}) " +
+            "AND end_time=0 AND value IS NOT NULL AND time>=? AND time<? " +
+            "AND (extra NOT LIKE ? OR extra LIKE ?) ORDER BY time LIMIT 50000",
+            (ImportedHeart.KINDS + listOf(from.toString(), to.toString(), "%\"aggregate\"%", "%\"aggregate\":\"minute_average\"%"))
+                .toTypedArray()).use { rows ->
+            while (rows.moveToNext()) result.add(ImportedHeart.Point(rows.getString(0), rows.getLong(1), rows.getDouble(2)))
+        }
+        result
+    }
+    fun importedHeart(from: Long, to: Long): JSONObject? = locked {
+        if (to <= from) return@locked null
+        ImportedHeart.summarize(importedHeartPoints(from, to), from, to)
     }
     fun settings(): JSONObject = getDocument("settings") ?: JSONObject().put("rawBudgetMb",512).put("weatherEnabled",false)
     fun saveSettings(value: JSONObject) { putDocument("settings",value) }
@@ -1130,12 +1260,12 @@ class RunStore(context: Context) : DocumentStore {
                     "run" -> {
                         for (table in listOf("samples", "events", "sources", "hashes")) db.delete(table, "run_id=?", arrayOf(id))
                         db.delete("runs", "id=?", arrayOf(id))
-                        db.delete("documents", "key IN (?,?)", arrayOf("feedback_$id", "weather_$id"))
+                        db.delete("documents", "key IN (?,?,?)", arrayOf("feedback_$id", "weather_$id", "trim_$id"))
                     }
                     "strength" -> {
                         db.delete("strength_sets", "workout_id=?", arrayOf(id))
                         db.delete("strength_workouts", "id=?", arrayOf(id))
-                        db.delete("documents", "key=?", arrayOf("strength_import_$id"))
+                        db.delete("documents", "key IN (?,?)", arrayOf("strength_import_$id", "strength_end_$id"))
                     }
                     "wellness" -> db.delete("wellness", "id=?", arrayOf(id))
                     else -> continue
@@ -1157,7 +1287,7 @@ class RunStore(context: Context) : DocumentStore {
             db.execSQL("INSERT OR IGNORE INTO tombstones(id) SELECT hash FROM hashes WHERE run_id=?",arrayOf(id))
             db.execSQL("INSERT OR IGNORE INTO tombstones(id) VALUES(?)",arrayOf("start:${run.getLong("startTime")/1000}"))
             for(table in listOf("samples","events","sources","hashes"))db.delete(table,"run_id=?",arrayOf(id))
-            db.delete("runs","id=?",arrayOf(id));db.delete("documents","key=?",arrayOf("feedback_$id"))
+            db.delete("runs","id=?",arrayOf(id));db.delete("documents","key IN (?,?)",arrayOf("feedback_$id","trim_$id"))
             db.delete("import_items","kind='run' AND item_id=?",arrayOf(id))
             addDocumentDeletionNotice(id)
         }
@@ -1206,7 +1336,15 @@ class RunStore(context: Context) : DocumentStore {
     fun exportSession(id: String): File = locked {
         val file=File.createTempFile("runback-session-",".zip",app.cacheDir)
         ZipOutputStream(file.outputStream().buffered()).use { zip ->
-            zip.putNextEntry(ZipEntry("session.json"));zip.write(JSONObject().put("schemaVersion",1).put("run",detail(id))
+            // Ursprüngliche Zeiten plus Korrektur getrennt: Die Gegenseite kann beides wiederherstellen.
+            val run = detail(id)
+            if (run.has("originalEndTime")) {
+                val ms = run.optLong("originalDurationMs")
+                run.put("endTime", run.getLong("originalEndTime")).put("endedAt", run.getLong("originalEndTime")).put("durationMs", ms)
+                    .put("durationSeconds", ms / 1000.0).put("durationSec", ms / 1000.0).put("elapsedMs", ms)
+                run.remove("originalEndTime"); run.remove("originalDurationMs")
+            }
+            zip.putNextEntry(ZipEntry("session.json"));zip.write(JSONObject().put("schemaVersion",1).put("run",run)
                 .put("samples",rawSamples(id)).put("events",events(id)).toString().toByteArray());zip.closeEntry()
         };file
     }
@@ -1296,6 +1434,9 @@ class RunStore(context: Context) : DocumentStore {
                 derive(storedId)
             }
             if (run.optString("status") == "completed") clearRouteAssignment(storedId)
+            run.optJSONObject("endCorrection")?.takeIf { it.optLong("endTime") > 0 && trimEnd(storedId) == null }?.let {
+                putDocument("trim_$storedId", it); derive(storedId)
+            }
             storedId
         }
     }
@@ -1336,6 +1477,9 @@ class RunStore(context: Context) : DocumentStore {
     }
     companion object {private val lock=Any();private var helper:Database?=null;private val tables=listOf("runs","samples","events","documents","hashes","tombstones","sources","wellness","strength_workouts","strength_sets","import_items");private val legacyTables=listOf("runs","samples","events","documents","hashes","tombstones","sources");private const val MAX_WELLNESS_BATCH = 50000;private const val MAX_RUN_DURATION_MS = 24L*60*60*1000
         const val LEGACY_BATCH = "legacy:"
+        const val END_CORRECTION_VERSION = "end-correction-v1"
+        private const val MAX_UNEXPLAINED_PAUSE_MS = 60_000L
+        private const val UNEXPLAINED_PAUSE_MESSAGE = "Diese Aufzeichnung hat Pausen ohne bekannten Zeitpunkt; eine gekürzte Dauer wäre geraten."
         fun wellnessRowId(row: WellnessRow) = row.id.ifBlank { "wellness:${row.kind}:${row.time}:${row.source}:${row.value}" }.take(220)
        private val KIND_KEYS = mapOf("run" to "runs", "strength" to "strength", "wellness" to "wellness")}
 }
