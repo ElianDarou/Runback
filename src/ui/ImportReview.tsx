@@ -48,15 +48,25 @@ function workoutSubtitle(workout: PreviewWorkout): string {
  * Die Wahl lebt so lange wie die Vorschau: Eine neue Vorschau bekommt einen
  * neuen `key` (Token) und beginnt wieder bei der Vorgabe.
  */
+export interface ImportProblems {
+  failed: number;
+  skipped: number;
+  nonRunning: number;
+  errors: string[];
+}
+
 export function ImportReview({
   preview,
   files,
+  problems,
   busy,
   onCommit,
   onDiscard,
 }: {
   preview: ImportPreview;
   files: string[];
+  /** Was beim Lesen nicht ging; steht vor der Wahl, damit nichts still fehlt. */
+  problems?: ImportProblems;
   busy: boolean;
   onCommit: (choice: ImportChoice) => void;
   onDiscard: () => void;
@@ -77,11 +87,53 @@ export function ImportReview({
       (files.length > 3 ? ` und ${files.length - 3} weitere` : '')
     : '';
 
+  const problemLines = [
+    problems?.failed
+      ? `${formatCount(problems.failed)} ${
+          problems.failed === 1 ? 'Datei ließ' : 'Dateien ließen'
+        } sich nicht lesen.`
+      : '',
+    problems?.skipped
+      ? `${formatCount(problems.skipped)} Dateien oder Zeilen übersprungen.`
+      : '',
+    problems?.nonRunning
+      ? `${formatCount(problems.nonRunning)} Aktivitäten sind keine Läufe.`
+      : '',
+    preview.runs.deleted
+      ? `${formatCount(preview.runs.deleted)} von dir gelöschte Läufe bleiben gelöscht.`
+      : '',
+  ].filter(Boolean);
+  const problemBlock =
+    problemLines.length || problems?.errors.length ? (
+      <Section title="Nicht dabei">
+        {problemLines.map(line => (
+          <Copy muted key={line}>
+            {line}
+          </Copy>
+        ))}
+        {(problems?.errors ?? []).slice(0, 5).map((line, i) => (
+          <Copy muted key={`e${i}`}>
+            {line}
+          </Copy>
+        ))}
+      </Section>
+    ) : null;
+  const somethingKnown =
+    preview.runs.duplicates +
+      preview.strength.duplicates +
+      Object.keys(preview.wellnessKnown).length >
+    0;
+
   if (!hasNewData(preview)) {
     return (
       <>
         {fileLine ? <Copy muted>{fileLine}</Copy> : null}
-        <Copy>Alles aus diesen Dateien ist schon gespeichert.</Copy>
+        <Copy>
+          {somethingKnown
+            ? 'Alles Lesbare aus diesen Dateien ist schon gespeichert.'
+            : 'In diesen Dateien hat Runback nichts gefunden, was es übernehmen kann.'}
+        </Copy>
+        {problemBlock}
         <View style={styles.actions}>
           <Button title="Schließen" onPress={onDiscard} disabled={busy} />
         </View>
@@ -101,6 +153,7 @@ export function ImportReview({
   return (
     <>
       {fileLine ? <Copy muted>{fileLine}</Copy> : null}
+      {problemBlock}
       <Section title="Übernehmen">
         {preview.runs.new > 0 ? (
           <CheckRow
@@ -193,6 +246,11 @@ export function ImportReview({
             workouts.length - choice.excludedStrengthIds.length,
           )} von ${formatCount(workouts.length)}`}
         >
+          {preview.strength.omitted ? (
+            <Copy muted>{`Weitere ${formatCount(
+              preview.strength.omitted,
+            )} Krafteinheiten übernimmst du mit den Vorgaben.`}</Copy>
+          ) : null}
           {workouts.map(workout => (
             <CheckRow
               key={workout.id}

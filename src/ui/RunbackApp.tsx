@@ -4646,6 +4646,21 @@ export function RunbackApp({
           key={String(importStatus?.token)}
           preview={importPreview}
           files={Array.isArray(importStatus?.files) ? importStatus.files : []}
+          problems={{
+            failed: Number(importStatus?.failed) || 0,
+            skipped: Number(importStatus?.skipped) || 0,
+            nonRunning: Number(importStatus?.nonRunning) || 0,
+            errors: (Array.isArray(importStatus?.errors)
+              ? importStatus.errors
+              : []
+            ).map((item: any) =>
+              typeof item === 'string'
+                ? item
+                : `${item?.file ? `${item.file}: ` : ''}${
+                    item?.message || item?.reason || ''
+                  }`,
+            ),
+          }}
           busy={busy}
           onCommit={commitImport}
           onDiscard={discardImport}

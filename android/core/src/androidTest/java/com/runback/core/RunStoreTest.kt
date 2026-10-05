@@ -479,4 +479,34 @@ class RunStoreTest {
         assertEquals(0, store.strengthImportCandidates().getJSONArray("workouts").length())
         assertEquals(1, store.strengthImports(10).length())
     }
+
+    @Test
+    fun contextValuesDeliveredAgainStayWhenTheFirstImportIsDeleted() {
+        val row = WellnessRow("w:shared", "weight", 1_000, value = 70.0, source = "strong")
+        assertEquals(1, store.addWellnessBatch(listOf(row), "first"))
+        assertEquals(setOf("w:shared"), store.existingWellnessIds(listOf("w:shared", "w:missing")))
+        assertEquals(0, store.addWellnessBatch(listOf(row), "second"))
+        store.saveImportBatch(JSONObject().put("id", "first"))
+        store.saveImportBatch(JSONObject().put("id", "second"))
+        store.deleteImportBatch("first")
+        assertEquals(1, store.wellnessSummary().getJSONObject("weight").getInt("count"))
+        store.deleteImportBatch("second")
+        assertEquals(0, store.wellnessSummary().length())
+    }
+
+    @Test
+    fun importMembershipsSurviveBackupAndRestore() {
+        val sets = listOf(StrengthSet("Row", 1, weight = 40.0, reps = 8))
+        val workout = StrengthWorkout("strong:backup", 1_000, "Pull", 3_600.0, "strong")
+        store.saveImportBatch(JSONObject().put("id", "kept").put("createdAt", 3L))
+        store.addStrengthWorkout(workout, sets, StrengthImport.document(workout, sets), "kept")
+        val backup = ByteArrayOutputStream().also { store.backup(it) }.toByteArray()
+        store.clearAllData()
+        store.restore(ByteArrayInputStream(backup))
+        val batches = store.importBatches()
+        assertEquals(1, batches.length())
+        assertEquals("kept", batches.getJSONObject(0).getString("id"))
+        store.deleteImportBatch("kept")
+        assertNull(store.strengthImport("strong:backup"))
+    }
 }

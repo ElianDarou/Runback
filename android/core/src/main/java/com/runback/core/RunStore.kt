@@ -849,7 +849,7 @@ class RunStore(context: Context) : DocumentStore {
         transaction {
             rows.take(MAX_WELLNESS_BATCH).forEach { row ->
                 require(row.kind.length in 1..64 && row.time > 0) { "Ungültiger Wellness-Wert" }
-                val id = row.id.ifBlank { "wellness:${row.kind}:${row.time}:${row.source}:${row.value}" }
+                val id = wellnessRowId(row)
                 val changed = db.insertWithOnConflict("wellness", null, ContentValues().apply {
                     put("id", id.take(220)); put("kind", row.kind.take(64)); put("time", row.time)
                     put("end_time", row.endTime)
@@ -1035,18 +1035,14 @@ class RunStore(context: Context) : DocumentStore {
     fun strengthWorkoutExists(id: String): Boolean = locked {
         db.rawQuery("SELECT 1 FROM strength_workouts WHERE id=?", arrayOf(id)).use { it.moveToFirst() }
     }
-    /** Neue Kontextwerte je Art; Werte, die schon gespeichert sind, zählen nicht. */
-    fun newWellnessCounts(rows: List<WellnessRow>): Map<String, Int> = locked {
-        val ids = LinkedHashMap<String, String>()
-        rows.take(MAX_WELLNESS_BATCH).forEach { row ->
-            ids[row.id.ifBlank { "wellness:${row.kind}:${row.time}:${row.source}:${row.value}" }.take(220)] = row.kind.take(64)
-        }
+    /** Welche dieser Kontextwerte schon gespeichert sind (Kennung wie in [addWellnessBatch]). */
+    fun existingWellnessIds(ids: Collection<String>): Set<String> = locked {
         val existing = HashSet<String>()
-        ids.keys.chunked(400).forEach { chunk ->
+        ids.distinct().chunked(400).forEach { chunk ->
             db.rawQuery("SELECT id FROM wellness WHERE id IN (${chunk.joinToString(",") { "?" }})", chunk.toTypedArray()).use { c ->
                 while (c.moveToNext()) existing.add(c.getString(0)) }
         }
-        ids.filterKeys { it !in existing }.values.groupingBy { it }.eachCount()
+        existing
     }
     fun saveImportBatch(batch: JSONObject) = locked {
         val id = batch.optString("id"); require(id.matches(Regex("[A-Za-z0-9_-]{1,80}"))) { "Ungültige Importkennung" }
@@ -1339,5 +1335,7 @@ class RunStore(context: Context) : DocumentStore {
         }
     }
     companion object {private val lock=Any();private var helper:Database?=null;private val tables=listOf("runs","samples","events","documents","hashes","tombstones","sources","wellness","strength_workouts","strength_sets","import_items");private val legacyTables=listOf("runs","samples","events","documents","hashes","tombstones","sources");private const val MAX_WELLNESS_BATCH = 50000;private const val MAX_RUN_DURATION_MS = 24L*60*60*1000
-        const val LEGACY_BATCH = "legacy:";private val KIND_KEYS = mapOf("run" to "runs", "strength" to "strength", "wellness" to "wellness")}
+        const val LEGACY_BATCH = "legacy:"
+        fun wellnessRowId(row: WellnessRow) = row.id.ifBlank { "wellness:${row.kind}:${row.time}:${row.source}:${row.value}" }.take(220)
+       private val KIND_KEYS = mapOf("run" to "runs", "strength" to "strength", "wellness" to "wellness")}
 }

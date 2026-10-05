@@ -22,7 +22,10 @@ export interface PreviewWorkout {
 
 export interface ImportPreview {
   runs: { new: number; duplicates: number; deleted: number };
+  /** Neue Kontextwerte je Art. */
   wellness: Record<string, number>;
+  /** Schon gespeicherte Kontextwerte je Art; der Import teilt sie, wenn die Art gewählt ist. */
+  wellnessKnown: Record<string, number>;
   strength: { duplicates: number; omitted: number; workouts: PreviewWorkout[] };
 }
 
@@ -46,10 +49,15 @@ const count = (value: unknown): number =>
 export function readImportPreview(raw: unknown): ImportPreview | null {
   if (!raw || typeof raw !== 'object') return null;
   const value = raw as Record<string, any>;
-  const wellness: Record<string, number> = {};
-  if (value.wellness && typeof value.wellness === 'object')
-    for (const [kind, n] of Object.entries(value.wellness))
-      if (count(n) > 0) wellness[kind] = count(n);
+  const counts = (raw: unknown): Record<string, number> => {
+    const result: Record<string, number> = {};
+    if (raw && typeof raw === 'object')
+      for (const [kind, n] of Object.entries(raw))
+        if (count(n) > 0) result[kind] = count(n);
+    return result;
+  };
+  const wellness = counts(value.wellness);
+  const wellnessKnown = counts(value.wellnessKnown);
   const workouts: PreviewWorkout[] = Array.isArray(value.strength?.workouts)
     ? value.strength.workouts
         .filter(
@@ -81,6 +89,7 @@ export function readImportPreview(raw: unknown): ImportPreview | null {
       deleted: count(value.runs?.deleted),
     },
     wellness,
+    wellnessKnown,
     strength: {
       duplicates: count(value.strength?.duplicates),
       omitted: count(value.strength?.omitted),
@@ -89,13 +98,27 @@ export function readImportPreview(raw: unknown): ImportPreview | null {
   };
 }
 
-/** Vorgabe: alles Neue übernehmen, verdächtige Dauern bleiben unbekannt. */
+/**
+ * Vorgabe: alles übernehmen, verdächtige Dauern bleiben unbekannt. Bereiche,
+ * die nur schon Gespeichertes enthalten, sind mitgewählt: Der Import teilt
+ * diese Einträge dann, und das Löschen eines älteren Imports nimmt sie ihm
+ * nicht weg.
+ */
 export function defaultImportChoice(preview: ImportPreview): ImportChoice {
   return {
     version: IMPORT_CHOICE_VERSION,
-    runs: preview.runs.new > 0,
-    strength: preview.strength.workouts.length > 0,
-    wellnessKinds: Object.keys(preview.wellness).sort(),
+    runs: preview.runs.new + preview.runs.duplicates > 0,
+    strength:
+      preview.strength.workouts.length +
+        preview.strength.omitted +
+        preview.strength.duplicates >
+      0,
+    wellnessKinds: Array.from(
+      new Set([
+        ...Object.keys(preview.wellness),
+        ...Object.keys(preview.wellnessKnown),
+      ]),
+    ).sort(),
     excludedStrengthIds: [],
     keepDurationIds: [],
     templateSuggestions: preview.strength.workouts.length > 0,

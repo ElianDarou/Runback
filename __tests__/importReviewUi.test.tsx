@@ -121,10 +121,33 @@ describe('ImportReview', () => {
       );
     });
     expect(tree.root.findAllByType(Text).map(textContent).join(' ')).toContain(
-      'Alles aus diesen Dateien ist schon gespeichert.',
+      'Alles Lesbare aus diesen Dateien ist schon gespeichert.',
     );
     act(() => button(tree, 'Schließen').props.onPress());
     expect(onDiscard).toHaveBeenCalled();
+  });
+});
+
+describe('ImportReview problems', () => {
+  it('names files that could not be read instead of calling them stored', () => {
+    let tree!: TestRenderer.ReactTestRenderer;
+    act(() => {
+      tree = TestRenderer.create(
+        <ImportReview
+          preview={readImportPreview({})!}
+          files={['kaputt.zip']}
+          problems={{ failed: 1, skipped: 0, nonRunning: 0, errors: ['kaputt.zip: Beschädigtes ZIP'] }}
+          busy={false}
+          onCommit={jest.fn()}
+          onDiscard={jest.fn()}
+        />,
+      );
+    });
+    const text = tree.root.findAllByType(Text).map(textContent).join(' ');
+    expect(text).toContain('nichts gefunden');
+    expect(text).not.toContain('schon gespeichert');
+    expect(text).toContain('1 Datei ließ sich nicht lesen.');
+    expect(text).toContain('kaputt.zip: Beschädigtes ZIP');
   });
 });
 

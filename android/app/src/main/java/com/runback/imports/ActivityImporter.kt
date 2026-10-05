@@ -160,23 +160,19 @@ class ActivityImporter(private val context: Context, private val store: RunStore
     // ---- Schreiben nur über diese Stellen: Vorschau zählt, Übernahme filtert nach Wahl. ----
 
     private fun saveRun(summary: JSONObject, samples: JSONArray, hash: String): JSONObject {
-        preview?.let { return it.noteRun(store.previewRunStatus(summary, hash)) }
+        preview?.let { return it.noteRun(summary, hash, store) }
         if (options?.runs == false) return JSONObject().put("status", "excluded")
         return store.addImportedRun(summary, samples, hash, batchId)
     }
 
     private fun saveSummaryRun(summary: JSONObject, hash: String): JSONObject {
-        preview?.let { return it.noteRun(store.previewRunStatus(summary, hash)) }
+        preview?.let { return it.noteRun(summary, hash, store) }
         if (options?.runs == false) return JSONObject().put("status", "excluded")
         return store.addSummaryRun(summary, hash, batchId)
     }
 
     private fun saveWellness(rows: List<com.runback.core.WellnessRow>): Int {
-        preview?.let { collector ->
-            val counts = store.newWellnessCounts(rows)
-            counts.forEach { (kind, count) -> collector.wellness.merge(kind, count, Int::plus) }
-            return counts.values.sum()
-        }
+        preview?.let { return it.noteWellness(rows, store) }
         val kinds = options?.wellnessKinds
         return store.addWellnessBatch(if (kinds == null) rows else rows.filter { it.kind in kinds }, batchId)
     }
@@ -185,6 +181,8 @@ class ActivityImporter(private val context: Context, private val store: RunStore
         val extra = JSONObject(workout.extra)
         val suspect = extra.optJSONObject("durationCheck")?.optBoolean("suspect") == true
         preview?.let { collector ->
+            // Zweimal in diesem Import: zählt einmal, wie bei der Übernahme.
+            if (!collector.firstStrength(workout.id)) return JSONObject().put("status", "duplicate")
             if (store.strengthWorkoutExists(workout.id)) { collector.strengthDuplicates++; return JSONObject().put("status", "duplicate") }
             collector.addStrength(JSONObject().put("id", workout.id).put("time", workout.time).put("name", workout.name)
                 .put("source", workout.source).put("sets", sets.size)
@@ -219,6 +217,11 @@ class ActivityImporter(private val context: Context, private val store: RunStore
         }
     }
 
+    /**
+     * Zählt wie die spätere Übernahme: Was schon gespeichert ist, ist „schon da“; was
+     * dieser Import mehrfach enthält, zählt einmal. Läufe innerhalb des Imports gelten
+     * als gleich, wenn Quelle oder Startsekunde übereinstimmen.
+     */
     private class Preview {
         var runsNew = 0
         var runsDuplicate = 0
@@ -226,15 +229,40 @@ class ActivityImporter(private val context: Context, private val store: RunStore
         var strengthDuplicates = 0
         var strengthOmitted = 0
         val wellness = java.util.TreeMap<String, Int>()
+        /** Kontextarten, deren Werte schon gespeichert sind; der Import teilt sie, wenn gewählt. */
+        val wellnessKnown = java.util.TreeMap<String, Int>()
         private val strength = ArrayList<JSONObject>()
-        fun noteRun(status: String): JSONObject {
+        private val seenStrength = HashSet<String>()
+        private val seenRuns = HashSet<String>()
+        private val seenWellness = HashSet<String>()
+        fun firstStrength(id: String) = seenStrength.add(id)
+        fun noteRun(summary: JSONObject, hash: String, store: RunStore): JSONObject {
+            val start = summary.optLong("startTime", summary.optLong("startedAt"))
+            val first = seenRuns.add(hash) and seenRuns.add("start:${start / 1000}")
+            if (!first) return JSONObject().put("status", "duplicate")
+            val status = store.previewRunStatus(summary, hash)
             when (status) { "imported" -> runsNew++; "duplicate" -> runsDuplicate++; "deleted" -> runsDeleted++ }
             return JSONObject().put("status", status)
+        }
+        fun noteWellness(rows: List<com.runback.core.WellnessRow>, store: RunStore): Int {
+            val fresh = LinkedHashMap<String, String>()
+            rows.forEach { row ->
+                val id = RunStore.wellnessRowId(row)
+                if (seenWellness.size >= MAX_PREVIEW_WELLNESS_IDS || seenWellness.add(id)) fresh[id] = row.kind.take(64)
+            }
+            val existing = store.existingWellnessIds(fresh.keys)
+            var added = 0
+            fresh.forEach { (id, kind) ->
+                if (id in existing) wellnessKnown.merge(kind, 1, Int::plus)
+                else { wellness.merge(kind, 1, Int::plus); added++ }
+            }
+            return added
         }
         fun addStrength(entry: JSONObject) { if (strength.size < MAX_PREVIEW_STRENGTH) strength.add(entry) else strengthOmitted++ }
         fun toJson(): JSONObject = JSONObject()
             .put("runs", JSONObject().put("new", runsNew).put("duplicates", runsDuplicate).put("deleted", runsDeleted))
             .put("wellness", JSONObject().also { obj -> wellness.forEach { (kind, count) -> if (count > 0) obj.put(kind, count) } })
+            .put("wellnessKnown", JSONObject().also { obj -> wellnessKnown.forEach { (kind, count) -> if (count > 0) obj.put(kind, count) } })
             .put("strength", JSONObject().put("duplicates", strengthDuplicates).put("omitted", strengthOmitted)
                 .put("workouts", JSONArray(strength.sortedByDescending { it.optLong("time") })))
     }
@@ -1865,6 +1893,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
         private const val MAX_SLEEP_STAGE_ROWS = 5000
         private const val DAY_MILLIS = 24L * 60 * 60 * 1000
         private const val MAX_PREVIEW_STRENGTH = 2000
+        private const val MAX_PREVIEW_WELLNESS_IDS = 300_000
         const val BATCH_VERSION = "import-batch-v1"
         private val FITBIT_CONTEXT_CSV_KINDS = setOf(
             "sleep_csv", "sleep_score_csv", "sleep_stage_csv", "hrv", "vo2max", "vo2max_csv",

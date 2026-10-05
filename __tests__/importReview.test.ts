@@ -89,6 +89,23 @@ describe('import preview', () => {
     ).toBe(false);
   });
 
+  it('keeps already stored parts chosen so the import shares them', () => {
+    // Nur Bekanntes: kein Haken sichtbar, aber gewählt, damit das Löschen eines
+    // älteren Imports diese Einträge nicht entfernt.
+    const preview = readImportPreview({
+      runs: { duplicates: 2 },
+      wellness: { steps: 3 },
+      wellnessKnown: { weight: 4 },
+      strength: { duplicates: 1 },
+    })!;
+    const choice = defaultImportChoice(preview);
+    expect(choice.runs).toBe(true);
+    expect(choice.strength).toBe(true);
+    expect(choice.wellnessKinds).toEqual(['steps', 'weight']);
+    expect(choice.templateSuggestions).toBe(false);
+    expect(chosenCounts(preview, choice)).toEqual({ runs: 0, strength: 0, wellness: 3 });
+  });
+
   it('groups wellness kinds by the word the user sees', () => {
     const groups = wellnessGroups({ weight: 4, body_waist: 2, body_hips: 1 });
     expect(groups).toEqual([
