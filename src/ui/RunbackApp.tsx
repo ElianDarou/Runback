@@ -1724,11 +1724,14 @@ export function RunbackApp({
     void action(async () => {
       const created = startSession(template, Date.now());
       const session = reviseSession(created, created);
+      // Erst gespeichert, dann bedienbar: Eine Änderung davor hätte keinen
+      // gespeicherten Stand, auf dem sie aufbaut, und ginge verloren.
+      await native.saveStrengthSession(session);
+      strengthRef.current = { ...strengthRef.current, active: session };
       setStrength(current => ({ ...current, active: session }));
       setWorkoutOpen(true);
       setNow(Date.now());
       await loadRecentSessions(strengthRef.current);
-      await native.saveStrengthSession(session);
     });
   };
   const finishStrength = () => {
