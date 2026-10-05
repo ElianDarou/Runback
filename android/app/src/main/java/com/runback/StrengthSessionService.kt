@@ -95,23 +95,27 @@ class StrengthSessionService : Service() {
         val now = System.currentTimeMillis()
         val mirror = StrengthWorkout.mirror(store, session, now)
         getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(mirror))
-        schedule(mirror)
+        schedule(session, now)
     }
 
-    /** Hält das Handy bis zum Pausenende wach; sonst schläft der Handler mit der CPU ein. */
-    private fun schedule(mirror: JSONObject) {
-        val rest = mirror.optJSONObject("rest")
-        val endsAt = rest?.takeIf { it.has("endsAt") }?.optLong("endsAt")
+    /**
+     * Hält das Handy bis zum Pausenende wach; sonst schläft der Handler mit der
+     * CPU ein. Das Ende kommt aus der gespeicherten Einheit, nicht aus der
+     * Anzeige: Startet der Dienst kurz nach dem Ende neu, kommt das Signal noch.
+     */
+    private fun schedule(session: JSONObject, now: Long) {
+        val endsAt = if (StrengthWorkout.alerts(store).restTimer) StrengthLive.restEndsAt(session) else null
         if (endsAt == scheduledRestEnd) return
         worker.removeCallbacks(restDone)
         scheduledRestEnd = endsAt
-        val delay = endsAt?.let { it - System.currentTimeMillis() }
-        if (delay == null || delay <= 0) {
+        val delay = endsAt?.let { it - now }
+        if (delay == null || delay < -LATE_ALERT_MS) {
+            scheduledRestEnd = null
             wakeLock?.let { if (it.isHeld) it.release() }
             return
         }
-        wakeLock?.acquire(delay + 15_000L)
-        worker.postDelayed(restDone, delay)
+        wakeLock?.acquire(delay.coerceAtLeast(0L) + 15_000L)
+        worker.postDelayed(restDone, delay.coerceAtLeast(0L))
     }
 
     private fun onRestEnd() {
@@ -232,10 +236,12 @@ class StrengthSessionService : Service() {
             .put("exerciseIndex", exercise?.optInt("index") ?: 0).put("setId", set.optString("id"))))
         if (rest != null) {
             val paused = rest.optBoolean("paused")
+            val startedAt = rest.optLong("startedAt")
             builder.addAction(action(if (paused) "Weiter" else "Anhalten", 2, JSONObject()
-                .put("action", if (paused) StrengthLive.RESUME_REST else StrengthLive.PAUSE_REST).put("sessionId", sessionId)))
+                .put("action", if (paused) StrengthLive.RESUME_REST else StrengthLive.PAUSE_REST)
+                .put("sessionId", sessionId).put("restStartedAt", startedAt)))
             builder.addAction(action("Überspringen", 3, JSONObject()
-                .put("action", StrengthLive.SKIP_REST).put("sessionId", sessionId)))
+                .put("action", StrengthLive.SKIP_REST).put("sessionId", sessionId).put("restStartedAt", startedAt)))
         }
         return builder.build()
     }
@@ -273,6 +279,8 @@ class StrengthSessionService : Service() {
         private const val ACTIVE = "strength_active"
         /** Letzte gemeldete Pause; verhindert ein zweites Signal nach einem Neustart des Dienstes. */
         private const val ALERTED = "strength_rest_alerted"
+        /** Bis so lange nach dem Pausenende kommt das Signal nach einem Neustart noch; später wäre es irreführend. */
+        private const val LATE_ALERT_MS = 30_000L
         const val ACTION_COMMAND = "com.runback.strength.COMMAND"
         const val EXTRA_COMMAND = "command"
         @Volatile private var instance: StrengthSessionService? = null

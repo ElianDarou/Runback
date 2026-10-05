@@ -208,7 +208,9 @@ class RunStore(context: Context) : DocumentStore {
             transaction { addEvent(id, "resume", JSONObject().put("previousStatus", run.optString("status")).also {
                 commandId?.let { value -> it.put("commandId", value) }
             })
-                run.put("status", "recording").put("_tick", SystemClock.elapsedRealtime()); write(run) }
+                // Ende auf jetzt: Eine Wiederherstellung nach Absturz zählt die Pause davor nicht mit.
+                run.put("status", "recording").put("_tick", SystemClock.elapsedRealtime())
+                    .put("endTime", System.currentTimeMillis()); write(run) }
         }; present(JSONObject(run.toString()))
     }
     /** Unterbricht den aktiven Lauf; die Dauer reicht bis jetzt. Eine zweite Unterbrechung ändert nichts. */
@@ -1492,9 +1494,18 @@ class RunStore(context: Context) : DocumentStore {
             val lastSample = db.rawQuery("SELECT MAX(time) FROM samples WHERE run_id=?", arrayOf(id)).use {
                 if (it.moveToFirst() && !it.isNull(0)) it.getLong(0) else null
             }
-            val last = maxOf(end, lastSample?.takeIf { it <= now } ?: end)
+            // Nur das laufende Aufzeichnungsstück zählt: ab dem letzten Start oder Weiter.
+            val resumedAt = db.rawQuery("SELECT json FROM events WHERE run_id=?", arrayOf(id)).use { rows ->
+                var latest = 0L
+                while (rows.moveToNext()) JSONObject(rows.getString(0)).takeIf { it.optString("type") in setOf("start", "resume") }
+                    ?.optLong("at")?.let { if (it > latest) latest = it }
+                latest
+            }
+            val from = maxOf(end, resumedAt)
+            val last = maxOf(from, lastSample?.takeIf { it <= now } ?: from)
+            run.put("durationMs", run.optLong("durationMs") + (last - from))
             run.put("status", "interrupted").remove("_tick")
-            run.put("durationMs", run.optLong("durationMs") + (last - end)).put("endTime", last)
+            run.put("endTime", last)
             db.beginTransaction()
             try {
                 db.update("runs", ContentValues().apply { put("json", run.toString()) }, "id=?", arrayOf(id))

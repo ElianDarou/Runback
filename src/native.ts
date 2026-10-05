@@ -357,10 +357,15 @@ export const native = {
       await nativeCall<any>('saveStrengthTemplates', JSON.stringify(templates)),
     );
   },
-  async saveStrengthSession(session: StrengthSession): Promise<StrengthState> {
-    return normalizeStrength(
-      await nativeCall<any>('saveStrengthSession', JSON.stringify(session)),
+  /** `conflict`: Uhr oder Benachrichtigung waren schneller; `active` ist deren Stand. */
+  async saveStrengthSession(
+    session: StrengthSession,
+  ): Promise<StrengthState & { conflict: boolean }> {
+    const raw = await nativeCall<any>(
+      'saveStrengthSession',
+      JSON.stringify(session),
     );
+    return { ...normalizeStrength(raw), conflict: raw?.conflict === true };
   },
   /**
    * Änderungen an der laufenden Einheit, die nicht aus der App kommen: Uhr
@@ -389,14 +394,13 @@ export const native = {
   },
   async finishStrengthSession(
     session: StrengthSession,
-  ): Promise<StrengthState> {
-    return normalizeStrength(
-      await nativeCall<any>(
-        'finishStrengthSession',
-        JSON.stringify(session),
-        JSON.stringify(summarize(session)),
-      ),
+  ): Promise<StrengthState & { conflict: boolean }> {
+    const raw = await nativeCall<any>(
+      'finishStrengthSession',
+      JSON.stringify(session),
+      JSON.stringify(summarize(session)),
     );
+    return { ...normalizeStrength(raw), conflict: raw?.conflict === true };
   },
   async strengthSession(id: string): Promise<StrengthSession> {
     const raw = await nativeCall<any>('getStrengthSession', id);

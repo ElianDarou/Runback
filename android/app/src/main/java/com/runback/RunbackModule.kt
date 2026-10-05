@@ -160,23 +160,21 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         store.putDocument("strength_templates", JSONObject().put("templates", JSONArray(json))); strengthState()
     }
     // Die Bewegungsaufzeichnung hängt nur an; sie darf das Speichern einer Einheit nie verhindern.
+    // `conflict`: Uhr oder Benachrichtigung haben inzwischen gespeichert; die App wiederholt auf deren Stand.
     @ReactMethod fun saveStrengthSession(json: String, promise: Promise) = task(promise) {
-        StrengthWorkout.save(context, store, JSONObject(json))
-        strengthState()
+        if (StrengthWorkout.save(context, store, JSONObject(json))) strengthState()
+        else strengthState().put("conflict", true)
     }
     @ReactMethod fun discardStrengthSession(promise: Promise) = task(promise) {
-        val previous = StrengthWorkout.locked {
-            store.getDocument("strength_active").also { store.deleteDocument("strength_active") }
-        }
+        val previous = StrengthWorkout.discard(store)
         runCatching { MotionSessions.onStrengthDiscarded(context, store, previous) }
         StrengthWorkout.ended(context, store, previous?.optString("id"))
         strengthState()
     }
     @ReactMethod fun finishStrengthSession(json: String, summaryJson: String, promise: Promise) = task(promise) {
         val session = JSONObject(json)
-        val previous = StrengthWorkout.locked {
-            store.getDocument("strength_active").also { store.finishStrengthSession(session, JSONObject(summaryJson)) }
-        }
+        val (previous, finished) = StrengthWorkout.finish(store, session, JSONObject(summaryJson))
+        if (!finished) return@task strengthState().put("conflict", true)
         runCatching { MotionSessions.onStrengthFinished(context, store, previous, session, System.currentTimeMillis()) }
         StrengthWorkout.ended(context, store, session.optString("id"))
         strengthState()

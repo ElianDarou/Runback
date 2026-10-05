@@ -164,6 +164,28 @@ describe('Trainingsansicht', () => {
     expect(texts(tree)).not.toContain('Satz 2 gelöscht');
   });
 
+  it('übernimmt Werte, die Uhr oder Benachrichtigung gespeichert haben', () => {
+    const props = handlers();
+    const session = base();
+    const tree = render(session, props);
+    expect(tree.root.findAllByType(TextInput)[0].props.value).toBe('100');
+    const completed = completeSet(
+      session,
+      0,
+      session.exercises[0].sets[0].id,
+      1_000_000,
+      { actualWeightKg: 102.5, actualReps: 4 },
+    );
+    ReactTestRenderer.act(() => {
+      tree.update(
+        <WorkoutScreen history={[]} now={1_000_000} session={completed} {...props} />,
+      );
+    });
+    const inputs = tree.root.findAllByType(TextInput);
+    expect(inputs[0].props.value).toBe('102,5');
+    expect(inputs[1].props.value).toBe('4');
+  });
+
   it('lässt den einzigen Satz einer Übung nicht wegwischen', () => {
     const tree = render({ ...base(), currentExercise: 1 }, handlers());
     expect(swipeRows(tree)[0].props.accessibilityActions).toEqual([]);

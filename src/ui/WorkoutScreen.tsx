@@ -30,7 +30,7 @@ import {
   MINIMUM_SESSIONS_FOR_DIRECTION,
   type ProgressionAssessment,
 } from '../domain/progression';
-import { color, Copy, SwipeToDelete } from './components';
+import { color, Copy, radius, space, SwipeToDelete } from './components';
 
 /**
  * Aktive Trainingsansicht: Sätze in Sekunden bestätigen, Abweichungen ohne Wertung erfassen.
@@ -186,6 +186,14 @@ const SetRow = memo(function SetRow({
     set.actualRir === undefined ? '' : String(set.actualRir),
   );
   const [touched, setTouched] = useState(false);
+  // Uhr, Benachrichtigung oder ein gelöschter Satz davor ändern Werte und
+  // Vorschläge, während die Zeile stehen bleibt. Ohne eigene Eingabe folgt sie.
+  useEffect(() => {
+    if (touched) return;
+    setWeight(initialWeight === undefined ? '' : formatWeight(initialWeight));
+    setReps(initialReps === undefined ? '' : String(initialReps));
+    setRir(set.actualRir === undefined ? '' : String(set.actualRir));
+  }, [touched, initialWeight, initialReps, set.actualRir]);
   const done = set.completedAt !== undefined;
   const weightIsSuggested =
     !touched &&
@@ -890,12 +898,12 @@ const styles = StyleSheet.create({
   checkDone: { backgroundColor: color.green, borderColor: color.green },
   checkMark: { color: color.ink, fontSize: 18, fontWeight: '700' },
 
-  restBlock: { gap: 6, marginBottom: 4 },
-  restActions: { flexDirection: 'row', gap: 8 },
+  restBlock: { gap: space.xs, marginBottom: space.xxs },
+  restActions: { flexDirection: 'row', gap: space.xs },
   restButton: {
     flex: 1,
     minHeight: 48,
-    borderRadius: 8,
+    borderRadius: radius.sm,
     borderWidth: 1,
     borderColor: color.line,
     alignItems: 'center',
@@ -904,15 +912,15 @@ const styles = StyleSheet.create({
   undo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: space.xs,
     minHeight: 60,
-    paddingHorizontal: 4,
+    paddingHorizontal: space.xxs,
   },
   undoText: { flex: 1, color: color.muted, fontSize: 14 },
   undoButton: {
     minHeight: 48,
-    paddingHorizontal: 14,
-    borderRadius: 8,
+    paddingHorizontal: space.sm,
+    borderRadius: radius.sm,
     borderWidth: 1,
     borderColor: color.line,
     alignItems: 'center',

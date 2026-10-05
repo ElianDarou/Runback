@@ -105,6 +105,13 @@ export interface StrengthSession {
   /** Bereits angehaltene Zeit dieser Pause in ms, ohne die laufende Unterbrechung. */
   restPausedMs?: number;
   note?: string;
+  /**
+   * Kennung des gespeicherten Stands. Uhr und Benachrichtigung ändern die
+   * Einheit auch ohne die App; ein Speichern trägt deshalb `baseRevision`, und
+   * das Handy nimmt es nur an, wenn es auf dem gespeicherten Stand aufbaut.
+   */
+  revision?: string;
+  baseRevision?: string;
   modelVersion: string;
   catalogVersion: string;
   importSource?: {
@@ -346,6 +353,21 @@ export function skipSet(
       completedAt: undefined,
     }),
   );
+}
+
+/** Neuer Stand auf Grundlage von `base`; siehe `StrengthSession.revision`. */
+export function revise(
+  base: StrengthSession,
+  next: StrengthSession,
+  random: () => number = Math.random,
+): StrengthSession {
+  const rest = { ...next };
+  delete rest.baseRevision;
+  return {
+    ...rest,
+    revision: `${Date.now().toString(36)}-${random().toString(36).slice(2, 8)}`,
+    ...(base.revision ? { baseRevision: base.revision } : {}),
+  };
 }
 
 /** Pause nach einem Satz, wenn der Nutzer nichts anderes eingestellt hat. */

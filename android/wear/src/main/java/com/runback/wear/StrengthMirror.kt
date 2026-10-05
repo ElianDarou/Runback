@@ -45,7 +45,8 @@ object StrengthMirror {
         val previous = store.getDocument(DOC)
         // Ein älterer Stand, der nach einem neueren ankommt, ändert nichts.
         if (previous != null && previous.optString("sessionId") == state.optString("sessionId") &&
-            previous.optLong("updatedAt") > state.optLong("updatedAt")) return
+            (previous.optLong("updatedAt") > state.optLong("updatedAt") ||
+                (!previous.optBoolean("active") && state.optBoolean("active")))) return
         store.putDocument(DOC, state)
         if (state.optBoolean("active")) {
             notify(context, state)
@@ -82,6 +83,7 @@ object StrengthMirror {
                     command.getString("action"), command.getString("sessionId"),
                     command.optString("setId").takeIf { it.isNotBlank() },
                     if (command.has("exerciseIndex")) command.getInt("exerciseIndex") else null,
+                    if (command.has("restStartedAt")) command.getLong("restStartedAt") else null,
                 )
                 val nodes = Tasks.await(Wearable.getNodeClient(app).connectedNodes, 5, TimeUnit.SECONDS)
                 nodes.count { node ->
@@ -113,9 +115,15 @@ object StrengthMirror {
         else @Suppress("DEPRECATION") vibrator.vibrate(effect, AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build())
     }
 
+    /** Pausenbefehle tragen die angezeigte Pause, damit sie keine neuere treffen. */
     fun command(action: String, state: JSONObject, vararg fields: Pair<String, Any>) = JSONObject()
         .put("action", action).put("sessionId", state.optString("sessionId"))
-        .apply { fields.forEach { (key, value) -> put(key, value) } }
+        .apply {
+            if (action in setOf(StrengthLive.PAUSE_REST, StrengthLive.RESUME_REST, StrengthLive.SKIP_REST)) {
+                state.optJSONObject("rest")?.optLong("startedAt")?.takeIf { it > 0 }?.let { put("restStartedAt", it) }
+            }
+            fields.forEach { (key, value) -> put(key, value) }
+        }
 
     private fun notify(context: Context, state: JSONObject) {
         val manager = context.getSystemService(NotificationManager::class.java)

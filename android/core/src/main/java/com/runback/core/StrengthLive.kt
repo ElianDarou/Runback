@@ -123,6 +123,9 @@ object StrengthLive {
         if (session.optString("status") != "active") return null
         if (command.optString("sessionId") != session.optString("id")) return null
         val next = JSONObject(session.toString())
+        // Pausenbefehle gelten der Pause, die der Absender gesehen hat, nicht einer neueren.
+        if (command.optString("action") in setOf(PAUSE_REST, RESUME_REST, SKIP_REST) && command.has("restStartedAt") &&
+            command.optLong("restStartedAt") != next.number("restStartedAt")?.toLong()) return null
         return when (command.optString("action")) {
             COMPLETE_SET -> completeSet(next, command, now, history)
             PAUSE_REST -> if (restPaused(next) || restRemaining(next, now) == null) null
@@ -206,6 +209,7 @@ object StrengthLive {
             .put("name", session.optString("name"))
             .put("startTime", session.optLong("startTime"))
             .put("updatedAt", now)
+            .put("revision", session.optString("revision"))
             .put("completedSets", completedSets)
             .put("totalSets", totalSets)
             .put("currentExercise", current)
@@ -228,6 +232,7 @@ object StrengthLive {
         val remaining = restRemaining(session, now)
         if (restTimer && remaining != null) {
             val rest = JSONObject()
+                .put("startedAt", session.optLong("restStartedAt"))
                 .put("remaining", remaining)
                 .put("seconds", session.optDouble("restSeconds"))
                 .put("paused", restPaused(session))

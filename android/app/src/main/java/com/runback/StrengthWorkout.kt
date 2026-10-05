@@ -9,6 +9,7 @@ import com.runback.core.RunStore
 import com.runback.core.StrengthLive
 import com.runback.core.WearProtocol
 import org.json.JSONObject
+import java.util.UUID
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -17,8 +18,9 @@ import java.util.concurrent.TimeUnit
  * (StrengthSessionService), Uhr und Pausenende.
  *
  * Jede Änderung an `strength_active` läuft hier durch — aus der App
- * (`save`) wie von Uhr und Benachrichtigung (`command`). Danach folgen
- * Benachrichtigung, Uhr und die App (Ereignis `EVENT`) dem neuen Stand.
+ * (`save`, `finish`) wie von Uhr und Benachrichtigung (`command`). Ein Stand
+ * aus der App trägt `baseRevision`; baut er nicht auf dem gespeicherten auf,
+ * wird er abgelehnt und die App wiederholt ihre Änderung auf dem neueren.
  */
 object StrengthWorkout {
     const val EVENT = "runbackStrengthChanged"
@@ -32,23 +34,43 @@ object StrengthWorkout {
     /** Meldet der App einen Stand, den nicht sie selbst geschrieben hat. */
     @Volatile var listener: ((JSONObject) -> Unit)? = null
 
-    /** Liest und schreibt `strength_active` ohne Wettlauf mit Uhr und Benachrichtigung. */
-    fun <T> locked(block: () -> T): T = synchronized(lock, block)
+    /** Baut `next` auf dem gespeicherten Stand auf? Ohne Angabe (ältere App, neue Einheit) ja. */
+    private fun fits(stored: JSONObject?, next: JSONObject): Boolean {
+        if (stored == null || stored.optString("id") != next.optString("id")) return true
+        val base = next.optString("baseRevision").takeIf { next.has("baseRevision") && it.isNotBlank() } ?: return true
+        return stored.optString("revision") == base
+    }
 
-    /** Speichert aus der App; gibt den vorherigen Stand für die Bewegungsmarken zurück. */
-    fun save(context: Context, store: RunStore, session: JSONObject): JSONObject? {
+    /** Speichert aus der App. `false`: veralteter Stand, nichts geschrieben. */
+    fun save(context: Context, store: RunStore, session: JSONObject): Boolean {
         val previous = synchronized(lock) {
-            store.getDocument(ACTIVE).also { store.putDocument(ACTIVE, session) }
+            val stored = store.getDocument(ACTIVE)
+            if (!fits(stored, session)) return false
+            session.remove("baseRevision")
+            store.putDocument(ACTIVE, session)
+            stored
         }
         runCatching { MotionSessions.onStrengthSaved(context, store, previous, session, System.currentTimeMillis()) }
-        sync(context, store, session)
-        return previous
+        sync(context)
+        return true
+    }
+
+    /** Beendet aus der App. `null`: veralteter Stand; sonst der Stand davor. */
+    fun finish(store: RunStore, session: JSONObject, summary: JSONObject): Pair<JSONObject?, Boolean> = synchronized(lock) {
+        val stored = store.getDocument(ACTIVE)
+        if (!fits(stored, session)) return@synchronized stored to false
+        session.remove("baseRevision")
+        store.finishStrengthSession(session, summary)
+        stored to true
+    }
+
+    fun discard(store: RunStore): JSONObject? = synchronized(lock) {
+        store.getDocument(ACTIVE).also { store.deleteDocument(ACTIVE) }
     }
 
     /** Einheit beendet oder verworfen: `strength_active` ist schon gelöscht. */
     fun ended(context: Context, store: RunStore, sessionId: String?) {
-        StrengthSessionService.refresh(context)
-        publish(context, StrengthLive.ended(sessionId, System.currentTimeMillis()))
+        sync(context, sessionId)
         if (sessionId != null && store.getDocument(WATCH)?.optString("sessionId") == sessionId) store.deleteDocument(WATCH)
     }
 
@@ -57,28 +79,24 @@ object StrengthWorkout {
         val store = RunStore(context)
         val now = System.currentTimeMillis()
         val (previous, next) = synchronized(lock) {
-            val active = store.getDocument(ACTIVE) ?: run {
-                publish(context, StrengthLive.ended(command.optString("sessionId"), now))
-                return false
-            }
-            val next = StrengthLive.apply(active, command, now, history(store)) ?: return@synchronized active to null
+            val active = store.getDocument(ACTIVE) ?: return@synchronized null to null
+            val next = StrengthLive.apply(active, command, now, history(store))
+                ?.put("revision", UUID.randomUUID().toString())
+                ?: return@synchronized active to null
             store.putDocument(ACTIVE, next)
+            // Im Schloss, damit die App die Stände in derselben Reihenfolge bekommt.
+            runCatching { listener?.invoke(next) }.onFailure { Log.w(TAG, "App konnte nicht benachrichtigt werden", it) }
             active to next
         }
-        if (next == null) {
-            // Veralteter Befehl: Die Uhr bekommt den aktuellen Stand noch einmal.
-            sync(context, store, previous)
-            return false
-        }
-        runCatching { MotionSessions.onStrengthSaved(context, store, previous, next, now) }
-        sync(context, store, next)
-        runCatching { listener?.invoke(next) }.onFailure { Log.w(TAG, "App konnte nicht benachrichtigt werden", it) }
-        return true
+        if (next != null) runCatching { MotionSessions.onStrengthSaved(context, store, previous, next, now) }
+        // Auch ein veralteter Befehl bekommt den aktuellen Stand zurück.
+        sync(context, command.optString("sessionId"))
+        return next != null
     }
 
     /** Die App ist offen und findet eine laufende Einheit: Benachrichtigung und Uhr nachziehen. */
     fun resume(context: Context, store: RunStore) {
-        store.getDocument(ACTIVE)?.let { sync(context, store, it) }
+        if (store.getDocument(ACTIVE) != null) sync(context)
     }
 
     fun watchSeen(context: Context, sessionId: String, nodeId: String) {
@@ -113,25 +131,25 @@ object StrengthWorkout {
     fun mirror(store: RunStore, session: JSONObject, now: Long = System.currentTimeMillis()): JSONObject =
         StrengthLive.mirror(session, history(store), now, alerts(store).restTimer)
 
-    private fun sync(context: Context, store: RunStore, session: JSONObject) {
+    /**
+     * Benachrichtigung und Uhr folgen dem gespeicherten Stand. Die Uhr bekommt
+     * ihn erst beim Senden gelesen, damit ein später gesendeter Auftrag nie
+     * einen älteren Stand (etwa eine schon beendete Einheit) zurückbringt.
+     */
+    private fun sync(context: Context, endedId: String? = null) {
         StrengthSessionService.refresh(context)
-        if (session.optString("status") == "active") {
-            sender.execute { runCatching { put(context, mirror(store, session)) } }
-        } else {
-            publish(context, StrengthLive.ended(session.optString("id"), System.currentTimeMillis()))
+        sender.execute {
+            runCatching {
+                val store = RunStore(context)
+                val active = store.getDocument(ACTIVE)?.takeIf { it.optString("status") == "active" }
+                put(context, if (active != null) mirror(store, active)
+                    else StrengthLive.ended(endedId, System.currentTimeMillis()))
+            }.onFailure { Log.w(TAG, "Trainingsstand für die Uhr fehlgeschlagen", it) }
         }
     }
 
     /** Nach dem Pausenende: Die Uhr nimmt den Timer weg. */
-    fun republish(context: Context) {
-        val store = RunStore(context)
-        val session = store.getDocument(ACTIVE) ?: return
-        sender.execute { runCatching { put(context, mirror(store, session)) } }
-    }
-
-    private fun publish(context: Context, state: JSONObject) {
-        sender.execute { put(context, state) }
-    }
+    fun republish(context: Context) = sync(context)
 
     /** Ein DataItem je Telefon: Die Uhr bekommt den letzten Stand auch nach einer Funkpause. */
     private fun put(context: Context, state: JSONObject) {

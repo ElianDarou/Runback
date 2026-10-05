@@ -102,6 +102,7 @@ import {
   completeSet as completeStrengthSet,
   pauseRest,
   removeSet as removeStrengthSet,
+  revise as reviseSession,
   restoreSet as restoreStrengthSet,
   resumeRest,
   editSet as editStrengthSet,
@@ -333,6 +334,8 @@ const PARENT_PAGE: Partial<Record<Page, Page>> = {
   imports: 'data',
 };
 type VerlaufView = 'units' | 'stats';
+/** So oft wird eine Änderung auf einem neueren Stand von Uhr oder Benachrichtigung wiederholt. */
+const MAX_SAVE_RETRIES = 3;
 type StartKind = 'run' | 'strength';
 type TemplatesView = 'strength' | 'run';
 const VERLAUF_VIEWS: { value: VerlaufView; label: string }[] = [
@@ -1211,6 +1214,7 @@ export function RunbackApp({
       native.onStrengthChanged?.(next => {
         const current = strengthRef.current.active;
         if (!next || !current || next.id !== current.id) return;
+        if (next.revision && next.revision === current.revision) return;
         strengthRef.current = { ...strengthRef.current, active: next };
         setStrength(value => ({ ...value, active: next }));
         setNow(Date.now());
@@ -1586,16 +1590,37 @@ export function RunbackApp({
   // ── Krafttraining ────────────────────────────────────────────────────────
   // Jede Änderung schreibt die laufende Einheit sofort weg, damit ein Absturz
   // oder ein leerer Akku keine bestätigten Sätze verliert (T-4).
-  const persistSession = useCallback((next: StrengthSession) => {
-    strengthRef.current = { ...strengthRef.current, active: next };
-    setStrength(current => ({ ...current, active: next }));
-    void native.saveStrengthSession(next).catch(e => setError(e.message));
-  }, []);
+  // Uhr und Benachrichtigung können dazwischen gespeichert haben. Dann lehnt
+  // das Handy ab, und dieselbe Änderung wird auf dessen Stand wiederholt.
+  const persistSession = useCallback(
+    (
+      change: (session: StrengthSession) => StrengthSession,
+      base: StrengthSession,
+      attempt = 0,
+    ) => {
+      const next = reviseSession(base, change(base));
+      strengthRef.current = { ...strengthRef.current, active: next };
+      setStrength(current => ({ ...current, active: next }));
+      void native
+        .saveStrengthSession(next)
+        .then(result => {
+          if (!result.conflict || !result.active) return;
+          if (attempt < MAX_SAVE_RETRIES) {
+            persistSession(change, result.active, attempt + 1);
+          } else {
+            strengthRef.current = { ...strengthRef.current, active: result.active };
+            setStrength(current => ({ ...current, active: result.active }));
+          }
+        })
+        .catch(e => setError(e.message));
+    },
+    [],
+  );
   const changeSession = useCallback(
     (change: (session: StrengthSession) => StrengthSession) => {
       const active = strengthRef.current.active;
       if (active) {
-        persistSession(change(active));
+        persistSession(change, active);
       }
     },
     [persistSession],
@@ -1628,9 +1653,23 @@ export function RunbackApp({
     if (!active) {
       return;
     }
-    const finished = finishSession(active, Date.now());
+    const endTime = Date.now();
     void action(async () => {
-      const next = await native.finishStrengthSession(finished);
+      let base = active;
+      let next = await native.finishStrengthSession(
+        reviseSession(base, finishSession(base, endTime)),
+      );
+      // Abgehakt auf der Uhr, während hier „Beenden“ lief: deren Stand beenden.
+      for (let attempt = 0; next.conflict && next.active; attempt++) {
+        if (attempt >= MAX_SAVE_RETRIES) {
+          throw new Error('Das Training hat sich gerade geändert. Beende es erneut.');
+        }
+        base = next.active;
+        next = await native.finishStrengthSession(
+          reviseSession(base, finishSession(base, endTime)),
+        );
+      }
+      strengthRef.current = next;
       setStrength(next);
       try {
         setStrengthSessions(await native.strengthSessions(500));

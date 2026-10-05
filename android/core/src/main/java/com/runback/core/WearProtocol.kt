@@ -108,7 +108,13 @@ object WearProtocol {
     const val STRENGTH_ALERT_PATH = "/runback/strength/alert"
     const val STRENGTH_SEEN_PATH = "/runback/strength/seen"
 
-    fun strengthCommand(action: String, sessionId: String, setId: String? = null, exerciseIndex: Int? = null): ByteArray {
+    fun strengthCommand(
+        action: String,
+        sessionId: String,
+        setId: String? = null,
+        exerciseIndex: Int? = null,
+        restStartedAt: Long? = null,
+    ): ByteArray {
         require(action in StrengthLive.ACTIONS) { "Unbekannter Trainingsbefehl" }
         require(sessionId.matches(ID_PATTERN)) { "Ungültige Einheitskennung" }
         return JSONObject()
@@ -118,6 +124,7 @@ object WearProtocol {
             .apply {
                 setId?.let { put("setId", it) }
                 exerciseIndex?.let { put("exerciseIndex", it) }
+                restStartedAt?.let { put("restStartedAt", it) }
             }
             .toString().toByteArray(Charsets.UTF_8)
     }
@@ -129,6 +136,7 @@ object WearProtocol {
         require(payload.optString("sessionId").matches(ID_PATTERN)) { "Ungültige Einheitskennung" }
         if (payload.has("setId")) require(payload.optString("setId").length in 1..200) { "Ungültige Satzkennung" }
         if (payload.has("exerciseIndex")) require(payload.optInt("exerciseIndex", -1) in 0..999) { "Ungültige Übung" }
+        if (payload.has("restStartedAt")) require(payload.optLong("restStartedAt", 0L) > 0L) { "Ungültige Pause" }
         return payload
     }
 

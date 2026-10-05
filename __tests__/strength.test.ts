@@ -15,6 +15,7 @@ import {
   restEndsAt,
   restoreSet,
   restRemaining,
+  revise,
   resumeRest,
   selectExercise,
   sessionBest1RM,
@@ -323,6 +324,20 @@ describe('Übungen wechseln und ergänzen', () => {
     const pushUp = CATALOG.find(exercise => exercise.id === 'push_up')!;
     const session = addExercise(startSession(null, 1), pushUp, 2);
     expect(session.exercises[0].sets[0].planned.loadKind).toBe('bodyweight');
+  });
+});
+
+describe('Stand der Einheit', () => {
+  it('baut jeden gespeicherten Stand auf dem vorherigen auf', () => {
+    const session = start();
+    const first = revise(session, session, () => 0.5);
+    expect(first.revision).toBeTruthy();
+    expect(first.baseRevision).toBeUndefined();
+    const second = revise(first, { ...first, note: 'x' }, () => 0.25);
+    expect(second.baseRevision).toBe(first.revision);
+    expect(second.revision).not.toBe(first.revision);
+    // Eine alte Basis wandert nicht mit.
+    expect(revise(second, second).baseRevision).toBe(second.revision);
   });
 });
 

@@ -91,6 +91,19 @@ class StrengthLiveTest {
         assertNull(StrengthLive.apply(skipped, command(StrengthLive.SKIP_REST), 2_000L, emptyList()))
     }
 
+    @Test fun restCommandsOnlyHitTheRestTheSenderSaw() {
+        val bench = exercise("bench", "Bankdrücken", set("a", planned(reps = 8)), set("b", planned(reps = 8)), set("c", planned(reps = 8)))
+        val first = StrengthLive.apply(session(bench), command(StrengthLive.COMPLETE_SET), 1_000L, emptyList())!!
+        val second = StrengthLive.apply(first, command(StrengthLive.COMPLETE_SET), 5_000L, emptyList())!!
+        // Die Uhr zeigt noch die erste Pause.
+        assertNull(StrengthLive.apply(second, command(StrengthLive.SKIP_REST, "restStartedAt" to 1_000L), 6_000L, emptyList()))
+        assertNull(StrengthLive.apply(second, command(StrengthLive.PAUSE_REST, "restStartedAt" to 1_000L), 6_000L, emptyList()))
+        assertFalse(StrengthLive.apply(second, command(StrengthLive.SKIP_REST, "restStartedAt" to 5_000L), 6_000L, emptyList())!!
+            .has("restStartedAt"))
+        assertEquals(5_000L, StrengthLive.mirror(second, emptyList(), 6_000L, restTimer = true)
+            .getJSONObject("rest").getLong("startedAt"))
+    }
+
     @Test fun selectExerciseClampsAndIgnoresTheCurrentOne() {
         val workout = session(exercise("a", "A", set("1", planned())), exercise("b", "B", set("2", planned())))
         assertNull(StrengthLive.apply(workout, command(StrengthLive.SELECT_EXERCISE, "exerciseIndex" to 0), 1L, emptyList()))
