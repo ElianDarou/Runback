@@ -105,4 +105,15 @@ class StrongImportTest {
         } finally { java.util.TimeZone.setDefault(previous) }
     }
 
+    @Test fun forgottenFinishIsFlaggedWithoutChangingTheReportedDuration() {
+        val csv = "Date;Workout Name;Duration (sec);Exercise Name;Set Order;Weight (kg);Reps\n" +
+            "2026-07-28 21:03:31;Pull;20000;Row;1;40;8\n" +
+            "2026-07-29 18:00:00;Pull;1800;Row;1;40;8\n"
+        val result = VendorImports.parseStrongCsv(csv, "strong")
+        val late = JSONObject(result.workouts[0].extra).getJSONObject("durationCheck")
+        assertTrue(late.getBoolean("suspect"))
+        assertEquals(com.runback.core.StrongDuration.MODEL_VERSION, late.getString("modelVersion"))
+        assertEquals(20000.0, result.workouts[0].durationSec, 0.0)
+        assertFalse(JSONObject(result.workouts[1].extra).getJSONObject("durationCheck").getBoolean("suspect"))
+    }
 }

@@ -41,6 +41,12 @@ jest.mock('../src/native', () => {
         Promise.resolve(emptyStrengthState()),
       ),
       strengthSession: jest.fn(() => Promise.resolve(null)),
+      commitImport: jest.fn(() =>
+        Promise.resolve({ state: 'completed', strength: 1 }),
+      ),
+      discardImport: jest.fn(() => Promise.resolve({ state: 'idle' })),
+      importBatches: jest.fn(() => Promise.resolve([])),
+      deleteImportBatch: jest.fn(() => Promise.resolve({})),
     },
   };
 });
@@ -1163,8 +1169,22 @@ describe('Krafthistorie nach Import', () => {
     ).workouts.map(importedStrengthSession);
     const previousCall = jest.mocked(nativeCall).getMockImplementation();
     const previousSessions = jest.mocked(native.strengthSessions).getMockImplementation();
+    // Erst eine Vorschau; gespeichert wird erst mit „übernehmen“.
     jest.mocked(nativeCall).mockImplementation(async method => (
-      method === 'importFiles' ? { state: 'done', strength: 1 } : {}
+      method === 'importFiles'
+        ? {
+            state: 'review',
+            token: 'vorschau',
+            files: ['strong.csv'],
+            preview: {
+              strength: {
+                workouts: [
+                  { id: 'strong:push', time: Date.now() - DAY, name: 'Import Push', sets: 1 },
+                ],
+              },
+            },
+          }
+        : {}
     ) as never);
     jest.mocked(native.strengthSessions).mockResolvedValueOnce([]).mockResolvedValueOnce(sessions);
     const tree = await render();
@@ -1172,6 +1192,12 @@ describe('Krafthistorie nach Import', () => {
       await tap(tree, 'Einstellungen');
       await tap(tree, 'Deine Daten');
       await tap(tree, 'Dateien importieren');
+      expect(native.commitImport).not.toHaveBeenCalled();
+      await tap(tree, '1 Eintrag übernehmen');
+      expect(native.commitImport).toHaveBeenCalledWith(
+        'vorschau',
+        expect.objectContaining({ strength: true, templateSuggestions: true }),
+      );
       await tap(tree, 'Verlauf');
       expect(screenText(tree)).toContain('Import Push');
       await tap(tree, 'Statistik');

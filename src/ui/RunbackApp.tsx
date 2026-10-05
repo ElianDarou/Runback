@@ -70,6 +70,13 @@ import { TrainingChat } from './TrainingChat';
 import { DeviceSettings } from './DeviceSettings';
 import { WearRecordingRow } from './WearRecordingRow';
 import { VendorImport } from './VendorImport';
+import { ImportReview } from './ImportReview';
+import { ImportHistory } from './ImportHistory';
+import {
+  readImportPreview,
+  type ImportBatch,
+  type ImportChoice,
+} from '../domain/importReview';
 import { ImportedTemplates } from './ImportedTemplates';
 import { acceptImportedTemplate } from '../domain/strengthImports';
 import { WorkoutScreen } from './WorkoutScreen';
@@ -290,6 +297,7 @@ type Page =
   | 'devices'
   | 'data'
   | 'vendor-import'
+  | 'imports'
   | 'models'
   | 'development'
   | 'chat'
@@ -316,6 +324,7 @@ const PARENT_PAGE: Partial<Record<Page, Page>> = {
   features: 'settings',
   'features-home': 'features',
   'vendor-import': 'data',
+  imports: 'data',
 };
 type VerlaufView = 'units' | 'stats';
 type StartKind = 'run' | 'strength';
@@ -614,6 +623,12 @@ export function RunbackApp({
   const [templatesParent, setTemplatesParent] = useState<Page>('main');
   const [note, setNote] = useState('');
   const [importStatus, setImportStatus] = useState<any>(null);
+  // Zählt gespeicherte und gelöschte Importe, damit Vorschläge neu laden.
+  const [importRevision, setImportRevision] = useState(0);
+  const [importBatches, setImportBatches] = useState<ImportBatch[] | null>(
+    null,
+  );
+  const [importBatchesError, setImportBatchesError] = useState('');
   const [moreDetails, setMoreDetails] = useState(false);
   const [criteriaOpen, setCriteriaOpen] = useState(false);
   const [pastRecommendationOpen, setPastRecommendationOpen] = useState<
@@ -1294,6 +1309,28 @@ export function RunbackApp({
     return () => clearInterval(timer);
   }, [importStatus?.state, refresh]);
 
+  useEffect(() => {
+    if (page !== 'imports') {
+      return;
+    }
+    let current = true;
+    setImportBatchesError('');
+    native
+      .importBatches()
+      .then(batches => current && setImportBatches(batches))
+      .catch(e => {
+        if (current) {
+          setImportBatches([]);
+          setImportBatchesError(
+            e instanceof Error ? e.message : 'Importe konnten nicht geladen werden.',
+          );
+        }
+      });
+    return () => {
+      current = false;
+    };
+  }, [page]);
+
   const openRun = useCallback(
     (id: string) => {
       void action(async () => {
@@ -1885,14 +1922,57 @@ export function RunbackApp({
           .catch(() => {});
       }, 700);
       try {
+        // Liest nur; gespeichert wird erst nach der Wahl im Sheet „Import prüfen“.
         const result = await nativeCall<any>('importFiles');
         setImportStatus(result.cancelled ? null : result);
-        await refresh();
-        setStrengthSessions(await native.strengthSessions(500));
-        setStrengthHistoryAvailable(true);
       } finally {
         clearInterval(timer);
       }
+    });
+  };
+  const afterImportChange = async () => {
+    // Vorlagen sind eigene Dokumente und ändern sich durch Importe nicht.
+    setImportRevision(value => value + 1);
+    await refresh();
+    setStrengthSessions(await native.strengthSessions(500));
+    setStrengthHistoryAvailable(true);
+    setImportBatches(await native.importBatches());
+  };
+  const commitImport = (choice: ImportChoice) => {
+    const token = importStatus?.token;
+    if (typeof token !== 'string') {
+      return;
+    }
+    void action(async () => {
+      const timer = setInterval(() => {
+        nativeCall<any>('getImportStatus')
+          .then(setImportStatus)
+          .catch(() => {});
+      }, 700);
+      try {
+        setImportStatus(await native.commitImport(token, choice));
+      } finally {
+        clearInterval(timer);
+      }
+      await afterImportChange();
+    });
+  };
+  const discardImport = () => {
+    const token = importStatus?.token;
+    void action(async () => {
+      if (typeof token === 'string') {
+        await native.discardImport(token);
+      }
+      setImportStatus(null);
+    });
+  };
+  const deleteImport = (batch: ImportBatch) => {
+    void action(async () => {
+      await native.deleteImportBatch(batch.id);
+      setSelected(null);
+      setSelectedSession(null);
+      await afterImportChange();
+      setMessage('Import gelöscht.');
     });
   };
   const runImport = () => beginImport(false);
@@ -1903,7 +1983,8 @@ export function RunbackApp({
       .catch(e => setError(e.message));
   };
   // Nur Zähler, die etwas sagen: „Importiert“ immer, der Rest ab 1.
-  const importSummary = importStatus
+  const importSummary =
+    importStatus && importStatus.state !== 'review'
     ? [
         `Importiert: ${importStatus.imported ?? 0}`,
         ...(
@@ -1914,6 +1995,7 @@ export function RunbackApp({
             ['Fehlgeschlagen', importStatus.failed],
             ['Kontextwerte', importStatus.wellness],
             ['Krafteinheiten', importStatus.strength],
+            ['Nicht gewählt', importStatus.excluded],
           ] as [string, number | undefined][]
         )
           .filter(([, count]) => (count ?? 0) > 0)
@@ -4386,7 +4468,7 @@ export function RunbackApp({
         <Copy muted>
           FIT, GPX, TCX oder ZIP. Doppelte Läufe werden erkannt.
         </Copy>
-        {importStatus ? (
+        {importStatus && importStatus.state !== 'review' ? (
           <>
             <Copy>{importSummary}</Copy>
             {importStatus.state === 'running' ? (
@@ -4415,6 +4497,11 @@ export function RunbackApp({
           title="Aus anderen Apps"
           subtitle="Fitbit, Strava, Garmin, Apple Health, Samsung und weitere"
           onPress={() => openPage('vendor-import')}
+        />
+        <Row
+          title="Deine Importe"
+          subtitle="Frühere Importe ansehen oder löschen"
+          onPress={() => openPage('imports')}
         />
       </Section>
       <View style={styles.sectionGap}>
@@ -4531,12 +4618,64 @@ export function RunbackApp({
     </>
   );
 
+  const renderImports = () => (
+    <ImportHistory
+      batches={importBatches}
+      error={importBatchesError}
+      busy={busy || importStatus?.state === 'running'}
+      onDelete={deleteImport}
+      onImport={runVendorImport}
+    />
+  );
+
+  const importPreview = useMemo(
+    () =>
+      importStatus?.state === 'review'
+        ? readImportPreview(importStatus.preview)
+        : null,
+    [importStatus?.state, importStatus?.preview],
+  );
+  const renderImportReview = () => (
+    <Sheet
+      visible={importPreview !== null}
+      title="Import prüfen"
+      onClose={discardImport}
+    >
+      {importPreview ? (
+        <ImportReview
+          key={String(importStatus?.token)}
+          preview={importPreview}
+          files={Array.isArray(importStatus?.files) ? importStatus.files : []}
+          problems={{
+            failed: Number(importStatus?.failed) || 0,
+            skipped: Number(importStatus?.skipped) || 0,
+            nonRunning: Number(importStatus?.nonRunning) || 0,
+            errors: (Array.isArray(importStatus?.errors)
+              ? importStatus.errors
+              : []
+            ).map((item: any) =>
+              typeof item === 'string'
+                ? item
+                : `${item?.file ? `${item.file}: ` : ''}${
+                    item?.message || item?.reason || ''
+                  }`,
+            ),
+          }}
+          busy={busy}
+          onCommit={commitImport}
+          onDiscard={discardImport}
+        />
+      ) : null}
+    </Sheet>
+  );
+
   const renderVendorImport = () => (
     <VendorImport
       busy={busy}
       importStatus={importStatus}
       onImport={runVendorImport}
       onCancelImport={cancelImport}
+      onOpenImports={() => openPage('imports')}
       onOpenTemplates={() => {
         setTemplatesView('strength');
         openPage('templates');
@@ -4636,7 +4775,7 @@ export function RunbackApp({
       {templatesView === 'strength' ? (
         <>
           <ImportedTemplates
-            refreshKey={`${importStatus?.state ?? ''}:${importStatus?.strength ?? ''}:${importStatus?.strengthDuplicates ?? ''}`}
+            refreshKey={`${importRevision}:${importStatus?.state ?? ''}:${importStatus?.strength ?? ''}:${importStatus?.strengthDuplicates ?? ''}`}
             templates={strength.templates}
             dismissedIds={settings.dismissedStrengthImportTemplateIds ?? []}
             busy={busy}
@@ -4962,6 +5101,8 @@ export function RunbackApp({
     renderData()
   ) : page === 'vendor-import' ? (
     renderVendorImport()
+  ) : page === 'imports' ? (
+    renderImports()
   ) : page === 'muscle-map' ? (
     renderMuscleMap()
   ) : page === 'models' ? (
@@ -5213,6 +5354,7 @@ export function RunbackApp({
             setPage('main');
           }}
         />
+        {renderImportReview()}
       </View>
     );
   }
@@ -5529,6 +5671,7 @@ export function RunbackApp({
       </View>
       {renderStartSheet()}
       {renderPurposeSheet()}
+      {renderImportReview()}
     </View>
   );
 }

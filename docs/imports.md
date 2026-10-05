@@ -7,6 +7,18 @@ hier importieren** — keine Cloud-Verbindung, kein Konto.
 In der App: **Mehr → Deine Daten → App-Importe**, dann Quelle wählen und
 Datei(en) auswählen. ZIP-Archive können direkt eingelesen werden.
 
+Runback liest die Dateien zuerst nur und zeigt unter **Import prüfen**, was
+neu wäre: Läufe, Krafteinheiten (auch einzeln), Kontextwerte je Art und ob
+Kraftvorlagen vorgeschlagen werden sollen. Gespeichert wird erst nach
+„übernehmen“.
+
+Unter **Deine Daten → Deine Importe** steht jeder Import und lässt sich als
+Ganzes löschen — ohne Sperre, die Dateien lassen sich danach neu importieren.
+Was ein anderer Import ebenfalls geliefert hat, bleibt. Übernommene Vorlagen,
+eigene Aufzeichnungen und Health-Connect-Läufe gehören keinem Import und
+bleiben immer. Importe aus der Zeit vor dieser Liste erscheinen je Quelle als
+„früherer Import“.
+
 ## Dateiformate
 
 | Format | Inhalt | Was Runback daraus macht |
@@ -49,6 +61,10 @@ Passwortgeschützte ZIPs werden nicht unterstützt — vorher entpacken.
   Planänderung.
 - **Krafttraining** (Sätze, Gewicht, Wiederholungen, RPE) erscheint als
   Krafteinheiten. Strong exportiert keine Einheit; Runback nimmt **kg** an.
+  Strong speichert keine Satzzeiten, nur Start und „Workout beenden“. Passt
+  die Dauer zu keiner Satzzahl (mehr als 30 Minuten plus 6 Minuten je Satz),
+  wurde die Einheit vermutlich zu spät beendet: Ihr Ende bleibt unbekannt,
+  außer du übernimmst die Dauer in der Vorschau.
 - **Gewicht aus generischem JSON** nur, wenn es ausdrücklich so heißt:
   `[{"kind":"weight","date":"2024-11-02","value":70,"unit":"kg"}]`.
 

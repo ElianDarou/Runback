@@ -420,6 +420,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         }
     }
 
+    /** Öffnet die Dateiauswahl und liest nur: Ergebnis ist eine Vorschau, gespeichert wird mit [commitImport]. */
     @ReactMethod fun importFiles(promise: Promise) {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
             .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
@@ -430,11 +431,27 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
                 data.clipData?.let { clips -> repeat(clips.itemCount) { uris.add(clips.getItemAt(it).uri) } }
                 if (uris.isEmpty()) data.data?.let(uris::add)
                 importWorker.execute {
-                    try { promise.resolve(importer.importUris(uris).toString()) }
+                    try { promise.resolve(importer.prepare(uris).toString()) }
                     catch (error: Exception) { promise.reject("IMPORT_ERROR", error.message, error) }
                 }
             }
         }
+    }
+    /** Speichert die geprüfte Vorschau mit den Wahlen aus der Oberfläche. */
+    @ReactMethod fun commitImport(token: String, json: String, promise: Promise) {
+        importWorker.execute {
+            try { promise.resolve(importer.commit(token, JSONObject(json)).toString()) }
+            catch (error: Exception) { promise.reject("IMPORT_ERROR", error.message, error) }
+        }
+    }
+    @ReactMethod fun discardImport(token: String, promise: Promise) {
+        try { promise.resolve(importer.discard(token).toString()) }
+        catch (error: Exception) { promise.reject("IMPORT_ERROR", error.message, error) }
+    }
+    @ReactMethod fun getImportBatches(promise: Promise) = task(promise) { JSONObject().put("batches", store.importBatches()) }
+    @ReactMethod fun deleteImportBatch(id: String, promise: Promise) = task(promise) {
+        check(importer.status().optString("state") != "running") { "Warte, bis der Import fertig ist." }
+        store.deleteImportBatch(id)
     }
     @ReactMethod fun getImportStatus(promise: Promise) { promise.resolve(importer.status().toString()) }
     @ReactMethod fun cancelImport(promise: Promise) { importer.cancel(); promise.resolve(importer.status().toString()) }

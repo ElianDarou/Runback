@@ -3,7 +3,7 @@
 Gestaltungsregeln für alle Runback-Oberflächen. Token (`color`, `space`,
 `radius`, `type`) und Bausteine (`Button`, `Card`, `Section`, `Row`,
 `ChipGroup`, `Segmented`, `Stepper`, `Stat`, `StackedBar`, `Field`, `Notice`,
-`EmptyState`, `Badge`, `Progress`, `Disclosure`, `Sheet`) leben ausschließlich in
+`EmptyState`, `Badge`, `Progress`, `Disclosure`, `Sheet`, `CheckRow`) leben ausschließlich in
 `src/ui/components.tsx`. Kein Bildschirm erfindet eigene Farben, Größen oder
 Varianten — wer etwas Neues braucht, ergänzt es dort.
 

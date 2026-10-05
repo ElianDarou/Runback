@@ -811,7 +811,7 @@ class RunStore(context: Context) : DocumentStore {
         return changed
     }
 
-    fun addImportedRun(summary: JSONObject, samples: JSONArray, sourceHash: String): JSONObject = locked {
+    fun addImportedRun(summary: JSONObject, samples: JSONArray, sourceHash: String, batchId: String? = null): JSONObject = locked {
         val start = summary.optLong("startTime",summary.optLong("startedAt"));require(start>0){"Startzeit fehlt"}
         val fingerprint = "start:${start/1000}"
         db.rawQuery("SELECT id FROM tombstones WHERE id IN (?,?)",arrayOf(sourceHash,fingerprint)).use { if(it.moveToFirst())return@locked JSONObject().put("status","deleted") }
@@ -820,6 +820,7 @@ class RunStore(context: Context) : DocumentStore {
         if(duplicate==null) duplicate = findDuplicateRunId(start, summary.optDouble("durationSeconds",0.0))
         if(duplicate!=null) { val enriched = mergeImportedMetadata(duplicate!!, summary)
             db.insertWithOnConflict("hashes",null,ContentValues().apply{put("hash",sourceHash);put("run_id",duplicate)},SQLiteDatabase.CONFLICT_IGNORE)
+            shareRunMembership(duplicate!!, batchId)
             return@locked JSONObject().put("status","duplicate").put("id",duplicate).put("enriched", enriched) }
         transaction {
             val run=JSONObject(summary.toString());val id=run.optString("id").takeIf{it.matches(Regex("[A-Za-z0-9_-]{1,100}"))}?:UUID.randomUUID().toString()
@@ -831,6 +832,7 @@ class RunStore(context: Context) : DocumentStore {
                 if(batch.size==500){appendSamples(id,batch);batch.clear()} }
             appendSamples(id,batch);derive(id)
             db.insertOrThrow("hashes",null,ContentValues().apply{put("hash",sourceHash);put("run_id",id)})
+            batchId?.let { addMembership("run", id, it) }
             JSONObject().put("status","imported").put("id",id)
         }
     }
@@ -841,13 +843,13 @@ class RunStore(context: Context) : DocumentStore {
     // ---- Optional vendor wellness & strength data (V1-17 context only, never a readiness score) ----
     // Wellness rows are append-only daily/point context (sleep, resting HR, HRV, weight, steps).
     // They never change run derivations; missing rows only limit the affected context note.
-    fun addWellnessBatch(rows: List<WellnessRow>): Int = locked {
+    fun addWellnessBatch(rows: List<WellnessRow>, batchId: String? = null): Int = locked {
         if (rows.isEmpty()) return@locked 0
         var inserted = 0
         transaction {
             rows.take(MAX_WELLNESS_BATCH).forEach { row ->
                 require(row.kind.length in 1..64 && row.time > 0) { "Ungültiger Wellness-Wert" }
-                val id = row.id.ifBlank { "wellness:${row.kind}:${row.time}:${row.source}:${row.value}" }
+                val id = wellnessRowId(row)
                 val changed = db.insertWithOnConflict("wellness", null, ContentValues().apply {
                     put("id", id.take(220)); put("kind", row.kind.take(64)); put("time", row.time)
                     put("end_time", row.endTime)
@@ -855,7 +857,8 @@ class RunStore(context: Context) : DocumentStore {
                     put("unit", row.unit.take(24))
                     put("source", row.source.take(120)); put("extra", row.extra.take(2000))
                 }, SQLiteDatabase.CONFLICT_IGNORE)
-                if (changed > 0) inserted++
+                if (changed > 0) { inserted++; batchId?.let { addMembership("wellness", id.take(220), it) } }
+                else if (batchId != null) shareMembership("wellness", id.take(220), batchId, "wellness")
             }
         }
         inserted
@@ -879,7 +882,7 @@ class RunStore(context: Context) : DocumentStore {
         }
         result
     }
-    fun addStrengthWorkout(workout: StrengthWorkout, sets: List<StrengthSet>, importDocument: JSONObject? = null): JSONObject = locked {
+    fun addStrengthWorkout(workout: StrengthWorkout, sets: List<StrengthSet>, importDocument: JSONObject? = null, batchId: String? = null): JSONObject = locked {
         require(workout.time > 0) { "Trainingszeit fehlt" }
         require(sets.size <= 2000) { "Zu viele Sätze für ein Krafttraining" }
         require(workout.id.length <= 120 && workout.id.isNotBlank()) { "Ungültige Trainingskennung" }
@@ -891,6 +894,7 @@ class RunStore(context: Context) : DocumentStore {
                 if (importDocument != null && getDocument("strength_import_${workout.id}") == null) {
                     putDocument("strength_import_${workout.id}", importDocument)
                 }
+                batchId?.let { shareMembership("strength", workout.id, it, "strength_workouts") }
                 return@transaction JSONObject().put("id", workout.id).put("status", "duplicate")
             }
             db.insertWithOnConflict("strength_workouts", null, ContentValues().apply {
@@ -907,6 +911,7 @@ class RunStore(context: Context) : DocumentStore {
                 })
             }
             importDocument?.let { putDocument("strength_import_${workout.id}", it) }
+            batchId?.let { addMembership("strength", workout.id, it) }
             JSONObject().put("id", workout.id).put("sets", sets.size).put("status", "imported")
         }
     }
@@ -916,9 +921,14 @@ class RunStore(context: Context) : DocumentStore {
         var setCount = 0
         var omitted = 0
         val names = HashSet<String>()
+        val quiet = importBatchDocuments().filter { !it.optBoolean("templateSuggestions", true) }
+            .map { it.optString("id") }.toSet()
         db.rawQuery("SELECT id,name FROM strength_workouts ORDER BY time DESC,id DESC", null).use { rows ->
             while (rows.moveToNext()) {
                 val id = rows.getString(0)
+                // Ohne Vorschläge importiert: die Einheit zählt, wird aber keine Vorlage.
+                val batches = memberships("strength", id)
+                if (batches.isNotEmpty() && batches.all { it in quiet }) continue
                 val document = getDocument("strength_import_$id") ?: continue
                 if (!names.add(rows.getString(1).trim().lowercase(java.util.Locale.ROOT))) continue
                 val count = document.optJSONArray("sets")?.length() ?: 0
@@ -949,7 +959,7 @@ class RunStore(context: Context) : DocumentStore {
         JSONObject().put("workouts", totalWorkouts).put("recent", workouts)
     }
     /** Summary-only activity (CSV summary without track samples). Never invents samples. */
-    fun addSummaryRun(summary: JSONObject, sourceHash: String): JSONObject = locked {
+    fun addSummaryRun(summary: JSONObject, sourceHash: String, batchId: String? = null): JSONObject = locked {
         val start = summary.optLong("startTime", summary.optLong("startedAt"));require(start>0){"Startzeit fehlt"}
         val duration = summary.optDouble("durationSeconds", 0.0)
         require(duration.isFinite() && duration >= 0.0) { "Ungültige Laufdauer" }
@@ -962,6 +972,7 @@ class RunStore(context: Context) : DocumentStore {
         if(duplicate==null) duplicate = findDuplicateRunId(start, duration)
         if(duplicate!=null) { val enriched = mergeImportedMetadata(duplicate!!, summary)
             db.insertWithOnConflict("hashes",null,ContentValues().apply{put("hash",sourceHash);put("run_id",duplicate)},SQLiteDatabase.CONFLICT_IGNORE)
+            shareRunMembership(duplicate!!, batchId)
             return@locked JSONObject().put("status","duplicate").put("id",duplicate).put("enriched", enriched) }
         transaction {
             val run=JSONObject(summary.toString());val id=run.optString("id").takeIf{it.matches(Regex("[A-Za-z0-9_-]{1,100}"))}?:UUID.randomUUID().toString()
@@ -972,7 +983,167 @@ class RunStore(context: Context) : DocumentStore {
                 .put("dataRetention",JSONObject().put("originals","summary_only").put("recomputable",false))
             write(run)
             db.insertOrThrow("hashes",null,ContentValues().apply{put("hash",sourceHash);put("run_id",id)})
+            batchId?.let { addMembership("run", id, it) }
             JSONObject().put("status","imported").put("id",id)
+        }
+    }
+    // ---- Importe als Einheit: jeder Eintrag merkt sich, welche Importe ihn geliefert haben. ----
+    // Ein Eintrag verschwindet erst, wenn ihn kein Import mehr trägt. Einträge aus der Zeit
+    // vor dieser Liste gehören zum Import "legacy:<Quelle>". Eigene Aufzeichnungen und
+    // Health-Connect-Läufe gehören nie zu einem Import, auch wenn eine Datei sie doppelt enthält.
+    private fun memberships(kind: String, id: String): List<String> =
+        db.rawQuery("SELECT batch_id FROM import_items WHERE kind=? AND item_id=?", arrayOf(kind, id)).use { rows ->
+            val result = ArrayList<String>(); while (rows.moveToNext()) result.add(rows.getString(0)); result }
+    private fun addMembership(kind: String, id: String, batchId: String) {
+        db.insertWithOnConflict("import_items", null, ContentValues().apply {
+            put("kind", kind); put("item_id", id); put("batch_id", batchId.take(120)) }, SQLiteDatabase.CONFLICT_IGNORE)
+    }
+    private fun shareMembership(kind: String, id: String, batchId: String, table: String) {
+        if (memberships(kind, id).isEmpty()) {
+            val source = db.rawQuery("SELECT source FROM $table WHERE id=?", arrayOf(id)).use {
+                if (it.moveToFirst()) it.getString(0) else null } ?: return
+            addMembership(kind, id, LEGACY_BATCH + source)
+        }
+        addMembership(kind, id, batchId)
+    }
+    private fun shareRunMembership(id: String, batchId: String?) {
+        if (batchId == null) return
+        val run = read(id)
+        if (!isFileImportRun(run)) return
+        if (memberships("run", id).isEmpty()) addMembership("run", id, LEGACY_BATCH + legacyRunSource(run))
+        addMembership("run", id, batchId)
+    }
+    /** Aus einer Datei importiert, nicht aufgezeichnet, nicht von der Uhr, nicht aus Health Connect. */
+    private fun isFileImportRun(run: JSONObject): Boolean {
+        val version = run.optString("sourceVersion")
+        return run.has("importVersion") && !version.startsWith("raw-") && !version.startsWith("wear:") &&
+            !version.startsWith("healthconnect:") && !run.optString("source").startsWith("health_connect")
+    }
+    private fun legacyRunSource(run: JSONObject) = run.optString("source").ifBlank { "import" }
+    private fun importBatchDocuments(): List<JSONObject> =
+        db.rawQuery("SELECT json FROM documents WHERE key LIKE 'import\\_batch\\_%' ESCAPE '\\'", null).use { rows ->
+            val result = ArrayList<JSONObject>(); while (rows.moveToNext()) result.add(JSONObject(rows.getString(0))); result }
+
+    /** Vorschau ohne Schreiben: dieselben Prüfungen wie [addImportedRun]. */
+    fun previewRunStatus(summary: JSONObject, sourceHash: String): String = locked {
+        val start = summary.optLong("startTime", summary.optLong("startedAt")); require(start > 0) { "Startzeit fehlt" }
+        db.rawQuery("SELECT id FROM tombstones WHERE id IN (?,?)", arrayOf(sourceHash, "start:${start / 1000}")).use {
+            if (it.moveToFirst()) return@locked "deleted" }
+        db.rawQuery("SELECT 1 FROM hashes WHERE hash=?", arrayOf(sourceHash)).use { if (it.moveToFirst()) return@locked "duplicate" }
+        if (findDuplicateRunId(start, summary.optDouble("durationSeconds", 0.0)) != null) "duplicate" else "imported"
+    }
+    fun strengthWorkoutExists(id: String): Boolean = locked {
+        db.rawQuery("SELECT 1 FROM strength_workouts WHERE id=?", arrayOf(id)).use { it.moveToFirst() }
+    }
+    /** Welche dieser Kontextwerte schon gespeichert sind (Kennung wie in [addWellnessBatch]). */
+    fun existingWellnessIds(ids: Collection<String>): Set<String> = locked {
+        val existing = HashSet<String>()
+        ids.distinct().chunked(400).forEach { chunk ->
+            db.rawQuery("SELECT id FROM wellness WHERE id IN (${chunk.joinToString(",") { "?" }})", chunk.toTypedArray()).use { c ->
+                while (c.moveToNext()) existing.add(c.getString(0)) }
+        }
+        existing
+    }
+    fun saveImportBatch(batch: JSONObject) = locked {
+        val id = batch.optString("id"); require(id.matches(Regex("[A-Za-z0-9_-]{1,80}"))) { "Ungültige Importkennung" }
+        putDocument("import_batch_$id", batch)
+    }
+    /** Ein Import ohne neue oder geteilte Einträge erscheint nicht in der Liste. */
+    fun finishImportBatch(batch: JSONObject) = locked {
+        val id = batch.optString("id")
+        val any = db.rawQuery("SELECT 1 FROM import_items WHERE batch_id=? LIMIT 1", arrayOf(id)).use { it.moveToFirst() }
+        if (any) saveImportBatch(batch) else deleteDocument("import_batch_$id")
+    }
+    /** Importe mit ihren noch vorhandenen Einträgen, neueste zuerst; ältere Importe je Quelle. */
+    fun importBatches(): JSONArray = locked {
+        fun counts(where: String, args: Array<String>): JSONObject {
+            val result = JSONObject().put("runs", 0).put("strength", 0).put("wellness", 0)
+            db.rawQuery("SELECT kind,COUNT(*) FROM import_items WHERE $where GROUP BY kind", args).use { rows ->
+                while (rows.moveToNext()) result.put(KIND_KEYS[rows.getString(0)] ?: continue, rows.getInt(1)) }
+            return result
+        }
+        fun total(counts: JSONObject) = counts.optInt("runs") + counts.optInt("strength") + counts.optInt("wellness")
+        val result = ArrayList<JSONObject>()
+        importBatchDocuments().forEach { batch ->
+            val counts = counts("batch_id=?", arrayOf(batch.optString("id")))
+            if (total(counts) > 0) result.add(JSONObject(batch.toString()).put("counts", counts).put("legacy", false))
+        }
+        val legacy = LinkedHashMap<String, JSONObject>()
+        fun legacyCounts(source: String) = legacy.getOrPut(source) { JSONObject().put("runs", 0).put("strength", 0).put("wellness", 0) }
+        for ((kind, table) in listOf("strength" to "strength_workouts", "wellness" to "wellness")) {
+            db.rawQuery("SELECT source,COUNT(*) FROM $table t WHERE ${legacyCondition(kind)} GROUP BY source", null).use { rows ->
+                while (rows.moveToNext()) legacyCounts(rows.getString(0)).put(KIND_KEYS.getValue(kind), rows.getInt(1)) }
+        }
+        legacyRuns(null).groupingBy { it.second }.eachCount().forEach { (source, count) -> legacyCounts(source).put("runs", count) }
+        legacy.forEach { (source, counts) ->
+            if (total(counts) > 0) result.add(JSONObject().put("id", LEGACY_BATCH + source).put("legacy", true)
+                .put("source", source).put("counts", counts).put("vendors", JSONArray().put(source)))
+        }
+        JSONArray(result.sortedWith(compareBy<JSONObject> { it.optBoolean("legacy") }.thenByDescending { it.optLong("createdAt") }
+            .thenBy { it.optString("id") }))
+    }
+    /** Ohne fremde Mitgliedschaft oder ausdrücklich beim älteren Import dieser Quelle. */
+    private fun legacyCondition(kind: String) = "(NOT EXISTS(SELECT 1 FROM import_items i WHERE i.kind='$kind' AND i.item_id=t.id AND i.batch_id NOT LIKE '$LEGACY_BATCH%') OR " +
+        "EXISTS(SELECT 1 FROM import_items i WHERE i.kind='$kind' AND i.item_id=t.id AND i.batch_id='$LEGACY_BATCH' || t.source))"
+    private fun legacyRuns(source: String?): List<Pair<String, String>> {
+        val members = HashMap<String, MutableList<String>>()
+        db.rawQuery("SELECT item_id,batch_id FROM import_items WHERE kind='run'", null).use { rows ->
+            while (rows.moveToNext()) members.getOrPut(rows.getString(0)) { ArrayList() }.add(rows.getString(1)) }
+        val result = ArrayList<Pair<String, String>>()
+        db.rawQuery("SELECT id,json FROM runs", null).use { rows ->
+            while (rows.moveToNext()) {
+                val run = JSONObject(rows.getString(1))
+                if (!isFileImportRun(run)) continue
+                val runSource = legacyRunSource(run)
+                if (source != null && runSource != source) continue
+                val batches = members[rows.getString(0)].orEmpty()
+                if (batches.all { it.startsWith(LEGACY_BATCH) } || LEGACY_BATCH + runSource in batches)
+                    result.add(rows.getString(0) to runSource)
+            }
+        }
+        return result
+    }
+    /**
+     * Löscht, was nur dieser Import geliefert hat, ohne Sperre: ein erneuter Import legt es
+     * wieder an. Vorlagen sind eigene Dokumente und bleiben, ebenso abgelehnte Vorschläge.
+     */
+    fun deleteImportBatch(batchId: String): JSONObject = locked {
+        require(batchId.isNotBlank() && batchId.length <= 200) { "Ungültige Importkennung" }
+        transaction {
+            val candidates = ArrayList<Pair<String, String>>()
+            if (batchId.startsWith(LEGACY_BATCH)) {
+                val source = batchId.removePrefix(LEGACY_BATCH)
+                for ((kind, table) in listOf("strength" to "strength_workouts", "wellness" to "wellness")) {
+                    db.rawQuery("SELECT id FROM $table t WHERE source=? AND ${legacyCondition(kind)}", arrayOf(source)).use { rows ->
+                        while (rows.moveToNext()) candidates.add(kind to rows.getString(0)) }
+                }
+                legacyRuns(source).forEach { candidates.add("run" to it.first) }
+            } else db.rawQuery("SELECT kind,item_id FROM import_items WHERE batch_id=?", arrayOf(batchId)).use { rows ->
+                while (rows.moveToNext()) candidates.add(rows.getString(0) to rows.getString(1)) }
+            db.delete("import_items", "batch_id=?", arrayOf(batchId))
+            val deleted = JSONObject().put("runs", 0).put("strength", 0).put("wellness", 0)
+            var kept = 0
+            val active = activeId()
+            for ((kind, id) in candidates) {
+                if (memberships(kind, id).isNotEmpty() || (kind == "run" && id == active)) { kept++; continue }
+                when (kind) {
+                    "run" -> {
+                        for (table in listOf("samples", "events", "sources", "hashes")) db.delete(table, "run_id=?", arrayOf(id))
+                        db.delete("runs", "id=?", arrayOf(id))
+                        db.delete("documents", "key IN (?,?)", arrayOf("feedback_$id", "weather_$id"))
+                    }
+                    "strength" -> {
+                        db.delete("strength_sets", "workout_id=?", arrayOf(id))
+                        db.delete("strength_workouts", "id=?", arrayOf(id))
+                        db.delete("documents", "key=?", arrayOf("strength_import_$id"))
+                    }
+                    "wellness" -> db.delete("wellness", "id=?", arrayOf(id))
+                    else -> continue
+                }
+                val key = KIND_KEYS.getValue(kind); deleted.put(key, deleted.optInt(key) + 1)
+            }
+            db.delete("documents", "key=?", arrayOf("import_batch_$batchId"))
+            JSONObject().put("id", batchId).put("deleted", deleted).put("kept", kept)
         }
     }
     fun vendorSummary(): JSONObject = locked {
@@ -987,6 +1158,7 @@ class RunStore(context: Context) : DocumentStore {
             db.execSQL("INSERT OR IGNORE INTO tombstones(id) VALUES(?)",arrayOf("start:${run.getLong("startTime")/1000}"))
             for(table in listOf("samples","events","sources","hashes"))db.delete(table,"run_id=?",arrayOf(id))
             db.delete("runs","id=?",arrayOf(id));db.delete("documents","key=?",arrayOf("feedback_$id"))
+            db.delete("import_items","kind='run' AND item_id=?",arrayOf(id))
             addDocumentDeletionNotice(id)
         }
     }
@@ -994,7 +1166,7 @@ class RunStore(context: Context) : DocumentStore {
     fun clearAllData() = locked { check(activeId()==null);transaction { tables.forEach {db.delete(it,null,null)} } }
     fun backup(output: OutputStream) = locked {
         ZipOutputStream(BufferedOutputStream(output)).use { zip ->
-            zip.putNextEntry(ZipEntry("manifest.json"));zip.write(JSONObject().put("schemaVersion",2).put("app","Runback").put("createdAt",System.currentTimeMillis()).toString().toByteArray());zip.closeEntry()
+            zip.putNextEntry(ZipEntry("manifest.json"));zip.write(JSONObject().put("schemaVersion",3).put("app","Runback").put("createdAt",System.currentTimeMillis()).toString().toByteArray());zip.closeEntry()
             tables.forEach { table ->
                 zip.putNextEntry(ZipEntry("$table.ndjson"))
                 db.rawQuery("SELECT * FROM $table",null).use { c ->while(c.moveToNext()){
@@ -1012,7 +1184,7 @@ class RunStore(context: Context) : DocumentStore {
         transaction {
             ZipInputStream(BufferedInputStream(input)).use { zip ->
                 require(zip.nextEntry?.name=="manifest.json"){"Kein Runback-Backup"}
-                val manifest=JSONObject(readEntry(zip,65536).toString(Charsets.UTF_8));require(manifest.getInt("schemaVersion") in listOf(1,2)){"Backup-Version wird nicht unterstützt"}
+                val manifest=JSONObject(readEntry(zip,65536).toString(Charsets.UTF_8));require(manifest.getInt("schemaVersion") in listOf(1,2,3)){"Backup-Version wird nicht unterstützt"}
                 tables.forEach {db.delete(it,null,null)}
                 var total=0L; val seen=HashSet<String>()
                 while(true){val entry=zip.nextEntry?:break;val table=entry.name.removeSuffix(".ndjson");require(table in tables && seen.add(table)){"Ungültiger Backup-Inhalt"}
@@ -1129,7 +1301,7 @@ class RunStore(context: Context) : DocumentStore {
     }
     private fun readEntry(input:InputStream,limit:Long):ByteArray {val out=ByteArrayOutputStream();val buffer=ByteArray(32768);var total=0L
         while(true){val n=input.read(buffer);if(n<0)break;total+=n;require(total<=limit){"Backup überschreitet das Größenlimit"};out.write(buffer,0,n)};return out.toByteArray()}
-    private class Database(context:Context):SQLiteOpenHelper(context,"runback.db",null,2){
+    private class Database(context:Context):SQLiteOpenHelper(context,"runback.db",null,3){
         override fun onConfigure(db:SQLiteDatabase){db.execSQL("PRAGMA synchronous=FULL")}
         override fun onCreate(db:SQLiteDatabase){
             db.execSQL("CREATE TABLE runs(id TEXT PRIMARY KEY,start INTEGER NOT NULL,json TEXT NOT NULL)")
@@ -1141,10 +1313,17 @@ class RunStore(context: Context) : DocumentStore {
             db.execSQL("CREATE TABLE tombstones(id TEXT PRIMARY KEY)")
             db.execSQL("CREATE TABLE sources(seq INTEGER PRIMARY KEY AUTOINCREMENT,run_id TEXT NOT NULL,name TEXT NOT NULL,data BLOB NOT NULL)")
             createVendorTables(db)
+            createImportTables(db)
         }
         override fun onUpgrade(db:SQLiteDatabase,oldVersion:Int,newVersion:Int){
             if (oldVersion < 2) createVendorTables(db)
-            if (oldVersion > 2 || newVersion > 2) error("Datenbankversion wird nicht unterstützt")
+            if (oldVersion < 3) createImportTables(db)
+            if (oldVersion > 3 || newVersion > 3) error("Datenbankversion wird nicht unterstützt")
+        }
+        /** Welcher Import einen Eintrag angelegt oder ebenfalls geliefert hat. */
+        private fun createImportTables(db: SQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS import_items(kind TEXT NOT NULL,item_id TEXT NOT NULL,batch_id TEXT NOT NULL,PRIMARY KEY(kind,item_id,batch_id))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS import_items_batch ON import_items(batch_id)")
         }
         private fun createVendorTables(db: SQLiteDatabase) {
             db.execSQL("CREATE TABLE IF NOT EXISTS wellness(id TEXT PRIMARY KEY,kind TEXT NOT NULL,time INTEGER NOT NULL,end_time INTEGER NOT NULL DEFAULT 0,value REAL,unit TEXT NOT NULL DEFAULT '',source TEXT NOT NULL DEFAULT '',extra TEXT NOT NULL DEFAULT '{}')")
@@ -1155,5 +1334,8 @@ class RunStore(context: Context) : DocumentStore {
             db.execSQL("CREATE INDEX IF NOT EXISTS strength_sets_workout ON strength_sets(workout_id)")
         }
     }
-    companion object {private val lock=Any();private var helper:Database?=null;private val tables=listOf("runs","samples","events","documents","hashes","tombstones","sources","wellness","strength_workouts","strength_sets");private val legacyTables=listOf("runs","samples","events","documents","hashes","tombstones","sources");private const val MAX_WELLNESS_BATCH = 50000;private const val MAX_RUN_DURATION_MS = 24L*60*60*1000}
+    companion object {private val lock=Any();private var helper:Database?=null;private val tables=listOf("runs","samples","events","documents","hashes","tombstones","sources","wellness","strength_workouts","strength_sets","import_items");private val legacyTables=listOf("runs","samples","events","documents","hashes","tombstones","sources");private const val MAX_WELLNESS_BATCH = 50000;private const val MAX_RUN_DURATION_MS = 24L*60*60*1000
+        const val LEGACY_BATCH = "legacy:"
+        fun wellnessRowId(row: WellnessRow) = row.id.ifBlank { "wellness:${row.kind}:${row.time}:${row.source}:${row.value}" }.take(220)
+       private val KIND_KEYS = mapOf("run" to "runs", "strength" to "strength", "wellness" to "wellness")}
 }

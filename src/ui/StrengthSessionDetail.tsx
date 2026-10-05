@@ -171,6 +171,13 @@ export function StrengthSessionDetail({
           {`Importiert aus ${session.importSource.source === 'strong' ? 'Strong' : session.importSource.source}${session.importSource.incomplete ? ' · Unvollständig' : ''}`}
         </Copy>
       ) : null}
+      {session.importSource?.rejectedDurationSeconds ? (
+        <Copy muted>
+          {`Ende unbekannt — die Einheit wurde erst nach ${formatDuration(
+            session.importSource.rejectedDurationSeconds,
+          )} beendet.`}
+        </Copy>
+      ) : null}
       <View style={styles.metrics}>
         <Stat
           value={seconds === undefined ? DASH : formatDuration(seconds)}
