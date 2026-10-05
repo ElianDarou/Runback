@@ -24,6 +24,12 @@ jest.mock('../src/native', () => {
       shareRunArchive: jest.fn(() => Promise.resolve()),
       discardRunArchive: jest.fn(() => Promise.resolve()),
       runIdsInRange: jest.fn(() => Promise.resolve([])),
+      beginExportArchive: jest.fn(() => Promise.resolve('export')),
+      appendExportArchive: jest.fn(() => Promise.resolve()),
+      shareExportArchive: jest.fn(() => Promise.resolve()),
+      discardExportArchive: jest.fn(() => Promise.resolve()),
+      recordedStrengthSessionIds: jest.fn(() => Promise.resolve([])),
+      strengthHeart: jest.fn(() => Promise.resolve(undefined)),
       runTimeline: jest.fn(() =>
         Promise.resolve({ rows: [], stepSeconds: 60 }),
       ),
@@ -1068,6 +1074,86 @@ describe('Laufberichte gesammelt exportieren', () => {
     await tap(tree, 'Läufe als ZIP exportieren');
     expect(screenText(tree)).toContain('Wähle mindestens einen Lauf');
     expect(native.beginRunArchive).not.toHaveBeenCalled();
+    await act(async () => tree.unmount());
+  });
+});
+
+describe('Krafttraining exportieren', () => {
+  beforeEach(() => jest.clearAllMocks());
+  const session = (id: string, start: number) => ({
+    id,
+    kind: 'strength' as const,
+    name: 'Oberkörper',
+    startTime: start,
+    endTime: start + 3600_000,
+    status: 'finished' as const,
+    currentExercise: 0,
+    modelVersion: 'strength-v1',
+    catalogVersion: 'catalog-v2',
+    exercises: [
+      {
+        exerciseId: 'barbell_bench_press',
+        name: 'Bankdrücken',
+        sets: [
+          {
+            id: `${id}-1`,
+            planned: {
+              kind: 'normal' as const,
+              loadKind: 'kg' as const,
+              reps: 8,
+              weightKg: 80,
+            },
+            actualReps: 8,
+            actualWeightKg: 80,
+            completedAt: start + 600_000,
+          },
+        ],
+      },
+    ],
+  });
+  const open = async () => {
+    const tree = await render();
+    await tap(tree, 'Einstellungen');
+    await tap(tree, 'Deine Daten');
+    await tap(tree, 'Krafttraining exportieren');
+    return tree;
+  };
+
+  it('packs every recorded session into one ZIP with the readme first', async () => {
+    const start = new Date(2026, 9, 1, 18).getTime();
+    jest
+      .mocked(native.recordedStrengthSessionIds)
+      .mockResolvedValueOnce(['a', 'b']);
+    jest
+      .mocked(native.strengthSession)
+      .mockImplementation(id =>
+        Promise.resolve(session(id, id === 'a' ? start : start + DAY)),
+      );
+    const tree = await open();
+    await tap(tree, 'Krafttraining als ZIP exportieren');
+    expect(native.beginExportArchive).toHaveBeenCalledWith(
+      'runback-krafttraining',
+    );
+    const calls = jest.mocked(native.appendExportArchive).mock.calls;
+    expect(calls).toHaveLength(4);
+    expect(Object.keys(calls[0][1])[0]).toBe('README.md');
+    expect(calls[1][1]['sets.csv']).toContain('a,');
+    expect(calls[2][1]['sets.csv']).toContain('b,');
+    expect(calls[3][1]['README.md']).toContain('2 Einheiten, 2 Sätze');
+    expect(native.shareExportArchive).toHaveBeenCalledWith(
+      'export',
+      'Krafttraining teilen',
+    );
+    expect(native.discardExportArchive).toHaveBeenCalledWith('export');
+    jest.mocked(native.strengthSession).mockReset();
+    await act(async () => tree.unmount());
+  });
+
+  it('says what is missing when nothing was recorded', async () => {
+    const tree = await open();
+    await tap(tree, 'Krafttraining als ZIP exportieren');
+    expect(screenText(tree)).toContain('Zeichne zuerst eine Krafteinheit auf.');
+    expect(native.beginExportArchive).not.toHaveBeenCalled();
     await act(async () => tree.unmount());
   });
 });

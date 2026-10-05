@@ -733,6 +733,13 @@ class RunStore(context: Context) : DocumentStore {
             }
         }
     }
+    /** Alle in Runback aufgezeichneten Einheiten, älteste zuerst; ohne Importe und ohne Obergrenze. */
+    fun strengthSessionIds(): List<String> = locked {
+        val sessions = getDocument("strength_index")?.optJSONArray("sessions") ?: JSONArray()
+        (0 until sessions.length()).mapNotNull { sessions.optJSONObject(it) }
+            .sortedWith(compareBy<JSONObject> { it.optLong("startTime") }.thenBy { it.optString("id") })
+            .map { it.optString("id") }.filter { it.isNotBlank() }.distinct()
+    }
     /** Historie, nicht Vorlagen: auch ältere Einheiten mit demselben Namen zählen. */
     fun strengthImports(limit: Int = 100): JSONArray = locked {
         JSONArray().also { result ->
