@@ -100,6 +100,10 @@ export interface StrengthSession {
   /** Läuft seit diesem Zeitpunkt, für die Pause nach einem Satz. */
   restStartedAt?: number;
   restSeconds?: number;
+  /** Pause angehalten seit diesem Zeitpunkt; die Restzeit steht dann still. */
+  restPausedAt?: number;
+  /** Bereits angehaltene Zeit dieser Pause in ms, ohne die laufende Unterbrechung. */
+  restPausedMs?: number;
   note?: string;
   modelVersion: string;
   catalogVersion: string;
@@ -205,6 +209,13 @@ export function startSession(
   };
 }
 
+const NO_REST = {
+  restStartedAt: undefined,
+  restSeconds: undefined,
+  restPausedAt: undefined,
+  restPausedMs: undefined,
+} as const;
+
 const replaceExercise = (
   session: StrengthSession,
   index: number,
@@ -288,8 +299,7 @@ export function completeSet(
     });
     return {
       ...replaceExercise(session, exerciseIndex, reopened),
-      restStartedAt: undefined,
-      restSeconds: undefined,
+      ...NO_REST,
     };
   }
   const completed: LoggedSet = {
@@ -310,6 +320,7 @@ export function completeSet(
       exerciseIndex,
       replaceSet(exercise, setId, completed),
     ),
+    ...NO_REST,
     restStartedAt: rest !== undefined && rest > 0 ? now : undefined,
     restSeconds: rest !== undefined && rest > 0 ? rest : undefined,
   };
@@ -383,12 +394,36 @@ export function removeSet(
   setId: string,
 ): StrengthSession {
   const exercise = session.exercises[exerciseIndex];
-  if (!exercise || exercise.sets.length <= 1) {
+  const removed = exercise?.sets.find(set => set.id === setId);
+  if (!exercise || !removed || exercise.sets.length <= 1) {
     return session;
   }
-  return replaceExercise(session, exerciseIndex, {
+  const next = replaceExercise(session, exerciseIndex, {
     ...exercise,
     sets: exercise.sets.filter(set => set.id !== setId),
+  });
+  // Die Pause gehört zum gelöschten Satz; ohne ihn gibt es nichts abzuwarten.
+  return removed.completedAt !== undefined &&
+    removed.completedAt === session.restStartedAt
+    ? clearRest(next)
+    : next;
+}
+
+/** Setzt einen gelöschten Satz unverändert an seine alte Stelle zurück. */
+export function restoreSet(
+  session: StrengthSession,
+  exerciseIndex: number,
+  set: LoggedSet,
+  position: number,
+): StrengthSession {
+  const exercise = session.exercises[exerciseIndex];
+  if (!exercise || exercise.sets.some(candidate => candidate.id === set.id)) {
+    return session;
+  }
+  const at = Math.min(Math.max(position, 0), exercise.sets.length);
+  return replaceExercise(session, exerciseIndex, {
+    ...exercise,
+    sets: [...exercise.sets.slice(0, at), set, ...exercise.sets.slice(at)],
   });
 }
 
@@ -468,7 +503,10 @@ export function sessionProgress(session: StrengthSession): {
   return { completedSets, totalSets, volumeKg };
 }
 
-/** Verbleibende Pausensekunden, oder null, wenn keine Pause läuft. */
+/**
+ * Verbleibende Pausensekunden, oder null, wenn keine Pause läuft. Eine
+ * angehaltene Pause behält ihre Restzeit, bis sie weiterläuft.
+ */
 export function restRemaining(
   session: StrengthSession,
   now: number,
@@ -476,15 +514,66 @@ export function restRemaining(
   if (session.restStartedAt === undefined || !session.restSeconds) {
     return null;
   }
-  const elapsed = Math.floor((now - session.restStartedAt) / 1000);
+  const until = session.restPausedAt ?? now;
+  const elapsed = Math.floor(
+    (until - session.restStartedAt - (session.restPausedMs ?? 0)) / 1000,
+  );
   const remaining = session.restSeconds - elapsed;
   return remaining > 0 ? remaining : null;
 }
 
+/** Zeitpunkt, an dem die laufende Pause endet; angehalten oder ohne Pause null. */
+export function restEndsAt(session: StrengthSession): number | null {
+  if (
+    session.restStartedAt === undefined ||
+    !session.restSeconds ||
+    session.restPausedAt !== undefined
+  ) {
+    return null;
+  }
+  return (
+    session.restStartedAt +
+    session.restSeconds * 1000 +
+    (session.restPausedMs ?? 0)
+  );
+}
+
+/** Hält die laufende Pause an. Ohne laufende Pause ändert sich nichts. */
+export function pauseRest(
+  session: StrengthSession,
+  now: number,
+): StrengthSession {
+  if (
+    session.restPausedAt !== undefined ||
+    restRemaining(session, now) === null
+  ) {
+    return session;
+  }
+  return { ...session, restPausedAt: now };
+}
+
+/** Lässt eine angehaltene Pause mit ihrer Restzeit weiterlaufen. */
+export function resumeRest(
+  session: StrengthSession,
+  now: number,
+): StrengthSession {
+  if (session.restPausedAt === undefined) {
+    return session;
+  }
+  return {
+    ...session,
+    restPausedAt: undefined,
+    restPausedMs:
+      (session.restPausedMs ?? 0) + Math.max(0, now - session.restPausedAt),
+  };
+}
+
+/** Beendet die Pause sofort, etwa beim Überspringen. */
 export function clearRest(session: StrengthSession): StrengthSession {
-  return session.restStartedAt === undefined
+  return session.restStartedAt === undefined &&
+    session.restPausedAt === undefined
     ? session
-    : { ...session, restStartedAt: undefined, restSeconds: undefined };
+    : { ...session, ...NO_REST };
 }
 
 /**

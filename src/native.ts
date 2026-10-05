@@ -1,4 +1,4 @@
-import { NativeModules } from 'react-native';
+import { NativeEventEmitter, NativeModules } from 'react-native';
 import type { TrainingFocus } from './domain/focus';
 import type {
   GaitPlacement,
@@ -190,6 +190,8 @@ export interface AppState {
   capabilities: Capabilities;
 }
 const module = NativeModules.Runback;
+/** Gleicher Name wie `StrengthWorkout.EVENT` in Kotlin. */
+const STRENGTH_CHANGED_EVENT = 'runbackStrengthChanged';
 const routeModule = NativeModules.RoutePlanner;
 export async function nativeCall<T = unknown>(
   method: string,
@@ -359,6 +361,28 @@ export const native = {
     return normalizeStrength(
       await nativeCall<any>('saveStrengthSession', JSON.stringify(session)),
     );
+  },
+  /**
+   * Änderungen an der laufenden Einheit, die nicht aus der App kommen: Uhr
+   * oder Benachrichtigung haben einen Satz abgehakt oder die Pause gesteuert.
+   * Gibt eine Abmeldung zurück.
+   */
+  onStrengthChanged(
+    listener: (session: StrengthSession | null) => void,
+  ): () => void {
+    if (!module) return () => {};
+    const subscription = new NativeEventEmitter(module).addListener(
+      STRENGTH_CHANGED_EVENT,
+      (raw: unknown) => {
+        try {
+          const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+          listener(normalizeStrength({ active: parsed }).active);
+        } catch {
+          // Ein unlesbares Ereignis ändert nichts; der nächste Abgleich holt den Stand.
+        }
+      },
+    );
+    return () => subscription.remove();
   },
   async discardStrengthSession(): Promise<StrengthState> {
     return normalizeStrength(await nativeCall<any>('discardStrengthSession'));

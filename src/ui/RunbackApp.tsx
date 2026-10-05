@@ -98,7 +98,12 @@ import {
 import {
   addExercise,
   addSet,
+  clearRest,
   completeSet as completeStrengthSet,
+  pauseRest,
+  removeSet as removeStrengthSet,
+  restoreSet as restoreStrengthSet,
+  resumeRest,
   editSet as editStrengthSet,
   emptyStrengthState,
   finishSession,
@@ -1199,6 +1204,19 @@ export function RunbackApp({
     showOnboarding,
     workoutOpen,
   ]);
+  // Uhr und Benachrichtigung ändern die laufende Einheit nativ; der Stand
+  // kommt als Ereignis und ersetzt den eigenen, damit nichts überschrieben wird.
+  useEffect(
+    () =>
+      native.onStrengthChanged?.(next => {
+        const current = strengthRef.current.active;
+        if (!next || !current || next.id !== current.id) return;
+        strengthRef.current = { ...strengthRef.current, active: next };
+        setStrength(value => ({ ...value, active: next }));
+        setNow(Date.now());
+      }),
+    [],
+  );
   // Sekundentakt nur, solange eine Pause läuft und der Timer sichtbar ist.
   useEffect(() => {
     if (
@@ -1569,6 +1587,7 @@ export function RunbackApp({
   // Jede Änderung schreibt die laufende Einheit sofort weg, damit ein Absturz
   // oder ein leerer Akku keine bestätigten Sätze verliert (T-4).
   const persistSession = useCallback((next: StrengthSession) => {
+    strengthRef.current = { ...strengthRef.current, active: next };
     setStrength(current => ({ ...current, active: next }));
     void native.saveStrengthSession(next).catch(e => setError(e.message));
   }, []);
@@ -5349,6 +5368,15 @@ export function RunbackApp({
               ),
             )
           }
+          onRemoveSet={(index, setId) =>
+            changeSession(s => removeStrengthSet(s, index, setId))
+          }
+          onRestoreSet={(index, set, position) =>
+            changeSession(s => restoreStrengthSet(s, index, set, position))
+          }
+          onPauseRest={() => changeSession(s => pauseRest(s, Date.now()))}
+          onResumeRest={() => changeSession(s => resumeRest(s, Date.now()))}
+          onSkipRest={() => changeSession(clearRest)}
           onCompleteSet={(index, setId, values) =>
             changeSession(s =>
               completeStrengthSet(s, index, setId, Date.now(), values),

@@ -41,6 +41,11 @@ const template: WorkoutTemplate = {
 };
 
 const handlers = () => ({
+  onRemoveSet: jest.fn(),
+  onRestoreSet: jest.fn(),
+  onPauseRest: jest.fn(),
+  onResumeRest: jest.fn(),
+  onSkipRest: jest.fn(),
   onSelectExercise: jest.fn(),
   onCompleteSet: jest.fn(),
   onEditSet: jest.fn(),
@@ -127,6 +132,61 @@ const byLabel = (
 
 describe('Trainingsansicht', () => {
   const base = () => startSession(template, 1_000_000);
+
+  const swipeRows = (tree: ReactTestRenderer.ReactTestRenderer) =>
+    tree.root.findAll(
+      node =>
+        typeof node.type !== 'string' &&
+        typeof node.props.onAccessibilityAction === 'function',
+    );
+
+  it('löscht einen Satz per Wischaktion und bietet Rückgängig an', () => {
+    const props = handlers();
+    const session = base();
+    const tree = render(session, props);
+    const rows = swipeRows(tree);
+    expect(rows).toHaveLength(2);
+    expect(rows[1].props.accessibilityActions).toEqual([
+      { name: 'delete', label: 'Satz 2 löschen' },
+    ]);
+    ReactTestRenderer.act(() => {
+      rows[1].props.onAccessibilityAction({
+        nativeEvent: { actionName: 'delete' },
+      });
+    });
+    const removed = session.exercises[0].sets[1];
+    expect(props.onRemoveSet).toHaveBeenCalledWith(0, removed.id);
+    expect(texts(tree)).toContain('Satz 2 gelöscht');
+    ReactTestRenderer.act(() => {
+      byLabel(tree, 'Satz 2 wiederherstellen').props.onPress();
+    });
+    expect(props.onRestoreSet).toHaveBeenCalledWith(0, removed, 1);
+    expect(texts(tree)).not.toContain('Satz 2 gelöscht');
+  });
+
+  it('lässt den einzigen Satz einer Übung nicht wegwischen', () => {
+    const tree = render({ ...base(), currentExercise: 1 }, handlers());
+    expect(swipeRows(tree)[0].props.accessibilityActions).toEqual([]);
+  });
+
+  it('hält die Pause an, lässt sie weiterlaufen oder überspringt sie', () => {
+    const props = handlers();
+    const session = base();
+    const resting = completeSet(session, 0, session.exercises[0].sets[0].id, 1_000_000);
+    const tree = render(resting, props, { now: 1_030_000 });
+    expect(texts(tree)).toContain('Pause 2:30');
+    byLabel(tree, 'Pause anhalten').props.onPress();
+    expect(props.onPauseRest).toHaveBeenCalled();
+    byLabel(tree, 'Pause überspringen').props.onPress();
+    expect(props.onSkipRest).toHaveBeenCalled();
+
+    const paused = render({ ...resting, restPausedAt: 1_030_000 }, props, {
+      now: 1_500_000,
+    });
+    expect(texts(paused)).toContain('Pause angehalten 2:30');
+    byLabel(paused, 'Pause weiterlaufen lassen').props.onPress();
+    expect(props.onResumeRest).toHaveBeenCalled();
+  });
 
   it('zeigt die aktuelle Übung ausgeklappt und die übrigen als Zeilen', () => {
     const session = { ...base(), currentExercise: 1 };

@@ -63,6 +63,10 @@ export interface FeatureSettings {
   };
   strength: {
     restTimer: boolean;
+    /** Kurz, kurz, lang am Pausenende: auf der verbundenen Uhr, sonst am Handy. */
+    restVibration: boolean;
+    /** Kurz, kurz, lang als Ton, nur am Handy. */
+    restSound: boolean;
     defaultRestSeconds: number;
     rir: boolean;
     templateOfDay: boolean;
@@ -132,6 +136,8 @@ export const DEFAULT_FEATURES: FeatureSettings = {
   },
   strength: {
     restTimer: true,
+    restVibration: true,
+    restSound: false,
     defaultRestSeconds: 120,
     rir: true,
     templateOfDay: true,
@@ -259,6 +265,8 @@ export function normalizeFeatures(
     },
     strength: {
       restTimer: bool(strength.restTimer, d.strength.restTimer),
+      restVibration: bool(strength.restVibration, d.strength.restVibration),
+      restSound: bool(strength.restSound, d.strength.restSound),
       defaultRestSeconds:
         Number.isInteger(restSeconds) &&
         restSeconds >= MIN_REST_SECONDS &&

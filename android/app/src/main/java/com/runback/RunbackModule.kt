@@ -16,6 +16,7 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import androidx.core.content.FileProvider
 import com.facebook.react.bridge.*
+import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.facebook.react.modules.core.PermissionAwareActivity
 import com.facebook.react.modules.core.PermissionListener
 import com.runback.core.RunStore
@@ -52,6 +53,12 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     private val analysisArchives = mutableMapOf<String, RunAnalysisArchive>()
 
     init {
+        StrengthWorkout.listener = { session ->
+            if (context.hasActiveReactInstance()) {
+                context.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                    .emit(StrengthWorkout.EVENT, session.toString())
+            }
+        }
         context.addActivityEventListener(object : BaseActivityEventListener() {
             override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
                 if (requestCode != DOCUMENT_REQUEST) return
@@ -141,7 +148,11 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         .put("active", store.getDocument("strength_active") ?: JSONObject.NULL)
         .put("history", strengthIndex().optJSONArray("sessions") ?: JSONArray())
 
-    @ReactMethod fun getStrengthState(promise: Promise) = task(promise) { strengthState() }
+    @ReactMethod fun getStrengthState(promise: Promise) = task(promise) {
+        // Nach einem Neustart der App: Benachrichtigung und Uhr wieder an die laufende Einheit hängen.
+        StrengthWorkout.resume(context, store)
+        strengthState()
+    }
     @ReactMethod fun getStrengthSessions(limit: Int, promise: Promise) = task(promise) {
         JSONObject().put("sessions", store.strengthSessions(limit)).put("imports", store.strengthImports(limit))
     }
@@ -150,25 +161,29 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     }
     // Die Bewegungsaufzeichnung hängt nur an; sie darf das Speichern einer Einheit nie verhindern.
     @ReactMethod fun saveStrengthSession(json: String, promise: Promise) = task(promise) {
-        val previous = store.getDocument("strength_active")
-        val session = JSONObject(json)
-        store.putDocument("strength_active", session)
-        runCatching { MotionSessions.onStrengthSaved(context, store, previous, session, System.currentTimeMillis()) }
+        StrengthWorkout.save(context, store, JSONObject(json))
         strengthState()
     }
     @ReactMethod fun discardStrengthSession(promise: Promise) = task(promise) {
-        val previous = store.getDocument("strength_active")
-        store.deleteDocument("strength_active")
+        val previous = StrengthWorkout.locked {
+            store.getDocument("strength_active").also { store.deleteDocument("strength_active") }
+        }
         runCatching { MotionSessions.onStrengthDiscarded(context, store, previous) }
+        StrengthWorkout.ended(context, store, previous?.optString("id"))
         strengthState()
     }
     @ReactMethod fun finishStrengthSession(json: String, summaryJson: String, promise: Promise) = task(promise) {
-        val previous = store.getDocument("strength_active")
         val session = JSONObject(json)
-        store.finishStrengthSession(session, JSONObject(summaryJson))
+        val previous = StrengthWorkout.locked {
+            store.getDocument("strength_active").also { store.finishStrengthSession(session, JSONObject(summaryJson)) }
+        }
         runCatching { MotionSessions.onStrengthFinished(context, store, previous, session, System.currentTimeMillis()) }
+        StrengthWorkout.ended(context, store, session.optString("id"))
         strengthState()
     }
+    /** Für `NativeEventEmitter`; die Ereignisse gehen ohnehin an alle Zuhörer. */
+    @ReactMethod fun addListener(eventName: String) = Unit
+    @ReactMethod fun removeListeners(count: Double) = Unit
     @ReactMethod fun getStrengthSession(id: String, promise: Promise) = task(promise) {
         store.strengthSession(id) ?: store.strengthImport(id) ?: error("Einheit nicht gefunden")
     }

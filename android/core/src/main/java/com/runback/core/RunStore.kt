@@ -33,20 +33,14 @@ class RunStore(context: Context) : DocumentStore {
             if (helper == null) {
                 helper = Database(app)
                 val first = helper!!.writableDatabase
-                first.rawQuery("SELECT id,json FROM runs", null).use { rows ->
-                    while (rows.moveToNext()) {
-                        val run = JSONObject(rows.getString(1))
-                        if (run.optString("status") == "recording") {
-                            run.put("status", "interrupted").remove("_tick")
-                            first.update("runs", ContentValues().apply { put("json", run.toString()) }, "id=?", arrayOf(rows.getString(0)))
-                        }
-                    }
-                }
+                orphaned(first).forEach { recoverOrphaned(first, it, System.currentTimeMillis()) }
             }
             db = helper!!.writableDatabase
         }
     }
     private fun <T> locked(block: () -> T): T = synchronized(lock, block)
+    /** Was das erste Öffnen nach einem Prozessverlust tut; für Tests ohne echten Absturz. */
+    internal fun recoverOrphanedRuns(now: Long) = locked { orphaned(db).forEach { recoverOrphaned(db, it, now) } }
     private fun <T> transaction(block: () -> T): T {
         db.beginTransaction()
         try { val result = block(); db.setTransactionSuccessful(); return result } finally { db.endTransaction() }
@@ -217,9 +211,16 @@ class RunStore(context: Context) : DocumentStore {
                 run.put("status", "recording").put("_tick", SystemClock.elapsedRealtime()); write(run) }
         }; present(JSONObject(run.toString()))
     }
+    /** Unterbricht den aktiven Lauf; die Dauer reicht bis jetzt. Eine zweite Unterbrechung ändert nichts. */
     fun markInterrupted(reason: String) = locked {
-        activeId()?.let { id -> val run = read(id); run.put("status", "interrupted"); run.remove("_tick"); write(run)
-            addEvent(id, "interrupted", JSONObject().put("message", reason)) }
+        activeId()?.let { id ->
+            if (read(id).optString("status") == "interrupted") return@let
+            transaction {
+                checkpoint(id)
+                val run = read(id); run.put("status", "interrupted"); run.remove("_tick"); write(run)
+                addEvent(id, "interrupted", JSONObject().put("message", reason))
+            }
+        }
     }
     fun clearRouteAssignment(runId: String) = locked {
         val planner = getDocument("route_planner") ?: return@locked
@@ -1475,7 +1476,37 @@ class RunStore(context: Context) : DocumentStore {
             db.execSQL("CREATE INDEX IF NOT EXISTS strength_sets_workout ON strength_sets(workout_id)")
         }
     }
-    companion object {private val lock=Any();private var helper:Database?=null;private val tables=listOf("runs","samples","events","documents","hashes","tombstones","sources","wellness","strength_workouts","strength_sets","import_items");private val legacyTables=listOf("runs","samples","events","documents","hashes","tombstones","sources");private const val MAX_WELLNESS_BATCH = 50000;private const val MAX_RUN_DURATION_MS = 24L*60*60*1000
+    companion object {
+        /**
+         * Ein Lauf, der beim Öffnen der Datenbank noch „recording“ ist, hat seinen
+         * Prozess verloren (Absturz, Akku leer, Gerät aus). Er reicht bis zum
+         * letzten gespeicherten Messwert: Dauer und Ende werden dorthin
+         * verlängert, dort beginnt die Unterbrechung. Alles danach ist unbekannt.
+         */
+        private fun orphaned(db: SQLiteDatabase): List<JSONObject> = db.rawQuery("SELECT json FROM runs", null).use { rows ->
+            buildList { while (rows.moveToNext()) JSONObject(rows.getString(0)).takeIf { it.optString("status") == "recording" }?.let(::add) }
+        }
+        private fun recoverOrphaned(db: SQLiteDatabase, run: JSONObject, now: Long) {
+            val id = run.getString("id")
+            val end = run.optLong("endTime", run.optLong("startTime"))
+            val lastSample = db.rawQuery("SELECT MAX(time) FROM samples WHERE run_id=?", arrayOf(id)).use {
+                if (it.moveToFirst() && !it.isNull(0)) it.getLong(0) else null
+            }
+            val last = maxOf(end, lastSample?.takeIf { it <= now } ?: end)
+            run.put("status", "interrupted").remove("_tick")
+            run.put("durationMs", run.optLong("durationMs") + (last - end)).put("endTime", last)
+            db.beginTransaction()
+            try {
+                db.update("runs", ContentValues().apply { put("json", run.toString()) }, "id=?", arrayOf(id))
+                db.insertOrThrow("events", null, ContentValues().apply { put("run_id", id); put("json", JSONObject()
+                    .put("type", "interrupted").put("at", last)
+                    .put("source", run.optString("source").takeIf { it.isNotBlank() } ?: JSONObject.NULL)
+                    .put("data", JSONObject().put("message", "Aufzeichnung abgebrochen, etwa weil das Gerät ausging. Bisherige Daten sind gesichert.")
+                        .put("recovered", true)).toString()) })
+                db.setTransactionSuccessful()
+            } finally { db.endTransaction() }
+        }
+        private val lock=Any();private var helper:Database?=null;private val tables=listOf("runs","samples","events","documents","hashes","tombstones","sources","wellness","strength_workouts","strength_sets","import_items");private val legacyTables=listOf("runs","samples","events","documents","hashes","tombstones","sources");private const val MAX_WELLNESS_BATCH = 50000;private const val MAX_RUN_DURATION_MS = 24L*60*60*1000
         const val LEGACY_BATCH = "legacy:"
         const val END_CORRECTION_VERSION = "end-correction-v1"
         private const val MAX_UNEXPLAINED_PAUSE_MS = 60_000L

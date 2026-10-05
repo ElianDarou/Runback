@@ -84,6 +84,17 @@ object MotionSync {
         retry(context)
     }
 
+    /**
+     * Neuer Prozess, aber eine Aufzeichnung steht noch auf „recording“: Die Uhr
+     * ist abgestürzt oder ausgegangen. Die Datei endet dort; sie wird so, wie
+     * sie ist, übertragen (der Leser verkraftet einen halben letzten Datensatz).
+     */
+    fun recoverStale(context: Context) {
+        val stale = synchronized(stateLock) { RunStore(context).getDocument(STATE)?.optString("recording") }
+            ?.takeIf { it.isNotBlank() && it != MotionCaptureService.activeSession } ?: return
+        close(context, stale)
+    }
+
     /** Einheit wurde auf dem Handy verworfen: Rohdaten sind wertlos und werden gelöscht. */
     fun discard(context: Context, id: String) {
         update(context) { state ->

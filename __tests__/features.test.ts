@@ -23,6 +23,21 @@ const finished = (endedAgoMs: number) => ({
 });
 
 describe('normalizeFeatures', () => {
+  it('vibriert am Pausenende standardmäßig, spielt aber keinen Ton', () => {
+    expect(normalizeFeatures(undefined).strength).toMatchObject({
+      restVibration: true,
+      restSound: false,
+    });
+    const chosen = normalizeFeatures({
+      strength: { restVibration: false, restSound: true },
+    });
+    expect(chosen.strength.restVibration).toBe(false);
+    expect(chosen.strength.restSound).toBe(true);
+    expect(
+      normalizeFeatures({ strength: { restSound: 'ja' } }).strength.restSound,
+    ).toBe(false);
+  });
+
   it('liefert den Standard für fehlende oder kaputte Eingaben', () => {
     expect(normalizeFeatures(undefined)).toEqual(DEFAULT_FEATURES);
     expect(normalizeFeatures('unsinn')).toEqual(DEFAULT_FEATURES);

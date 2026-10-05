@@ -98,6 +98,53 @@ object WearProtocol {
         return payload
     }
 
+    /**
+     * Laufende Krafteinheit vom Handy auf der Uhr (StrengthLive). Das Handy legt
+     * den Stand als DataItem ab und schickt am Pausenende `alert`; die Uhr meldet
+     * mit `seen`, dass sie die Einheit zeigt, und schickt Befehle.
+     */
+    const val STRENGTH_STATE_PATH = "/runback/strength/state"
+    const val STRENGTH_COMMAND_PATH = "/runback/strength/command"
+    const val STRENGTH_ALERT_PATH = "/runback/strength/alert"
+    const val STRENGTH_SEEN_PATH = "/runback/strength/seen"
+
+    fun strengthCommand(action: String, sessionId: String, setId: String? = null, exerciseIndex: Int? = null): ByteArray {
+        require(action in StrengthLive.ACTIONS) { "Unbekannter Trainingsbefehl" }
+        require(sessionId.matches(ID_PATTERN)) { "Ungültige Einheitskennung" }
+        return JSONObject()
+            .put("protocolVersion", VERSION)
+            .put("action", action)
+            .put("sessionId", sessionId)
+            .apply {
+                setId?.let { put("setId", it) }
+                exerciseIndex?.let { put("exerciseIndex", it) }
+            }
+            .toString().toByteArray(Charsets.UTF_8)
+    }
+
+    /** Liest einen Befehl der Uhr; wirft bei unbekannter Aktion oder ungültigen Feldern. */
+    fun decodeStrengthCommand(bytes: ByteArray): JSONObject {
+        val payload = decode(bytes)
+        require(payload.optString("action") in StrengthLive.ACTIONS) { "Unbekannter Trainingsbefehl" }
+        require(payload.optString("sessionId").matches(ID_PATTERN)) { "Ungültige Einheitskennung" }
+        if (payload.has("setId")) require(payload.optString("setId").length in 1..200) { "Ungültige Satzkennung" }
+        if (payload.has("exerciseIndex")) require(payload.optInt("exerciseIndex", -1) in 0..999) { "Ungültige Übung" }
+        return payload
+    }
+
+    /** `alert` und `seen` tragen nur die Einheit. */
+    fun strengthNotice(sessionId: String): ByteArray {
+        require(sessionId.matches(ID_PATTERN)) { "Ungültige Einheitskennung" }
+        return JSONObject().put("protocolVersion", VERSION).put("sessionId", sessionId)
+            .toString().toByteArray(Charsets.UTF_8)
+    }
+
+    fun decodeStrengthNotice(bytes: ByteArray): String {
+        val sessionId = decode(bytes).optString("sessionId")
+        require(sessionId.matches(ID_PATTERN)) { "Ungültige Einheitskennung" }
+        return sessionId
+    }
+
     private val ID_PATTERN = Regex("[A-Za-z0-9_-]{1,100}")
 
     fun decode(bytes: ByteArray): JSONObject {

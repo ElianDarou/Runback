@@ -289,6 +289,9 @@ class WearSyncListener : WearableListenerService() {
                 WearSync.acceptAck(this, data.getString("runId") ?: "", data.getString("sha256") ?: "")
             } else if (path.startsWith(WearProtocol.MOTION_ACK_PREFIX)) {
                 MotionSync.acceptAck(this, data.getString("sessionId") ?: "", data.getString("sha256") ?: "")
+            } else if (path == WearProtocol.STRENGTH_STATE_PATH) {
+                val state = runCatching { JSONObject(data.getString("state") ?: "") }.getOrNull() ?: continue
+                StrengthMirror.accept(this, state, event.dataItem.uri.host)
             }
         }
     }
@@ -298,6 +301,9 @@ class WearSyncListener : WearableListenerService() {
             WearProtocol.LIVE_PATH -> executor.execute { receivePhoneSamples(event.data) }
             WearProtocol.ACK_PATH -> executor.execute { receivePhoneAck(event.data) }
             WearProtocol.MOTION_PATH -> MotionSync.handleMessage(this, event)
+            WearProtocol.STRENGTH_ALERT_PATH -> runCatching {
+                StrengthMirror.alert(this, WearProtocol.decodeStrengthNotice(event.data))
+            }
         }
     }
     override fun onPeerConnected(peer: Node) {
