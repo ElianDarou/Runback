@@ -111,6 +111,12 @@ export interface StrengthSession {
     /** Strong meldete diese Dauer, sie passt aber zu keiner Satzzahl; das Ende ist unbekannt. */
     rejectedDurationSeconds?: number;
   };
+  /** Vom Nutzer gesetztes Ende; `endTime` ist dann schon das korrigierte, das Original steht hier. */
+  endCorrection?: {
+    endTime: number;
+    originalEndTime?: number;
+    setAt?: number;
+  };
 }
 
 export const isSetCompleted = (set: LoggedSet): boolean =>

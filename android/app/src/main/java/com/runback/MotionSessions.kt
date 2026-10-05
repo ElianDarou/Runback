@@ -357,28 +357,42 @@ object MotionSessions {
      * die Rohdatei noch da ist (Grundregel 2). Läuft die Einheit noch, wird
      * nichts gespeichert.
      */
+    /**
+     * Puls einer Krafteinheit im Fenster bis zum geltenden Ende (Korrektur vor
+     * Aufzeichnung): zuerst von der Uhr, sonst aus importierten Pulswerten.
+     */
     fun heart(context: Context, store: RunStore, id: String): JSONObject? {
+        if (id.isBlank() || id.length > 200) return null
+        val window = store.strengthWindow(id)
+        // Importierte Einheiten („strong:…“) haben keine Uhrdatei.
+        if (id.matches(ID)) watchHeart(context, store, id, window?.end)?.let { return it }
+        val end = window?.end ?: return null
+        return store.importedHeart(window.start, end)
+    }
+
+    /** Für den Editor: Uhr-Puls bis zu einem frei gewählten Ende, ohne Zwischenspeicher. */
+    fun heartUntil(context: Context, store: RunStore, id: String, end: Long): JSONObject? {
         if (!id.matches(ID)) return null
+        return readWatchHeart(context, store, id, end)
+    }
+
+    private fun watchHeart(context: Context, store: RunStore, id: String, end: Long?): JSONObject? {
         val stored = store.getDocument(heartKey(id))
         val file = rawFile(context, id)
-        if (stored != null && (stored.optString("model_version") == StrengthHeart.VERSION || !file.exists())) {
+        // Der Zwischenspeicher gilt nur für das Fenster, mit dem er gerechnet wurde.
+        val sameWindow = stored?.optLong("windowEnd", 0L)?.let { it == 0L && store.getDocument("strength_end_$id") == null || it == end } ?: false
+        if (stored != null && ((stored.optString("model_version") == StrengthHeart.VERSION && sameWindow) || !file.exists())) {
             return stored.takeIf { it.optBoolean("available", true) }
         }
         if (!file.exists()) return null
         val meta = store.getDocument(key(id)) ?: return null
         // Ohne angeforderten Puls enthält die Datei keinen; große Bewegungsdateien nicht umsonst lesen.
         if (meta.optJSONObject("capture")?.optBoolean("heartRate", false) != true) return null
-        val session = store.getDocument("strength_session_$id") ?: return null
-        val start = session.optLong("startTime").takeIf { it > 0 } ?: return null
-        val end = session.optLong("endTime").takeIf { it > start } ?: return null
-        val clock = MotionLabels.clockOffset(meta.optJSONArray("pings"))
-        val samples = GZIPInputStream(file.inputStream(), 64 * 1024).use { input ->
-            MotionFormat.Reader(input).use { StrengthHeart.read(it, clock?.offsetMs) }
-        }
-        val summary = StrengthHeart.summarize(samples, start, end, clockAligned = clock != null)
-        val document = summary ?: JSONObject()
+        val until = end ?: return null
+        val summary = readWatchHeart(context, store, id, until)
+        val document = (summary?.let { JSONObject(it.toString()) } ?: JSONObject()
             .put("model_version", StrengthHeart.VERSION)
-            .put("available", false)
+            .put("available", false)).put("windowEnd", until)
         synchronized(lock) {
             // Inzwischen gelöscht: nichts wiederbeleben.
             if (store.getDocument(key(id)) != null) store.putDocument(heartKey(id), document)
@@ -386,14 +400,35 @@ object MotionSessions {
         return summary
     }
 
+    private fun readWatchHeart(context: Context, store: RunStore, id: String, end: Long): JSONObject? {
+        val file = rawFile(context, id)
+        if (!file.exists()) return null
+        val meta = store.getDocument(key(id)) ?: return null
+        // Ohne angeforderten Puls enthält die Datei keinen; große Bewegungsdateien nicht umsonst lesen.
+        if (meta.optJSONObject("capture")?.optBoolean("heartRate", false) != true) return null
+        val session = store.getDocument("strength_session_$id") ?: return null
+        val start = session.optLong("startTime").takeIf { it > 0 } ?: return null
+        if (end <= start) return null
+        val clock = MotionLabels.clockOffset(meta.optJSONArray("pings"))
+        val samples = GZIPInputStream(file.inputStream(), 64 * 1024).use { input ->
+            MotionFormat.Reader(input).use { StrengthHeart.read(it, clock?.offsetMs) }
+        }
+        return StrengthHeart.summarize(samples, start, end, clockAligned = clock != null)
+    }
+
     /** Kurzformen aller Einheiten mit Puls, für die Statistik: `{ <id>: {...} }`. */
     fun heartSummaries(context: Context, store: RunStore): JSONObject {
         val result = JSONObject()
-        val ids = (ids(store) + heartIds(store)).distinct()
+        val ids = (ids(store) + heartIds(store) + sessionIds(store) + store.strengthImportIds()).distinct()
         ids.forEach { id ->
             runCatching { heart(context, store, id) }.getOrNull()?.let { result.put(id, StrengthHeart.brief(it)) }
         }
         return result
+    }
+
+    private fun sessionIds(store: RunStore): List<String> {
+        val sessions = store.getDocument("strength_index")?.optJSONArray("sessions") ?: return emptyList()
+        return (0 until sessions.length()).mapNotNull { sessions.optJSONObject(it)?.optString("id") }.filter { it.matches(ID) }
     }
 
     /** Pulsdokumente bleiben auch nach „Bewegungsdaten löschen“; sie hängen an der Einheit. */

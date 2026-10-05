@@ -87,4 +87,18 @@ class StrengthHeartTest {
         )!!
         assertTrue(summary.getJSONArray("values").length() <= StrengthHeart.MAX_ROWS)
     }
+
+    @Test fun importedHeartUsesOneSourceAndMinuteWindows() {
+        val start = 1_000_000L
+        val points = (0 until 30).map { ImportedHeart.Point("fitbit", start + it * 60_000L, 100.0 + it) } +
+            (0 until 5).map { ImportedHeart.Point("google_fit", start + it * 60_000L, 60.0) } +
+            ImportedHeart.Point("fitbit", start - 60_000L, 200.0)
+        val summary = ImportedHeart.summarize(points, start, start + 30 * 60_000L)!!
+        assertEquals("import:fitbit", summary.getString("source"))
+        assertEquals(60, summary.getInt("stepSeconds"))
+        assertEquals(30, summary.getJSONArray("values").length())
+        assertEquals(100.0, summary.getDouble("minBpm"), 0.0)
+        assertEquals(ImportedHeart.VERSION, summary.getString("linkVersion"))
+        assertNull(ImportedHeart.summarize(points, start + 3_600_000L, start + 7_200_000L))
+    }
 }

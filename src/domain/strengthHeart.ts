@@ -1,5 +1,6 @@
 import { median } from './inference';
 import type { StrengthSession } from './strength';
+import { sourceName } from './importReview';
 
 /**
  * Puls im Krafttraining, aus der Darstellungsreihe der Uhr (Kotlin
@@ -141,11 +142,23 @@ export interface SessionHeartInsight {
   byExercise: ExerciseHeart[];
 }
 
+/** Puls von der Uhr; importierter Puls (`import:<Quelle>`) kommt als Minutenmittel. */
+export const isWatchHeart = (heart: StrengthHeartSummary): boolean =>
+  !heart.source || heart.source === 'watch';
+
+/** Woher der Puls kommt, als Wort für die Anzeige. */
+export function heartSourceLabel(heart: StrengthHeartSummary): string {
+  return isWatchHeart(heart)
+    ? 'Uhr'
+    : sourceName(heart.source.replace(/^import:/, ''));
+}
+
 export function sessionHeartInsight(
   session: StrengthSession,
   heart: StrengthHeart,
 ): SessionHeartInsight {
-  const completed = session.exercises
+  // Minutenmittel aus Importen tragen keinen Puls am Satzende und keine Erholung.
+  const completed = (isWatchHeart(heart) ? session.exercises : [])
     .flatMap((exercise, exerciseIndex) =>
       exercise.sets
         .filter(set => finite(set.completedAt) && !set.skipped)

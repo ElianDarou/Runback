@@ -114,6 +114,15 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     }
     @ReactMethod fun getRunTimeline(id: String, maxRows: Int, promise: Promise) = task(promise) { store.timeline(id, maxRows) }
     @ReactMethod fun getRunSeries(id: String, maxRows: Int, promise: Promise) = task(promise) { store.series(id, maxRows) }
+    /** Ganzer Verlauf ohne Korrektur, damit man ein zu frühes Ende auch wieder zurücknehmen kann. */
+    @ReactMethod fun getRunEndEditor(id: String, promise: Promise) = task(promise) {
+        val info = store.runEndInfo(id)
+        info.put("series", if (info.optBoolean("hasSamples")) store.series(id, 300, untrimmed = true) else JSONObject.NULL)
+    }
+    @ReactMethod fun setRunEnd(id: String, endTime: Double, promise: Promise) = task(promise) {
+        store.setRunEnd(id, endTime.takeIf { it > 0 }?.toLong())
+        store.detail(id).apply { put("route", optJSONArray("geometry") ?: JSONArray()) }
+    }
     @ReactMethod fun updateRunFeedback(id: String, json: String, promise: Promise) = task(promise) { store.saveFeedback(id, JSONObject(json)); store.detail(id) }
     @ReactMethod fun saveRunContext(id: String, json: String, promise: Promise) = updateRunFeedback(id, json, promise)
     @ReactMethod fun deleteRun(id: String, promise: Promise) = task(promise) { store.deleteRun(id); state() }
@@ -161,7 +170,29 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         strengthState()
     }
     @ReactMethod fun getStrengthSession(id: String, promise: Promise) = task(promise) {
-        store.getDocument("strength_session_$id") ?: store.strengthImport(id) ?: error("Einheit nicht gefunden")
+        store.strengthSession(id) ?: store.strengthImport(id) ?: error("Einheit nicht gefunden")
+    }
+    /** Ende einer Krafteinheit korrigieren; eine negative Zeit hebt die Korrektur auf. */
+    @ReactMethod fun setStrengthEnd(id: String, endTime: Double, promise: Promise) = task(promise) {
+        store.setStrengthEnd(id, endTime.takeIf { it > 0 }?.toLong())
+        store.strengthSession(id) ?: store.strengthImport(id) ?: error("Einheit nicht gefunden")
+    }
+    /**
+     * Grundlage für „Ende bearbeiten“: Zeitraum bis zum spätesten bekannten Ende
+     * (bei Strong die gemeldete Dauer, sonst vier Stunden) und der Puls darin.
+     */
+    @ReactMethod fun getStrengthEndEditor(id: String, promise: Promise) = task(promise) {
+        val window = store.strengthWindow(id) ?: error("Einheit nicht gefunden")
+        val latest = listOfNotNull(window.recordedEnd, window.reportedEnd, window.correctedEnd).maxOrNull()
+            ?: (window.start + 4 * 3600_000L)
+        val rangeEnd = minOf(latest, window.start + 12 * 3600_000L)
+        val heart = runCatching { MotionSessions.heartUntil(context, store, id, rangeEnd) }.getOrNull()
+            ?: store.importedHeart(window.start, rangeEnd)
+        JSONObject().put("startTime", window.start).put("rangeEnd", rangeEnd)
+            .put("recordedEndTime", window.recordedEnd ?: JSONObject.NULL)
+            .put("reportedEndTime", window.reportedEnd ?: JSONObject.NULL)
+            .put("correctedEndTime", window.correctedEnd ?: JSONObject.NULL)
+            .put("heart", heart ?: JSONObject.NULL)
     }
     @ReactMethod fun deleteStrengthSession(id: String, promise: Promise) = task(promise) {
         store.deleteStrengthSession(id)

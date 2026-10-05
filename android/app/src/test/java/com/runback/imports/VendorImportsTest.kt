@@ -216,4 +216,28 @@ class VendorImportsTest {
         assertEquals("body_fat", VendorImports.strongMeasurementKind("body_fat_percentage.csv"))
         assertEquals("%", VendorImports.strongMeasurementUnit("body_fat"))
     }
+
+    @Test fun googleFitHeartIsStreamedAndAveragedPerMinute() {
+        val json = """{"Data Source":"derived:com.google.heart_rate.bpm:\"merge\"","Data Points":[
+          {"fitValue":[{"value":{"fpVal":70.0}}],"originDataSourceId":"x{y}","endTimeNanos":1700000000000000000,
+           "dataTypeName":"com.google.heart_rate.bpm","startTimeNanos":1700000000000000000,"modifiedTimeMillis":1},
+          {"startTimeNanos":"1700000030000000000","dataTypeName":"com.google.heart_rate.bpm","fitValue":[{"value":{"fpVal":80}}]},
+          {"fitValue":[{"value":{"intVal":5}}],"startTimeNanos":1700000060000000000,"dataTypeName":"com.google.step_count.delta"},
+          {"fitValue":[{"value":{"fpVal":300.0}}],"startTimeNanos":1700000090000000000,"dataTypeName":"com.google.heart_rate.bpm"}
+        ]}"""
+        val points = ArrayList<Pair<Long, Double>>()
+        VendorImports.parseGoogleFitHeart(json.reader()) { time, bpm -> points.add(time to bpm) }
+        assertEquals(listOf(1_700_000_000_000L to 70.0, 1_700_000_030_000L to 80.0, 1_700_000_090_000L to 300.0), points)
+        val minutes = VendorImports.HeartMinutes("google_fit")
+        points.forEach { (time, bpm) -> minutes.add(time, bpm) }
+        assertEquals(1, minutes.rejected)
+        val rows = minutes.rows()
+        assertEquals(1, rows.size)
+        assertEquals(VendorImports.HEART_SAMPLE_KIND, rows[0].kind)
+        assertEquals(75.0, rows[0].value, 0.0)
+        assertEquals(0L, rows[0].endTime)
+        assertEquals(1_699_999_980_000L, rows[0].time)
+        assertTrue(VendorImports.isGoogleFitHeartFile("derived_com.google.heart_rate.bpm_com.google.android.gms_merged.json"))
+        assertFalse(VendorImports.isGoogleFitHeartFile("heart_rate-2024-01-01.json"))
+    }
 }

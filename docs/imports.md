@@ -65,6 +65,13 @@ Passwortgeschützte ZIPs werden nicht unterstützt — vorher entpacken.
   die Dauer zu keiner Satzzahl (mehr als 30 Minuten plus 6 Minuten je Satz),
   wurde die Einheit vermutlich zu spät beendet: Ihr Ende bleibt unbekannt,
   außer du übernimmst die Dauer in der Vorschau.
+- **Pulsverlauf** (Fitbit-Takeout `heart_rate-*.json`, Google-Fit-Takeout
+  `…heart_rate.bpm….json`, Mi Fitness) wird je Minute gemittelt gespeichert.
+  Jede Krafteinheit sucht sich beim Öffnen den Puls aus ihrem Zeitraum —
+  egal, ob Strong vor oder nach Fitbit importiert wurde. Quellen werden nicht
+  gemischt; es zählt die mit den meisten Werten. Aus Minutenmitteln entstehen
+  kein Puls am Satzende und keine Erholungswerte. Wird der Puls-Import
+  gelöscht, verschwindet der Puls an den Einheiten mit.
 - **Gewicht aus generischem JSON** nur, wenn es ausdrücklich so heißt:
   `[{"kind":"weight","date":"2024-11-02","value":70,"unit":"kg"}]`.
 

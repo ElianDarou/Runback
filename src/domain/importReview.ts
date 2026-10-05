@@ -160,6 +160,7 @@ export function toggleIn(list: string[], id: string, on: boolean): string[] {
 const WELLNESS_LABELS: Record<string, string> = {
   resting_hr: 'Ruhepuls',
   heart_rate: 'Puls im Alltag',
+  heart_sample: 'Pulsverlauf',
   sleep_hr: 'Puls im Schlaf',
   hrv_rmssd: 'Herzratenvariabilität',
   hrv_sdnn: 'Herzratenvariabilität',
