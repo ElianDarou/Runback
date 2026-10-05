@@ -267,6 +267,24 @@ export const native = {
   async discardRunArchive(id: string) {
     await nativeCall('discardRunArchive', id);
   },
+  // ZIP aus flachen Dateien; jeder Aufruf hängt an gleichnamige Dateien an.
+  async beginExportArchive(prefix: string): Promise<string> {
+    return (await nativeCall<{ id: string }>('beginExportArchive', prefix)).id;
+  },
+  async appendExportArchive(id: string, files: Record<string, string>) {
+    await nativeCall('appendExportArchive', id, JSON.stringify(files));
+  },
+  async shareExportArchive(id: string, title: string) {
+    await nativeCall('shareExportArchive', id, title);
+  },
+  async discardExportArchive(id: string) {
+    await nativeCall('discardExportArchive', id);
+  },
+  /** In Runback aufgezeichnete Krafteinheiten, älteste zuerst, ohne Importe. */
+  async recordedStrengthSessionIds(): Promise<string[]> {
+    return (await nativeCall<{ ids: string[] }>('recordedStrengthSessionIds'))
+      .ids;
+  },
   async state(): Promise<AppState> {
     const raw = await nativeCall<any>('getState');
     return {
