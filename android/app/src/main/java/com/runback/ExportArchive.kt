@@ -43,5 +43,13 @@ internal class ExportArchive(val file: File) {
 
     companion object {
         private val NAME = Regex("[A-Za-z0-9_-][A-Za-z0-9._-]{0,119}")
+
+        /**
+         * Löscht Exporte, die älter als `maxAgeMs` sind — auch liegengebliebene
+         * `.parts`-Ordner, wenn Android die App mitten im Export beendet hat.
+         */
+        fun clean(directory: File, now: Long, maxAgeMs: Long = 24 * 60 * 60 * 1000L) {
+            directory.listFiles()?.filter { it.lastModified() < now - maxAgeMs }?.forEach { it.deleteRecursively() }
+        }
     }
 }

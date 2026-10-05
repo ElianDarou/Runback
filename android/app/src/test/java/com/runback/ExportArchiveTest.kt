@@ -34,4 +34,21 @@ class ExportArchiveTest {
             assertEquals(0, dir.listFiles()!!.size)
         } finally { dir.deleteRecursively() }
     }
+
+    @Test fun cleanRemovesStaleArchivesAndAbandonedPartsButKeepsFreshOnes() {
+        val dir = Files.createTempDirectory("runback-export").toFile()
+        try {
+            val now = 10L * 24 * 60 * 60 * 1000
+            val stale = ExportArchive(java.io.File(dir, "alt.zip"))
+            stale.append(mapOf("sets.csv" to "x"))
+            val staleParts = java.io.File(dir, "alt.zip.parts")
+            staleParts.setLastModified(now - 25L * 60 * 60 * 1000)
+            val oldZip = java.io.File(dir, "fertig.zip").apply { writeText("zip"); setLastModified(now - 25L * 60 * 60 * 1000) }
+            val fresh = java.io.File(dir, "neu.zip").apply { writeText("zip"); setLastModified(now - 60_000) }
+            ExportArchive.clean(dir, now)
+            assertFalse(staleParts.exists())
+            assertFalse(oldZip.exists())
+            assertTrue(fresh.exists())
+        } finally { dir.deleteRecursively() }
+    }
 }

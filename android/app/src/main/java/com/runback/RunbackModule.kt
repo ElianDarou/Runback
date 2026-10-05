@@ -533,7 +533,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
 
     private fun exportDirectory(): File = File(context.cacheDir, "exports").apply {
         mkdirs()
-        listFiles()?.filter { it.lastModified() < System.currentTimeMillis() - 24 * 60 * 60 * 1000L }?.forEach { it.delete() }
+        ExportArchive.clean(this, System.currentTimeMillis())
     }
     private fun safeExportName(fileName: String, fallback: String) =
         fileName.replace(Regex("[^A-Za-z0-9._-]"), "-").take(120).ifBlank { fallback }

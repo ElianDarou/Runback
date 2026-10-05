@@ -145,7 +145,9 @@ describe('strength export', () => {
       sets_skipped: '1',
       sets_open: '1',
       total_reps: '40',
+      sets_with_reps: '4',
       volume_kg: '1600',
+      sets_with_volume: '3',
       heart_source: '',
       heart_avg_bpm: '',
     });
@@ -159,6 +161,26 @@ describe('strength export', () => {
       reps: 8,
       weightKg: 80,
     });
+  });
+
+  it('leaves totals empty when no set carries the value', () => {
+    const headers = strengthExportHeaders();
+    const blank = strengthSession('s2', START, [
+      ['plank', 'Unterarmstütz', [{ seconds: 60, at: 2 }, { at: 4 }]],
+    ]);
+    const chunk = strengthExportChunk(blank);
+    expect(table(headers.sessions, chunk.sessions)[0]).toMatchObject({
+      sets_completed: '2',
+      total_reps: '',
+      sets_with_reps: '0',
+      volume_kg: '',
+      sets_with_volume: '0',
+    });
+    const exercise = JSON.parse(chunk.jsonl).exercises[0];
+    expect(exercise.totalReps).toBeUndefined();
+    expect(exercise.volumeKg).toBeUndefined();
+    expect(exercise.setsWithReps).toBe(0);
+    expect(chunk.log).not.toContain('Volumen');
   });
 
   it('exports heart windows with gaps and the per-set heart', () => {

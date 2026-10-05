@@ -64,7 +64,9 @@ const SESSION_COLUMNS = [
   'sets_skipped',
   'sets_open',
   'total_reps',
+  'sets_with_reps',
   'volume_kg',
+  'sets_with_volume',
   'median_set_gap_s',
   'end_corrected',
   'heart_source',
@@ -245,6 +247,28 @@ function exerciseInfo(exerciseId: string, name: string) {
   };
 }
 
+/**
+ * Summen nur über Sätze, die den Wert tragen; ohne einen einzigen bleibt die
+ * Summe unbekannt statt 0. Die Zahl der beitragenden Sätze steht daneben,
+ * damit eine Teilsumme als solche erkennbar ist.
+ */
+function sums(records: SetRecord[]) {
+  const reps = records
+    .map(record => (done(record.set) ? record.set.actualReps : undefined))
+    .filter((value): value is number => finite(value) && value > 0);
+  const volumes = records
+    .map(record => record.volumeKg)
+    .filter((value): value is number => finite(value));
+  const total = (values: number[]) =>
+    values.reduce((sum, value) => sum + value, 0);
+  return {
+    totalReps: reps.length ? total(reps) : undefined,
+    setsWithReps: reps.length,
+    volumeKg: volumes.length ? round(total(volumes), 1) : undefined,
+    setsWithVolume: volumes.length,
+  };
+}
+
 export interface StrengthExportChunk {
   sessions: string;
   sets: string;
@@ -281,11 +305,7 @@ export function strengthExportChunk(
     warmupSets: warmup,
     skippedSets: count(set => set.skipped === true),
     openSets: count(set => !set.skipped && !isSetCompleted(set)),
-    totalReps: breakdown.reduce((sum, item) => sum + item.totalReps, 0),
-    volumeKg: round(
-      breakdown.reduce((sum, item) => sum + item.volumeKg, 0),
-      1,
-    ) as number,
+    ...sums(records),
     medianSetGapSeconds: round(gaps.medianSeconds, 0),
   };
   const heartSummary = heart
@@ -319,7 +339,9 @@ export function strengthExportChunk(
     totals.skippedSets,
     totals.openSets,
     totals.totalReps,
+    totals.setsWithReps,
     totals.volumeKg,
+    totals.setsWithVolume,
     totals.medianSetGapSeconds,
     Boolean(session.endCorrection),
     heartSummary?.source,
@@ -424,8 +446,9 @@ export function strengthExportChunk(
         workingSets: item.workingSets,
         warmupSets: item.warmupSets,
         skippedSets: item.skippedSets,
-        totalReps: item.totalReps,
-        volumeKg: round(item.volumeKg, 1),
+        ...sums(
+          records.filter(record => record.exerciseIndex === exerciseIndex),
+        ),
         topWeightKg: item.topWeightKg,
         medianRir: item.medianRir,
         sets: records
@@ -498,14 +521,14 @@ function setLine(set: LoggedSet): string {
 
 function logSection(
   session: StrengthSession,
-  totals: { completedSets: number; volumeKg: number },
+  totals: { completedSets: number; volumeKg?: number },
   duration: number | undefined,
   heart?: StrengthHeart,
 ): string {
   const facts = [
     duration !== undefined ? `${number(duration / 60)} min` : 'Dauer unbekannt',
     `${totals.completedSets} Sätze abgehakt`,
-    totals.volumeKg > 0 ? `${number(totals.volumeKg)} kg Volumen` : undefined,
+    totals.volumeKg ? `${number(totals.volumeKg)} kg Volumen` : undefined,
     heart
       ? `Puls Ø ${number(heart.averageBpm)}, max ${number(
           heart.maxBpm,
@@ -606,6 +629,7 @@ ${context.length ? `\n## Trainingskontext\n\n${context.join('\n')}\n` : ''}
 ## Spalten in sessions.csv
 
 - \`sets_working\`: abgehakt, nicht übersprungen, kein Aufwärmen. \`sets_open\`: weder abgehakt noch übersprungen.
+- \`total_reps\`, \`volume_kg\`: Summen nur über abgehakte Sätze mit diesem Wert; leer, wenn kein Satz ihn trägt. \`sets_with_reps\` und \`sets_with_volume\` zählen die beitragenden Sätze — weniger als \`sets_completed\` heißt: Teilsumme.
 - \`median_set_gap_s\`: Median der Satzabstände bis 15 min.
 - \`heart_source\`: \`watch\` (Uhr) oder \`import:<Quelle>\` (Minutenmittel aus einem Import, ohne Satzwerte).
 - \`heart_coverage\`: Anteil der Zeitfenster mit Wert, 0–1. \`heart_clock_aligned\`: Uhr- und Handyzeit abgeglichen.
