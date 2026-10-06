@@ -8,6 +8,7 @@ import com.google.android.gms.wearable.Wearable
 import com.runback.core.RunStore
 import com.runback.core.StrengthLive
 import com.runback.core.WearProtocol
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 import java.util.concurrent.Executors
@@ -38,14 +39,17 @@ object StrengthWorkout {
      * Baut `next` auf dem gespeicherten Stand auf? Mit `baseRevision` muss genau
      * dieser Stand gespeichert sein — ein Nachzügler belebt so keine beendete
      * oder fremde Einheit. Ohne Angabe nur, wenn er eine neue Einheit beginnt
-     * oder eine ältere ohne Revision fortschreibt.
+     * oder eine ältere ohne Revision fortschreibt. Eine neue Einheit ersetzt
+     * keine laufende: Die Uhr kann gerade eine gestartet haben.
      */
     internal fun fits(stored: JSONObject?, next: JSONObject): Boolean {
         val base = next.optString("baseRevision").takeIf { next.has("baseRevision") && it.isNotBlank() }
         if (base != null) {
             return stored != null && stored.optString("id") == next.optString("id") && stored.optString("revision") == base
         }
-        return stored == null || stored.optString("id") != next.optString("id") || stored.optString("revision").isBlank()
+        if (stored == null) return true
+        if (stored.optString("id") != next.optString("id")) return stored.optString("status") != "active"
+        return stored.optString("revision").isBlank()
     }
 
     /** Speichert aus der App. `false`: veralteter Stand, nichts geschrieben. */
@@ -83,6 +87,7 @@ object StrengthWorkout {
 
     /** Befehl von Uhr oder Benachrichtigung. `false`, wenn er nicht (mehr) passt. */
     fun command(context: Context, command: JSONObject): Boolean {
+        if (command.optString("action") == StrengthLive.START_SESSION) return start(context, command)
         val store = RunStore(context)
         val now = System.currentTimeMillis()
         val (previous, next) = synchronized(lock) {
@@ -99,6 +104,52 @@ object StrengthWorkout {
         // Auch ein veralteter Befehl bekommt den aktuellen Stand zurück.
         sync(context, command.optString("sessionId"))
         return next != null
+    }
+
+    /**
+     * Start von der Uhr. Läuft schon eine Einheit, bleibt sie; die Uhr bekommt
+     * deren Stand. Eine Vorlage, die es nicht mehr gibt, startet nichts — der
+     * Nutzer hat sie gewählt, nicht ein freies Training.
+     */
+    internal fun start(context: Context, command: JSONObject): Boolean {
+        val store = RunStore(context)
+        val sessionId = command.optString("sessionId")
+        val now = System.currentTimeMillis()
+        val session = synchronized(lock) {
+            val active = store.getDocument(ACTIVE)?.takeIf { it.optString("status") == "active" }
+            val templateId = command.optString("templateId").takeIf { command.has("templateId") && it.isNotBlank() }
+            val template = templateId?.let { id -> templates(store).firstOrNull { it.optString("id") == id } }
+            if (active != null || store.strengthSession(sessionId) != null || (templateId != null && template == null)) {
+                null
+            } else {
+                StrengthLive.startSession(template, now, sessionId).put("revision", UUID.randomUUID().toString()).also {
+                    store.putDocument(ACTIVE, it)
+                    runCatching { listener?.invoke(it) }.onFailure { error -> Log.w(TAG, "App konnte nicht benachrichtigt werden", error) }
+                }
+            }
+        }
+        if (session != null) runCatching { MotionSessions.onStrengthSaved(context, store, null, session, now) }
+        sync(context)
+        publishTemplates(context)
+        return session != null
+    }
+
+    private fun templates(store: RunStore): List<JSONObject> {
+        val list = store.getDocument("strength_templates")?.optJSONArray("templates") ?: return emptyList()
+        return (0 until list.length()).mapNotNull { list.optJSONObject(it) }
+    }
+
+    /** Vorlagenliste für die Uhr; nach jedem Speichern der Vorlagen und beim Öffnen der App. */
+    fun publishTemplates(context: Context) {
+        sender.execute {
+            runCatching {
+                val store = RunStore(context)
+                val list = StrengthLive.templateList(JSONArray(templates(store)), System.currentTimeMillis())
+                val request = PutDataMapRequest.create(WearProtocol.STRENGTH_TEMPLATES_PATH)
+                request.dataMap.putString("templates", list.toString())
+                Tasks.await(Wearable.getDataClient(context).putDataItem(request.asPutDataRequest()), 10, TimeUnit.SECONDS)
+            }.onFailure { Log.w(TAG, "Vorlagen für die Uhr fehlgeschlagen", it) }
+        }
     }
 
     /** Die App ist offen und findet eine laufende Einheit: Benachrichtigung und Uhr nachziehen. */

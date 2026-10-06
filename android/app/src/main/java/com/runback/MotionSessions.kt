@@ -45,9 +45,17 @@ object MotionSessions {
     private val lock = Any()
     private val sender = Executors.newSingleThreadExecutor()
     private const val INDEX = "motion_index"
+    /** Älter als so ist ein Puls von der Uhr keine Live-Anzeige mehr. */
+    private const val LIVE_HEART_MAX_AGE_MS = 15_000L
     private const val MAX_EVENTS = 5_000
     private const val MAX_PINGS = 200
     private val ID = Regex("[A-Za-z0-9_-]{1,100}")
+    /**
+     * Letzte Live-Meldung der Uhr je Einheit, nur im Speicher: Sie ist eine
+     * Anzeige während des Trainings, keine Messung. Gespeichert wird der Puls
+     * erst aus der Rohdatei (StrengthHeart).
+     */
+    private val live = java.util.concurrent.ConcurrentHashMap<String, JSONObject>()
 
     private fun key(id: String) = "motion_$id"
     private fun heartKey(id: String) = "strength_heart_$id"
@@ -60,6 +68,10 @@ object MotionSessions {
         val wrist = config.optString("wrist").takeIf { it in setOf("left", "right") } ?: "unknown"
         return Capture(config.optBoolean("enabled", false), config.optBoolean("heartRate", true), wrist)
     }
+
+    /** Start abgelehnt oder keine Uhr verbunden; wie `strengthWatchTransfer` → `missing`. */
+    internal fun neverRecorded(doc: JSONObject) =
+        doc.optString("status") != "received" && doc.optJSONObject("watch")?.optString("status") in setOf("error", "disconnected")
 
     /** Ältere Dokumente kennen nur Bewegungen. */
     private fun hasMotion(doc: JSONObject) = doc.optJSONObject("capture")?.optBoolean("motion", true) ?: true
@@ -109,6 +121,7 @@ object MotionSessions {
             doc.put("status", "stopped").put("stoppedAt", now)
             store.putDocument(key(id), doc)
         }
+        live.remove(id)
         // Erst der Ping, dann der Stopp: der letzte Uhrenabgleich fällt noch in die Aufzeichnung.
         ping(context, id)
         message(context, id, "stop")
@@ -126,6 +139,7 @@ object MotionSessions {
 
     private fun forget(context: Context, store: RunStore, id: String): Boolean = synchronized(lock) {
         val existed = store.getDocument(key(id)) != null
+        live.remove(id)
         store.deleteDocument(key(id))
         store.deleteDocument(heartKey(id))
         rawFile(context, id).delete()
@@ -146,12 +160,17 @@ object MotionSessions {
         File(context.filesDir, "motion").listFiles()?.forEach { it.delete() }
     }
 
-    /** `pong` mit der Uhrzeit der Uhr und `status` der Aufzeichnung. */
+    /** `pong` mit der Uhrzeit der Uhr, `status` der Aufzeichnung und `live`-Werte. */
     fun acceptMessage(context: Context, bytes: ByteArray) {
         val receivedAt = System.currentTimeMillis()
         val payload = runCatching { WearProtocol.decodeMotion(bytes) }.getOrNull() ?: return
         val id = payload.getString("sessionId")
         val store = RunStore(context)
+        if (payload.getString("action") == "live") {
+            if (store.getDocument(key(id))?.optString("status") != "recording") return
+            live[id] = liveValue(payload, receivedAt)
+            return
+        }
         synchronized(lock) {
             val doc = store.getDocument(key(id)) ?: return
             when (payload.getString("action")) {
@@ -164,6 +183,39 @@ object MotionSessions {
             }
             store.putDocument(key(id), doc)
         }
+    }
+
+    /**
+     * Live-Wert in Handyzeit. Der Puls zählt nur in den Grenzen von
+     * StrengthHeart; sein Zeitpunkt ist Empfang minus Alter auf der Uhr.
+     */
+    internal fun liveValue(payload: JSONObject, receivedAt: Long): JSONObject {
+        val value = JSONObject().put("receivedAt", receivedAt).put("motion", payload.optBoolean("motion", false))
+        val bpm = payload.optDouble("bpm", Double.NaN)
+        val age = payload.optLong("ageMs", -1L)
+        if (bpm.isFinite() && bpm >= StrengthHeart.MIN_BPM && bpm <= StrengthHeart.MAX_BPM && age in 0..LIVE_HEART_MAX_AGE_MS) {
+            value.put("bpm", Math.round(bpm)).put("bpmAt", receivedAt - age)
+        }
+        return value
+    }
+
+    /**
+     * Was die Uhr zu einer Einheit misst und übertragen hat, für Training und
+     * Detailseite. `null`, wenn die Uhr nicht beteiligt war.
+     */
+    fun watchInfo(context: Context, store: RunStore, id: String): JSONObject? {
+        if (!id.matches(ID)) return null
+        val doc = synchronized(lock) { store.getDocument(key(id)) } ?: return null
+        val file = rawFile(context, id)
+        val result = JSONObject()
+            .put("sessionId", id)
+            .put("status", doc.optString("status"))
+            .put("capture", doc.optJSONObject("capture") ?: JSONObject().put("motion", true).put("heartRate", false))
+            .put("watch", doc.optJSONObject("watch") ?: JSONObject())
+        doc.optJSONObject("file")?.let { result.put("file", JSONObject().put("receivedAt", it.optLong("receivedAt")).put("present", file.exists())) }
+        if (doc.optString("status") == "recording") live[id]?.let { result.put("live", JSONObject(it.toString())) }
+        else live.remove(id)
+        return result
     }
 
     /** Rohdatei der Uhr annehmen, prüfen und bestätigen. Erst die Bestätigung löscht sie auf der Uhr. */
@@ -255,6 +307,8 @@ object MotionSessions {
             when {
                 file.exists() -> { received++; bytes += file.length() }
                 doc.optString("status") == "recording" -> Unit
+                // Die Uhr hat nie aufgezeichnet: Es kommt nichts mehr.
+                neverRecorded(doc) -> Unit
                 else -> waiting++
             }
         }

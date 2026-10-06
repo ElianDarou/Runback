@@ -113,4 +113,25 @@ class WearProtocolTest {
         assertEquals(listOf(WearProtocol.PHONE_SOURCE), SensorSourceSelection.select(samples, "heartRate")
             .map { it.values.getString("source") })
     }
+
+    @Test fun watchStartCarriesTheChosenTemplate() {
+        val payload = WearProtocol.decodeStrengthCommand(
+            WearProtocol.strengthCommand(StrengthLive.START_SESSION, "session-abc", templateId = "tpl-push"),
+        )
+        assertEquals(StrengthLive.START_SESSION, payload.getString("action"))
+        assertEquals("tpl-push", payload.getString("templateId"))
+        val tooLong = JSONObject().put("protocolVersion", WearProtocol.VERSION).put("action", StrengthLive.START_SESSION)
+            .put("sessionId", "session-abc").put("templateId", "x".repeat(201))
+        assertThrows(IllegalArgumentException::class.java) {
+            WearProtocol.decodeStrengthCommand(tooLong.toString().toByteArray())
+        }
+    }
+
+    @Test fun liveMotionMessagesAreKnown() {
+        val payload = WearProtocol.decodeMotion(
+            WearProtocol.motion("live", "session-1", JSONObject().put("bpm", 128).put("ageMs", 900).put("motion", true)),
+        )
+        assertEquals(128, payload.getInt("bpm"))
+        assertEquals("live", payload.getString("action"))
+    }
 }

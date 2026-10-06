@@ -5,8 +5,10 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.media.AudioAttributes
 import android.os.Build
 import android.os.VibrationAttributes
@@ -14,12 +16,14 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import com.google.android.gms.tasks.Tasks
 import com.google.android.gms.wearable.Wearable
+import androidx.wear.remote.interactions.RemoteActivityHelper
 import com.runback.core.RestCue
 import com.runback.core.RunStore
 import com.runback.core.StrengthLive
 import com.runback.core.WearProtocol
 import org.json.JSONObject
 import java.util.concurrent.Executors
+import java.util.Calendar
 import java.util.concurrent.TimeUnit
 
 /**
@@ -29,6 +33,7 @@ import java.util.concurrent.TimeUnit
  */
 object StrengthMirror {
     private const val DOC = "strength_mirror"
+    private const val TEMPLATES = "strength_templates_mirror"
     private const val CHANNEL = "runback_strength"
     private const val NOTIFICATION_ID = 4411
     /** Ein Stand, den das Handy so lange nicht erneuert hat, gilt als verwaist. */
@@ -40,6 +45,59 @@ object StrengthMirror {
     /** Meldet der offenen Uhr-App einen neuen Stand. */
     @Volatile var listener: (() -> Unit)? = null
 
+    /** Start, den die Uhr gerade ans Handy geschickt hat: Einheit und Zeitpunkt. */
+    @Volatile var pendingStart: Pair<String, Long>? = null
+        private set
+
+    /** Vorlagenliste vom Handy (StrengthLive.templateList). */
+    fun acceptTemplates(context: Context, list: JSONObject) {
+        RunStore(context).putDocument(TEMPLATES, list)
+        listener?.invoke()
+    }
+
+    /** Vorlagen fürs Starten, heute geplante zuerst; leer, solange das Handy keine geschickt hat. */
+    fun templates(context: Context, now: Long = System.currentTimeMillis()): List<Pair<JSONObject, Boolean>> {
+        val list = RunStore(context).getDocument(TEMPLATES)?.optJSONArray("templates") ?: return emptyList()
+        // 0 = Sonntag wie `Date.getDay` in der App.
+        val today = Calendar.getInstance().apply { timeInMillis = now }.get(Calendar.DAY_OF_WEEK) - 1
+        return (0 until list.length()).mapNotNull { list.optJSONObject(it) }.map { template ->
+            val days = template.optJSONArray("days")
+            template to (days != null && (0 until days.length()).any { days.optInt(it, -1) == today })
+        }.sortedByDescending { it.second }
+    }
+
+    /**
+     * Startet eine Einheit auf dem Handy. Das Handy legt sie an und schickt den
+     * Stand zurück; danach öffnet die Uhr die App am Handy, damit Benachrichtigung
+     * und Pausenwecker dort sicher laufen. `done(false)`: kein Handy erreicht.
+     */
+    fun start(context: Context, templateId: String?, done: (Boolean) -> Unit) {
+        val now = System.currentTimeMillis()
+        val sessionId = "session-${java.lang.Long.toString(now, 36)}"
+        pendingStart = sessionId to now
+        val command = JSONObject().put("action", StrengthLive.START_SESSION).put("sessionId", sessionId)
+            .apply { templateId?.let { put("templateId", it) } }
+        send(context, command) { delivered ->
+            if (!delivered) pendingStart = null
+            else openPhone(context)
+            done(delivered)
+        }
+    }
+
+    private fun openPhone(context: Context) {
+        val app = context.applicationContext
+        executor.execute {
+            runCatching {
+                val helper = RemoteActivityHelper(app, executor)
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("runback://strength"))
+                    .addCategory(Intent.CATEGORY_BROWSABLE)
+                    .setComponent(ComponentName("com.runback", "com.runback.MainActivity"))
+                Tasks.await(Wearable.getNodeClient(app).connectedNodes, 5, TimeUnit.SECONDS)
+                    .forEach { node -> runCatching { helper.startRemoteActivity(intent, node.id) } }
+            }
+        }
+    }
+
     fun accept(context: Context, state: JSONObject, phoneNode: String?) {
         val store = RunStore(context)
         val previous = store.getDocument(DOC)
@@ -48,6 +106,7 @@ object StrengthMirror {
             (previous.optLong("updatedAt") > state.optLong("updatedAt") ||
                 (!previous.optBoolean("active") && state.optBoolean("active")))) return
         store.putDocument(DOC, state)
+        if (pendingStart?.first == state.optString("sessionId")) pendingStart = null
         if (state.optBoolean("active")) {
             notify(context, state)
             // Jedes Mal: Das Handy vibriert nur dann auf der Uhr, wenn es weiß, dass sie mitliest.
@@ -84,6 +143,7 @@ object StrengthMirror {
                     command.optString("setId").takeIf { it.isNotBlank() },
                     if (command.has("exerciseIndex")) command.getInt("exerciseIndex") else null,
                     if (command.has("restStartedAt")) command.getLong("restStartedAt") else null,
+                    command.optString("templateId").takeIf { it.isNotBlank() },
                 )
                 val nodes = Tasks.await(Wearable.getNodeClient(app).connectedNodes, 5, TimeUnit.SECONDS)
                 nodes.count { node ->

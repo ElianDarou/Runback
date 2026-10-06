@@ -25,4 +25,10 @@ class StrengthWorkoutTest {
         assertTrue(StrengthWorkout.fits(session("a"), session("a")))
         assertFalse(StrengthWorkout.fits(session("a", "r9"), session("a")))
     }
+
+    @Test fun aNewSessionNeverReplacesARunningOne() {
+        // Die Uhr hat gerade eine Einheit gestartet; der Start in der App darf sie nicht überschreiben.
+        assertFalse(StrengthWorkout.fits(session("watch", "r1").put("status", "active"), session("app", "r2")))
+        assertTrue(StrengthWorkout.fits(session("done", "r1").put("status", "finished"), session("app", "r2")))
+    }
 }

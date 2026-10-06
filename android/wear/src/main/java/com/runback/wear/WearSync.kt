@@ -46,7 +46,7 @@ object WearSync {
     private val sequenceLock = Any()
     private val retryLock = Any()
     private var retryScheduled = false
-    @Volatile var status: String = "Originale bleiben auf der Uhr."
+    @Volatile var status: String = "Originale bleiben auf der Uhr"
         private set
 
     fun schedule(context: Context) {
@@ -98,12 +98,12 @@ object WearSync {
                 }
                 val peers = Tasks.await(Wearable.getNodeClient(app).connectedNodes, 10, TimeUnit.SECONDS)
                 status = when {
-                    pending == 0 -> "Alle Läufe gesichert."
-                    peers.isEmpty() -> "$pending ausstehend · Handy verbinden"
-                    else -> "$pending gesendet · Bestätigung ausstehend"
+                    pending == 0 -> "✓ Alle Läufe auf dem Handy"
+                    peers.isEmpty() -> "Kein Handy verbunden"
+                    else -> "Gesendet · Handy bestätigt gleich"
                 }
             } catch (_: Exception) {
-                status = "Übertragung ausstehend · Originale gesichert"
+                status = "Nicht übertragen · später erneut"
             } finally { done?.invoke() }
         }
     }
@@ -273,7 +273,7 @@ object WearSync {
         store.putDocument("sync_$id", record.put("status", "acknowledged").put("acknowledgedAt", System.currentTimeMillis()))
         // Delete only the transfer copy. Original recording remains in RunStore.
         File(context.filesDir, "wear_outbox/$id.zip").delete()
-        status = "Auf Handy bestätigt · Original auf Uhr"
+        status = "✓ Auf dem Handy"
     }
 }
 
@@ -289,6 +289,9 @@ class WearSyncListener : WearableListenerService() {
                 WearSync.acceptAck(this, data.getString("runId") ?: "", data.getString("sha256") ?: "")
             } else if (path.startsWith(WearProtocol.MOTION_ACK_PREFIX)) {
                 MotionSync.acceptAck(this, data.getString("sessionId") ?: "", data.getString("sha256") ?: "")
+            } else if (path == WearProtocol.STRENGTH_TEMPLATES_PATH) {
+                val list = runCatching { JSONObject(data.getString("templates") ?: "") }.getOrNull() ?: continue
+                StrengthMirror.acceptTemplates(this, list)
             } else if (path == WearProtocol.STRENGTH_STATE_PATH) {
                 val state = runCatching { JSONObject(data.getString("state") ?: "") }.getOrNull() ?: continue
                 StrengthMirror.accept(this, state, event.dataItem.uri.host)

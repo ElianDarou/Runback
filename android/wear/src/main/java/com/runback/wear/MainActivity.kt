@@ -37,26 +37,35 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+import kotlin.math.roundToInt
 
+/**
+ * Uhr-App. Die Uhr zeigt nur, was beim Training zählt: Zeit, Strecke, Puls,
+ * den nächsten Satz und die Pause. Alles Weitere steht später auf dem Handy.
+ * Krafttraining läuft über das Handy (StrengthMirror); die Uhr startet es,
+ * misst den Puls und hakt Sätze ab.
+ */
 class MainActivity : Activity() {
     private val bg = Color.rgb(9, 13, 11)
     private val ink = Color.rgb(238, 244, 236)
     private val muted = Color.rgb(155, 169, 158)
     private val green = Color.rgb(161, 234, 139)
+    private val surface = Color.rgb(27, 36, 30)
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var store: RunStore
     private lateinit var content: LinearLayout
     private lateinit var scroll: ScrollView
-    private var page = "home"
+    private var page = PAGE_HOME
     private var purpose = "free"
     private var target = JSONObject().put("kind", "none").put("version", 1)
     private var lastState = ""
     private var timer: TextView? = null
     private var distance: TextView? = null
-    private var heart: TextView? = null
+    private var sensors: TextView? = null
     private var sync: TextView? = null
     private var strengthRest: TextView? = null
     private var strengthStatus: TextView? = null
+    private var strengthHeart: TextView? = null
     private var strengthShown = ""
     private var pendingStart = false
     private var permissionStage = 0
@@ -66,10 +75,10 @@ class MainActivity : Activity() {
             val state = active?.optString("status") ?: "idle"
             val strength = if (active == null) StrengthMirror.current(this@MainActivity) else null
             val strengthKey = strengthKey(strength)
-            if (state != lastState && page != "history" && page != "detail") render()
-            else if (page in setOf("home", PAGE_STRENGTH) && strengthKey != strengthShown) render()
+            if (state != lastState && page !in setOf(PAGE_HISTORY, PAGE_DETAIL, PAGE_OPTIONS)) render()
+            else if (page in setOf(PAGE_HOME, PAGE_STRENGTH, PAGE_PICK) && strengthKey != strengthShown) render()
             else updateMetrics(active)
-            updateStrengthRest(strength)
+            updateStrengthLive(strength)
             handler.postDelayed(this, 1000)
         }
     }
@@ -101,7 +110,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        StrengthMirror.listener = { runOnUiThread { if (page in setOf("home", PAGE_STRENGTH)) render() } }
+        StrengthMirror.listener = { runOnUiThread { if (page in setOf(PAGE_HOME, PAGE_STRENGTH, PAGE_PICK)) render() } }
         handler.post(tick)
         // Opening the watch app is an explicit retry point for a queued counterpart command.
         WearSync.retryControl(this, allowRemoteActivity = true)
@@ -110,7 +119,8 @@ class MainActivity : Activity() {
     override fun onPause() { StrengthMirror.listener = null; handler.removeCallbacks(tick); super.onPause() }
 
     private fun render() {
-        timer = null; distance = null; heart = null; sync = null; strengthRest = null; strengthStatus = null
+        timer = null; distance = null; sensors = null; sync = null
+        strengthRest = null; strengthStatus = null; strengthHeart = null
         val active = store.active()
         lastState = active?.optString("status") ?: "idle"
         scroll = ScrollView(this).apply {
@@ -125,10 +135,11 @@ class MainActivity : Activity() {
                 } else false
             }
         }
+        // Rund: oben und unten so viel Rand, dass auch der erste und letzte Knopf in die Mitte scrollen.
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(24), dp(28), dp(24), dp(36))
+            setPadding(dp(28), dp(30), dp(28), dp(56))
         }
         scroll.addView(content)
         setContentView(scroll)
@@ -136,97 +147,156 @@ class MainActivity : Activity() {
         val strength = if (active == null) StrengthMirror.current(this) else null
         strengthShown = strengthKey(strength)
         when {
-            page == "history" -> history()
+            page == PAGE_HISTORY -> history()
+            page == PAGE_OPTIONS -> runOptions()
             active != null -> recording(active)
-            strength != null && page in setOf("home", PAGE_STRENGTH) -> strength(strength)
+            strength != null && page in setOf(PAGE_HOME, PAGE_STRENGTH, PAGE_PICK) -> strength(strength)
+            page == PAGE_PICK -> pickStrength()
             else -> home()
         }
     }
 
     private fun home() {
-        text("RUNBACK", 13, green, bold = true)
-        if (StrengthMirror.current(this) != null) button("Krafttraining vom Handy", true, 8) { page = PAGE_STRENGTH; render() }
-        if (MotionCaptureService.activeSession != null) {
-            val what = when {
-                MotionCaptureService.recordsHeart && MotionCaptureService.recordsMotion -> "Puls und Bewegungen werden aufgezeichnet"
-                MotionCaptureService.recordsHeart -> "Puls wird gemessen"
-                else -> "Bewegungen werden aufgezeichnet"
-            }
-            text("Krafttraining · $what", 12, green, margin = 4)
+        page = if (page == PAGE_OVERVIEW) PAGE_OVERVIEW else PAGE_HOME
+        text("RUNBACK", 12, green, bold = true)
+        val mirror = StrengthMirror.current(this)
+        if (mirror != null) {
+            button("Krafttraining fortsetzen", true, 8) { page = PAGE_STRENGTH; render() }
+            text("${mirror.optString("name")} · ${mirror.optInt("completedSets")}/${mirror.optInt("totalSets")} Sätze", 12, muted, margin = 4)
+        } else if (MotionCaptureService.activeSession != null) {
+            text("Krafttraining · ${captureLabel()}", 12, green, margin = 4)
         }
-        text("Dein nächster Lauf.", 21, ink, bold = true, margin = 6)
-        text("Ohne Handy aufzeichnen", 12, muted, margin = 3)
-        button("Lauf starten", true, 12) { requestStart() }
-        button("Laufart · ${purposeLabel(purpose)}", false, 6) { choosePurpose() }
-        button("Ziel · ${targetLabel()}", false, 6) { chooseTarget() }
-        button("Stimme & Vibration", false, 6) { chooseGuidance() }
-        button("Zwischenstände ansagen", false, 6) { chooseAnnouncements() }
-        button("Läufe", false, 6) { page = "history"; render() }
-        sync = text(WearSync.status, 11, muted, margin = 12)
-        MotionSync.pendingCount(this).takeIf { it > 0 }?.let { text("$it Krafttrainings warten aufs Handy", 11, muted, margin = 4) }
-        button("Übertragen", false, 8) {
+        button("Lauf starten", mirror == null, 8) { requestStart() }
+        button("Laufart · ${purposeLabel(purpose)}", false, 6, small = true) { choosePurpose() }
+        if (mirror == null) button("Krafttraining starten", false, 6) { page = PAGE_PICK; render() }
+        button("Verlauf", false, 6) { page = PAGE_HISTORY; render() }
+        button("Laufoptionen", false, 6) { page = PAGE_OPTIONS; render() }
+        val waiting = pendingRuns() + MotionSync.pendingCount(this)
+        sync = text(syncSummary(waiting), 12, muted, margin = 14)
+        if (waiting > 0) button("Jetzt übertragen", false, 6, small = true) {
             sync?.text = "Verbindung wird geprüft …"
+            MotionSync.retry(this)
             WearSync.retry(this) { runOnUiThread { sync?.text = WearSync.status } }
         }
-        text("GPS und verfügbare Sensoren werden lokal gespeichert. Fehlende Werte bleiben offen.", 11, muted, margin = 12)
     }
 
+    private fun syncSummary(waiting: Int) = when (waiting) {
+        0 -> "✓ Alles auf dem Handy"
+        1 -> "1 Training wartet aufs Handy"
+        else -> "$waiting Trainings warten aufs Handy"
+    }
+
+    private fun captureLabel() = when {
+        MotionCaptureService.recordsHeart && MotionCaptureService.recordsMotion -> "Puls und Bewegungen"
+        MotionCaptureService.recordsHeart -> "Puls wird gemessen"
+        else -> "Bewegungen"
+    }
+
+    /** Laufende Aufzeichnung: Zeit, Strecke, Puls jetzt und ob GPS Positionen liefert. */
     private fun recording(active: JSONObject) {
         val state = active.optString("status")
-        text(if (state == "recording") "AUFZEICHNUNG" else if (state == "paused") "PAUSIERT" else "UNTERBROCHEN", 12, green, true)
-        timer = text("00:00", 36, ink, true, 5)
-        distance = text("0,00 km", 21, ink, true, 0)
-        heart = text("Puls —", 12, muted, margin = 4)
+        text(when (state) { "recording" -> "● LÄUFT"; "paused" -> "PAUSIERT"; else -> "UNTERBROCHEN" }, 12,
+            if (state == "recording") green else muted, true)
+        timer = text("00:00", 34, ink, true, 2)
+        distance = text("0,00 km", 22, ink, true, 0)
+        sensors = text("", 13, muted, margin = 4)
         if (state == "recording") {
-            button("Pause", true, 12) { command(RecordingService.PAUSE) }
+            button("Pause", true, 10) { command(RecordingService.PAUSE) }
         } else {
-            if (state == "interrupted") text("Bisherige Daten gesichert. Die Unterbrechung bleibt als Lücke erhalten.", 11, muted, margin = 8)
-            button("Fortsetzen", true, 12) { command(RecordingService.RESUME) }
-            button("Lauf beenden", false, 6) { confirmFinish() }
+            if (state == "interrupted") text("Bisher gesichert", 12, muted, margin = 6)
+            button("Fortsetzen", true, 10) { command(RecordingService.RESUME) }
+            button("Beenden", false, 6) { confirmFinish() }
         }
-        text(purposeLabel(active.optString("purpose")), 11, muted, margin = 10)
-        text("GPS: Distanz erst bei gültigen Positionen. Aufzeichnung läuft auch bei geschlossenem Display.", 11, muted, margin = 8)
         updateMetrics(active)
     }
 
     /**
-     * Krafteinheit vom Handy: nächster Satz, Pause und Übungswechsel. Jede
-     * Aktion geht ans Handy; die Anzeige folgt dem Stand, den es zurückschickt.
+     * Krafteinheit vom Handy: In der Pause die Restzeit groß, sonst der nächste
+     * Satz. Jede Aktion geht ans Handy; die Anzeige folgt dem Stand, den es
+     * zurückschickt.
      */
     private fun strength(state: JSONObject) {
         page = PAGE_STRENGTH
         val exercise = state.optJSONObject("exercise")
         val set = state.optJSONObject("set")
         val rest = state.optJSONObject("rest")
-        text("KRAFTTRAINING · ${state.optInt("completedSets")}/${state.optInt("totalSets")}", 12, green, true)
-        text(exercise?.optString("name") ?: state.optString("name"), 18, ink, true, 6)
-        val count = state.optInt("exerciseCount")
-        val index = exercise?.optInt("index") ?: 0
-        if (count > 1) row(
-            Triple("‹", index > 0) { send(StrengthMirror.command(StrengthLive.SELECT_EXERCISE, state, "exerciseIndex" to index - 1)) },
-            Triple("›", index < count - 1) { send(StrengthMirror.command(StrengthLive.SELECT_EXERCISE, state, "exerciseIndex" to index + 1)) },
-        )
-        if (set != null) {
-            text("Satz ${set.optInt("number")} von ${exercise?.optInt("total")}", 12, muted, margin = 8)
-            text(set.optString("label"), 20, ink, true, 2)
-        } else if (exercise?.optBoolean("done") == true) {
-            text("Alle Sätze erledigt", 14, muted, margin = 8)
+        val completed = state.optInt("completedSets")
+        val total = state.optInt("totalSets")
+        strengthHeart = text("", 12, green, true)
+        if (rest != null) {
+            strengthRest = text("", 40, green, true, 2)
+            if (set != null) text("Danach ${set.optString("label")}", 13, muted, margin = 2)
+        } else {
+            text(exercise?.optString("name")?.takeIf { it.isNotBlank() } ?: state.optString("name"), 18, ink, true, 4)
+            if (set != null) {
+                text("Satz ${set.optInt("number")} von ${exercise?.optInt("total")}", 12, muted, margin = 4)
+                text(set.optString("label"), 22, ink, true, 0)
+            } else if (exercise?.optBoolean("done") == true) {
+                text("Übung erledigt", 14, muted, margin = 6)
+            }
         }
-        if (rest != null) strengthRest = text("", 22, green, true, 8)
-        updateStrengthRest(state)
-        if (set != null) button("Satz abschließen", true, 10) {
+        val index = exercise?.optInt("index") ?: 0
+        if (set != null) button("Satz fertig", true, 10) {
             send(StrengthMirror.command(StrengthLive.COMPLETE_SET, state, "setId" to set.optString("id"), "exerciseIndex" to index))
         }
         if (rest != null) {
             val paused = rest.optBoolean("paused")
-            button(if (paused) "Pause weiter" else "Pause anhalten", set == null, 6) {
+            button(if (paused) "Pause weiter" else "Pause anhalten", false, 6, small = true) {
                 send(StrengthMirror.command(if (paused) StrengthLive.RESUME_REST else StrengthLive.PAUSE_REST, state))
             }
-            button("Pause überspringen", false, 6) { send(StrengthMirror.command(StrengthLive.SKIP_REST, state)) }
+            button("Pause überspringen", false, 6, small = true) { send(StrengthMirror.command(StrengthLive.SKIP_REST, state)) }
         }
-        if (count > 1) button("Übungen", false, 6) { chooseExercise(state) }
-        strengthStatus = text("", 11, muted, margin = 8)
-        button("Startseite", false, 10) { page = "start"; render() }
+        strengthStatus = text("", 12, muted, margin = 6)
+        when {
+            total == 0 -> text("Füge Übungen am Handy hinzu.", 12, muted, margin = 2)
+            completed == total -> text("Alles erledigt. Beende das Training am Handy.", 12, muted, margin = 2)
+        }
+        val count = state.optInt("exerciseCount")
+        if (count > 1) {
+            if (rest != null) text(exercise?.optString("name") ?: "", 13, muted, margin = 6)
+            row(
+                Triple("‹", index > 0) { send(StrengthMirror.command(StrengthLive.SELECT_EXERCISE, state, "exerciseIndex" to index - 1)) },
+                Triple("›", index < count - 1) { send(StrengthMirror.command(StrengthLive.SELECT_EXERCISE, state, "exerciseIndex" to index + 1)) },
+                descriptions = listOf("Vorherige Übung", "Nächste Übung"),
+            )
+            button("Übungen", false, 6) { chooseExercise(state) }
+        }
+        button("Startseite", false, 6) { page = PAGE_OVERVIEW; render() }
+        updateStrengthLive(state)
+    }
+
+    /** Training wählen: heute geplante Vorlagen zuerst, dann frei, dann die übrigen. */
+    private fun pickStrength() {
+        text("KRAFTTRAINING", 12, green, true)
+        val pending = StrengthMirror.pendingStart?.takeIf { System.currentTimeMillis() - it.second < START_TIMEOUT_MS }
+        if (pending != null) {
+            text("Startet am Handy …", 16, ink, true, 12)
+            button("Zurück", false, 12) { page = PAGE_HOME; render() }
+            handler.postDelayed({ if (page == PAGE_PICK) render() }, START_TIMEOUT_MS)
+            return
+        }
+        val templates = StrengthMirror.templates(this)
+        val today = templates.filter { it.second }
+        today.forEachIndexed { position, (template, _) ->
+            button("${template.optString("name")} · heute", position == 0, 8) { startStrength(template.optString("id")) }
+        }
+        button("Frei trainieren", today.isEmpty(), 8) { startStrength(null) }
+        templates.filterNot { it.second }.forEach { (template, _) ->
+            button(template.optString("name"), false, 6) { startStrength(template.optString("id")) }
+        }
+        strengthStatus = text("Sätze und Gewichte trägst du am Handy ein.", 12, muted, margin = 10)
+        button("Zurück", false, 8) { page = PAGE_HOME; render() }
+    }
+
+    private fun startStrength(templateId: String?) {
+        vibrate(40)
+        strengthStatus?.text = "Wird ans Handy gesendet …"
+        StrengthMirror.start(this, templateId) { delivered ->
+            runOnUiThread {
+                if (delivered) { if (page == PAGE_PICK) render() }
+                else strengthStatus?.text = "Handy nicht erreichbar. Krafttraining läuft über das Handy."
+            }
+        }
     }
 
     private fun chooseExercise(state: JSONObject) {
@@ -243,21 +313,32 @@ class MainActivity : Activity() {
     }
 
     private fun send(command: JSONObject) {
-        getSystemService(Vibrator::class.java)?.vibrate(VibrationEffect.createOneShot(40, VibrationEffect.DEFAULT_AMPLITUDE))
+        vibrate(40)
         strengthStatus?.text = "Wird ans Handy gesendet …"
         StrengthMirror.send(this, command) { delivered ->
             runOnUiThread { if (!delivered) strengthStatus?.text = "Handy nicht erreichbar. Versuche es erneut." }
         }
     }
 
-    private fun updateStrengthRest(state: JSONObject?) {
+    /** Sekundentakt der Kraftseite: Restzeit, Fortschritt und Puls dieser Uhr. */
+    private fun updateStrengthLive(state: JSONObject?) {
+        strengthHeart?.let { label ->
+            val bpm = MotionCaptureService.currentBpm()
+            val progress = state?.takeIf { it.optInt("totalSets") > 0 }?.let { "${it.optInt("completedSets")}/${it.optInt("totalSets")} SÄTZE" }
+            label.text = listOfNotNull(progress ?: "KRAFTTRAINING", bpm?.let { "PULS $it" }).joinToString(" · ")
+        }
         val label = strengthRest ?: return
         val rest = state?.optJSONObject("rest")
         val remaining = state?.let { StrengthMirror.restRemaining(it) }
         label.text = when {
+            rest == null || remaining == null -> "Los"
+            rest.optBoolean("paused") -> "‖ ${clock(remaining)}"
+            else -> clock(remaining)
+        }
+        label.contentDescription = when {
             rest == null || remaining == null -> "Pause vorbei"
-            rest.optBoolean("paused") -> "Pause angehalten · ${clock(remaining)}"
-            else -> "Pause ${clock(remaining)}"
+            rest.optBoolean("paused") -> "Pause angehalten, noch ${clock(remaining)}"
+            else -> "Pause, noch ${clock(remaining)}"
         }
     }
 
@@ -267,19 +348,20 @@ class MainActivity : Activity() {
 
     private fun clock(seconds: Long) = "%d:%02d".format(seconds / 60, seconds % 60)
 
-    private fun row(vararg items: Triple<String, Boolean, () -> Unit>) {
+    private fun row(vararg items: Triple<String, Boolean, () -> Unit>, descriptions: List<String>? = null) {
         val line = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) }
         }
         items.forEachIndexed { position, (label, enabled, onClick) ->
             line.addView(Button(this).apply {
-                text = label; textSize = 18f; isAllCaps = false; isEnabled = enabled
+                text = label; textSize = if (label.length <= 2) 18f else 13f; isAllCaps = false; isEnabled = enabled
                 setTextColor(if (enabled) ink else muted)
-                background = GradientDrawable().apply { setColor(Color.rgb(27, 36, 30)); cornerRadius = dp(24).toFloat() }
+                background = GradientDrawable().apply { setColor(surface); cornerRadius = dp(24).toFloat() }
                 minHeight = dp(48); minimumHeight = dp(48)
-                contentDescription = if (position == 0) "Vorherige Übung" else "Nächste Übung"
-                layoutParams = LinearLayout.LayoutParams(0, -2, 1f).apply { if (position > 0) marginStart = dp(8) }
+                setPadding(dp(4), dp(6), dp(4), dp(6))
+                descriptions?.getOrNull(position)?.let { contentDescription = it }
+                layoutParams = LinearLayout.LayoutParams(0, -2, 1f).apply { if (position > 0) marginStart = dp(6) }
                 setOnClickListener { onClick() }
             })
         }
@@ -287,71 +369,152 @@ class MainActivity : Activity() {
     }
 
     private fun updateMetrics(active: JSONObject?) {
-        if (active != null) {
-            timer?.text = formatDuration(active.optDouble("durationSeconds", active.optDouble("durationSec")).toLong())
-            distance?.text = String.format(Locale.GERMANY, "%.2f km", active.optDouble("distanceMeters", active.optDouble("distanceM")) / 1000)
-            val hr = active.optDouble("avgHeartRate", Double.NaN)
-            heart?.text = if (hr.isFinite() && hr > 0) "Ø Puls ${hr.toInt()} /min" else "Puls — · keine Messung"
-        }
-        sync?.text = WearSync.status
+        if (active == null) return
+        timer?.text = formatDuration(active.optDouble("durationSeconds", active.optDouble("durationSec")).toLong())
+        distance?.text = String.format(Locale.GERMANY, "%.2f km", active.optDouble("distanceMeters", active.optDouble("distanceM")) / 1000)
+        sensors?.text = sensorLine(active, System.currentTimeMillis())
     }
 
+    /** „Puls 142 · GPS“: Puls und GPS nur, solange sie gerade Werte liefern. Pausiert misst nichts. */
+    private fun sensorLine(active: JSONObject, now: Long): String {
+        if (active.optString("status") != "recording") return ""
+        val heartAt = active.optLong("lastHeartRateAt", 0L)
+        val bpm = active.optDouble("lastHeartRate", Double.NaN)
+        val heart = if (bpm.isFinite() && now - heartAt in 0..LIVE_SENSOR_MS) "Puls ${bpm.roundToInt()}" else "Puls –"
+        val gpsAt = active.optLong("lastGpsAt", 0L)
+        val gps = if (gpsAt > 0 && now - gpsAt in 0..LIVE_SENSOR_MS) "GPS" else "GPS sucht"
+        return "$heart · $gps"
+    }
+
+    /** Läufe und Krafteinheiten dieser Uhr, neueste zuerst, mit Übertragungsstand. */
     private fun history() {
-        text("DEINE LÄUFE", 13, green, true)
-        val runs = store.listRuns(100)
-        var count = 0
+        text("VERLAUF", 12, green, true)
+        val items = mutableListOf<Pair<Long, () -> Unit>>()
+        val runs = store.listRuns(50)
         for (index in 0 until runs.length()) {
             val run = runs.getJSONObject(index)
             if (run.optString("status") != "completed") continue
-            count++
-            val date = SimpleDateFormat("dd. MMM · HH:mm", Locale.GERMANY).format(Date(run.optLong("startedAt")))
-            val km = String.format(Locale.GERMANY, "%.2f km", run.optDouble("distanceMeters", run.optDouble("distanceM")) / 1000)
-            button("$date\n$km · ${formatDuration(run.optDouble("durationSeconds", run.optDouble("durationSec")).toLong())}", false, 10) { details(run) }
+            items += run.optLong("startedAt") to {
+                val km = String.format(Locale.GERMANY, "%.2f km", run.optDouble("distanceMeters", run.optDouble("distanceM")) / 1000)
+                val time = formatDuration(run.optDouble("durationSeconds", run.optDouble("durationSec")).toLong())
+                button("${day(run.optLong("startedAt"))} · Lauf\n$km · $time\n${mark(runDelivered(run.getString("id")))}", false, 8, small = true) { details(run) }
+            }
         }
-        if (count == 0) text("Hier erscheinen deine\nauf der Uhr gespeicherten Läufe.", 14, muted, margin = 18)
-        button("Zurück", false, 12) { page = "home"; render() }
+        MotionSync.history(this).forEach { entry ->
+            items += entry.optLong("startedAt") to {
+                val minutes = ((entry.optLong("endedAt") - entry.optLong("startedAt")) / 60_000L).coerceAtLeast(0)
+                val heart = entry.optLong("averageBpm").takeIf { entry.has("averageBpm") }?.let { " · Ø $it bpm" } ?: ""
+                button("${day(entry.optLong("startedAt"))} · ${entry.optString("name")}\n$minutes min$heart\n${mark(MotionSync.delivered(this, entry.optString("id")))}",
+                    false, 8, small = true) { strengthDetails(entry) }
+            }
+        }
+        items.sortedByDescending { it.first }.take(30).forEach { it.second() }
+        if (items.isEmpty()) text("Hier erscheinen Trainings, die diese Uhr aufgezeichnet hat.", 13, muted, margin = 14)
+        button("Zurück", false, 12) { page = PAGE_HOME; render() }
+    }
+
+    private fun mark(delivered: Boolean) = if (delivered) "✓ Auf dem Handy" else "Wartet aufs Handy"
+    private fun day(time: Long) = SimpleDateFormat("EE d.M.", Locale.GERMANY).format(Date(time))
+    private fun runDelivered(id: String) = store.getDocument("sync_$id")?.optString("status") == "acknowledged"
+
+    private fun pendingRuns(): Int {
+        val runs = store.listRuns(200)
+        return (0 until runs.length()).count { index ->
+            val run = runs.getJSONObject(index)
+            run.optString("status") == "completed" && !runDelivered(run.getString("id"))
+        }
     }
 
     private fun details(run: JSONObject) {
-        page = "detail"
+        page = PAGE_DETAIL
         content.removeAllViews()
         scroll.scrollTo(0, 0)
-        text("GESPEICHERT", 13, green, true)
-        text(String.format(Locale.GERMANY, "%.2f km", run.optDouble("distanceMeters", run.optDouble("distanceM")) / 1000), 29, ink, true, 10)
-        text(formatDuration(run.optDouble("durationSeconds", run.optDouble("durationSec")).toLong()), 22, ink, margin = 4)
-        text(purposeLabel(run.optString("purpose")), 13, muted, margin = 8)
-        val record = store.getDocument("sync_${run.getString("id")}")
-        text(if (record?.optString("status") == "acknowledged") "Auf dem Handy bestätigt. Original bleibt auf der Uhr." else "Original auf Uhr gesichert. Übertragung zum Handy steht aus.", 12, muted, margin = 12)
-        button("Übertragen", true, 12) { WearSync.retry(this); page = "home"; render() }
-        button("Alle Läufe", false, 6) { page = "history"; render() }
+        text(day(run.optLong("startedAt")).uppercase(Locale.GERMANY), 12, green, true)
+        text(String.format(Locale.GERMANY, "%.2f km", run.optDouble("distanceMeters", run.optDouble("distanceM")) / 1000), 28, ink, true, 8)
+        text(formatDuration(run.optDouble("durationSeconds", run.optDouble("durationSec")).toLong()), 20, ink, margin = 2)
+        text(purposeLabel(run.optString("purpose")), 13, muted, margin = 6)
+        transferState(runDelivered(run.getString("id")))
+        button("Zurück", false, 10) { page = PAGE_HISTORY; render() }
+    }
+
+    private fun strengthDetails(entry: JSONObject) {
+        page = PAGE_DETAIL
+        content.removeAllViews()
+        scroll.scrollTo(0, 0)
+        text(day(entry.optLong("startedAt")).uppercase(Locale.GERMANY), 12, green, true)
+        text(entry.optString("name"), 18, ink, true, 8)
+        val minutes = ((entry.optLong("endedAt") - entry.optLong("startedAt")) / 60_000L).coerceAtLeast(0)
+        text("$minutes min" + (if (entry.has("completedSets")) " · ${entry.optInt("completedSets")} Sätze" else ""), 16, ink, margin = 4)
+        val heart = when {
+            entry.has("averageBpm") -> "Puls Ø ${entry.optLong("averageBpm")} · max ${entry.optLong("maxBpm")}"
+            entry.optBoolean("heart") -> "Kein gültiger Puls"
+            else -> "Ohne Puls"
+        }
+        text(heart, 14, muted, margin = 4)
+        transferState(MotionSync.delivered(this, entry.optString("id")))
+        button("Zurück", false, 10) { page = PAGE_HISTORY; render() }
+    }
+
+    /** Auf dem Handy oder noch nicht — und der Weg, es jetzt zu versuchen. */
+    private fun transferState(delivered: Boolean) {
+        if (delivered) {
+            text("✓ Auf dem Handy", 13, green, margin = 10)
+            return
+        }
+        val status = text("Wartet aufs Handy", 13, muted, margin = 10)
+        button("Jetzt übertragen", true, 8) {
+            status.text = "Verbindung wird geprüft …"
+            MotionSync.retry(this)
+            WearSync.retry(this) { runOnUiThread { status.text = WearSync.status } }
+        }
+    }
+
+    private fun runOptions() {
+        text("LAUFOPTIONEN", 12, green, true)
+        button("Ziel · ${targetLabel()}", false, 8) { chooseTarget() }
+        button("Stimme & Vibration", false, 6) { chooseGuidance() }
+        button("Zwischenstände", false, 6) { chooseAnnouncements() }
+        button("Zurück", false, 12) { page = PAGE_HOME; render() }
+    }
+
+    private fun vibrate(ms: Long) {
+        getSystemService(Vibrator::class.java)?.vibrate(VibrationEffect.createOneShot(ms, VibrationEffect.DEFAULT_AMPLITUDE))
     }
 
     private fun requestStart() {
+        // Alles schon erlaubt: sofort starten, kein Hinweis vor jedem Lauf.
+        if (startPermissions().all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED } &&
+            backgroundPermissions().all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
+        ) {
+            startRun()
+            return
+        }
         AlertDialog.Builder(this).setTitle("Lokal aufzeichnen")
             .setMessage("Standort für die Strecke, Körpersensoren für den Puls. Ohne Freigabe bleiben diese Messwerte leer.")
             .setPositiveButton("Weiter") { _, _ ->
                 pendingStart = true
-                val permissions = listOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION,
-                    if (Build.VERSION.SDK_INT >= 36) "android.permission.health.READ_HEART_RATE" else Manifest.permission.BODY_SENSORS,
-                    Manifest.permission.ACTIVITY_RECOGNITION,
-                    if (Build.VERSION.SDK_INT >= 33) Manifest.permission.POST_NOTIFICATIONS else null,
-                )
-                    .filterNotNull()
                 permissionStage = 1
-                requestPermissionStage(permissions, 42) { requestBackgroundPermissions() }
+                requestPermissionStage(startPermissions(), 42) { requestBackgroundPermissions() }
             }.setNegativeButton("Zurück", null).show()
+    }
+
+    private fun startPermissions() = listOfNotNull(
+        Manifest.permission.ACCESS_FINE_LOCATION,
+        Manifest.permission.ACCESS_COARSE_LOCATION,
+        if (Build.VERSION.SDK_INT >= 36) "android.permission.health.READ_HEART_RATE" else Manifest.permission.BODY_SENSORS,
+        Manifest.permission.ACTIVITY_RECOGNITION,
+        if (Build.VERSION.SDK_INT >= 33) Manifest.permission.POST_NOTIFICATIONS else null,
+    )
+
+    private fun backgroundPermissions() = buildList {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) add(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+        if (Build.VERSION.SDK_INT >= 36) add("android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND")
+        else if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.BODY_SENSORS_BACKGROUND)
     }
 
     private fun requestBackgroundPermissions() {
         if (!pendingStart) return
-        val permissions = buildList {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) add(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-            if (Build.VERSION.SDK_INT >= 36) add("android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND")
-            else if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.BODY_SENSORS_BACKGROUND)
-        }
-        val missing = permissions.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+        val missing = backgroundPermissions().filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
         if (missing.isEmpty()) {
             permissionStage = 0
             pendingStart = false
@@ -379,7 +542,7 @@ class MainActivity : Activity() {
     }
 
     private fun startRun() {
-        page = "home"
+        page = PAGE_HOME
         val selected = JSONObject(target.toString())
         if (selected.optString("kind") == "pace") {
             selected.put("mode", if (purpose in listOf("easy", "long")) "ceiling" else "range")
@@ -407,7 +570,7 @@ class MainActivity : Activity() {
                 commandId = commandIdOverride,
                 commandSequence = commandSequence,
             )
-            getSystemService(Vibrator::class.java)?.vibrate(VibrationEffect.createOneShot(60, VibrationEffect.DEFAULT_AMPLITUDE))
+            vibrate(60)
             handler.postDelayed({ render() }, 250)
         } catch (e: Exception) {
             AlertDialog.Builder(this).setTitle("Nicht gestartet").setMessage(e.message ?: "Berechtigungen und verfügbaren Speicher prüfen.").setPositiveButton("OK", null).show()
@@ -488,7 +651,7 @@ class MainActivity : Activity() {
         runCatching { MotionCaptureService.send(this, MotionCaptureService.START, sessionId, wrist, motion, heartRate) }
             .onFailure { MotionSync.reportStatus(this, sessionId, "error", "Uhr konnte die Aufzeichnung nicht starten.") }
         // Der Dienst startet auf seinem eigenen Thread; danach zeigt die Startseite den Hinweis.
-        handler.postDelayed({ if (page == "home" && store.active() == null) render() }, 800L)
+        handler.postDelayed({ if (page == PAGE_HOME && store.active() == null) render() }, 800L)
     }
 
     private fun confirmRemoteCommand(uri: Uri, runId: String, action: String, commandId: String?, sequence: Long, attempt: Int = 0) {
@@ -544,7 +707,7 @@ class MainActivity : Activity() {
             .setNegativeButton("Zurück", null)
             .setPositiveButton("Speichern") { _, _ ->
                 command(RecordingService.FINISH)
-                page = "home"
+                page = PAGE_HOME
                 handler.postDelayed({ WearSync.retry(this); render() }, 600)
             }.show()
     }
@@ -697,12 +860,12 @@ class MainActivity : Activity() {
             content.addView(this)
         }
     }
-    private fun button(value: String, primary: Boolean, margin: Int, onClick: () -> Unit) {
+    private fun button(value: String, primary: Boolean, margin: Int, small: Boolean = false, onClick: () -> Unit) {
         content.addView(Button(this).apply {
-            text = value; textSize = 14f; isAllCaps = false
+            text = value; textSize = if (small) 12f else 14f; isAllCaps = false
             setTextColor(if (primary) bg else ink)
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            background = GradientDrawable().apply { setColor(if (primary) green else Color.rgb(27, 36, 30)); cornerRadius = dp(24).toFloat() }
+            background = GradientDrawable().apply { setColor(if (primary) green else surface); cornerRadius = dp(24).toFloat() }
             minHeight = dp(48); minimumHeight = dp(48)
             setPadding(dp(10), dp(9), dp(10), dp(9))
             layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(margin) }
@@ -710,11 +873,26 @@ class MainActivity : Activity() {
         })
     }
     override fun onBackPressed() {
-        if (page !in setOf("home", PAGE_STRENGTH)) { page = "home"; render() } else super.onBackPressed()
+        when (page) {
+            PAGE_DETAIL -> { page = PAGE_HISTORY; render() }
+            PAGE_HOME, PAGE_STRENGTH -> super.onBackPressed()
+            else -> { page = PAGE_HOME; render() }
+        }
     }
 
     companion object {
         const val EXTRA_PAGE = "page"
         const val PAGE_STRENGTH = "strength"
+        private const val PAGE_HOME = "home"
+        /** Startseite, obwohl ein Krafttraining läuft: Der Nutzer wollte sie sehen. */
+        private const val PAGE_OVERVIEW = "start"
+        private const val PAGE_PICK = "pick"
+        private const val PAGE_HISTORY = "history"
+        private const val PAGE_DETAIL = "detail"
+        private const val PAGE_OPTIONS = "options"
+        /** Kommt so lange kein Stand vom Handy, zeigt die Auswahl wieder die Vorlagen. */
+        private const val START_TIMEOUT_MS = 15_000L
+        /** Puls und GPS gelten auf der Laufseite so lange als aktuell. */
+        private const val LIVE_SENSOR_MS = 15_000L
     }
 }

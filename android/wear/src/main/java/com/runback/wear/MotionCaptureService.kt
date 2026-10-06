@@ -24,6 +24,7 @@ import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
 import com.runback.core.MotionFormat
+import com.runback.core.StrengthHeart
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedOutputStream
@@ -48,6 +49,23 @@ class MotionCaptureService : Service(), SensorEventListener {
     private var lastFlushNanos = 0L
     private var lastSyncNanos = 0L
     private var output: FileOutputStream? = null
+    private var startedAt = 0L
+    private var heartSum = 0.0
+    private var heartCount = 0
+    private var heartMax = 0.0
+    private var motionSince = false
+    /** Meldet dem Handy alle paar Sekunden Puls und ob Bewegungen ankommen. */
+    private val liveTick = object : Runnable {
+        override fun run() {
+            val id = sessionId ?: return
+            val age = SystemClock.elapsedRealtime() - liveBpmAt
+            val fields = JSONObject().put("motion", motionSince)
+            if (liveBpm > 0 && liveBpmAt > 0 && age in 0..LIVE_INTERVAL_MS * 3) fields.put("bpm", liveBpm).put("ageMs", age)
+            motionSince = false
+            MotionSync.sendLive(this@MotionCaptureService, id, fields)
+            worker.postDelayed(this, LIVE_INTERVAL_MS)
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -139,6 +157,9 @@ class MotionCaptureService : Service(), SensorEventListener {
         writer = MotionFormat.Writer(BufferedOutputStream(stream, 64 * 1024), header)
         sessionId = id
         activeSession = id
+        startedAt = System.currentTimeMillis()
+        heartSum = 0.0; heartCount = 0; heartMax = 0.0
+        liveBpm = 0; liveBpmAt = 0L
         writeAnchor(SystemClock.elapsedRealtimeNanos())
         wakeLock = getSystemService(PowerManager::class.java)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Runback:Motion").apply {
@@ -164,6 +185,7 @@ class MotionCaptureService : Service(), SensorEventListener {
         }
         MotionSync.reportStatus(this, id, "recording", message)
         worker.postDelayed({ if (sessionId == id) finish(id, discard = false) }, MAX_DURATION_MS)
+        worker.postDelayed(liveTick, LIVE_INTERVAL_MS)
     }
 
     private fun describe(kind: String, sensor: Sensor, unit: String) = JSONObject()
@@ -175,10 +197,22 @@ class MotionCaptureService : Service(), SensorEventListener {
         val output = writer ?: return
         try {
             when (event.sensor.type) {
-                Sensor.TYPE_ACCELEROMETER -> output.sample(MotionFormat.KIND_ACCEL, event.timestamp, event.values[0], event.values[1], event.values[2])
+                Sensor.TYPE_ACCELEROMETER -> {
+                    output.sample(MotionFormat.KIND_ACCEL, event.timestamp, event.values[0], event.values[1], event.values[2])
+                    motionSince = true
+                }
                 Sensor.TYPE_GYROSCOPE -> output.sample(MotionFormat.KIND_GYRO, event.timestamp, event.values[0], event.values[1], event.values[2])
                 // Ungefiltert gespeichert; Kontakt und Genauigkeit prüft erst die Auswertung (StrengthHeart).
-                Sensor.TYPE_HEART_RATE -> output.heart(event.timestamp, event.values[0], event.accuracy)
+                Sensor.TYPE_HEART_RATE -> {
+                    output.heart(event.timestamp, event.values[0], event.accuracy)
+                    // Live und im Uhrverlauf nur, was auch die Auswertung gelten ließe.
+                    val bpm = event.values[0].toDouble()
+                    if (event.accuracy >= StrengthHeart.MIN_ACCURACY && bpm.isFinite() && bpm >= StrengthHeart.MIN_BPM && bpm <= StrengthHeart.MAX_BPM) {
+                        liveBpm = Math.round(bpm).toInt()
+                        liveBpmAt = SystemClock.elapsedRealtime()
+                        heartSum += bpm; heartCount++; heartMax = maxOf(heartMax, bpm)
+                    }
+                }
                 else -> return
             }
             val now = SystemClock.elapsedRealtimeNanos()
@@ -210,6 +244,9 @@ class MotionCaptureService : Service(), SensorEventListener {
         val current = sessionId
         if (requested != null && current != null && requested != current) return
         sensors.unregisterListener(this)
+        worker.removeCallbacks(liveTick)
+        if (current != null && !discard) MotionSync.log(this, current, startedAt, System.currentTimeMillis(),
+            heartSum.takeIf { heartCount > 0 }?.let { it / heartCount }, heartMax.takeIf { heartCount > 0 }, recordsHeart, recordsMotion)
         runCatching { writer?.let { writeAnchor(SystemClock.elapsedRealtimeNanos()); it.flush(); output?.fd?.sync(); it.close() } }
         writer = null
         output = null
@@ -217,6 +254,7 @@ class MotionCaptureService : Service(), SensorEventListener {
         activeSession = null
         recordsHeart = false
         recordsMotion = false
+        liveBpm = 0; liveBpmAt = 0L
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
         val closed = requested ?: current
@@ -274,6 +312,17 @@ class MotionCaptureService : Service(), SensorEventListener {
             private set
         @Volatile var recordsMotion = false
             private set
+        /** Letzter gültiger Puls und wann er kam (`elapsedRealtime`); 0 = keiner. */
+        @Volatile var liveBpm = 0
+            private set
+        @Volatile var liveBpmAt = 0L
+            private set
+        private const val LIVE_INTERVAL_MS = 5_000L
+
+        /** Puls für die Anzeige auf der Uhr, solange er frisch ist; sonst `null`. */
+        fun currentBpm(): Int? = liveBpm.takeIf {
+            it > 0 && SystemClock.elapsedRealtime() - liveBpmAt in 0..LIVE_INTERVAL_MS * 3
+        }
         private const val TAG = "RunbackMotion"
         private const val CHANNEL = "runback_motion"
         private const val NOTIFICATION_ID = 4310

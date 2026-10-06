@@ -64,6 +64,7 @@ function render(
     sessions?: StrengthSession[];
     showRir?: boolean;
     showRestTimer?: boolean;
+    watch?: React.ComponentProps<typeof WorkoutScreen>['watch'];
   } = {},
 ) {
   let tree!: ReactTestRenderer.ReactTestRenderer;
@@ -76,6 +77,7 @@ function render(
         sessions={overrides.sessions}
         showRir={overrides.showRir}
         showRestTimer={overrides.showRestTimer}
+        watch={overrides.watch}
         {...props}
       />,
     );
@@ -557,5 +559,39 @@ describe('Funktionen im Training', () => {
     ).toBe(false);
     expect(texts(hidden).some(text => text.startsWith('Pause '))).toBe(false);
     expect(texts(hidden)).not.toContain('RIR');
+  });
+});
+
+describe('watch line', () => {
+  it('is absent without a watch', () => {
+    const tree = render(startSession(template, 1_000_000), handlers());
+    expect(texts(tree)).not.toContain('Uhr');
+  });
+
+  it('shows the pulse the watch is measuring now', () => {
+    const tree = render(startSession(template, 1_000_000), handlers(), {
+      watch: { state: 'measuring', bpm: 128 },
+    });
+    const shown = texts(tree);
+    expect(shown).toContain('Uhr');
+    expect(shown).toContain('Misst');
+    expect(shown.join(' ')).toContain('128');
+  });
+
+  it('shows a dash, not an old value, when no pulse is fresh', () => {
+    const tree = render(startSession(template, 1_000_000), handlers(), {
+      watch: { state: 'measuring' },
+    });
+    expect(texts(tree)).toContain('–');
+  });
+
+  it('says what to do when the watch is not measuring', () => {
+    const tree = render(startSession(template, 1_000_000), handlers(), {
+      watch: { state: 'starting', hint: 'Öffne Runback auf der Uhr.' },
+    });
+    const shown = texts(tree);
+    expect(shown).toContain('Startet');
+    expect(shown).toContain('Öffne Runback auf der Uhr.');
+    expect(shown.join(' ')).not.toContain('bpm');
   });
 });

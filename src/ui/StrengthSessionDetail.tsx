@@ -36,6 +36,12 @@ import {
   type ExerciseBreakdown,
 } from '../domain/strengthSession';
 import {
+  strengthWatchCaptureLabel,
+  strengthWatchTransfer,
+  type StrengthWatchInfo,
+} from '../domain/wearLink';
+import {
+  Badge,
   Copy,
   Disclosure,
   Row,
@@ -116,6 +122,51 @@ export function setsChain(exercise: SessionExercise): string {
   return parts.length ? parts.join(' · ') : 'Kein bestätigter Satz';
 }
 
+/**
+ * Ob die Daten der Uhr schon hier sind. Nur sichtbar, wenn etwas fehlt —
+ * ist der Puls da, zeigt ihn die Seite ohnehin.
+ */
+function WatchTransferRow({
+  watch,
+  hasHeart,
+}: {
+  watch: StrengthWatchInfo | null;
+  hasHeart: boolean;
+}) {
+  const transfer = strengthWatchTransfer(watch);
+  if (!watch || !transfer) return null;
+  const what = strengthWatchCaptureLabel(watch);
+  if (transfer === 'received') {
+    if (hasHeart || !watch.capture.heartRate) return null;
+    return (
+      <Row
+        title="Uhr"
+        subtitle="Die Uhr hat keinen gültigen Puls gemessen."
+        trailing={<Badge muted>Übertragen</Badge>}
+      />
+    );
+  }
+  return (
+    <View accessibilityLiveRegion="polite">
+      <Row
+        title="Uhr"
+        subtitle={
+          transfer === 'waiting'
+            ? `${what} ${
+                what === 'Puls' ? 'kommt' : 'kommen'
+              }, sobald die Uhr in der Nähe ist.`
+            : watch.watch.message || 'Die Uhr hat nicht aufgezeichnet.'
+        }
+        trailing={
+          <Badge muted>
+            {transfer === 'waiting' ? 'Wartet' : 'Nicht aufgezeichnet'}
+          </Badge>
+        }
+      />
+    </View>
+  );
+}
+
 /** „+12 %“ unter einer Kennzahl; der Satz darunter nennt die Basis. Farbe
  *  trägt hier nichts. */
 const deltaLine = (value: ComparedValue | undefined) =>
@@ -125,11 +176,14 @@ export function StrengthSessionDetail({
   session,
   history,
   heart,
+  watch = null,
   heartSummaries,
   onOpenExercise,
   onEditEnd,
   busy = false,
 }: {
+  /** Was die Uhr zu dieser Einheit gemessen und übertragen hat; `null` ohne Uhr. */
+  watch?: StrengthWatchInfo | null;
   session: StrengthSession;
   /** Alle abgeschlossenen Einheiten; die Seite sucht sich die früheren. */
   history: StrengthSession[];
@@ -227,6 +281,8 @@ export function StrengthSessionDetail({
           }.`}
         </Copy>
       ) : null}
+
+      <WatchTransferRow watch={watch} hasHeart={Boolean(heart)} />
 
       {heart && heartInsight ? (
         <Section title="Puls">

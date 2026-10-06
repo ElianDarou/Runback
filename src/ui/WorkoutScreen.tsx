@@ -30,7 +30,67 @@ import {
   MINIMUM_SESSIONS_FOR_DIRECTION,
   type ProgressionAssessment,
 } from '../domain/progression';
-import { color, Copy, radius, space, SwipeToDelete, type } from './components';
+import type { StrengthWatchLive } from '../domain/wearLink';
+import {
+  Badge,
+  color,
+  Copy,
+  radius,
+  space,
+  SwipeToDelete,
+  type,
+} from './components';
+
+/** Labels der Uhr im Training; ein Satz Hinweis nur, wenn der Nutzer etwas tun kann. */
+const WATCH_WORDS: Record<
+  StrengthWatchLive,
+  { label: string; muted: boolean }
+> = {
+  measuring: { label: 'Misst', muted: false },
+  starting: { label: 'Startet', muted: true },
+  silent: { label: 'Keine Daten', muted: true },
+  failed: { label: 'Misst nicht', muted: true },
+  disconnected: { label: 'Nicht verbunden', muted: true },
+};
+
+/**
+ * Eine schmale Zeile unter dem Kopf: was die Uhr gerade misst und der Puls
+ * jetzt. Ohne frischen Wert steht „–“, kein alter Puls.
+ */
+function WatchStrip({
+  watch,
+}: {
+  watch: { state: StrengthWatchLive; bpm?: number; hint?: string };
+}) {
+  const words = WATCH_WORDS[watch.state];
+  const measuring = watch.state === 'measuring';
+  return (
+    <View
+      accessibilityLiveRegion="polite"
+      accessibilityLabel={`Uhr: ${words.label}${
+        measuring
+          ? watch.bpm !== undefined
+            ? `, Puls ${watch.bpm} Schläge pro Minute`
+            : ', noch kein Puls'
+          : ''
+      }${watch.hint ? `. ${watch.hint}` : ''}`}
+      style={styles.watch}
+    >
+      <View style={styles.watchLine}>
+        <Text style={styles.watchTitle}>Uhr</Text>
+        <Badge muted={words.muted}>{words.label}</Badge>
+        <View style={styles.watchSpacer} />
+        {measuring ? (
+          <Text style={styles.watchValue}>
+            {watch.bpm !== undefined ? watch.bpm : '–'}
+            <Text style={styles.watchUnit}> bpm</Text>
+          </Text>
+        ) : null}
+      </View>
+      {watch.hint ? <Text style={styles.watchHint}>{watch.hint}</Text> : null}
+    </View>
+  );
+}
 
 /**
  * Aktive Trainingsansicht: Sätze in Sekunden bestätigen, Abweichungen ohne Wertung erfassen.
@@ -373,7 +433,10 @@ export function WorkoutScreen({
   onSkipRest,
   onFinish,
   onMinimize,
+  watch = null,
 }: {
+  /** Live-Zustand der Uhr (`strengthWatchLive`); ohne Uhr keine Zeile. */
+  watch?: { state: StrengthWatchLive; bpm?: number; hint?: string } | null;
   session: StrengthSession;
   history: StrengthSession[];
   /** Vollstaendige Historie fuer den Verlauf. Fehlt sie, entfaellt die Notiz. */
@@ -591,6 +654,7 @@ export function WorkoutScreen({
           <Text style={styles.finishText}>Beenden</Text>
         </Pressable>
       </View>
+      {watch ? <WatchStrip watch={watch} /> : null}
 
       <ScrollView
         contentContainerStyle={styles.content}
@@ -797,6 +861,24 @@ const styles = StyleSheet.create({
   },
   finishText: { color: color.text, fontSize: 15, fontWeight: '600' },
   content: { padding: 12, paddingBottom: 40, gap: 8 },
+  watch: {
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: color.line,
+    gap: space.xxs,
+  },
+  watchLine: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
+  watchTitle: { ...type.label, color: color.text },
+  watchSpacer: { flex: 1 },
+  watchValue: {
+    ...type.label,
+    color: color.text,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+  },
+  watchUnit: { color: color.muted, fontWeight: '400' },
+  watchHint: { ...type.label, color: color.muted },
 
   compact: {
     flexDirection: 'row',

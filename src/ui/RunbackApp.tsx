@@ -40,6 +40,11 @@ import type {
   StrengthHeart,
   StrengthHeartSummary,
 } from '../domain/strengthHeart';
+import {
+  strengthWatchLive,
+  strengthWatchTransfer,
+  type StrengthWatchInfo,
+} from '../domain/wearLink';
 import { StrengthSessionDetail } from './StrengthSessionDetail';
 import { ExerciseDetail } from './ExerciseDetail';
 import { PlanningScreen } from './PlanningScreen';
@@ -616,6 +621,12 @@ export function RunbackApp({
   const [heartSummaries, setHeartSummaries] = useState<
     Record<string, StrengthHeartSummary>
   >({});
+  // Was die Uhr zur geöffneten Einheit übertragen hat, und live zur laufenden.
+  const [sessionWatch, setSessionWatch] = useState<StrengthWatchInfo | null>(
+    null,
+  );
+  const [activeWatch, setActiveWatch] =
+    useState<ReturnType<typeof strengthWatchLive>>(null);
   const [sessionHeart, setSessionHeart] = useState<StrengthHeart | undefined>(
     undefined,
   );
@@ -1219,16 +1230,37 @@ export function RunbackApp({
   const selectedSessionId = selectedSession?.id;
   useEffect(() => {
     setSessionHeart(undefined);
+    setSessionWatch(null);
     if (!selectedSessionId) return;
     let cancelled = false;
-    native
-      .strengthHeart?.(selectedSessionId)
-      .then(next => {
-        if (!cancelled) setSessionHeart(next);
-      })
-      .catch(() => {});
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const loadHeart = () =>
+      native
+        .strengthHeart?.(selectedSessionId)
+        .then(next => {
+          if (!cancelled) setSessionHeart(next);
+        })
+        .catch(() => {});
+    // Wartet die Einheit noch auf die Uhr, schaut die Seite nach, bis die
+    // Daten da sind, und holt dann den Puls.
+    const loadWatch = async (waited: boolean) => {
+      const next = await native
+        .strengthWatch?.(selectedSessionId)
+        .catch(() => null);
+      if (cancelled) return;
+      setSessionWatch(next ?? null);
+      const transfer = strengthWatchTransfer(next ?? null);
+      if (transfer === 'waiting') {
+        timer = setTimeout(() => void loadWatch(true), 5000);
+      } else if (waited && transfer === 'received') {
+        void loadHeart();
+      }
+    };
+    void loadHeart();
+    void loadWatch(false);
     return () => {
       cancelled = true;
+      if (timer) clearTimeout(timer);
     };
   }, [selectedSessionId, selectedSession?.endTime]);
   const loadProseReady = useCallback(() => {
@@ -1277,20 +1309,27 @@ export function RunbackApp({
     showOnboarding,
     workoutOpen,
   ]);
-  // Uhr und Benachrichtigung ändern die laufende Einheit nativ; der Stand
-  // kommt als Ereignis und ersetzt den eigenen, damit nichts überschrieben wird.
-  useEffect(
-    () =>
-      native.onStrengthChanged?.(next => {
-        const current = strengthRef.current.active;
-        if (!next || !current || next.id !== current.id) return;
-        if (next.revision && next.revision === current.revision) return;
-        strengthRef.current = { ...strengthRef.current, active: next };
-        setStrength(value => ({ ...value, active: next }));
-        setNow(Date.now());
-      }),
-    [],
-  );
+  // Während des Trainings: was die Uhr gerade misst, alle paar Sekunden.
+  const activeSessionId = strength.active?.id;
+  useEffect(() => {
+    setActiveWatch(null);
+    if (!activeSessionId || !workoutOpen) return;
+    let cancelled = false;
+    const update = async () => {
+      if (AndroidAppState.currentState === 'background') return;
+      const info = await native
+        .strengthWatch?.(activeSessionId)
+        .catch(() => null);
+      if (!cancelled)
+        setActiveWatch(strengthWatchLive(info ?? null, Date.now()));
+    };
+    void update();
+    const timer = setInterval(update, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [activeSessionId, workoutOpen]);
   // Sekundentakt nur, solange eine Pause läuft und der Timer sichtbar ist.
   useEffect(() => {
     if (
@@ -1716,6 +1755,29 @@ export function RunbackApp({
     );
     setRecentSessions(loaded.filter(Boolean) as StrengthSession[]);
   }, []);
+  // Uhr und Benachrichtigung ändern die laufende Einheit nativ; der Stand
+  // kommt als Ereignis und ersetzt den eigenen, damit nichts überschrieben wird.
+  useEffect(
+    () =>
+      native.onStrengthChanged?.(next => {
+        const current = strengthRef.current.active;
+        // Von der Uhr gestartet: Die App übernimmt die neue Einheit.
+        if (next && !current && next.status === 'active') {
+          strengthRef.current = { ...strengthRef.current, active: next };
+          setStrength(value => ({ ...value, active: next }));
+          setWorkoutOpen(true);
+          setNow(Date.now());
+          void loadRecentSessions(strengthRef.current);
+          return;
+        }
+        if (!next || !current || next.id !== current.id) return;
+        if (next.revision && next.revision === current.revision) return;
+        strengthRef.current = { ...strengthRef.current, active: next };
+        setStrength(value => ({ ...value, active: next }));
+        setNow(Date.now());
+      }),
+    [loadRecentSessions],
+  );
   const startStrength = (template: WorkoutTemplate | null) => {
     if (strengthRef.current.active) {
       setWorkoutOpen(true);
@@ -1726,9 +1788,11 @@ export function RunbackApp({
       const session = reviseSession(created, created);
       // Erst gespeichert, dann bedienbar: Eine Änderung davor hätte keinen
       // gespeicherten Stand, auf dem sie aufbaut, und ginge verloren.
-      await native.saveStrengthSession(session);
-      strengthRef.current = { ...strengthRef.current, active: session };
-      setStrength(current => ({ ...current, active: session }));
+      const saved = await native.saveStrengthSession(session);
+      // Die Uhr hat gerade eine Einheit gestartet: Die läuft weiter, nicht eine zweite.
+      const active = saved.conflict && saved.active ? saved.active : session;
+      strengthRef.current = { ...strengthRef.current, active };
+      setStrength(current => ({ ...current, active }));
       setWorkoutOpen(true);
       setNow(Date.now());
       await loadRecentSessions(strengthRef.current);
@@ -5051,6 +5115,7 @@ export function RunbackApp({
         session={selectedSession}
         history={finishedSessions}
         heart={sessionHeart}
+        watch={sessionWatch}
         heartSummaries={heartSummaries}
         onOpenExercise={openExercise}
         onEditEnd={() => setEndEdit({ kind: 'strength', id: selectedSession.id })}
@@ -5498,6 +5563,7 @@ export function RunbackApp({
         ) : null}
         <WorkoutScreen
           busy={busy}
+          watch={activeWatch}
           history={recentSessions}
           now={now}
           sessions={strengthSessions}
