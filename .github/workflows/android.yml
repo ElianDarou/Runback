@@ -8,6 +8,8 @@ on:
 
 permissions:
   contents: read
+  actions: read
+  pull-requests: read
 
 # Keep main builds in order; a later push must not interrupt a publication.
 concurrency:
@@ -15,8 +17,38 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  prepare:
+    name: Find an identical verified PR build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      reuse: ${{ steps.reuse.outputs.reuse }}
+      artifact: ${{ steps.reuse.outputs.artifact }}
+      version: ${{ steps.reuse.outputs.version }}
+      tag: ${{ steps.reuse.outputs.tag }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Verify whether the merged contents were already checked
+        id: reuse
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/reuse-pr-build.py
+      - name: Keep verified PR APKs for publication
+        if: steps.reuse.outputs.reuse == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ steps.reuse.outputs.artifact }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
   server:
     name: Check self-hosted server and Docker image
+    needs: prepare
+    if: always() && !cancelled() && (needs.prepare.result != 'success' || needs.prepare.outputs.reuse != 'true')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -39,6 +71,8 @@ jobs:
 
   build:
     name: Check and build phone + Wear OS
+    needs: prepare
+    if: always() && !cancelled() && (needs.prepare.result != 'success' || needs.prepare.outputs.reuse != 'true')
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     outputs:
@@ -74,6 +108,8 @@ jobs:
         env:
           TZ: Europe/Berlin
         run: npm test -- --runInBand
+      - name: CI reuse safety tests
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - name: Install Android build tools
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
         with:
@@ -124,8 +160,13 @@ jobs:
 
   release:
     name: Publish downloadable test release
-    needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [prepare, server, build]
+    # Skipped build jobs are expected only after prepare verifies the PR artifacts.
+    if: >-
+      always() && !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+      ((needs.prepare.result == 'success' && needs.prepare.outputs.reuse == 'true' &&
+        needs.build.result == 'skipped' && needs.server.result == 'skipped') ||
+       (needs.build.result == 'success' && needs.server.result == 'success'))
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -133,7 +174,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: ${{ needs.build.outputs.artifact }}
+          name: ${{ needs.build.outputs.artifact || needs.prepare.outputs.artifact }}
           path: dist
       - name: Verify downloaded checksums
         working-directory: dist
@@ -142,8 +183,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ needs.build.outputs.tag }}
-          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+          RELEASE_TAG: ${{ needs.build.outputs.tag || needs.prepare.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.build.outputs.version || needs.prepare.outputs.version }}
         run: |
           if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
             echo "This run already published $RELEASE_TAG; keeping its existing assets."

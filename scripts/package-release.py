@@ -73,8 +73,10 @@ def main():
     output = ROOT / "dist"
     output.mkdir(exist_ok=True)
     assets = []
-    metadata = {"commit": commit, "versionCode": int(version_code), "versionName": version_name,
-                "publicTestKey": True, "apps": {}, "ciRun": os.environ.get("GITHUB_RUN_ID")}
+    metadata = {"commit": commit, "tree": command("git", "-C", ROOT, "rev-parse", "HEAD^{tree}").strip(),
+                "versionCode": int(version_code), "versionName": version_name,
+                "publicTestKey": True, "apps": {}, "ciRun": os.environ.get("GITHUB_RUN_ID"),
+                "ciAttempt": os.environ.get("GITHUB_RUN_ATTEMPT")}
     for role, module in [("phone", "app"), ("wear", "wear")]:
         source = ROOT / f"android/{module}/build/outputs/apk/release/{module}-release.apk"
         require(source.is_file(), f"Missing {role} APK: {source}")
