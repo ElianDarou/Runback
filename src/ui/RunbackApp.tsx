@@ -1,6 +1,6 @@
 import { ServerSettings } from './ServerSettings';
 import { ConnectionMark } from './components';
-import { serverNeedsAttention, serverStateLabel, type ServerLinkStatus } from '../domain/serverLink';
+import { serverMark, serverStateLabel, type ServerLinkStatus } from '../domain/serverLink';
 import React, {
   memo,
   useCallback,
@@ -353,7 +353,7 @@ const PARENT_PAGE: Partial<Record<Page, Page>> = {
   'features-home': 'features',
   'features-navigation': 'features',
   'features-detail': 'features',
-  goals: 'all-functions',
+  'all-functions': 'settings',
   goal: 'goals',
   'focus-running': 'goals',
   'focus-strength': 'goals',
@@ -4603,6 +4603,11 @@ export function RunbackApp({
           subtitle="Was Runback zeigt und wann es fragt"
           onPress={() => openPage('features')}
         />
+        <Row
+          title="Alle Funktionen"
+          subtitle="Auch Funktionen ohne eigenen Tab öffnen"
+          onPress={() => openPage('all-functions')}
+        />
         {showRunning ? (
           <Row
             title="Stimme & Vibration"
@@ -4628,7 +4633,7 @@ export function RunbackApp({
         <Row
           title="Eigener Server"
           subtitle={serverStatus ? serverStateLabel(serverStatus) : 'Status wird geladen'}
-          trailing={<ConnectionMark attention={Boolean(serverStatus && serverNeedsAttention(serverStatus))} />}
+          trailing={<ConnectionMark mark={serverMark(serverStatus)} />}
           onPress={() => openPage('server')}
         />
         <Row
@@ -5985,25 +5990,15 @@ export function RunbackApp({
         ) : recording ? (
           <Text style={styles.headerInfo}>Aufzeichnung aktiv</Text>
         ) : !selected && page === 'main' ? (
-          <View style={styles.choiceRow}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Alle Funktionen"
-              onPress={() => openPage('all-functions')}
-              style={styles.gear}
-            >
-              <Icon name="Funktionen" />
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={serverStatus && serverNeedsAttention(serverStatus) ? `Einstellungen · Server ${serverStateLabel(serverStatus)}` : "Einstellungen"}
-              onPress={() => openPage('settings')}
-              style={({ pressed }) => [styles.gear, pressed && styles.pressed]}
-            >
-              <Icon name="Einstellungen" />
-              <ConnectionMark attention={Boolean(serverStatus && serverNeedsAttention(serverStatus))} />
-            </Pressable>
-          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={serverStatus && serverMark(serverStatus) ? `Einstellungen · Server ${serverStateLabel(serverStatus)}` : 'Einstellungen'}
+            onPress={() => openPage('settings')}
+            style={({ pressed }) => [styles.settingsButton, pressed && styles.pressed]}
+          >
+            <ConnectionMark mark={serverMark(serverStatus)} />
+            <Icon name="Einstellungen" />
+          </Pressable>
         ) : null}
       </View>
       {error ? (
@@ -6257,11 +6252,13 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   cardTitle: { color: color.text, ...type.heading },
-  gear: {
+  settingsButton: {
     minWidth: 48,
     minHeight: 48,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: space.xs,
   },
   hero: { marginTop: space.xs, borderWidth: 1, borderColor: color.line },
   heroLabel: {

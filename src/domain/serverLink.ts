@@ -218,8 +218,8 @@ export function readServerLinkStatus(raw: any): ServerLinkStatus {
 }
 
 /**
- * Der Punkt am Zahnrad: rot, wenn der Server gerade nicht erreichbar ist oder
- * den Abgleich ablehnt. Die App funktioniert dabei ganz normal weiter.
+ * Rot, wenn der Server gerade nicht erreichbar ist oder den Abgleich ablehnt.
+ * Die App funktioniert dabei ganz normal weiter.
  */
 export function serverNeedsAttention(status: ServerLinkStatus): boolean {
   return (
@@ -227,6 +227,14 @@ export function serverNeedsAttention(status: ServerLinkStatus): boolean {
     status.state === 'rejected' ||
     status.state === 'error'
   );
+}
+
+/** Der Punkt neben dem Zahnrad; ohne eingerichteten Server gibt es keinen. */
+export function serverMark(
+  status: ServerLinkStatus | null,
+): 'connected' | 'attention' | null {
+  if (!status || status.state === 'off') return null;
+  return serverNeedsAttention(status) ? 'attention' : 'connected';
 }
 
 export function serverStateLabel(status: ServerLinkStatus): string {
