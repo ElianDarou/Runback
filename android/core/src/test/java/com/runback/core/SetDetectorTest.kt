@@ -157,13 +157,34 @@ class SetDetectorTest {
     }
 
     @Test fun aShortSetRightAfterChoosingTheExerciseIsFound() {
-        val detector = SetDetector(RepProfiles.forExercise("seated_cable_row")!!)
+        // Puffer läuft ab Aufzeichnungsbeginn, ohne auszuwerten.
+        val detector = SetDetector(RepProfiles.BUFFER_ONLY).also { it.pause() }
         feed(rest(30.0), detector = detector)
-        // Übung gewechselt, sofort vier Wiederholungen: der Puffer davor bleibt erhalten.
-        detector.switchProfile(RepProfiles.forExercise("triceps_pushdown")!!)
+        // Übung gewählt, sofort vier Wiederholungen: der Vorlauf davor trägt die Analyse.
+        detector.retarget(RepProfiles.forExercise("triceps_pushdown")!!)
         val run = feed(reps(4, 2.5), rest(25.0), detector = detector, seed = 3, startS = 30.0)
         assertEquals(listOf(4), run.sets.map { it.count })
         assertEquals("triceps_pushdown", run.sets.single().features.getString("profile"))
+    }
+
+    @Test fun aNewTargetDropsWhatBelongedToTheOldOne() {
+        val curl = RepProfiles.forExercise("fedb:Concentration_Curls")!!
+        val detector = SetDetector(curl)
+        // Erster Arm fertig, wartet auf den zweiten — dann wird eine andere Übung gewählt.
+        assertTrue(feed(rest(15.0), reps(7, 3.2), rest(10.0), detector = detector).sets.isEmpty())
+        detector.retarget(RepProfiles.forExercise("triceps_pushdown")!!)
+        assertTrue(feed(rest(60.0), detector = detector, seed = 5, startS = 47.4).sets.isEmpty())
+        // Gleiches Profil, anderes Ziel mitten im Satz: der halbe Satz wird nicht dem neuen zugeschrieben.
+        val triceps = SetDetector(RepProfiles.forExercise("triceps_pushdown")!!)
+        feed(rest(15.0), reps(6, 2.5), detector = triceps)
+        triceps.retarget(RepProfiles.forExercise("cable_triceps_extension_unspecified")!!)
+        assertTrue(feed(rest(40.0), detector = triceps, seed = 6, startS = 30.0).sets.isEmpty())
+    }
+
+    @Test fun pausedDetectorOnlyBuffers() {
+        val detector = SetDetector(RepProfiles.BUFFER_ONLY).also { it.pause() }
+        assertTrue(feed(rest(15.0), reps(8, 2.5), rest(25.0), detector = detector).sets.isEmpty())
+        assertEquals(SetDetector.State.IDLE, detector.state)
     }
 
     @Test fun unilateralSingleSideIsReportedAfterWaiting() {

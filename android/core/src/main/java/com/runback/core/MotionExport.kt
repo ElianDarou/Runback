@@ -111,7 +111,7 @@ object MotionExport {
         val events = meta.optJSONArray("events") ?: JSONArray()
         val applied = appliedDetections(events)
         detections?.let { writeDetections(zip, id, it, toMs!!, applied) }
-        val sets = writeSets(zip, id, strength, start, MotionLabels.completionLabels(events), detections, applied)
+        val sets = writeSets(zip, id, strength, start, MotionLabels.completionLabels(events), detections, currentDetections(events))
         writeEvents(zip, id, events, start)
         entry(zip, "$id/meta.json") {
             it.write(JSONObject()
@@ -237,13 +237,14 @@ object MotionExport {
         start: Long,
         completion: Map<String, String>,
         detections: List<SetDetectionLog.Entry>?,
-        applied: Set<String>,
+        current: Map<String, String>,
     ): Pair<Int, Int> {
-        // Nur was das Handy auch übernommen hat; eine Bestätigung, die nie ankam, ist kein Label für diesen Satz.
-        val accepted = detections.orEmpty().filter { entry ->
-            entry.detected != null && entry.reviewed?.optString("decision") in setOf("confirmed", "corrected") &&
-                entry.detected.optString("detectionId") in applied
-        }.associateBy { it.detected!!.optString("setId") }
+        // Nur die Erkennung, mit der das Handy den Satz zuletzt abgehakt hat; eine Bestätigung, die nie
+        // ankam, oder eine, deren Abhaken zurückgenommen wurde, ist kein Label für diesen Satz.
+        val byId = detections.orEmpty().filter { entry ->
+            entry.detected != null && entry.reviewed?.optString("decision") in setOf("confirmed", "corrected")
+        }.associateBy { it.detected!!.optString("detectionId") }
+        val accepted = current.mapNotNull { (setId, detectionId) -> byId[detectionId]?.let { setId to it } }.toMap()
         var logged = 0
         var completed = 0
         entry(zip, "$id/sets.csv") { out ->
@@ -291,7 +292,25 @@ object MotionExport {
         return logged to completed
     }
 
-    /** Erkennungen, die das Handy beim Abhaken übernommen hat (`set_detected` in den Ereignissen). */
+    /**
+     * Je Satz die Erkennung seines letzten Abhakens: `set_detected` folgt
+     * unmittelbar auf das `set_completed`, das sie ausgelöst hat; ein späteres
+     * Abhaken ohne Erkennung oder ein Zurücknehmen löst die Zuordnung.
+     */
+    private fun currentDetections(events: JSONArray): Map<String, String> {
+        val current = mutableMapOf<String, String>()
+        for (index in 0 until events.length()) {
+            val event = events.optJSONObject(index) ?: continue
+            val setId = event.optString("setId").takeIf { it.isNotBlank() } ?: continue
+            when (event.optString("type")) {
+                "set_completed", "set_reopened", "set_removed" -> current.remove(setId)
+                "set_detected" -> event.optString("detectionId").takeIf { it.isNotBlank() }?.let { current[setId] = it }
+            }
+        }
+        return current
+    }
+
+    /** Erkennungen, die das Handy beim Abhaken je übernommen hat (`set_detected` in den Ereignissen). */
     private fun appliedDetections(events: JSONArray): Set<String> = (0 until events.length()).mapNotNull { index ->
         events.optJSONObject(index)?.takeIf { it.optString("type") == "set_detected" }?.optString("detectionId")
             ?.takeIf { it.isNotBlank() }

@@ -47,8 +47,8 @@ class AutoSets(
     /** Satz, den die Uhr gerade erwartet: aus dem Stand des Handys. */
     private var target: SetDetectionLog.Target? = null
     private var completedInExercise = -1
-    /** Bleibt über Übungswechsel bestehen, damit der Puffer davor nicht verloren geht. */
-    private var buffer: SetDetector? = null
+    /** Puffert ab Aufzeichnungsbeginn und über Übungswechsel hinweg; Vorlauf für die Analyse. */
+    private val buffer = SetDetector(RepProfiles.BUFFER_ONLY, hasGyro).also { it.pause() }
     /** Nur bei einer unterstützten Übung mit offenem Satz meldet der Detektor etwas. */
     private var detector: SetDetector? = null
     private var profile: RepProfiles.Profile? = null
@@ -85,17 +85,13 @@ class AutoSets(
         }
         val nextProfile = next?.takeIf { set?.optBoolean("timed") != true }?.let { RepProfiles.forExercise(it.exerciseId) }
         if (nextProfile == null) {
+            if (detector != null) buffer.pause()
             detector = null; profile = null
-        } else {
-            val kept = buffer ?: SetDetector(nextProfile, hasGyro).also { buffer = it }
-            if (detector == null || nextProfile != profile || previous?.exerciseId != next.exerciseId) {
-                // Übungswechsel: Puffer behalten, auch ein Satz kurz vor der Auswahl zählt.
-                kept.switchProfile(nextProfile)
-            } else if (previous.setId != next.setId) {
-                // Neuer Satz derselben Übung: nichts doppelt melden.
-                kept.reset()
-            }
-            detector = kept; profile = nextProfile
+        } else if (detector == null || nextProfile != profile || previous?.exerciseId != next.exerciseId ||
+            previous.setId != next.setId) {
+            // Neues Ziel: Was davor lief, gehört nicht zu diesem Satz.
+            buffer.retarget(nextProfile)
+            detector = buffer; profile = nextProfile
         }
         target = next
         completedInExercise = completed
@@ -103,12 +99,12 @@ class AutoSets(
     }
 
     fun accel(time: Long, x: Float, y: Float, z: Float) {
-        val found = buffer?.accel(time, x, y, z)
+        val found = buffer.accel(time, x, y, z)
         if (found != null && detector != null) found(found)
     }
 
     fun gyro(time: Long, x: Float, y: Float, z: Float) {
-        val found = buffer?.gyro(time, x, y, z)
+        val found = buffer.gyro(time, x, y, z)
         if (found != null && detector != null) found(found)
     }
 

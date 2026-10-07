@@ -32,7 +32,7 @@ import kotlin.math.sqrt
  * (`elapsedRealtimeNanos`), wie in der Rohdatei.
  */
 class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = true) {
-    /** Parameter der gerade gewählten Übung; ein Wechsel behält den Puffer (`switchProfile`). */
+    /** Parameter der gerade gewählten Übung; ein Wechsel behält den Puffer (`retarget`). */
     var profile = profile
         private set
     enum class State { IDLE, SET_CANDIDATE, SET_ACTIVE, SET_END_CANDIDATE }
@@ -148,18 +148,28 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
     }
 
     /**
-     * Andere Übung gewählt: Zustand neu, Puffer bleibt. Ein Satz, der kurz vor
-     * der Auswahl begann, wird so noch gefunden; schon Gemeldetes nicht erneut.
+     * Anderes Ziel (Übung oder Satz) oder Erkennung wieder an: alles Offene
+     * gehört zum alten Ziel und wird verworfen; erkannt wird erst, was danach
+     * beginnt. Der Puffer davor bleibt als Vorlauf für die Analyse.
      */
-    fun switchProfile(next: RepProfiles.Profile) {
-        if (next == profile) return
+    fun retarget(next: RepProfiles.Profile) {
         profile = next
-        state = State.IDLE
-        active = null
-        pendingSide?.let { output.addLast(it.set) }
-        pendingSide = null
-        hits = 0; misses = 0; provisionalReps = 0
+        listening = true
+        reset()
     }
+
+    /**
+     * Keine unterstützte Übung dran: nur puffern, nichts rechnen, nichts
+     * melden. So steht beim nächsten Ziel schon Vorlauf bereit.
+     */
+    fun pause() {
+        listening = false
+        reset()
+    }
+
+    /** Ob der Detektor gerade auswertet (`retarget`) oder nur puffert (`pause`). */
+    var listening = true
+        private set
 
     /** Lücke in den Messwerten: Was im Puffer liegt, passt nicht mehr zusammen. */
     private fun restart() {
@@ -243,6 +253,7 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
     }
 
     private fun evaluate() {
+        if (!listening) return
         when (state) {
             State.IDLE, State.SET_CANDIDATE -> scan()
             State.SET_ACTIVE, State.SET_END_CANDIDATE -> follow()

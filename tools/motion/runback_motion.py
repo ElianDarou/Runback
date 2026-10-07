@@ -175,9 +175,10 @@ def estimate_set_bounds(
     if session.detections is not None and "decision" in session.detections:
         accepted = session.detections[(session.detections["kind"] == "detected")
                                       & session.detections["decision"].isin(["confirmed", "corrected"])]
-        if "applied" in accepted:
-            # Nur was das Handy übernommen hat; eine Bestätigung, die nie ankam, gehört zu keinem Satz.
-            accepted = accepted[accepted["applied"] == 1]
+        if "detection_id" in session.sets:
+            # sets.csv nennt die Erkennung, mit der der Satz zuletzt abgehakt wurde; nur die gilt.
+            current = session.sets.dropna(subset=["detection_id"]).set_index("detection_id")["set_id"]
+            accepted = accepted[accepted["detection_id"].isin(current.index)]
         detected = {row["set_id"]: row for _, row in accepted.iterrows()}
     weak = set(session.sets.loc[session.sets["label"] == "batch", "set_id"]) if "label" in session.sets else set()
     level = activity(frame, rate_hz)

@@ -47,6 +47,9 @@ object RepProfiles {
         "seated_cable_row" to row,
     )
 
+    /** Platzhalter für den Puffer, solange keine unterstützte Übung dran ist; meldet nie etwas (`SetDetector.pause`). */
+    val BUFFER_ONLY = Profile("buffer_only")
+
     /** Parameter für eine Katalogübung oder `null`: dann bleibt es beim Abhaken von Hand. */
     fun forExercise(exerciseId: String?): Profile? = exerciseId?.let { byExercise[it] }
 }

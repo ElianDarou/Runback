@@ -233,6 +233,32 @@ class MotionDataTest {
         assertTrue(files["session-1/detections.csv"]!!.lines()[1].contains(",confirmed,user,1,1,0,0,"))
     }
 
+    @Test fun aReopenedSetLosesItsDetectionLabel() {
+        val target = SetDetectionLog.Target("session-1", "bench", "Bankdrücken", 0, "a1")
+        val set = SetDetector.DetectedSet(5_100_000_000L, 5_900_000_000L,
+            listOf(SetDetector.Rep(5_100_000_000L, 5_900_000_000L, 5_500_000_000L, 0.9)), 0.7, JSONObject())
+        val rawBytes = raw {
+            anchor(5_000_000_000L, 1_001_250L)
+            event(6_000_000_000L, SetDetectionLog.detected("d1", target, set))
+            event(7_000_000_000L, SetDetectionLog.reviewed("d1", target, 1, 1, byUser = true, adjustments = 0))
+        }
+        val meta = JSONObject().put("sessionId", "session-1").put("startedAt", 1_000_000L)
+            .put("events", JSONArray()
+                .put(completion(1_007_000L, "a1"))
+                .put(JSONObject().put("t", 1_007_000L).put("type", "set_detected").put("setId", "a1").put("detectionId", "d1"))
+                .put(JSONObject().put("t", 1_020_000L).put("type", "set_reopened").put("exerciseId", "bench").put("setId", "a1"))
+                .put(completion(1_040_000L, "a1")))
+        val strength = session(status = "finished", sets = listOf(set("a1", completedAt = 1_040_000L))).put("startTime", 1_000_000L)
+        val out = ByteArrayOutputStream()
+        ZipOutputStream(out).use { zip ->
+            MotionExport.write(zip, listOf(MotionExport.Session(meta, strength) { ByteArrayInputStream(rawBytes) }), 2_000_000L)
+        }
+        val files = unzip(out.toByteArray())
+        assertTrue(files["session-1/sets.csv"]!!.lines()[1].endsWith(",single,,"))
+        // Die Erkennung wurde damals übernommen; das bleibt in detections.csv sichtbar.
+        assertTrue(files["session-1/detections.csv"]!!.lines()[1].contains(",confirmed,user,1,1,0,1,"))
+    }
+
     private fun completion(t: Long, setId: String) = JSONObject().put("t", t).put("type", "set_completed")
         .put("exerciseIndex", 0).put("exerciseId", "bench").put("setId", setId)
 
