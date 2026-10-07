@@ -1,4 +1,4 @@
-import type { Run } from '../native';
+import type { Run } from './trainingRecords';
 import { applyStrengthEndCorrection } from './endCorrection';
 import { normalizePurpose } from './runTitle';
 import { normalizeRunTarget } from './runTarget';

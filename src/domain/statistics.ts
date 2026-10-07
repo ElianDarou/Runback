@@ -1,4 +1,4 @@
-import type { Run } from '../native';
+import type { Run } from './trainingRecords';
 import { medianOrNull } from './inference';
 import { isAccidentalRun, isRun } from './sport';
 

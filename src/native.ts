@@ -1,18 +1,21 @@
+import type {
+  Settings,
+  MotionWrist,
+  Run,
+} from './domain/trainingRecords';
+export type {
+  Preset,
+  Settings,
+  MotionWrist,
+  MotionCaptureSettings,
+  RoutePoint,
+  Run,
+} from './domain/trainingRecords';
 import { readServerLinkStatus, type ServerScope } from './domain/serverLink';
 import { NativeEventEmitter, NativeModules } from 'react-native';
-import type { TrainingFocus } from './domain/focus';
-import type {
-  GaitPlacement,
-  RunSummary,
-  RunPurpose,
-  Sport,
-  Experiment,
-  Adherence,
-} from './domain/types';
 import type { RouteCoordinate, RoutePlan } from './domain/routes';
 import type { RunTimeline } from './domain/runReport';
 import type { RunSeries } from './domain/runSeries';
-import type { PurposeHintProvenance } from './domain/purposeHint';
 import type {
   StrengthSession,
   StrengthState,
@@ -47,13 +50,10 @@ import {
   type ImportBatch,
   type ImportChoice,
 } from './domain/importReview';
-import type { ScheduleState } from './domain/schedule';
-import type { RunTarget } from './domain/runTarget';
 import type {
   SorenessReport as CapturedSorenessReport,
   StructuredSorenessItem,
 } from './domain/sorenessInput';
-import type { FeatureSettings } from './domain/features';
 import {
   readStrengthHeart,
   readStrengthHeartSummaries,
@@ -65,72 +65,6 @@ import {
   type StrengthWatchInfo,
 } from './domain/wearLink';
 
-export interface Preset {
-  id: string;
-  name: string;
-  purpose: RunPurpose;
-  minutes: number;
-  cues: boolean;
-}
-export interface Settings {
-  schedule?: ScheduleState;
-  goal?: string;
-  goalTargetDate?: string;
-  /** Zielstrecke in km und Zielzeit in Sekunden fürs Laufziel (`domain/raceGoal`). */
-  goalDistanceKm?: number;
-  goalTargetSeconds?: number;
-  trainingFocus?: TrainingFocus | null;
-  /** Bereich Krafttraining: eigenes Ziel und eigener Fokus. */
-  strengthGoal?: string;
-  strengthGoalTargetDate?: string;
-  strengthFocus?: TrainingFocus | null;
-  strengthPostponedUntil?: number;
-  minutes?: number;
-  purpose?: RunPurpose;
-  /** Zuletzt gewählte Sportart für die freie Aufzeichnung. */
-  sport?: Sport;
-  /** Wo das Handy beim Laufen steckt; Kotlin liest es beim Start für den Laufstil. */
-  gaitPlacement?: GaitPlacement;
-  /** Puls und Bewegungen der Uhr im Krafttraining; Kotlin liest es beim Start einer Einheit. */
-  motionCapture?: MotionCaptureSettings;
-  trainingDays?: number[];
-  cues?: boolean;
-  /** Explizit gewählte Begleitung für den nächsten Lauf. */
-  runTarget?: RunTarget;
-  weather?: boolean;
-  /** Maxpuls in bpm für die Pulszonen; fehlt er, schätzt Runback aus den Läufen. */
-  maxHeartRate?: number;
-  /** Älterer Einzelschalter; gilt nur, solange `features` fehlt. */
-  showHeartRate?: boolean;
-  /** Was der Nutzer sehen will und wann Runback fragt (`domain/features`). */
-  features?: FeatureSettings;
-  presets?: Preset[];
-  experiments?: Experiment[];
-  dismissedRecommendations?: string[];
-  /** Gelöschte Importvorschläge; Originaleinheiten und gespeicherte Vorlagen bleiben erhalten. */
-  dismissedStrengthImportTemplateIds?: string[];
-  adherence?: Record<string, Adherence>;
-  postponedUntil?: number;
-  [key: string]: unknown;
-}
-export type MotionWrist = 'left' | 'right' | 'unknown';
-export interface MotionCaptureSettings {
-  /** Bewegungen mitschreiben (Rohdaten für spätere Satzerkennung). */
-  enabled: boolean;
-  wrist: MotionWrist;
-  /** Puls messen; fehlt der Wert, ist er an (Kotlin `MotionSessions.config`). */
-  heartRate?: boolean;
-  /**
-   * Sätze auf der Uhr erkennen und Wiederholungen zählen; nur mit
-   * `enabled`. Fehlt der Wert, ist sie an (Kotlin `MotionSessions.config`).
-   */
-  autoSets?: boolean;
-  /**
-   * Erkannte Zahl ohne Eingabe nach kurzer Zeit übernehmen; nur mit
-   * `autoSets`. Fehlt der Wert, ist sie aus — der Nutzer bestätigt selbst.
-   */
-  autoConfirm?: boolean;
-}
 /** Zähler aus `MotionSessions.status`; die Rohdaten selbst bleiben nativ. */
 export interface MotionStatus {
   enabled: boolean;
@@ -144,22 +78,6 @@ export interface MotionStatus {
     sessionId: string;
     watch: { status?: string; message?: string };
   } | null;
-}
-export interface RoutePoint {
-  latitude: number;
-  longitude: number;
-  time?: number;
-  gap?: boolean;
-}
-export interface Run extends RunSummary {
-  note?: string;
-  route?: RoutePoint[];
-  events?: { type?: string; at?: number; message?: string }[];
-  target?: RunTarget;
-  /** Laufart ausdrücklich gewählt oder bestätigt; dann fragt die Detailseite nicht mehr. */
-  purposeConfirmed?: boolean;
-  /** Spur eines bestätigten Vorschlags; fehlt bei eigener Wahl. */
-  purposeHint?: PurposeHintProvenance;
 }
 export interface Capabilities {
   gps?: boolean;

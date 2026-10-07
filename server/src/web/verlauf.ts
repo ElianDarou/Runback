@@ -1,4 +1,4 @@
-import type { Run } from '../../../src/native';
+import type { Run } from '../../../src/domain/trainingRecords';
 import { runTitle } from '../../../src/domain/runTitle';
 import { isRun } from '../../../src/domain/sport';
 import { mondayStart } from '../../../src/domain/statistics';

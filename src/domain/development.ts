@@ -1,4 +1,4 @@
-import type { Run } from '../native';
+import type { Run } from './trainingRecords';
 import type { StrengthSession } from './strength';
 import { localDateKey as scheduleLocalDateKey } from './schedule';
 import type { ScheduleState } from './schedule';

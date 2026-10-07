@@ -1,4 +1,4 @@
-import type { Run } from '../../../src/native';
+import type { Run } from '../../../src/domain/trainingRecords';
 import { formatPace } from '../../../src/domain/runSeries';
 import { speedKmh, usesPace } from '../../../src/domain/sport';
 import {

@@ -1,4 +1,4 @@
-import type { RoutePoint, Run, Settings } from '../../src/native';
+import type { RoutePoint, Run, Settings } from '../../src/domain/trainingRecords';
 import { recommendationArea } from '../../src/domain/areas';
 import {
   mergeStrengthSessions,
