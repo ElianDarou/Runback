@@ -36,8 +36,12 @@ import {
  * `trainingslog.md` zum Lesen, `sessions.csv`, `sets.csv`, `heart.csv` für
  * Tabellen und `sessions.jsonl` mit allem verschachtelt, je Zeile eine
  * Einheit. Gezählt wird wie in der App; was fehlt, bleibt leer statt 0.
+ *
+ * 2: Bewegungsdaten der Uhr liegen im Ordner `bewegungsdaten/` (Kotlin
+ * `MotionExport`, eigenes `manifest.json`).
  */
-export const STRENGTH_EXPORT_VERSION = 'runback-strength-export-1';
+export const STRENGTH_EXPORT_VERSION = 'runback-strength-export-2';
+export const STRENGTH_EXPORT_MOTION_DIRECTORY = 'bewegungsdaten';
 
 export const STRENGTH_EXPORT_FILES = {
   readme: 'README.md',
@@ -566,6 +570,12 @@ export interface StrengthExportSummary {
   sessions: number;
   sets: number;
   heartSessions: number;
+  /**
+   * Einheiten mit Bewegungsdaten (`MotionStatus.sessions`); fehlt der Zähler,
+   * ist er unbekannt. Wie viele Rohdateien dabei sind, steht nur in
+   * `bewegungsdaten/sessions.csv` — die Uhr kann während des Exports liefern.
+   */
+  motionSessions?: number;
   firstStart?: number;
   lastStart?: number;
   goal?: string;
@@ -588,6 +598,14 @@ export function strengthExportReadme(summary: StrengthExportSummary): string {
     summary.goalTargetDate ? `- Zieldatum: ${summary.goalTargetDate}` : '',
     summary.focus ? `- Fokus Krafttraining: ${focusLabel(summary.focus)}` : '',
   ].filter(Boolean);
+  const motion =
+    summary.motionSessions === 0
+      ? ''
+      : `- \`${STRENGTH_EXPORT_MOTION_DIRECTORY}/\`: ${
+          summary.motionSessions === undefined
+            ? 'Bewegungsdaten der Uhr, falls aufgezeichnet'
+            : `Bewegungsdaten der Uhr aus ${summary.motionSessions} Einheiten`
+        } — Beschleunigung, Gyroskop, Puls roh, Ereignisse und Erkennungen je Einheit; \`raw_available\` in \`${STRENGTH_EXPORT_MOTION_DIRECTORY}/sessions.csv\` sagt, wo Rohdaten dabei sind. Zeit in ms ab Start der Einheit; Beschreibung in \`${STRENGTH_EXPORT_MOTION_DIRECTORY}/manifest.json\` und docs/bewegungsdaten.md im Runback-Repository. \`session_id\` passt zu den Tabellen oben. Die Bewegungsdaten zeigen die Aufzeichnung, wie sie war: Ein vom Nutzer gesetztes Ende gilt dort nicht, später abgehakte Sätze stehen in ihrem \`sets.csv\`.\n`;
   return `# Runback – Krafttraining-Export
 
 Format \`${STRENGTH_EXPORT_VERSION}\`, exportiert ${iso(summary.exportedAt)}.
@@ -613,7 +631,7 @@ ${context.length ? `\n## Trainingskontext\n\n${context.join('\n')}\n` : ''}
 - \`sets.csv\`: eine Zeile je Satz (auch übersprungene und nicht abgehakte), Schlüssel \`session_id\`.
 - \`heart.csv\`: Puls je Zeitfenster ab Start der Einheit. Leeres \`bpm\` heißt: kein gültiger Wert im Fenster.
 - \`sessions.jsonl\`: je Zeile eine Einheit als JSON mit Übungen, Sätzen und Puls-Zusammenfassung.
-
+${motion}
 ## Spalten in sets.csv
 
 - \`set_kind\`: warmup, normal, failure, dropset, timed. \`load_kind\`: kg, bodyweight, assisted (Gewicht = Unterstützung), bodyweight_plus (Gewicht = Zusatzlast), unknown.

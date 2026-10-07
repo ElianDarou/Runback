@@ -245,19 +245,9 @@ export function DeviceSettings({
         {motion && motion.sessions > 0 ? (
           <>
             <Copy muted>{motionSummary(motion)}</Copy>
-            <Button
-              secondary
-              title="Bewegungsdaten exportieren"
-              disabled={busy || motion.received === 0}
-              onPress={() => {
-                void act(async () => {
-                  const result = await nativeCall<any>('exportMotionData');
-                  if (result?.exported) {
-                    setMessage(`${result.sessions} Einheiten exportiert.`);
-                  }
-                });
-              }}
-            />
+            <Copy muted>
+              Exportiere sie mit dem Krafttraining unter „Deine Daten“.
+            </Copy>
             <Button
               small
               secondary

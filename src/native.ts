@@ -287,8 +287,21 @@ export const native = {
   async appendExportArchive(id: string, files: Record<string, string>) {
     await nativeCall('appendExportArchive', id, JSON.stringify(files));
   },
-  async shareExportArchive(id: string, title: string) {
-    await nativeCall('shareExportArchive', id, title);
+  /** `includeMotion`: Kotlin legt die Bewegungsdaten als Ordner `bewegungsdaten/` dazu. */
+  async shareExportArchive(
+    id: string,
+    title: string,
+    options: { includeMotion?: boolean } = {},
+  ) {
+    await nativeCall(
+      'shareExportArchive',
+      id,
+      title,
+      options.includeMotion === true,
+    );
+  },
+  async motionStatus(): Promise<MotionStatus> {
+    return nativeCall<MotionStatus>('getMotionStatus');
   },
   async discardExportArchive(id: string) {
     await nativeCall('discardExportArchive', id);

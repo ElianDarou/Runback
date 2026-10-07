@@ -463,6 +463,7 @@ it('previews a next-run pace and a race goal without changing persisted settings
   );
   await mount();
   await tap('Coach');
+  await tapText('Ziele & Fokus');
   await tapText('Zielzeiten');
   await act(async () => {
     tree.root.findByType(DistanceTimes).props.onChoose(5, 1500);
@@ -473,6 +474,7 @@ it('previews a next-run pace and a race goal without changing persisted settings
   );
   expect(goalTime.some(node => node.props.value === '25:00')).toBe(true);
   await tap('Coach');
+  await tapText('Ziele & Fokus');
   await tapText('Zielzeiten');
   await act(async () => {
     tree.root.findByType(DistanceTimes).props.onNextRun(5, 1500);
