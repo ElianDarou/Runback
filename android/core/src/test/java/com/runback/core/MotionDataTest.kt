@@ -186,7 +186,9 @@ class MotionDataTest {
         }
         val meta = JSONObject().put("sessionId", "session-1").put("startedAt", 1_000_000L)
             .put("events", JSONArray()
-                .put(completion(1_009_000L, "a1")).put(completion(1_030_000L, "a2")).put(completion(1_031_000L, "a3")))
+                .put(completion(1_009_000L, "a1"))
+                .put(JSONObject().put("t", 1_009_000L).put("type", "set_detected").put("setId", "a1").put("detectionId", "d1").put("reps", 3))
+                .put(completion(1_030_000L, "a2")).put(completion(1_031_000L, "a3")))
             .put("pings", JSONArray().put(JSONObject().put("t0", 1_000_000L).put("tw", 1_000_260L).put("t1", 1_000_020L)))
         val strength = session(status = "finished", sets = listOf(set("a1", completedAt = 1_009_000L),
             set("a2", completedAt = 1_030_000L), set("a3", completedAt = 1_031_000L))).put("startTime", 1_000_000L)
@@ -197,8 +199,8 @@ class MotionDataTest {
         val files = unzip(out.toByteArray())
         val detections = files["session-1/detections.csv"]!!.lines()
         // Uhr 250 ms vor: Sensorzeit 6 s → Wanduhr 1 002 250 → t_ms 2000.
-        assertEquals("detected,d1,0,bench,Bankdrücken,a1,${SetDetector.VERSION},${RepProfiles.VERSION},1100,1900,2000,2,0.72,0,3000,corrected,user,3,1,1,,", detections[1])
-        assertEquals("closed,,0,bench,Bankdrücken,a2,,,,,4000,,,,,,,,,,SET_ACTIVE,4", detections[2])
+        assertEquals("detected,d1,0,bench,Bankdrücken,a1,${SetDetector.VERSION},${RepProfiles.VERSION},1100,1900,2000,2,0.72,0,3000,corrected,user,3,1,1,1,,", detections[1])
+        assertEquals("closed,,0,bench,Bankdrücken,a2,,,,,4000,,,,,,,,,,,SET_ACTIVE,4", detections[2])
         assertEquals("d1,1,1500,1900,400,1700,0.8", files["session-1/detected_reps.csv"]!!.lines()[2])
         val sets = files["session-1/sets.csv"]!!.lines()
         assertTrue(sets[1], sets[1].endsWith(",detected,d1,2"))
@@ -207,6 +209,28 @@ class MotionDataTest {
         assertTrue(sets[3], sets[3].endsWith(",batch,,"))
         assertTrue(files["session-1/detections.jsonl"]!!.contains("\"wasCorrected\":true"))
         assertEquals("1", files["sessions.csv"]!!.lines()[1].substringAfterLast(','))
+    }
+
+    @Test fun aConfirmationThePhoneNeverAppliedIsNoSetLabel() {
+        val target = SetDetectionLog.Target("session-1", "bench", "Bankdrücken", 0, "a1")
+        val set = SetDetector.DetectedSet(5_100_000_000L, 5_900_000_000L,
+            listOf(SetDetector.Rep(5_100_000_000L, 5_900_000_000L, 5_500_000_000L, 0.9)), 0.7, JSONObject())
+        val rawBytes = raw {
+            anchor(5_000_000_000L, 1_001_250L)
+            event(6_000_000_000L, SetDetectionLog.detected("d1", target, set))
+            event(7_000_000_000L, SetDetectionLog.reviewed("d1", target, 1, 1, byUser = true, adjustments = 0))
+        }
+        // Senden scheiterte; abgehakt wurde später am Handy, ohne Erkennung.
+        val meta = JSONObject().put("sessionId", "session-1").put("startedAt", 1_000_000L)
+            .put("events", JSONArray().put(completion(1_040_000L, "a1")))
+        val strength = session(status = "finished", sets = listOf(set("a1", completedAt = 1_040_000L))).put("startTime", 1_000_000L)
+        val out = ByteArrayOutputStream()
+        ZipOutputStream(out).use { zip ->
+            MotionExport.write(zip, listOf(MotionExport.Session(meta, strength) { ByteArrayInputStream(rawBytes) }), 2_000_000L)
+        }
+        val files = unzip(out.toByteArray())
+        assertTrue(files["session-1/sets.csv"]!!.lines()[1].endsWith(",single,,"))
+        assertTrue(files["session-1/detections.csv"]!!.lines()[1].contains(",confirmed,user,1,1,0,0,"))
     }
 
     private fun completion(t: Long, setId: String) = JSONObject().put("t", t).put("type", "set_completed")

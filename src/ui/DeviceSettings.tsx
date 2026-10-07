@@ -116,6 +116,7 @@ export function DeviceSettings({
   // Fehlt der Wert, misst die Uhr den Puls (wie Kotlin `MotionSessions.config`).
   const heartRate = motionSettings.heartRate !== false;
   const autoSets = motionSettings.autoSets !== false;
+  const autoConfirm = motionSettings.autoConfirm === true;
   const saveMotion = (patch: Partial<MotionCaptureSettings>) =>
     save({ motionCapture: { ...motionSettings, ...patch } });
   return (
@@ -209,6 +210,21 @@ export function DeviceSettings({
                 />
               }
             />
+            {autoSets ? (
+              <Row
+                title="Ohne Eingabe übernehmen"
+                subtitle="Tippst du nichts, gilt die Zahl der Uhr nach 12 Sekunden."
+                trailing={
+                  <Switch
+                    accessibilityLabel="Erkannte Wiederholungen ohne Eingabe übernehmen"
+                    value={autoConfirm}
+                    onValueChange={value => saveMotion({ autoConfirm: value })}
+                    trackColor={{ false: color.line, true: color.green }}
+                    thumbColor={autoConfirm ? color.ink : color.muted}
+                  />
+                }
+              />
+            ) : null}
             <ChipGroup
               label="Handgelenk mit der Uhr"
               options={WRISTS}

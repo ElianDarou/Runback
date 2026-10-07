@@ -175,6 +175,9 @@ def estimate_set_bounds(
     if session.detections is not None and "decision" in session.detections:
         accepted = session.detections[(session.detections["kind"] == "detected")
                                       & session.detections["decision"].isin(["confirmed", "corrected"])]
+        if "applied" in accepted:
+            # Nur was das Handy übernommen hat; eine Bestätigung, die nie ankam, gehört zu keinem Satz.
+            accepted = accepted[accepted["applied"] == 1]
         detected = {row["set_id"]: row for _, row in accepted.iterrows()}
     weak = set(session.sets.loc[session.sets["label"] == "batch", "set_id"]) if "label" in session.sets else set()
     level = activity(frame, rate_hz)

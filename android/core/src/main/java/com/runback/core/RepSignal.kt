@@ -139,6 +139,19 @@ object RepSignal {
         return Periodicity(r[chosen], (chosen + minLag).toDouble() / RATE_HZ)
     }
 
+    /** Normierte Autokorrelation bei genau einer Verschiebung (Abtastwerte). */
+    fun autocorrelationAt(signal: DoubleArray, lag: Int): Double {
+        val n = signal.size
+        if (lag <= 0 || lag >= n) return 0.0
+        val mean = signal.average()
+        var ab = 0.0; var aa = 0.0; var bb = 0.0
+        for (i in 0 until n - lag) {
+            val a = signal[i] - mean; val b = signal[i + lag] - mean
+            ab += a * b; aa += a * a; bb += b * b
+        }
+        return ab / sqrt(aa * bb + 1e-12)
+    }
+
     /**
      * Lokale Maxima mit topografischer Prominenz (Suche je Seite höchstens
      * eine Periode weit), dann Unterdrückung von Nachbarn näher als 0,6

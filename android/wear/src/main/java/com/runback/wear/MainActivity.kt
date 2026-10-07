@@ -341,6 +341,7 @@ class MainActivity : Activity() {
                 review == null -> ""
                 review.status == AutoSets.Status.SENDING -> "Wird ans Handy gesendet …"
                 review.status == AutoSets.Status.FAILED -> "Handy nicht erreichbar."
+                review.decideAt == null -> ""
                 else -> {
                     val seconds = ((review.decideAt - android.os.SystemClock.elapsedRealtime() + 999) / 1000).coerceAtLeast(0)
                     if (review.touched) "Übernimmt in $seconds s" else "Übernimmt in $seconds s ohne Eingabe"
@@ -742,7 +743,8 @@ class MainActivity : Activity() {
         val motion = uri.getQueryParameter("motion") != "false"
         val heartRate = uri.getQueryParameter("heartRate") == "true"
         val autoSets = uri.getQueryParameter("autoSets") == "true"
-        runCatching { MotionCaptureService.send(this, MotionCaptureService.START, sessionId, wrist, motion, heartRate, autoSets) }
+        val autoConfirm = uri.getQueryParameter("autoConfirm") == "true"
+        runCatching { MotionCaptureService.send(this, MotionCaptureService.START, sessionId, wrist, motion, heartRate, autoSets, autoConfirm) }
             .onFailure { MotionSync.reportStatus(this, sessionId, "error", "Uhr konnte die Aufzeichnung nicht starten.") }
         // Der Dienst startet auf seinem eigenen Thread; danach zeigt die Startseite den Hinweis.
         handler.postDelayed({ if (page == PAGE_HOME && store.active() == null) render() }, 800L)

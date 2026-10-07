@@ -61,14 +61,20 @@ object MotionSessions {
     private fun heartKey(id: String) = "strength_heart_$id"
     private fun rawFile(context: Context, id: String) = File(context.filesDir, "motion/$id.rbm.gz")
 
-    /** `autoSets`: Uhr erkennt Sätze selbst; nur mit Bewegungen, fehlt der Wert, ist sie an. */
-    private data class Capture(val motion: Boolean, val heartRate: Boolean, val wrist: String, val autoSets: Boolean)
+    /**
+     * `autoSets`: Uhr erkennt Sätze selbst; nur mit Bewegungen, fehlt der Wert, ist sie an.
+     * `autoConfirm`: Uhr übernimmt die erkannte Zahl ohne Eingabe; nur, wenn eingeschaltet.
+     */
+    private data class Capture(
+        val motion: Boolean, val heartRate: Boolean, val wrist: String, val autoSets: Boolean, val autoConfirm: Boolean,
+    )
 
     private fun config(store: RunStore): Capture {
         val config = store.settings().optJSONObject("motionCapture") ?: JSONObject()
         val wrist = config.optString("wrist").takeIf { it in setOf("left", "right") } ?: "unknown"
         val motion = config.optBoolean("enabled", false)
-        return Capture(motion, config.optBoolean("heartRate", true), wrist, motion && config.optBoolean("autoSets", true))
+        val autoSets = motion && config.optBoolean("autoSets", true)
+        return Capture(motion, config.optBoolean("heartRate", true), wrist, autoSets, autoSets && config.optBoolean("autoConfirm", false))
     }
 
     /** Start abgelehnt oder keine Uhr verbunden; wie `strengthWatchTransfer` → `missing`. */
@@ -96,7 +102,7 @@ object MotionSessions {
                     .put("sessionId", id)
                     .put("wrist", capture.wrist)
                     .put("capture", JSONObject().put("motion", capture.motion).put("heartRate", capture.heartRate)
-                        .put("autoSets", capture.autoSets))
+                        .put("autoSets", capture.autoSets).put("autoConfirm", capture.autoConfirm))
                     .put("startedAt", next.optLong("startTime", now).takeIf { it > 0 } ?: now)
                     .put("status", "recording")
                     .put("watch", JSONObject().put("status", "sent").put("updatedAt", now))
@@ -374,7 +380,7 @@ object MotionSessions {
             }
             val payload = WearProtocol.motion("start", id, JSONObject()
                 .put("wrist", capture.wrist).put("motion", capture.motion).put("heartRate", capture.heartRate)
-                .put("autoSets", capture.autoSets))
+                .put("autoSets", capture.autoSets).put("autoConfirm", capture.autoConfirm))
             nodes.forEach { node ->
                 runCatching { Tasks.await(Wearable.getMessageClient(app).sendMessage(node.id, WearProtocol.MOTION_PATH, payload), 5, TimeUnit.SECONDS) }
             }
@@ -388,7 +394,8 @@ object MotionSessions {
                     .appendQueryParameter("wrist", capture.wrist)
                     .appendQueryParameter("motion", capture.motion.toString())
                     .appendQueryParameter("heartRate", capture.heartRate.toString())
-                    .appendQueryParameter("autoSets", capture.autoSets.toString()).build())
+                    .appendQueryParameter("autoSets", capture.autoSets.toString())
+                    .appendQueryParameter("autoConfirm", capture.autoConfirm.toString()).build())
                     .addCategory(Intent.CATEGORY_BROWSABLE)
                     .setComponent(ComponentName("com.runback", "com.runback.wear.MainActivity"))
                 nodes.forEach { node -> runCatching { remote.startRemoteActivity(intent, node.id) } }

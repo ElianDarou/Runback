@@ -26,8 +26,8 @@ import java.util.UUID
  * Läuft auf dem Arbeitsthread von MotionCaptureService: bekommt jeden
  * Messwert, hält einen SetDetector für die Übung, die am Handy gerade dran
  * ist, und meldet einen erkannten Satz zur Bestätigung. Erst die
- * Entscheidung des Nutzers (oder die automatische Übernahme nach
- * `AUTO_CONFIRM_MS` ohne Eingabe) hakt den Satz am Handy ab — mit der
+ * Entscheidung des Nutzers (oder, wenn er es eingeschaltet hat, die
+ * automatische Übernahme nach `AUTO_CONFIRM_MS` ohne Eingabe) hakt den Satz am Handy ab — mit der
  * bestätigten Zahl; danach startet das Handy die Pause wie gewohnt.
  *
  * Erkennung, Entscheidung und jeder ohne Erkennung abgehakte Satz landen als
@@ -37,6 +37,8 @@ class AutoSets(
     private val context: Context,
     private val sessionId: String,
     private val hasGyro: Boolean,
+    /** Ohne Eingabe nach kurzer Zeit übernehmen; nur, wenn der Nutzer das eingeschaltet hat. */
+    private val autoConfirm: Boolean,
     /** Schreibt ein Ereignis in die Rohdatei; nur auf dem Arbeitsthread. */
     private val log: (Long, JSONObject) -> Unit,
     /** Führt etwas später auf dem Arbeitsthread aus. */
@@ -45,6 +47,9 @@ class AutoSets(
     /** Satz, den die Uhr gerade erwartet: aus dem Stand des Handys. */
     private var target: SetDetectionLog.Target? = null
     private var completedInExercise = -1
+    /** Bleibt über Übungswechsel bestehen, damit der Puffer davor nicht verloren geht. */
+    private var buffer: SetDetector? = null
+    /** Nur bei einer unterstützten Übung mit offenem Satz meldet der Detektor etwas. */
     private var detector: SetDetector? = null
     private var profile: RepProfiles.Profile? = null
     /** Sätze, die die Uhr selbst abgehakt hat; ihr Verschwinden ist kein Abhaken von Hand. */
@@ -61,10 +66,18 @@ class AutoSets(
         ) else null
         val completed = exercise?.optInt("completed", -1) ?: -1
         val previous = target
+        val asked = review?.target?.setId
+        // Am Handy abgehakt, übersprungen oder Übung gewechselt, während die Uhr noch fragt: Die Frage ist erledigt.
+        review?.let { open ->
+            if (open.status != Status.SENDING && next?.setId != open.target.setId) {
+                log(SystemClock.elapsedRealtimeNanos(), SetDetectionLog.superseded(open.id, open.target, open.detected, open.adjustments))
+                close()
+            }
+        }
         if (previous != null && next?.setId != previous.setId) {
             // Der Satz ist weg, ohne dass die Uhr ihn gemeldet hat: von Hand abgehakt (oder Übung gewechselt).
             val sameExercise = next == null || next.exerciseIndex == previous.exerciseIndex
-            val ours = review?.target?.setId == previous.setId || previous.setId in sentSets
+            val ours = asked == previous.setId || previous.setId in sentSets
             if (!ours && sameExercise && completed > completedInExercise && completedInExercise >= 0) {
                 log(SystemClock.elapsedRealtimeNanos(), SetDetectionLog.closed(
                     previous, detector?.state?.name, detector?.provisionalReps ?: 0, profile?.key))
@@ -73,19 +86,31 @@ class AutoSets(
         val nextProfile = next?.takeIf { set?.optBoolean("timed") != true }?.let { RepProfiles.forExercise(it.exerciseId) }
         if (nextProfile == null) {
             detector = null; profile = null
-        } else if (nextProfile != profile || previous?.exerciseId != next.exerciseId) {
-            detector = SetDetector(nextProfile, hasGyro); profile = nextProfile
-        } else if (previous.setId != next.setId) {
-            // Neuer Satz derselben Übung: den Puffer behalten, nichts doppelt melden.
-            detector?.reset()
+        } else {
+            val kept = buffer ?: SetDetector(nextProfile, hasGyro).also { buffer = it }
+            if (detector == null || nextProfile != profile || previous?.exerciseId != next.exerciseId) {
+                // Übungswechsel: Puffer behalten, auch ein Satz kurz vor der Auswahl zählt.
+                kept.switchProfile(nextProfile)
+            } else if (previous.setId != next.setId) {
+                // Neuer Satz derselben Übung: nichts doppelt melden.
+                kept.reset()
+            }
+            detector = kept; profile = nextProfile
         }
         target = next
         completedInExercise = completed
         publishLive()
     }
 
-    fun accel(time: Long, x: Float, y: Float, z: Float) { detector?.accel(time, x, y, z)?.let(::found) }
-    fun gyro(time: Long, x: Float, y: Float, z: Float) { detector?.gyro(time, x, y, z)?.let(::found) }
+    fun accel(time: Long, x: Float, y: Float, z: Float) {
+        val found = buffer?.accel(time, x, y, z)
+        if (found != null && detector != null) found(found)
+    }
+
+    fun gyro(time: Long, x: Float, y: Float, z: Float) {
+        val found = buffer?.gyro(time, x, y, z)
+        if (found != null && detector != null) found(found)
+    }
 
     private var lastLive = ""
 
@@ -108,9 +133,9 @@ class AutoSets(
         if (review != null) return
         val id = "d-" + UUID.randomUUID().toString().replace("-", "").take(16)
         log(SystemClock.elapsedRealtimeNanos(), SetDetectionLog.detected(id, t, set))
-        review = Review(id, t, set.count, set.uncertain, set.count, 0, false,
-            SystemClock.elapsedRealtime() + AUTO_CONFIRM_MS, Status.OPEN)
-        scheduleAuto(id, review!!.decideAt)
+        val decideAt = if (autoConfirm) SystemClock.elapsedRealtime() + AUTO_CONFIRM_MS else null
+        review = Review(id, t, set.count, set.uncertain, set.count, 0, false, decideAt, Status.OPEN)
+        decideAt?.let { scheduleAuto(id, it) }
         alert()
         notifyReview()
         listener?.invoke()
@@ -119,7 +144,8 @@ class AutoSets(
     private fun scheduleAuto(id: String, at: Long) {
         later((at - SystemClock.elapsedRealtime()).coerceAtLeast(0L)) {
             val current = review ?: return@later
-            if (current.id == id && current.status == Status.OPEN && SystemClock.elapsedRealtime() >= current.decideAt) {
+            val due = current.decideAt ?: return@later
+            if (current.id == id && current.status == Status.OPEN && SystemClock.elapsedRealtime() >= due) {
                 decide(current.reps, byUser = false)
             }
         }
@@ -129,9 +155,9 @@ class AutoSets(
     fun adjust(delta: Int) {
         val current = review?.takeIf { it.status != Status.SENDING } ?: return
         val reps = (current.reps + delta).coerceIn(0, WearProtocol.MAX_REPS)
-        val at = SystemClock.elapsedRealtime() + AFTER_TOUCH_MS
+        val at = if (autoConfirm) SystemClock.elapsedRealtime() + AFTER_TOUCH_MS else null
         review = current.copy(reps = reps, adjustments = current.adjustments + 1, touched = true, decideAt = at, status = Status.OPEN)
-        scheduleAuto(current.id, at)
+        at?.let { scheduleAuto(current.id, it) }
         listener?.invoke()
     }
 
@@ -243,8 +269,8 @@ class AutoSets(
         val reps: Int,
         val adjustments: Int,
         val touched: Boolean,
-        /** `elapsedRealtime`, ab dem die Uhr ohne Eingabe übernimmt. */
-        val decideAt: Long,
+        /** `elapsedRealtime`, ab dem die Uhr ohne Eingabe übernimmt; `null`: sie wartet auf den Nutzer. */
+        val decideAt: Long?,
         val status: Status,
         /** Zuletzt in die Rohdatei geschriebene Entscheidung; dieselbe wird nicht doppelt geschrieben. */
         val logged: Decision? = null,

@@ -13,7 +13,8 @@ import org.json.JSONObject
  * Arten:
  * - `set_detected`: Zählung, Satzgrenzen, Wiederholungen, Merkmale.
  * - `set_reviewed`: bestätigt, korrigiert oder verworfen — von Hand oder
- *   automatisch nach Ablauf der Wartezeit.
+ *   automatisch nach Ablauf der Wartezeit — oder `superseded`, wenn der Satz
+ *   am Handy erledigt wurde, bevor die Uhr eine Antwort hatte.
  * - `set_closed`: Satz wurde abgehakt, ohne dass die Uhr ihn erkannt hat
  *   (von Hand auf Uhr oder Handy); hält fest, was der Detektor da gerade sah.
  */
@@ -22,6 +23,7 @@ object SetDetectionLog {
     const val DETECTED = "set_detected"
     const val REVIEWED = "set_reviewed"
     const val CLOSED = "set_closed"
+    const val SUPERSEDED = "superseded"
 
     /** Wohin der Satz gehört, so wie die Uhr ihn vom Handy kennt. */
     data class Target(
@@ -67,6 +69,21 @@ object SetDetectionLog {
             .put("wasCorrected", decision == Decision.CORRECTED)
             .put("adjustments", adjustments)
     }
+
+    /**
+     * Die Frage hat sich erledigt, bevor der Nutzer auf der Uhr entschieden hat:
+     * Der Satz wurde am Handy abgehakt oder übersprungen, oder die Übung
+     * wechselte. Keine Zahl — die gilt am Handy.
+     */
+    fun superseded(id: String, target: Target, detectedReps: Int, adjustments: Int): JSONObject = base(REVIEWED, target)
+        .put("detectionId", id)
+        .put("detectedReps", detectedReps)
+        .put("finalReps", JSONObject.NULL)
+        .put("decision", SUPERSEDED)
+        .put("by", "phone")
+        .put("userConfirmed", false)
+        .put("wasCorrected", false)
+        .put("adjustments", adjustments)
 
     /** Satz abgehakt ohne Erkennung; `state` und `provisionalReps` vom Detektor in diesem Moment. */
     fun closed(target: Target, state: String?, provisionalReps: Int, profile: String?): JSONObject = base(CLOSED, target)

@@ -31,7 +31,10 @@ import kotlin.math.sqrt
  * Gleiche Messwerte → gleiches Ergebnis. Zeiten sind Sensorzeit in ns
  * (`elapsedRealtimeNanos`), wie in der Rohdatei.
  */
-class SetDetector(val profile: RepProfiles.Profile, private val hasGyro: Boolean = true) {
+class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = true) {
+    /** Parameter der gerade gewählten Übung; ein Wechsel behält den Puffer (`switchProfile`). */
+    var profile = profile
+        private set
     enum class State { IDLE, SET_CANDIDATE, SET_ACTIVE, SET_END_CANDIDATE }
 
     class Rep(val startNanos: Long, val endNanos: Long, val peakNanos: Long, val similarity: Double)
@@ -144,6 +147,20 @@ class SetDetector(val profile: RepProfiles.Profile, private val hasGyro: Boolean
         minStart = total
     }
 
+    /**
+     * Andere Übung gewählt: Zustand neu, Puffer bleibt. Ein Satz, der kurz vor
+     * der Auswahl begann, wird so noch gefunden; schon Gemeldetes nicht erneut.
+     */
+    fun switchProfile(next: RepProfiles.Profile) {
+        if (next == profile) return
+        profile = next
+        state = State.IDLE
+        active = null
+        pendingSide?.let { output.addLast(it.set) }
+        pendingSide = null
+        hits = 0; misses = 0; provisionalReps = 0
+    }
+
     /** Lücke in den Messwerten: Was im Puffer liegt, passt nicht mehr zusammen. */
     private fun restart() {
         accelQueue.clear(); gyroQueue.clear()
@@ -237,6 +254,8 @@ class SetDetector(val profile: RepProfiles.Profile, private val hasGyro: Boolean
 
     private class SensorInfo(
         val r: Double, val periodS: Double?, val amplitude: Double, val axis: RepSignal.Axis, val fast: Double,
+        /** Autokorrelation bei halber Periode: hoch, wenn der Sensor je Wiederholung zweimal schwingt. */
+        val half: Double,
     )
 
     private fun analyse(window: Array<DoubleArray>): Array<SensorInfo> = Array(2) { s ->
@@ -245,7 +264,8 @@ class SetDetector(val profile: RepProfiles.Profile, private val hasGyro: Boolean
         val p = RepSignal.project(axes, axis.vector)
         val main = RepSignal.periodicity(p, lag(profile.minPeriodS), lag(profile.maxPeriodS), 0.75)
         val fast = RepSignal.periodicity(p, lag(FAST_MIN_S), lag(profile.minPeriodS) + 2, 0.99)
-        SensorInfo(main.r, main.periodS, RepSignal.amplitude(p), axis, fast.r)
+        val half = main.periodS?.let { RepSignal.autocorrelationAt(p, lag(it / 2)) } ?: 0.0
+        SensorInfo(main.r, main.periodS, RepSignal.amplitude(p), axis, fast.r, half)
     }
 
     private fun lag(seconds: Double) = (seconds * RepSignal.RATE_HZ).toInt()
@@ -258,8 +278,10 @@ class SetDetector(val profile: RepProfiles.Profile, private val hasGyro: Boolean
 
     /** Sensor, dessen Bewegung regelmäßig genug für einen Satz ist, oder `null`. */
     private fun periodicSensor(info: Array<SensorInfo>): Int? {
-        // Gehen und Armschwung: starke Periodik schneller als jede Wiederholung.
-        if (max(info[0].fast, info[1].fast) >= FAST_BLOCK) return null
+        // Gehen und Armschwung: starke Periodik schneller als jede Wiederholung — am Gyroskop,
+        // das den Armschwung sieht. Die Beschleunigung schwingt bei manchen Übungen selbst
+        // doppelt so schnell wie die Wiederholung (Hin- und Rückweg); sie sperrt nur ohne Gyroskop.
+        if ((if (hasGyro) info[GYRO].fast else info[ACCEL].fast) >= FAST_BLOCK) return null
         var best: Int? = null
         var bestScore = 0.0
         for (me in 0..1) {
@@ -268,7 +290,8 @@ class SetDetector(val profile: RepProfiles.Profile, private val hasGyro: Boolean
             if (m.periodS == null || m.amplitude < minAmplitude(me)) continue
             val support = o.periodS != null && o.r >= 0.4 && (close(m.periodS, o.periodS) || harmonic(m.periodS, o.periodS))
             if ((m.r >= 0.6 && support) || m.r >= 0.8) {
-                val score = m.r + if (support) 0.1 else 0.0
+                // Schwingt ein Sensor je Wiederholung zweimal, sind seine Spitzen mehrdeutig: der andere zählt.
+                val score = m.r + (if (support) 0.1 else 0.0) - (if (m.half >= 0.5) 0.3 else 0.0)
                 if (best == null || score > bestScore) { best = me; bestScore = score }
             }
         }
@@ -357,7 +380,7 @@ class SetDetector(val profile: RepProfiles.Profile, private val hasGyro: Boolean
             val gap = (chain.first() - i).toDouble() / RepSignal.RATE_HZ
             val height = RepSignal.median(heights.toList())
             if (RepSignal.dot(shape, option.template) < 0.5 || gap < 0.6 * periodS || gap > bridge(periodS) ||
-                p[i] < 0.35 * height || p[i] > 2.5 * height) break
+                !heightFits(p[i], height)) break
             chain.addFirst(i); shapes.addFirst(shape); heights.addFirst(p[i])
         }
         val other = info[1 - sensor]
@@ -399,6 +422,15 @@ class SetDetector(val profile: RepProfiles.Profile, private val hasGyro: Boolean
             DoubleArray(source.size) { source[it] / s }
         }
 
+    /**
+     * Passt die Höhe einer Spitze zum Satz? Einarmig enger: Der andere Arm
+     * bewegt die Uhr deutlich schwächer, sein Abschnitt ist eine eigene Seite
+     * und keine Fortsetzung — sonst würden beide Seiten zusammengezählt.
+     */
+    private fun heightFits(value: Double, height: Double) =
+        if (profile.unilateral) value >= 0.45 * height && value <= 2.2 * height
+        else value >= 0.35 * height && value <= 2.5 * height
+
     /** Längste Pause zwischen zwei Wiederholungen, die noch zum Satz gehört. */
     private fun bridge(periodS: Double) = (2.2 * periodS).coerceIn(BRIDGE_MIN_S, BRIDGE_MAX_S)
 
@@ -422,7 +454,7 @@ class SetDetector(val profile: RepProfiles.Profile, private val hasGyro: Boolean
             // Die letzte Spitze zählt erst, wenn eine halbe Periode danach vorliegt.
             val shape = RepSignal.shape(v, i, a.periodS) ?: continue
             val similarity = RepSignal.dot(shape, a.template)
-            val heightOk = p[i] >= 0.35 * a.height && p[i] <= 2.5 * a.height
+            val heightOk = heightFits(p[i], a.height)
             if (chosen.isEmpty()) {
                 if (similarity >= 0.5 && heightOk && a.lo + i > minStart) { chosen += i; similarities += similarity }
                 continue
@@ -570,10 +602,13 @@ class SetDetector(val profile: RepProfiles.Profile, private val hasGyro: Boolean
         private const val SIDE_GAP_S = 15.0
         private const val SIDE_WAIT_IDLE_S = 12.0
         private const val SIDE_WAIT_MAX_S = 40.0
-        /** Ruhe: Handgelenk über 2 s kaum bewegt (gleitender Effektivwert). */
+        /**
+         * Ruhe: Handgelenk über ein ganzes Prüffenster kaum bewegt (gleitender
+         * Effektivwert). Erst dann liegt sicher kein Satz mehr im Fenster.
+         */
         private const val QUIET_ACCEL = 0.15
         private const val QUIET_GYRO = 0.08
-        private const val QUIET_FRAMES = 2L * RepSignal.RATE_HZ
+        private const val QUIET_FRAMES = (WINDOW_S * RepSignal.RATE_HZ).toLong()
         private const val ENERGY_ALPHA = 1.0 / RepSignal.RATE_HZ
     }
 }

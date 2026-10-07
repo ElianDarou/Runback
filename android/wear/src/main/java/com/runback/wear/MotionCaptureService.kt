@@ -135,11 +135,12 @@ class MotionCaptureService : Service(), SensorEventListener {
         val motion = intent.getBooleanExtra(EXTRA_MOTION, true)
         val heart = intent.getBooleanExtra(EXTRA_HEART, false)
         val sets = intent.getBooleanExtra(EXTRA_AUTO_SETS, false)
-        worker.post { begin(requested, wrist, motion, heart, sets) }
+        val confirm = intent.getBooleanExtra(EXTRA_AUTO_CONFIRM, false)
+        worker.post { begin(requested, wrist, motion, heart, sets, confirm) }
         return START_NOT_STICKY
     }
 
-    private fun begin(id: String, wrist: String, motion: Boolean, heartRequested: Boolean, setsRequested: Boolean) {
+    private fun begin(id: String, wrist: String, motion: Boolean, heartRequested: Boolean, setsRequested: Boolean, autoConfirm: Boolean) {
         if (sessionId == id) return
         // Neue Einheit, bevor die alte gestoppt wurde: alte Datei abschließen, Dienst weiterlaufen lassen.
         if (sessionId != null) finish(sessionId, discard = false, stopService = false)
@@ -174,7 +175,7 @@ class MotionCaptureService : Service(), SensorEventListener {
             .put("device", JSONObject()
                 .put("manufacturer", Build.MANUFACTURER).put("model", Build.MODEL).put("sdk", Build.VERSION.SDK_INT))
             .put("capture", JSONObject().put("motion", accel != null).put("heartRate", heart != null)
-                .put("autoSets", setsRequested && accel != null))
+                .put("autoSets", setsRequested && accel != null).put("autoConfirm", setsRequested && autoConfirm))
             .put("setDetection", JSONObject().put("algorithm", SetDetector.VERSION).put("profiles", RepProfiles.VERSION))
             .put("sensors", JSONArray().apply {
                 if (accel != null) put(describe("accel", accel, "m/s²"))
@@ -202,7 +203,7 @@ class MotionCaptureService : Service(), SensorEventListener {
         recordsHeart = heart != null
         recordsMotion = accel != null
         if (setsRequested && accel != null) {
-            autoSets = AutoSets(this, id, gyro != null,
+            autoSets = AutoSets(this, id, gyro != null, autoConfirm,
                 log = { time, event ->
                     runCatching { writer?.event(time, event) }.onFailure { Log.e(TAG, "Detection event could not be written", it) }
                 },
@@ -322,7 +323,8 @@ class MotionCaptureService : Service(), SensorEventListener {
 
     override fun onDestroy() {
         runCatching { unregisterReceiver(shutdownReceiver) }
-        if (sessionId != null) finish(sessionId, discard = false)
+        // Abschluss auf dem Arbeitsthread: dort schreiben Sensoren und Satzerkennung in dieselbe Datei.
+        worker.post { if (sessionId != null) finish(sessionId, discard = false, stopService = false) }
         thread.quitSafely()
         super.onDestroy()
     }
@@ -349,6 +351,7 @@ class MotionCaptureService : Service(), SensorEventListener {
         const val EXTRA_MOTION = "motion"
         const val EXTRA_HEART = "heartRate"
         const val EXTRA_AUTO_SETS = "autoSets"
+        const val EXTRA_AUTO_CONFIRM = "autoConfirm"
         /** Entscheidung zu einem erkannten Satz aus Uhr-App oder Benachrichtigung. */
         const val REVIEW = "com.runback.motion.REVIEW"
         const val EXTRA_DECISION = "decision"
@@ -405,10 +408,12 @@ class MotionCaptureService : Service(), SensorEventListener {
             motion: Boolean = true,
             heartRate: Boolean = false,
             autoSets: Boolean = false,
+            autoConfirm: Boolean = false,
         ) {
             val intent = Intent(context, MotionCaptureService::class.java)
                 .setAction(action).putExtra(EXTRA_SESSION, sessionId).putExtra(EXTRA_WRIST, wrist)
                 .putExtra(EXTRA_MOTION, motion).putExtra(EXTRA_HEART, heartRate).putExtra(EXTRA_AUTO_SETS, autoSets)
+                .putExtra(EXTRA_AUTO_CONFIRM, autoConfirm)
             if (action == START) context.startForegroundService(intent) else context.startService(intent)
         }
     }

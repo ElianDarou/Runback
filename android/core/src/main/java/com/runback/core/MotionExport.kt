@@ -109,8 +109,9 @@ object MotionExport {
             }
         }
         val events = meta.optJSONArray("events") ?: JSONArray()
-        detections?.let { writeDetections(zip, id, it, toMs!!) }
-        val sets = writeSets(zip, id, strength, start, MotionLabels.completionLabels(events), detections)
+        val applied = appliedDetections(events)
+        detections?.let { writeDetections(zip, id, it, toMs!!, applied) }
+        val sets = writeSets(zip, id, strength, start, MotionLabels.completionLabels(events), detections, applied)
         writeEvents(zip, id, events, start)
         entry(zip, "$id/meta.json") {
             it.write(JSONObject()
@@ -236,9 +237,12 @@ object MotionExport {
         start: Long,
         completion: Map<String, String>,
         detections: List<SetDetectionLog.Entry>?,
+        applied: Set<String>,
     ): Pair<Int, Int> {
+        // Nur was das Handy auch übernommen hat; eine Bestätigung, die nie ankam, ist kein Label für diesen Satz.
         val accepted = detections.orEmpty().filter { entry ->
-            entry.detected != null && entry.reviewed?.optString("decision") in setOf("confirmed", "corrected")
+            entry.detected != null && entry.reviewed?.optString("decision") in setOf("confirmed", "corrected") &&
+                entry.detected.optString("detectionId") in applied
         }.associateBy { it.detected!!.optString("setId") }
         var logged = 0
         var completed = 0
@@ -287,6 +291,12 @@ object MotionExport {
         return logged to completed
     }
 
+    /** Erkennungen, die das Handy beim Abhaken übernommen hat (`set_detected` in den Ereignissen). */
+    private fun appliedDetections(events: JSONArray): Set<String> = (0 until events.length()).mapNotNull { index ->
+        events.optJSONObject(index)?.takeIf { it.optString("type") == "set_detected" }?.optString("detectionId")
+            ?.takeIf { it.isNotBlank() }
+    }.toSet()
+
     /** Ereignisse der Rohdatei mit Sensorzeit und Umrechnung in `t_ms` (wie die Messwerte). */
     private fun readEvents(
         reader: MotionFormat.Reader,
@@ -314,7 +324,7 @@ object MotionExport {
     private val DETECTION_COLUMNS = listOf(
         "kind", "detection_id", "exercise_index", "exercise_id", "exercise_name", "set_id", "algorithm", "profiles",
         "start_ms", "end_ms", "detected_ms", "detected_reps", "confidence", "uncertain", "reviewed_ms", "decision",
-        "decided_by", "final_reps", "user_confirmed", "was_corrected", "detector_state", "provisional_reps",
+        "decided_by", "final_reps", "user_confirmed", "was_corrected", "applied", "detector_state", "provisional_reps",
     )
 
     /**
@@ -322,9 +332,16 @@ object MotionExport {
      * dazu jeder Satz, den der Nutzer abgehakt hat, ohne dass die Uhr ihn
      * erkannt hatte (`kind = closed`). Erkannte und korrigierte Zahl stehen
      * nebeneinander. Wiederholungen einzeln in `detected_reps.csv`, alle
-     * Merkmale in `detections.jsonl`.
+     * Merkmale in `detections.jsonl`. `applied`: Das Handy hat den Satz mit
+     * dieser Erkennung abgehakt — nur dann gilt sie als Label des Satzes.
      */
-    private fun writeDetections(zip: ZipOutputStream, id: String, entries: List<SetDetectionLog.Entry>, toMs: (Long) -> Double) {
+    private fun writeDetections(
+        zip: ZipOutputStream,
+        id: String,
+        entries: List<SetDetectionLog.Entry>,
+        toMs: (Long) -> Double,
+        applied: Set<String>,
+    ) {
         fun ms(nanos: Long?) = nanos?.let(toMs)?.takeIf { !it.isNaN() }?.let(::decimal) ?: ""
         fun flag(value: Boolean?) = when (value) { true -> "1"; false -> "0"; null -> "" }
         entry(zip, "$id/detections.csv") { out ->
@@ -355,6 +372,7 @@ object MotionExport {
                     reviewed?.takeIf { !it.isNull("finalReps") }?.optInt("finalReps")?.toString() ?: "",
                     flag(reviewed?.optBoolean("userConfirmed")),
                     flag(reviewed?.optBoolean("wasCorrected")),
+                    if (detected != null) flag(detected.optString("detectionId") in applied) else "",
                     csv(e.closed?.optString("detectorState")?.takeIf { !e.closed.isNull("detectorState") } ?: ""),
                     e.closed?.optInt("provisionalReps")?.toString() ?: "",
                 ).joinToString(",") + "\n")

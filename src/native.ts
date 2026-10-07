@@ -123,6 +123,11 @@ export interface MotionCaptureSettings {
    * `enabled`. Fehlt der Wert, ist sie an (Kotlin `MotionSessions.config`).
    */
   autoSets?: boolean;
+  /**
+   * Erkannte Zahl ohne Eingabe nach kurzer Zeit übernehmen; nur mit
+   * `autoSets`. Fehlt der Wert, ist sie aus — der Nutzer bestätigt selbst.
+   */
+  autoConfirm?: boolean;
 }
 /** Zähler aus `MotionSessions.status`; die Rohdaten selbst bleiben nativ. */
 export interface MotionStatus {

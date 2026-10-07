@@ -33,6 +33,8 @@ class SetDetectorTest {
         accelOverride: ((Double) -> DoubleArray)? = null,
         gyroOverride: ((Double) -> DoubleArray)? = null,
         seed: Int = 7,
+        /** Sensorzeit des ersten Werts; eine Fortsetzung beginnt nach der vorigen. */
+        startS: Double = 0.0,
     ): Run {
         val random = Random(seed)
         val found = mutableListOf<SetDetector.DetectedSet>()
@@ -46,7 +48,7 @@ class SetDetectorTest {
             val angle = part.angle(local)
             val accel = accelOverride?.invoke(t) ?: doubleArrayOf(g * sin(angle), -g * cos(angle), 0.3)
             val gyro = gyroOverride?.invoke(t) ?: doubleArrayOf(0.05 * part.rate(local), 0.1 * part.rate(local), part.rate(local))
-            val nanos = 5_000_000_000L + (t * 1e9).toLong()
+            val nanos = 5_000_000_000L + ((startS + t) * 1e9).toLong()
             fun n() = (random.nextDouble() - 0.5) * 0.08
             detector.accel(nanos, (accel[0] + n()).toFloat(), (accel[1] + n()).toFloat(), (accel[2] + n()).toFloat())?.let { found += it }
             detector.gyro(nanos + 3_000_000L, (gyro[0] + n() / 4).toFloat(), (gyro[1] + n() / 4).toFloat(), (gyro[2] + n() / 4).toFloat())?.let { found += it }
@@ -118,7 +120,10 @@ class SetDetectorTest {
         val first = feed(rest(15.0), reps(8, 2.5), rest(20.0), detector = detector)
         assertEquals(1, first.sets.size)
         detector.reset()
-        assertTrue(feed(rest(40.0), detector = detector, seed = 9).sets.isEmpty())
+        // Ruhe nach dem Satz: nichts Neues, der Satz im Puffer kommt nicht noch einmal.
+        assertTrue(feed(rest(40.0), detector = detector, seed = 9, startS = 55.0).sets.isEmpty())
+        // Der nächste Satz wird wieder erkannt.
+        assertEquals(listOf(6), feed(reps(6, 2.5), rest(20.0), detector = detector, seed = 11, startS = 95.0).sets.map { it.count })
     }
 
     @Test fun unilateralSidesBecomeOneSet() {
@@ -131,6 +136,34 @@ class SetDetectorTest {
         assertEquals(7, set.count)
         assertEquals(2, set.features.getJSONArray("sides").length())
         assertTrue(seconds(set.startNanos) < 20.0)
+    }
+
+    @Test fun quickSideChangeIsNotCountedTwice() {
+        val curl = RepProfiles.forExercise("fedb:Concentration_Curls")!!
+        val run = feed(rest(15.0), reps(7, 3.2), rest(1.5), reps(7, 3.2, scale = 0.3), rest(40.0), profile = curl)
+        assertEquals(listOf(7), run.sets.map { it.count })
+    }
+
+    @Test fun accelerationAtTwiceTheRepRateIsNotWalking() {
+        // Gyroskop eine Schwingung je Wiederholung, Beschleunigung zwei — im Takt von Gehen, aber kein Gehen.
+        for (period in listOf(2.2, 2.5, 2.8)) {
+            val start = 15.0
+            val run = feed(rest(start), reps(8, period), rest(25.0), accelOverride = { t ->
+                val inSet = t >= start && t < start + 8 * period
+                doubleArrayOf(if (inSet) 3 * sin(4 * PI * (t - start) / period) else 0.0, -g, 0.3)
+            })
+            assertEquals("Periode $period", listOf(8), run.sets.map { it.count })
+        }
+    }
+
+    @Test fun aShortSetRightAfterChoosingTheExerciseIsFound() {
+        val detector = SetDetector(RepProfiles.forExercise("seated_cable_row")!!)
+        feed(rest(30.0), detector = detector)
+        // Übung gewechselt, sofort vier Wiederholungen: der Puffer davor bleibt erhalten.
+        detector.switchProfile(RepProfiles.forExercise("triceps_pushdown")!!)
+        val run = feed(reps(4, 2.5), rest(25.0), detector = detector, seed = 3, startS = 30.0)
+        assertEquals(listOf(4), run.sets.map { it.count })
+        assertEquals("triceps_pushdown", run.sets.single().features.getString("profile"))
     }
 
     @Test fun unilateralSingleSideIsReportedAfterWaiting() {

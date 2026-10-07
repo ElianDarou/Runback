@@ -36,8 +36,10 @@ bisher ab.
 1. Nach dem Satz vibriert die Uhr und zeigt „Satz erkannt“ mit der Zahl.
    Ein „~“ heißt: nicht ganz sicher.
 2. Mit − / + korrigieren, „Bestätigen“ hakt den Satz am Handy ab und startet
-   die Pause. Ohne Eingabe übernimmt die Uhr die Zahl nach 12 Sekunden,
-   nach einer Korrektur nach 30 Sekunden. „Kein Satz“ verwirft die Erkennung.
+   die Pause. „Kein Satz“ verwirft die Erkennung. Hakst du den Satz
+   stattdessen am Handy ab, ist die Frage auf der Uhr erledigt.
+   Mit „Ohne Eingabe übernehmen“ (Standard aus) gilt die Zahl nach
+   12 Sekunden ohne Eingabe, nach einer Korrektur nach 30 Sekunden.
 3. Beim Konzentrationscurl gehören beide Arme zu einem Satz; die Uhr wartet
    nach dem ersten Arm kurz auf den zweiten.
 
@@ -123,8 +125,11 @@ abgehakt), `detection_id, exercise_index, exercise_id, exercise_name,
 set_id, algorithm, profiles, start_ms, end_ms, detected_ms, detected_reps,
 confidence, uncertain, reviewed_ms, decision` (`confirmed`, `corrected`,
 `rejected`), `decided_by` (`user` oder `auto` nach Ablauf der Wartezeit),
-`final_reps, user_confirmed, was_corrected, detector_state,
-provisional_reps`. Die Zeiten stammen aus derselben Uhr wie die Messwerte
+`final_reps, user_confirmed, was_corrected, applied, detector_state,
+provisional_reps`. `decision = superseded`: Der Satz wurde am Handy
+erledigt, bevor auf der Uhr entschieden war. `applied = 1`: Das Handy hat
+den Satz mit dieser Erkennung abgehakt — nur dann trägt der Satz in
+`sets.csv` das Label `detected`. Die Zeiten stammen aus derselben Uhr wie die Messwerte
 und sind daher genauer als jedes Abhaken.
 
 **`events.csv`**: `session_started`, `exercise_selected`, `exercise_added`,
