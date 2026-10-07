@@ -3,524 +3,222 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Runback – offene Android-App für Laufen und Krafttraining</title>
-<meta name="description" content="Runback zeichnet Läufe und Krafttraining auf Handy und Wear-OS-Uhr auf und gibt je Bereich höchstens eine begründete Empfehlung – oder sagt ehrlich, dass noch nichts klar ist. Kostenlos, ohne Konto, Quellcode öffentlich.">
-<meta name="theme-color" content="#101210">
-<meta property="og:title" content="Runback – eine Empfehlung oder ehrlich keine">
-<meta property="og:description" content="Offene Android-App für Laufen und Krafttraining, mit Wear-OS-Uhr. Lokal, ohne Konto, ohne Werbung.">
+<title>Runback – Laufen und Krafttraining, offen und lokal</title>
+<meta name="description" content="Runback ist eine offene Android-App mit Wear-OS-Uhr. Sie zeichnet Läufe und Krafttraining auf, liest deine Historie ein und zeigt, wie sich dein Training entwickelt – ohne Konto, ohne Cloud, ohne Werbung.">
+<meta name="theme-color" content="#0c0d0c">
+<meta property="og:title" content="Runback – Laufen und Krafttraining">
+<meta property="og:description" content="Offene Android-App mit Wear-OS-Uhr. Alles aufgezeichnet, alles auf deinem Handy.">
 <meta property="og:type" content="website">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preload" href="/fonts/dm-sans.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/styles.css">
 <script src="/main.js" defer></script>
 </head>
 <body>
 
-<header class="top">
-  <div class="wrap top-row">
-    <a class="brand" href="#" aria-label="Runback – zum Seitenanfang">
-      <img src="/favicon.svg" alt="" width="28" height="28">
-      <span>Runback</span>
-    </a>
-    <nav class="top-nav" aria-label="Abschnitte">
-      <a href="#ablauf">So läuft’s</a>
-      <a href="#funktionen">Funktionen</a>
-      <a href="#haltung">Haltung</a>
-      <a href="#zukunft">Vorhaben</a>
-      <a href="#installieren">Installieren</a>
-    </nav>
-    <a class="top-gh" href="https://github.com/GhostCodeByte/Runback">GitHub ›</a>
+<nav class="nav">
+  <div class="wrap nav-row">
+    <a class="brand" href="/" aria-label="Runback">runback <span>/</span></a>
+    <div class="nav-right">
+      <a class="nav-link" href="#download">Download</a>
+      <a class="pill" href="https://github.com/GhostCodeByte/Runback">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.7 5.4-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></svg>
+        Quellcode
+      </a>
+    </div>
   </div>
-</header>
+</nav>
 
 <main>
 
-<!-- ============ Einstieg ============ -->
-<section class="hero">
-  <div class="wrap hero-grid">
-    <div class="hero-copy">
-      <p class="eyebrow">Offene Android-App für Laufen und Krafttraining</p>
-      <h1>Eine Empfehlung.<br>Oder ehrlich keine.</h1>
-      <p class="lead">
-        Runback zeichnet Läufe und Krafttraining auf Handy und Wear‑OS‑Uhr auf,
-        liest deine bisherige Historie ein und schlägt je Bereich höchstens
-        <strong>eine</strong> Sache vor, die du ausprobieren kannst. Später prüft
-        es, ob sie geholfen hat — und sagt „noch nicht klar“, wenn es das nicht weiß.
-      </p>
-      <div class="cta">
-        <a class="btn primary" data-download="phone" href="https://github.com/GhostCodeByte/Runback/releases">Testversion herunterladen</a>
-        <a class="btn" href="https://github.com/GhostCodeByte/Runback">Quellcode ansehen</a>
-      </div>
-      <p class="fine" data-release-line>Android 8 oder neuer · Wear OS 3 oder neuer · Testsoftware</p>
-      <ul class="facts" aria-label="Auf einen Blick">
-        <li>Kostenlos</li>
-        <li>Kein Konto</li>
-        <li>Funktioniert offline</li>
-        <li>Keine Werbung</li>
-        <li>Quellcode öffentlich</li>
-      </ul>
-    </div>
-
-    <div class="hero-devices" aria-hidden="true">
-      <!-- Heute -->
-      <div class="phone">
-        <div class="ph-status"><span>7:42</span><span>●●● ▮</span></div>
-        <div class="ph-head"><b>Runback</b><span class="ph-gear"><i class="dot ok"></i>⚙</span></div>
-        <div class="ph-title">Heute</div>
-        <div class="ph-week">
-          <span>Mo<i class="done"></i></span><span>Di<i class="done"></i></span><span>Mi<i class="done"></i></span>
-          <span class="today">Do<i></i></span><span>Fr<i class="plan"></i></span><span>Sa<i></i></span><span>So<i class="plan"></i></span>
-        </div>
-        <div class="ph-card">
-          <div class="ph-label">Hausrunde · Auf Zeit</div>
-          <div class="ph-big">5,00 <small>km</small></div>
-          <div class="ph-btn">Lauf starten</div>
-        </div>
-        <div class="ph-row">
-          <div>
-            <div class="ph-small">Empfehlung · Laufen</div>
-            <div>Ruhiger beginnen</div>
-          </div>
-          <span class="ph-badge">Aktiv</span>
-        </div>
-        <div class="ph-progress"><i class="p60"></i></div>
-        <div class="ph-sub">3 von 5 Läufen</div>
-        <div class="ph-list-title">Zuletzt</div>
-        <div class="ph-line"><span>Lauf · 5,02 km</span><span class="m">24:41</span></div>
-        <div class="ph-line"><span>Oberkörper · 16 Sätze</span><span class="m">52 min</span></div>
-        <div class="ph-tabs"><span class="on">Heute</span><span>Verlauf</span><span>Coach</span><span>Plan</span></div>
-      </div>
-      <!-- Uhr -->
-      <div class="watch">
-        <div class="w-face">
-          <div class="w-small">Bankdrücken · Satz 3</div>
-          <div class="w-big">~8</div>
-          <div class="w-small">Wiederholungen</div>
-          <div class="w-row"><span>−1</span><span class="w-ok">Stimmt</span><span>+1</span></div>
-        </div>
-      </div>
-    </div>
-  </div>
-  <p class="wrap caption">Darstellungen auf dieser Seite sind nachgebaut, keine Bildschirmfotos. Zahlen sind Beispiele.</p>
-</section>
-
-<!-- ============ Was Runback ist ============ -->
-<section id="was" class="band">
+<header class="hero">
   <div class="wrap">
-    <h2>Was Runback macht</h2>
-    <p class="intro">Drei Dinge, in dieser Reihenfolge. Alles Weitere ist optional.</p>
-    <div class="three">
-      <article class="card">
-        <span class="num">1</span>
-        <h3>Aufzeichnen</h3>
-        <p>Läufe mit GPS, Puls und Ansagen. Krafttraining mit Vorlagen und Sätzen zum Abhaken. Läufe auch allein mit der Uhr, Krafttraining vom Handgelenk bedient.</p>
-      </article>
-      <article class="card">
-        <span class="num">2</span>
-        <h3>Einordnen</h3>
-        <p>Nach jedem Lauf drei Sätze: wie er zu seinem Zweck passt, wo deine Empfehlung steht und was als Nächstes sinnvoll ist — auch „so weitermachen“. Im Krafttraining zeigt der Verlauf je Übung, wohin es geht.</p>
-      </article>
-      <article class="card">
-        <span class="num">3</span>
-        <h3>Ausprobieren und prüfen</h3>
-        <p>Höchstens eine Empfehlung fürs Laufen und eine fürs Krafttraining. Die Prüfregel steht vorher fest, das Urteil kommt danach.</p>
-      </article>
+    <h1>Laufen und Krafttraining.<br>Alles aufgezeichnet.<br><span>Alles auf deinem Handy.</span></h1>
+    <p class="lead">Runback ist eine offene Android-App mit Wear-OS-Uhr. Sie zeichnet Läufe und Sätze auf, liest deine alte Historie ein und zeigt, wie sich dein Training entwickelt.</p>
+    <div class="cta">
+      <a class="btn primary" data-download="phone" href="https://github.com/GhostCodeByte/Runback/releases">Für Android herunterladen</a>
+      <a class="btn" href="https://github.com/GhostCodeByte/Runback">Quellcode ansehen <span aria-hidden="true">↗</span></a>
     </div>
-  </div>
-</section>
-
-<!-- ============ Ablauf ============ -->
-<section id="ablauf">
-  <div class="wrap">
-    <h2>So nutzt du Runback</h2>
-    <p class="intro">Ein normaler Ablauf, vom ersten Öffnen bis zum Urteil über eine Empfehlung.</p>
-    <ol class="steps">
-      <li>
-        <h3>Öffnen und loslegen</h3>
-        <p>Die Einrichtung ist freiwillig. Du kannst sofort aufzeichnen — ohne Ziel, Plan, Konto oder Internet. Wer schon Daten hat, importiert sie aus Strava, Garmin, Fitbit, Strong und anderen.</p>
-      </li>
-      <li>
-        <h3>Einheit starten</h3>
-        <p>Ein Button auf „Heute“. Sportart, Laufart, Vorlage und Zieltempo stehen im Start-Fenster, mit deiner letzten Wahl vorausgefüllt. Läufe startest du auch direkt an der Uhr.</p>
-      </li>
-      <li>
-        <h3>Unterwegs in Ruhe gelassen werden</h3>
-        <p>Beim Laufen sagt Runback per Stimme und Vibration, ob du im Tempo bist. Im Krafttraining zählt die Uhr bei ausgewählten Übungen mit und startet die Pause.</p>
-      </li>
-      <li>
-        <h3>Nach dem Lauf: drei Sätze statt zwanzig Kurven</h3>
-        <p>Passt der Lauf zu seinem Zweck? Wo steht die Empfehlung? Was kommt als Nächstes? Datenbasis, Modellversion und Unsicherheit liegen unter „Details“.</p>
-      </li>
-      <li>
-        <h3>Selbst entscheiden</h3>
-        <p>Trägt deine Historie eine Empfehlung, erscheint sie als Vorschlag. Du nimmst sie an, lehnst ab oder entscheidest später. Ohne dich ändert sich nichts.</p>
-      </li>
-      <li>
-        <h3>Ehrliche Antwort bekommen</h3>
-        <p>Nach den vorher festgelegten Einheiten sagt Runback: hat geholfen, eher nicht geholfen oder noch nicht klar. Alle drei sind normale Ergebnisse.</p>
-      </li>
-    </ol>
-  </div>
-</section>
-
-<!-- ============ Empfehlung ============ -->
-<section id="empfehlung" class="band">
-  <div class="wrap split">
-    <div>
-      <h2>Warum nur eine Empfehlung?</h2>
-      <p>
-        Wer zwei Dinge gleichzeitig ändert, weiß hinterher nicht, was gewirkt hat.
-        Deshalb läuft je Bereich höchstens eine Empfehlung. Kann eine zweite die
-        Prüfung der ersten verfälschen — mehr Beintraining vor dem langen Lauf etwa —,
-        wartet sie als „Danach vorgesehen“.
-      </p>
-      <p>
-        Bevor eine Empfehlung startet, steht fest, woran du erkennst, ob sie hilft:
-        welche früheren Einheiten der Vergleich sind, welche Größe zählt und wie viele
-        Beobachtungen ein Urteil tragen. Hinterher wird nichts passend gemacht.
-      </p>
-      <h3 class="small-head">Drei Fragen, drei Antworten</h3>
-      <dl class="qa">
-        <div><dt>Umgesetzt?</dt><dd>Hast du es wirklich so gemacht?</dd></div>
-        <div><dt>Ergebnis?</dt><dd>Was hat sich in den Folgeeinheiten gezeigt?</dd></div>
-        <div><dt>Ursache?</dt><dd>Lag es an der Empfehlung? Das bleibt meist offen — ein Unterschied ist kein Beweis.</dd></div>
-      </dl>
-      <p class="muted">
-        Heute prüfbar: „Ruhiger beginnen“ beim Laufen und „Last anpassen“ im
-        Krafttraining. Weitere kommen erst, wenn sie sich ehrlich prüfen lassen.
-      </p>
-    </div>
-    <div class="phone phone-flat" aria-hidden="true">
-      <div class="ph-head"><b>Coach</b><span class="ph-gear">⚙</span></div>
-      <div class="ph-seg"><span class="on">Laufen</span><span>Krafttraining</span></div>
-      <div class="ph-card">
-        <div class="ph-cardhead"><span class="ph-label">Empfehlung</span><span class="ph-badge">Aktiv</span></div>
-        <div class="ph-h">Ruhiger beginnen</div>
-        <p class="ph-p">Beginne die nächste flache ruhige Runde in der ersten Hälfte etwa 5 % ruhiger (6:18 min/km). Behalte Laufart und Umfang bei.</p>
-        <div class="ph-progress"><i class="p60"></i></div>
-        <div class="ph-sub">3 von 5 Läufen</div>
-      </div>
-      <div class="ph-disc">Woran wir erkennen, ob es hilft <span>⌄</span></div>
-      <div class="ph-discbody">
-        Weniger später Tempoabfall als im Median von 6 vergleichbaren Läufen,
-        häufiger als der Zufall erklärt. Keine Aussage über deine Form.
-      </div>
-      <div class="ph-disc">Danach vorgesehen <span>⌄</span></div>
-      <div class="ph-disc">So priorisiert Runback <span>⌄</span></div>
-    </div>
-  </div>
-  <div class="wrap outcomes" aria-label="Mögliche Ergebnisse">
-    <div class="outcome good"><b>✓ Hat geholfen</b><span>Die vorher festgelegte Regel ist erfüllt.</span></div>
-    <div class="outcome"><b>— Noch nicht klar</b><span>Die Daten reichen weder dafür noch dagegen. Der Normalfall.</span></div>
-    <div class="outcome warn"><b>▽ Eher nicht geholfen</b><span>Kein Fehler, sondern ein Ergebnis. Die nächste Idee darf kommen.</span></div>
-  </div>
-</section>
-
-<!-- ============ Funktionen ============ -->
-<section id="funktionen">
-  <div class="wrap">
-    <h2>Funktionen</h2>
-    <p class="intro">Unter „Funktionen“ in der App schaltest du ab, was du nicht brauchst. Es verschwindet dann ganz — deine Daten bleiben.</p>
-    <div class="feature-grid">
-      <article class="card">
-        <h3>Laufen</h3>
-        <ul>
-          <li>GPS-Aufzeichnung im Hintergrund, mit Karte und Höhe</li>
-          <li>Ansagen per Stimme und Vibration: Tempo, Zwischenzeiten nach Zeit oder Kilometern</li>
-          <li>Zieltempo, unterwegs in 5-Sekunden-Schritten verstellbar</li>
-          <li>Laufarten: Einfach laufen, Ruhig, Lange Runde, Tempowechsel, Auf Zeit — Runback schlägt vor, du bestätigst</li>
-          <li>Geschätzte Zeiten von 1 km bis Marathon, aus deinen jüngsten Läufen</li>
-          <li>Bestwerte, die direkt zum Lauf führen</li>
-          <li>Puls, Kadenz, Schrittlänge und Wind im Verlauf</li>
-          <li>Ziel mit Datum und Wochenaufbau als Vorschlag, Routen planen</li>
-        </ul>
-      </article>
-      <article class="card">
-        <h3>Krafttraining</h3>
-        <ul>
-          <li>Vorlagen, auch aus einem Strong-Export</li>
-          <li>Sätze abhaken, Pausentimer</li>
-          <li>Die Uhr erkennt bei ausgewählten Übungen Satzende und Wiederholungen — „~8“ heißt: nicht ganz sicher, du bestätigst</li>
-          <li>Puls am Satzende und Erholung in der Pause</li>
-          <li>Verlauf je Übung: Steigt · Stabil · Fällt · Noch nicht klar</li>
-          <li>Geschätztes Maximum, klar als Schätzung markiert</li>
-          <li>Muskelkarte und Muskelkater melden</li>
-        </ul>
-      </article>
-      <article class="card">
-        <h3>Uhr (Wear OS)</h3>
-        <ul>
-          <li>Läufe eigenständig an der Uhr aufzeichnen</li>
-          <li>Krafttraining vom Handgelenk starten und bedienen; dafür muss das Handy verbunden sein</li>
-          <li>Live-Puls der Uhr im laufenden Training am Handy</li>
-          <li>Schaltet sich die Uhr mitten im Training ab, bleibt das Bisherige erhalten und wartet aufs Handy</li>
-          <li>Sichtbarer Status: Misst · Nicht verbunden · Auf dem Handy</li>
-          <li>Bewegungsdaten optional mitschreiben, zum Verbessern der Erkennung</li>
-        </ul>
-      </article>
-      <article class="card">
-        <h3>Daten und Geräte</h3>
-        <ul>
-          <li>Import aus Garmin, Strava, Fitbit, Google Fit, Apple Health, Samsung Health, Mi Fitness, Polar, Strong und weiteren</li>
-          <li>Health Connect lesen, und je Lauf ausdrücklich schreiben</li>
-          <li>Bluetooth-Sensoren für Puls und Laufkadenz</li>
-          <li>Vollständiges Backup als ZIP, Export als GPX, FIT oder JSON</li>
-          <li>Ende einer Einheit nachträglich korrigieren — das Original bleibt daneben</li>
-        </ul>
-      </article>
-      <article class="card">
-        <h3>Optional</h3>
-        <ul>
-          <li>Wetter über Open-Meteo, erst nach Aktivierung</li>
-          <li>Trainingschat mit eigenem OpenRouter-Schlüssel: liest und erklärt, entscheidet nichts</li>
-          <li>Eigener Server: lesende Kopie, Website und API auf deinem NAS, per Docker</li>
-          <li>Navigation selbst belegen: Heute und Verlauf fest, dazu bis zu zwei eigene Tabs</li>
-        </ul>
-      </article>
-    </div>
-  </div>
-</section>
-
-<!-- ============ Haltung ============ -->
-<section id="haltung" class="band">
-  <div class="wrap">
-    <h2>Was Runback anders macht</h2>
-    <p class="intro">Diese Grundsätze stehen in der <a href="https://github.com/GhostCodeByte/Runback/blob/main/docs/spec.md">Spec</a>. Ein Verstoß gilt als Fehler, nicht als Abwägung.</p>
-    <div class="principles">
-      <article>
-        <h3>Ehrlich vor beeindruckend</h3>
-        <p>Ein Medikament testet man an 500 Leuten, Runback hat einen Menschen. Ein besserer Lauf kann am Tipp liegen — oder am Schlaf, am Wetter, am schlechten Lauf davor. Deshalb lieber „eher ein Eindruck“ als eine präzise Zahl ohne Grundlage.</p>
-      </article>
-      <article>
-        <h3>Ruhig statt reaktiv</h3>
-        <p>Ein neuer Lauf ist kein Grund für einen neuen Tipp. Weitermachen wie bisher ist auch eine Empfehlung.</p>
-      </article>
-      <article>
-        <h3>Du entscheidest</h3>
-        <p>Vorschläge bleiben Vorschau, bis du sie annimmst. Runback schreibt deinen Plan nicht von selbst um.</p>
-      </article>
-      <article>
-        <h3>Regeln entscheiden, Sprache erklärt</h3>
-        <p>Empfehlungen kommen aus festen, versionierten Regeln: gleiche Daten, gleiche Entscheidung. Ein Sprachmodell darf formulieren, aber nie entscheiden.</p>
-      </article>
-      <article>
-        <h3>Jede Zahl hat eine Spur</h3>
-        <p>Messung, Schätzung und deine Eingabe bleiben unterscheidbar. Was nicht bestimmbar ist, steht als „–“ da, nie als 0.</p>
-      </article>
-      <article>
-        <h3>Alles ist optional</h3>
-        <p>Aufzeichnen geht ohne Ziel, Plan, Konto oder Internet. Was du abschaltest, erzeugt keine Hinweise und keine leeren Flächen.</p>
-      </article>
-    </div>
-
-    <h3 class="small-head">Was Runback bewusst nicht macht</h3>
-    <ul class="nots">
-      <li>Kein Konto, keine Pflicht-Cloud</li>
-      <li>Keine Werbung, kein Abo</li>
-      <li>Keine Bestenlisten oder Social Feeds</li>
-      <li>Kein „Readiness“- oder Verletzungsrisiko-Score</li>
-      <li>Keine medizinischen Diagnosen</li>
-      <li>Kein Planwechsel ohne deine Bestätigung</li>
-      <li>Keine Empfehlung um jeden Preis</li>
-      <li>Keine Schätzung, die sich als Messung ausgibt</li>
+    <ul class="checks inline">
+      <li>Kein Konto</li><li>Keine Cloud</li><li>Keine Werbung</li><li>Kostenlos</li>
     </ul>
   </div>
-</section>
+  <div class="hero-shots wrap">
+    <img class="shot side" src="/shots/verlauf.webp" width="720" height="954" alt="Verlauf: Läufe und Krafteinheiten nach Wochen, mit Distanz, Zeit, Sätzen und Volumen">
+    <img class="shot main" src="/shots/lauf.webp" width="720" height="954" alt="Lauf-Detail: GPS-Route auf der Karte, 5,12 km in 24:08, Tempo 4:43 pro Kilometer, Puls 173">
+    <img class="shot side" src="/shots/bankdruecken.webp" width="720" height="954" alt="Übung Bankdrücken: geschätztes Maximum 88,5 kg, Label Steigt, Verlauf über acht Wochen">
+  </div>
+  <p class="wrap caption">Echte Screenshots der App, mit Beispieldaten.</p>
+</header>
 
-<!-- ============ Daten ============ -->
-<section id="daten">
+<section class="feature">
   <div class="wrap split">
-    <div>
-      <h2>Deine Daten bleiben auf deinem Handy</h2>
-      <p>
-        Runback speichert alles lokal. Es gibt keinen Runback-Server, an den
-        etwas geht. Von selbst verlassen Daten das Gerät nur aus einem Grund,
-        den du kennst — Rohsamples und Originaldateien nie. Dein OpenRouter-Schlüssel
-        geht nur zur Anmeldung an OpenRouter, nie in Backups oder Logs.
-      </p>
-      <p>
-        Backup, Wiederherstellung und Löschen funktionieren ohne Konto. Backups
-        und Exporte enthalten auf Wunsch alles, auch Rohdaten — wohin du sie
-        teilst, entscheidest du.
-      </p>
+    <div class="copy">
+      <p class="eyebrow">Laufen</p>
+      <h2>Jeder Lauf, komplett.</h2>
+      <p class="sub">Route, Tempo, Puls und Kadenz — aufgezeichnet vom Handy, von der Uhr oder einem Brustgurt. Danach siehst du jeden Kilometer.</p>
+      <ul class="checks">
+        <li>GPS-Route auf der Karte, auch im Hintergrund</li>
+        <li>Tempo, Puls und Kadenz über Strecke oder Zeit</li>
+        <li>Kilometerzeiten, Einteilung und Gleichmäßigkeit</li>
+        <li>Laufart wird vorgeschlagen, du bestätigst</li>
+        <li>Ansagen per Stimme und Vibration</li>
+      </ul>
     </div>
-    <table class="flows">
-      <caption>Was wohin geht</caption>
-      <tbody>
-        <tr><th>Wetter</th><td>Open-Meteo, erst nach Aktivierung</td></tr>
-        <tr><th>Karte und Höhe</th><td>Kartenkacheln und Höhendaten für die Ansicht</td></tr>
-        <tr><th>Trainingschat</th><td>OpenRouter mit deinem Schlüssel. Keine Koordinaten, keine Rohdaten.</td></tr>
-        <tr><th>Health Connect</th><td>Auf dem Gerät. Schreiben nur je Lauf, auf deinen Wunsch.</td></tr>
-        <tr><th>Eigener Server</th><td>Nur was du freigibst, an deine Adresse. GPS und Gesundheitswerte brauchen eine eigene Freigabe.</td></tr>
-        <tr><th>Backup und Export</th><td>Nur wenn du sie startest, dorthin, wo du sie teilst.</td></tr>
-        <tr><th>Alles andere</th><td>Bleibt auf dem Handy.</td></tr>
-      </tbody>
-    </table>
+    <div class="pair">
+      <img class="shot" src="/shots/lauf-tempo.webp" width="720" height="814" loading="lazy" alt="Tempoverlauf eines Laufs über fünf Kilometer mit Durchschnittslinie">
+      <img class="shot" src="/shots/lauf-puls.webp" width="720" height="814" loading="lazy" alt="Pulsverlauf eines Laufs, anfangs stark und danach langsam ansteigend">
+    </div>
   </div>
 </section>
 
-<!-- ============ Offen ============ -->
-<section id="offen" class="band">
+<section class="feature">
+  <div class="wrap split reverse">
+    <div class="copy">
+      <p class="eyebrow">Krafttraining</p>
+      <h2>Jeder Satz, nachvollziehbar.</h2>
+      <p class="sub">Gewicht und Wiederholungen je Satz, verglichen mit deinen letzten Einheiten. So siehst du, ob eine Übung wirklich vorangeht.</p>
+      <ul class="checks">
+        <li>Sätze abhaken, mit Pausentimer</li>
+        <li>Vergleich je Übung mit den letzten Einheiten</li>
+        <li>Geschätztes Maximum, klar als Schätzung markiert</li>
+        <li>Trend: Steigt · Stabil · Fällt · Noch nicht klar</li>
+        <li>Sätze je Muskelgruppe und Vorlagen</li>
+      </ul>
+    </div>
+    <div class="pair">
+      <img class="shot" src="/shots/krafteinheit.webp" width="720" height="1046" loading="lazy" alt="Krafteinheit Oberkörper Drücken: 13 Sätze, 4.365 kg Volumen, Übungen mit Veränderung in Prozent">
+      <img class="shot" src="/shots/uebungen.webp" width="720" height="860" loading="lazy" alt="Übungsliste mit Trend-Labels Steigt und Noch nicht klar">
+    </div>
+  </div>
+</section>
+
+<section class="feature center">
   <div class="wrap">
-    <h2>Offen entwickelt</h2>
-    <p class="intro">
-      Der gesamte Quellcode liegt öffentlich auf GitHub — App, Uhr, Server und
-      die Regeln, nach denen Runback rechnet. Du musst nichts glauben, du kannst nachlesen.
-    </p>
-    <div class="open-grid">
-      <a class="card link" href="https://github.com/GhostCodeByte/Runback">
-        <h3>Quellcode ›</h3>
-        <p>React Native und Kotlin, Telefon und Wear OS teilen sich eine lokale SQLite-Schicht.</p>
-      </a>
-      <a class="card link" href="https://github.com/GhostCodeByte/Runback/blob/main/docs/spec.md">
-        <h3>Spec ›</h3>
-        <p>Ziel, Haltung und die Grundregeln, die für jede Funktion gelten.</p>
-      </a>
-      <a class="card link" href="https://github.com/GhostCodeByte/Runback/blob/main/docs/design-language.md">
-        <h3>Design Language ›</h3>
-        <p>Wie Runback aussieht und spricht: ein Satz, ein Button, kein Fachjargon.</p>
-      </a>
-      <a class="card link" href="https://github.com/GhostCodeByte/Runback/blob/main/docs/glossar.md">
-        <h3>Glossar ›</h3>
-        <p>Jedes Wort in der App und was im Code dahintersteckt.</p>
-      </a>
-      <a class="card link" href="https://github.com/GhostCodeByte/Runback/actions">
-        <h3>Automatische Builds ›</h3>
-        <p>Jede Änderung auf main wird geprüft und als Testversion gebaut, mit Prüfsummen.</p>
-      </a>
-      <a class="card link" href="https://github.com/GhostCodeByte/Runback/issues">
-        <h3>Fehler melden ›</h3>
-        <p>Etwas stimmt nicht oder fehlt? Schreib ein Issue.</p>
-      </a>
-    </div>
-    <p class="note">
-      Lizenz: noch nicht festgelegt. Bis dahin ist der Code öffentlich lesbar,
-      aber noch nicht ausdrücklich zur Weiterverwendung freigegeben.
-    </p>
-  </div>
-</section>
-
-<!-- ============ Warum ============ -->
-<section id="warum">
-  <div class="wrap narrow">
-    <h2>Warum es Runback gibt</h2>
-    <p>
-      Runback ist aus dem eigenen Training entstanden: fast jeden Tag dieselbe
-      5‑km-Runde, so schnell wie möglich, dazu Krafttraining mit einer Pixel Watch.
-      Die üblichen Apps zeigen dazu viele Kurven und sagen wenig, mit dem man
-      etwas anfangen kann. Und wenn sie etwas sagen, bleibt offen, woher es kommt.
-    </p>
-    <p>
-      Runback soll es umgekehrt machen: wenig sagen, das aber begründet. Und
-      zugeben, wenn die Daten nicht reichen. Deshalb heißt der tägliche Lauf
-      auf Bestzeit hier „Auf Zeit“ und nicht „Wettkampf“ — Runback soll zum
-      Training passen, nicht umgekehrt.
-    </p>
-  </div>
-</section>
-
-<!-- ============ Zukunft ============ -->
-<section id="zukunft" class="band">
-  <div class="wrap">
-    <h2>Woran gerade gearbeitet wird</h2>
-    <p class="intro">Vorhaben, keine Versprechen. Was sich nicht ehrlich prüfen lässt, kommt nicht.</p>
-    <div class="road">
-      <article>
-        <span class="state now">Jetzt</span>
-        <h3>Auf echten Geräten erproben</h3>
-        <p>GPS-Genauigkeit, Akkuverbrauch und lange Aufzeichnung im Hintergrund sind auf echten Geräten noch nicht vollständig nachgewiesen. Erst danach gibt es eine stabile Version.</p>
-      </article>
-      <article>
-        <span class="state now">Jetzt</span>
-        <h3>Übungen an der Uhr erkennen</h3>
-        <p>Satzende und Wiederholungen klappen bei ausgewählten Übungen. Welche Übung du machst, soll die Uhr später selbst erkennen. Dafür braucht es eigene, beschriftete Bewegungsdaten — fertige Modelle reichen dafür nicht.</p>
-      </article>
-      <article>
-        <span class="state next">Danach</span>
-        <h3>Mehr prüfbare Empfehlungen</h3>
-        <p>Heute gibt es zwei Arten. Neue kommen nur mit eigener Prüfregel und ohne die laufende Prüfung zu stören.</p>
-      </article>
-      <article>
-        <span class="state next">Danach</span>
-        <h3>Gesperrte Modelle</h3>
-        <p>Critical Speed, ein Renn-Simulator mit Pacing, ein Verpflegungsplan oder die Frische je Muskelregion stehen in der App als gesperrt. Sie werden erst freigeschaltet, wenn sie eine Prüfung an echten Daten bestehen.</p>
-      </article>
-      <article>
-        <span class="state next">Danach</span>
-        <h3>Eigener Server wächst</h3>
-        <p>Die lesende Kopie mit Website und API auf deinem eigenen Server gibt es schon. Sie soll mehr zeigen — das Handy bleibt dabei immer das Original.</p>
-      </article>
-      <article>
-        <span class="state open">Offen</span>
-        <h3>Lizenz und Verteilung</h3>
-        <p>Eine freie Lizenz und ein einfacherer Weg zur Installation als die APK von GitHub sind noch nicht entschieden.</p>
-      </article>
+    <p class="eyebrow">Statistik</p>
+    <h2>Woche für Woche.</h2>
+    <p class="sub">Distanz, Zeit, Sätze und Volumen über vier Wochen, zwölf Wochen oder alles. Bestwerte führen direkt zur Einheit, aus der sie stammen.</p>
+    <div class="trio">
+      <img class="shot" src="/shots/statistik-laufen.webp" width="720" height="1280" loading="lazy" alt="Laufstatistik: 273 km, 41 Läufe, 25 Stunden in 12 Wochen, Wochendiagramm">
+      <img class="shot" src="/shots/bestwerte.webp" width="720" height="966" loading="lazy" alt="Bestwerte: längster Lauf, längste Dauer, schnellster Lauf ab 5 km, stärkste Woche">
+      <img class="shot" src="/shots/statistik-kraft.webp" width="720" height="1280" loading="lazy" alt="Kraftstatistik: 21 Einheiten, 294 Sätze, Wochendiagramm">
     </div>
   </div>
 </section>
 
-<!-- ============ Installieren ============ -->
-<section id="installieren">
+<section class="feature">
   <div class="wrap split">
-    <div>
-      <h2>Installieren</h2>
-      <p>
-        Runback gibt es als Testversion direkt von GitHub. Jede Änderung auf
-        main erzeugt ein neues Release mit einer Telefon- und einer Uhr-APK.
-      </p>
-      <ol class="install">
-        <li>Lade die Telefon-APK auf dein Android-Handy.</li>
-        <li>Öffne sie und erlaube die Installation, wenn Android nachfragt.</li>
-        <li>Starte Runback. Die Einrichtung kannst du überspringen.</li>
-      </ol>
-      <div class="cta">
-        <a class="btn primary" data-download="phone" href="https://github.com/GhostCodeByte/Runback/releases">Telefon-APK herunterladen</a>
-        <a class="btn" data-download="wear" href="https://github.com/GhostCodeByte/Runback/releases">Uhr-APK</a>
+    <div class="copy">
+      <p class="eyebrow">Wear OS</p>
+      <h2>Am Handgelenk.</h2>
+      <p class="sub">Die Uhr-App läuft eigenständig. Lass das Handy zu Hause oder nimm beides mit.</p>
+      <ul class="checks">
+        <li>Läufe allein mit der Uhr aufzeichnen, mit GPS und Puls</li>
+        <li>Krafttraining vom Handgelenk bedienen, solange das Handy verbunden ist</li>
+        <li>Satzende und Wiederholungen bei ausgewählten Übungen erkennen</li>
+        <li>Schaltet sich die Uhr ab, bleibt das Bisherige erhalten</li>
+      </ul>
+    </div>
+    <div class="watches">
+      <img class="watch" src="/shots/w-lauf.webp" width="384" height="384" loading="lazy" alt="Uhr während eines Laufs: 1:12, 0,24 km, Puls 163">
+      <img class="watch" src="/shots/w-kraft2.webp" width="384" height="384" loading="lazy" alt="Uhr im Krafttraining: Satz 1 von 3, 32 kg mal 8 Wiederholungen, Satz fertig">
+      <img class="watch" src="/shots/w-start.webp" width="384" height="384" loading="lazy" alt="Startseite der Uhr: Krafttraining fortsetzen oder Lauf starten">
+    </div>
+  </div>
+</section>
+
+<section class="feature">
+  <div class="wrap split reverse">
+    <div class="copy">
+      <p class="eyebrow">Import</p>
+      <h2>Deine Historie kommt mit.</h2>
+      <p class="sub">Exportiere dort, importiere hier. Runback zeigt erst, was neu wäre, und übernimmt erst nach deinem Okay.</p>
+      <div class="sources">
+        <div><b>Garmin</b><code>FIT · GPX · ZIP</code></div>
+        <div><b>Strava</b><code>Daten-Export</code></div>
+        <div><b>Fitbit</b><code>Takeout · TCX</code></div>
+        <div><b>Google Fit</b><code>Takeout</code></div>
+        <div><b>Apple Health</b><code>export.zip</code></div>
+        <div><b>Samsung Health</b><code>ZIP · GPX</code></div>
+        <div><b>Mi Fitness</b><code>GPX · CSV</code></div>
+        <div><b>Polar</b><code>TCX · GPX</code></div>
+        <div><b>Strong</b><code>strong.csv</code></div>
       </div>
-      <p class="fine" data-release-line>Android 8 oder neuer · Wear OS 3 oder neuer · Testsoftware</p>
+      <ul class="checks inline small">
+        <li>Doppelte Läufe werden erkannt</li><li>Jeder Import einzeln löschbar</li>
+      </ul>
     </div>
-    <div class="card">
-      <h3>Uhr einrichten</h3>
-      <p>Auf der Uhr Entwickleroptionen und drahtloses Debugging einschalten, dann vom Rechner aus:</p>
-<pre><code>adb pair UHR-IP:PORT
-adb connect UHR-IP:PORT
-adb -s UHR-IP:PORT install -r runback-wear-*.apk</code></pre>
-      <p class="muted">„install -r“ behält bestehende Daten. Beide Apps sind mit demselben öffentlichen Testschlüssel signiert; die Prüfsummen stehen in <code>SHA256SUMS</code> im Release.</p>
+    <div class="single">
+      <img class="shot" src="/shots/import.webp" width="720" height="1270" loading="lazy" alt="Import prüfen: 41 neue Läufe und 21 neue Krafteinheiten, 62 Einträge übernehmen">
     </div>
   </div>
 </section>
 
-<!-- ============ Fragen ============ -->
-<section id="fragen" class="band">
-  <div class="wrap narrow">
-    <h2>Fragen</h2>
-    <details>
-      <summary>Kostet Runback etwas?</summary>
-      <p>Nein. Kein Abo, keine Werbung, keine bezahlten Pflichtdienste. Nur der optionale Trainingschat nutzt deinen eigenen OpenRouter-Schlüssel; standardmäßig mit einem kostenlosen Modell.</p>
-    </details>
-    <details>
-      <summary>Gibt es Runback fürs iPhone?</summary>
-      <p>Nein, und es ist nicht geplant. Runback ist bewusst eine Android- und Wear-OS-App.</p>
-    </details>
-    <details>
-      <summary>Brauche ich eine Uhr?</summary>
-      <p>Nein. Das Handy reicht für Läufe und Krafttraining. Mit Uhr kommen Puls, Start vom Handgelenk und die Satzerkennung dazu. Ein Bluetooth-Brustgurt geht auch.</p>
-    </details>
-    <details>
-      <summary>Kann ich von Strava, Garmin oder Strong wechseln?</summary>
-      <p>Ja. Runback importiert Exporte aus vielen Apps und Uhren. Die Originale bleiben unverändert gespeichert; die Anleitung zeigt Runback erst, wenn du die Quelle gewählt hast.</p>
-    </details>
-    <details>
-      <summary>Warum bekomme ich keine Empfehlung?</summary>
-      <p>Weil deine Daten sie noch nicht tragen. Runback sagt dann, was fehlt — etwa zu wenig vergleichbare Läufe. Keine Empfehlung ist ein vollwertiges Ergebnis.</p>
-    </details>
-    <details>
-      <summary>Ist Runback ein medizinisches Produkt?</summary>
-      <p>Nein. Runback stellt keine Diagnosen und sagt nichts über Verletzungsrisiko oder Gesundheit.</p>
-    </details>
-    <details>
-      <summary>Wie stabil ist die App?</summary>
-      <p>Es ist Testsoftware. Sie wird automatisch gebaut und geprüft, ist aber auf echten Geräten noch nicht in jeder Lage erprobt. Mach regelmäßig ein Backup.</p>
-    </details>
+<section class="feature center">
+  <div class="wrap">
+    <p class="eyebrow">Deine Daten</p>
+    <h2>Bleiben bei dir.</h2>
+    <p class="sub">Aufzeichnen und Auswerten funktionieren ohne Internet und ohne Konto. Es gibt keinen zentralen Runback-Server. Nach außen gehen nur Kartenkacheln, Wegpunkte beim Planen einer Route, Wetter, wenn du es einschaltest, und was du selbst an OpenRouter oder deinen eigenen Server schickst.</p>
+    <div class="cards4">
+      <div class="card"><b>Lokal</b><span>Alles auf dem Gerät, ohne Konto.</span></div>
+      <div class="card"><b>Backup</b><span>Trainingsdaten und Einstellungen als ZIP, wiederherstellbar.</span></div>
+      <div class="card"><b>Export</b><span>Läufe als GPX, Berichte mit Analyse und Zeitreihen.</span></div>
+      <div class="card"><b>Eigener Server</b><span>Optional: Website und API auf deinem NAS.</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="feature">
+  <div class="wrap split">
+    <div class="copy">
+      <p class="eyebrow">Coach · optional</p>
+      <h2>Ein Vorschlag, wenn die Daten ihn tragen.</h2>
+      <p class="sub">Runback schlägt höchstens eine Sache je Bereich vor und prüft später, ob sie geholfen hat. Reichen die Daten nicht, steht da „noch nicht klar“. Wer das nicht braucht, schaltet es ab.</p>
+    </div>
+    <div class="single">
+      <img class="shot" src="/shots/heute.webp" width="720" height="980" loading="lazy" alt="Heute: Lauf starten, Krafttraining starten und ein Vorschlag für die Kniebeuge">
+    </div>
+  </div>
+</section>
+
+<section class="feature center" id="open-source">
+  <div class="wrap">
+    <p class="eyebrow">Open Source</p>
+    <h2>Offen gebaut.</h2>
+    <div class="os">
+      <div class="term" aria-label="Runback selbst bauen">
+        <div class="term-bar"><i></i><i></i><i></i><span>~/code</span></div>
+<pre><code><b>$</b> git clone https://github.com/GhostCodeByte/Runback
+<b>$</b> cd Runback &amp;&amp; npm ci
+<b>$</b> npm test -- --runInBand
+<b>$</b> cd android &amp;&amp; ./gradlew :app:assembleRelease</code></pre>
+      </div>
+      <div class="os-card">
+        <ul class="checks">
+          <li><b>Alles in einem Repository.</b> Telefon, Uhr und eigener Server.</li>
+          <li><b>Automatisch gebaut.</b> Jede Änderung wird geprüft und als Testversion veröffentlicht.</li>
+          <li><b>Regeln zum Nachlesen.</b> Spec, Designsprache und Glossar liegen daneben.</li>
+        </ul>
+        <p class="mono">Lizenz noch nicht festgelegt · Testversion</p>
+        <div class="cta left">
+          <a class="btn light" href="https://github.com/GhostCodeByte/Runback">Auf GitHub ansehen</a>
+          <a class="text-link" href="https://github.com/GhostCodeByte/Runback/blob/main/docs/spec.md">Spec lesen ↗</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="final center" id="download">
+  <div class="wrap">
+    <h2>Probier es aus.</h2>
+    <p class="sub">Kostenlos und ohne Konto. Testversion für Android 8 und Wear OS 3 oder neuer.</p>
+    <div class="cta">
+      <a class="btn primary" data-download="phone" href="https://github.com/GhostCodeByte/Runback/releases">Telefon-APK</a>
+      <a class="btn" data-download="wear" href="https://github.com/GhostCodeByte/Runback/releases">Uhr-APK</a>
+    </div>
+    <p class="fine" data-release-line>Android 8 oder neuer · Wear OS 3 oder neuer · Testsoftware</p>
+    <p class="fine"><a href="https://github.com/GhostCodeByte/Runback#installation">So installierst du die Uhr-App</a></p>
   </div>
 </section>
 
@@ -528,7 +226,7 @@ adb -s UHR-IP:PORT install -r runback-wear-*.apk</code></pre>
 
 <footer class="foot">
   <div class="wrap foot-row">
-    <span class="brand"><img src="/favicon.svg" alt="" width="22" height="22"> Runback</span>
+    <span class="brand small">runback <span>/</span> <em>Quellcode öffentlich · keine Cookies</em></span>
     <nav aria-label="Links">
       <a href="https://github.com/GhostCodeByte/Runback">GitHub</a>
       <a href="https://github.com/GhostCodeByte/Runback/releases">Releases</a>
@@ -536,7 +234,6 @@ adb -s UHR-IP:PORT install -r runback-wear-*.apk</code></pre>
       <a href="https://github.com/GhostCodeByte/Runback/issues">Issues</a>
     </nav>
   </div>
-  <p class="wrap fine">Diese Seite setzt keine Cookies und lädt nichts von Dritten — außer einer Abfrage bei GitHub nach der neuesten Version.</p>
 </footer>
 
 </body>
