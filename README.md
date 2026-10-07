@@ -4,6 +4,8 @@ Lokale Android-Trainings-App für Laufen und Krafttraining, mit eigenständiger
 Wear-OS-App. Alles bleibt auf dem Gerät: kein Konto, keine Cloud, keine Pflicht
 zur Einrichtung.
 
+Website: [runback-training.vercel.app](https://runback-training.vercel.app)
+
 Runback zeichnet Einheiten auf, importiert deine Historie und leitet daraus
 **höchstens eine** begründete Empfehlung fürs Laufen und eine fürs Krafttraining
 ab — und prüft später ehrlich, ob sie geholfen hat. „Noch nicht klar“ ist ein

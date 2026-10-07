@@ -24,6 +24,9 @@ Lies vor Änderungen:
   und Uhr. `android/app` — Bridge, Importe, Health Connect, Integrationen.
   `android/wear` — eigenständige Uhr-App.
 - `__tests__/` — Jest; `android/*/src/test` — JUnit.
+- `site/` — öffentliche Produktseite, statisch, auf Vercel (Projekt `runback`,
+  Root `site`). Baut nur, wenn sich `site/` ändert. Aussagen dort müssen zum
+  Stand der App passen.
 
 ## So arbeitest du hier
 
