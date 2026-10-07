@@ -1,0 +1,18 @@
+services:
+  runback:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${RUNBACK_BIND:-0.0.0.0}:${RUNBACK_PORT:-8080}:8080"
+    environment:
+      TZ: ${TZ:-Europe/Berlin}
+      RUNBACK_PASSWORD: ${RUNBACK_PASSWORD:-}
+      RUNBACK_TRUST_PROXY: ${RUNBACK_TRUST_PROXY:-0}
+    volumes:
+      - runback-data:/data
+    init: true
+    stop_grace_period: 10s
+volumes:
+  runback-data:

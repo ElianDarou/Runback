@@ -1,0 +1,10 @@
+.git
+node_modules
+server/node_modules
+server/dist
+android
+__tests__
+coverage
+.scaffold
+.env
+**/.env

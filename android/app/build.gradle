@@ -111,6 +111,7 @@ dependencies {
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.json:json:20240303'
     implementation project(':core')
+    implementation 'androidx.work:work-runtime-ktx:2.10.1'
     implementation 'androidx.core:core-ktx:1.15.0'
     implementation 'androidx.wear:wear-remote-interactions:1.2.0'
     implementation 'com.google.guava:guava:33.2.1-android'

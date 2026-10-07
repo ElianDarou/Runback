@@ -102,7 +102,10 @@ Verletzung ist ein Bug, kein Trade-off.
    und begrenzte Darstellungsdaten.
 9. **Daten gehen nur für einen Grund hinaus.** Externe Dienste nur für Wetter,
    Karten/Höhe und optional OpenRouter mit eigenem Key. Keine Koordinaten oder
-   Rohdaten ans LLM, keine Schlüssel in Logs oder Backups.
+   Rohdaten ans LLM, keine Schlüssel in Logs oder Backups. Ausnahme: Der Nutzer
+   darf eine lesende Kopie freigegebener Daten an seinen eigenen Server senden.
+   GPS und Gesundheitswerte brauchen eine eigene Freigabe; Rohsamples und
+   Originaldateien bleiben lokal.
 10. **Die Daten gehören dem Nutzer.** Vollständiges Backup, Wiederherstellung
     und Löschen ohne Konto.
 11. **Der Trainingszweck gewinnt.** Eine bessere Kennzahl ist kein Erfolg,
@@ -157,7 +160,9 @@ ihre Version wandert in jede Ableitung.
 
 - Android-only, React Native + Kotlin. Telefon-App und eigenständige Wear-OS-App
   mit gemeinsamer lokaler SQLite-Schicht.
-- Ein Nutzer, kein Account, kein Server, keine Cloud, kostenloser Kern.
+- Ein Nutzer, kein Account, keine Pflichtcloud, kostenloser Kern. Optional ein
+  selbst gehosteter Server pro Person für eine lesende Kopie, Website und API.
+  Das Telefon bleibt das Original und funktioniert ohne Verbindung vollständig.
 - Einheitenarten sind ein offenes Feld (`running`, `cycling`, `strength`);
   weitere müssen ohne Umbau der Datenschicht möglich sein.
 - Laufauswertung und Tempoindex zählen nur Läufe; Kraftauswertung nur Sätze.
@@ -168,7 +173,7 @@ ihre Version wandert in jede Ableitung.
 
 ## Nicht bauen
 
-iOS · Cloud/Sync/Accounts · Social Features · Segment-Matching/Ghost-Run ·
+iOS · Pflichtcloud/Accounts · Synchronisation vom Server zurück in die App · Social Features · Segment-Matching/Ghost-Run ·
 Sensor-Plugin-System · Musik-Integration · ACWR-Empfehlungen · kostenpflichtige
 Pflichtdienste · medizinische Diagnosen · universeller Ganzkörper-Readiness-
 oder Verletzungsrisikoscore · vollautomatischer Planwechsel ohne Bestätigung ·

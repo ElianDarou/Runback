@@ -79,6 +79,18 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         }
     }
 
+    private fun serverTask(promise: Promise, block: () -> JSONObject) {
+        ServerLink.operation(context, { value, error ->
+            if (error != null) promise.reject("SERVER_ERROR", error.message, error)
+            else promise.resolve(value.toString())
+        }, block)
+    }
+    @ReactMethod fun getServerStatus(promise: Promise) { promise.resolve(ServerLink.status(context).toString()) }
+    @ReactMethod fun connectServer(url: String, code: String, scope: String, promise: Promise) = serverTask(promise) { ServerLink.connect(context, url, code, JSONObject(scope)) }
+    @ReactMethod fun setServerScope(scope: String, promise: Promise) = serverTask(promise) { ServerLink.setScope(context, JSONObject(scope)) }
+    @ReactMethod fun syncServer(promise: Promise) = serverTask(promise) { ServerLink.sync(context) }
+    @ReactMethod fun disconnectServer(promise: Promise) = serverTask(promise) { ServerLink.disconnect(context) }
+
     private fun capabilities(): JSONObject {
         val sensors = context.getSystemService(SensorManager::class.java)
         return JSONObject()

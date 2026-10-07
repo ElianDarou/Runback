@@ -15,6 +15,28 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  server:
+    name: Check self-hosted server and Docker image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24.21.0'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Install server dependencies
+        run: npm ci --prefix server
+      - name: Type check and test server
+        run: |
+          npm --prefix server run typecheck
+          npm --prefix server test
+      - name: Build self-hosted Docker image
+        run: docker build --file server/Dockerfile --tag runback-server:check .
+
   build:
     name: Check and build phone + Wear OS
     runs-on: ubuntu-24.04

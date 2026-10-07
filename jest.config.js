@@ -1,6 +1,11 @@
 module.exports = {
   preset: 'react-native',
-  modulePathIgnorePatterns: ['<rootDir>/.scaffold/'],
+  modulePathIgnorePatterns: ['<rootDir>/.scaffold/', '<rootDir>/server/'],
   // Gemeinsame Testdaten, keine Tests.
-  testPathIgnorePatterns: ['/node_modules/', '<rootDir>/__tests__/fixtures/'],
+  testPathIgnorePatterns: [
+    '/node_modules/',
+    '<rootDir>/__tests__/fixtures/',
+    // Der eigene Server testet sich selbst (`server/`, node:test).
+    '<rootDir>/server/',
+  ],
 };

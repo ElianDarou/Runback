@@ -99,6 +99,8 @@ rechts wozu es dient. Nur Begriffe, die im Produkt wirklich vorkommen.
 | Analyse-Export | `buildRunAnalysisExport` | Drei Dateien zum Teilen: Bericht (Markdown), Analyse (JSON), Zeitreihe (CSV, 5 s). |
 | Kraft-Export | `strengthExport.ts` | ZIP aller in Runback aufgezeichneten Krafteinheiten (ohne Importe): Trainingslog (Markdown), Einheiten, Sätze und Puls als CSV, alles als JSONL. Fehlende Werte bleiben leer. |
 | Grundregel | — | Regel, die für alles gilt und nicht gegen eine UI-Abkürzung getauscht wird. |
+| Eigener Server | `ServerLink` | Optionaler, selbst gehosteter Server mit lesender Kopie der freigegebenen Daten; das Telefon bleibt das Original. |
+| Abgleich | `serverSync` | Überträgt Änderungen vom Telefon zum Server; bei fehlender Verbindung bleibt Training möglich. |
 
 **Nicht mehr verwendet:** Arbeitsthema, nächste Handlung, Intervention,
 Laufempfehlung, Änderung (→ Empfehlung) · Prüfbedingung, Erfolgskriterium
