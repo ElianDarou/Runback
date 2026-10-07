@@ -28,6 +28,9 @@ object MotionSync {
     private val stateLock = Any()
     private const val STATE = "motion_watch"
     private const val MAX_CLOSED = 50
+    private const val LOG = "strength_log"
+    private const val MAX_LOG = 30
+    private val liveSending = java.util.concurrent.atomic.AtomicBoolean(false)
 
     fun rawFile(context: Context, id: String) = File(context.filesDir, "motion/$id.rbm")
     private fun outboxFile(context: Context, id: String) = File(context.filesDir, "motion_outbox/$id.rbm.gz")
@@ -63,6 +66,53 @@ object MotionSync {
             }
         }
     }
+
+    /** Live-Wert ans Handy; hängt die Verbindung, fällt der nächste aus, statt sich zu stauen. */
+    fun sendLive(context: Context, id: String, fields: JSONObject) {
+        if (!liveSending.compareAndSet(false, true)) return
+        val app = context.applicationContext
+        val payload = WearProtocol.motion("live", id, fields)
+        executor.execute {
+            try {
+                runCatching {
+                    Tasks.await(Wearable.getNodeClient(app).connectedNodes, 3, TimeUnit.SECONDS)
+                        .forEach { node -> send(app, node.id, payload) }
+                }
+            } finally { liveSending.set(false) }
+        }
+    }
+
+    /**
+     * Kurzer Eintrag je Krafteinheit für den Verlauf auf der Uhr: Zeitraum,
+     * Puls (nur gültige Werte, sonst leer) und Name vom Handy. Die Einheit
+     * selbst und alle Sätze liegen auf dem Handy.
+     */
+    fun log(context: Context, id: String, startedAt: Long, endedAt: Long, averageBpm: Double?, maxBpm: Double?, heart: Boolean, motion: Boolean) {
+        val store = RunStore(context)
+        val mirror = store.getDocument("strength_mirror")?.takeIf { it.optString("sessionId") == id }
+        val entry = JSONObject().put("id", id).put("startedAt", startedAt).put("endedAt", endedAt)
+            .put("name", mirror?.optString("name")?.takeIf { it.isNotBlank() } ?: "Krafttraining")
+            .put("heart", heart).put("motion", motion)
+        averageBpm?.let { entry.put("averageBpm", Math.round(it)) }
+        maxBpm?.let { entry.put("maxBpm", Math.round(it)) }
+        mirror?.let { entry.put("completedSets", it.optInt("completedSets")) }
+        synchronized(stateLock) {
+            val previous = store.getDocument(LOG)?.optJSONArray("sessions") ?: JSONArray()
+            val kept = (0 until previous.length()).mapNotNull { previous.optJSONObject(it) }.filter { it.optString("id") != id }
+            store.putDocument(LOG, JSONObject().put("sessions", JSONArray((kept + entry).takeLast(MAX_LOG))))
+        }
+    }
+
+    /** Krafteinheiten der Uhr, neueste zuerst. */
+    fun history(context: Context): List<JSONObject> {
+        val sessions = synchronized(stateLock) { RunStore(context).getDocument(LOG)?.optJSONArray("sessions") } ?: return emptyList()
+        return (0 until sessions.length()).mapNotNull { sessions.optJSONObject(it) }.sortedByDescending { it.optLong("startedAt") }
+    }
+
+    /** Liegen die Daten dieser Einheit schon auf dem Handy? */
+    fun delivered(context: Context, id: String): Boolean =
+        RunStore(context).getDocument("motion_sync_$id")?.optString("status") == "acknowledged" ||
+            (!rawFile(context, id).exists() && id != MotionCaptureService.activeSession)
 
     private fun send(context: Context, nodeId: String, payload: ByteArray) {
         runCatching {
@@ -104,6 +154,13 @@ object MotionSync {
         rawFile(context, id).delete()
         outboxFile(context, id).delete()
         RunStore(context).deleteDocument("motion_sync_$id")
+        // Auf dem Handy gelöscht: auch aus dem Verlauf der Uhr.
+        synchronized(stateLock) {
+            val store = RunStore(context)
+            val previous = store.getDocument(LOG)?.optJSONArray("sessions") ?: return
+            val kept = (0 until previous.length()).mapNotNull { previous.optJSONObject(it) }.filter { it.optString("id") != id }
+            store.putDocument(LOG, JSONObject().put("sessions", JSONArray(kept)))
+        }
     }
 
     /** Überträgt alle Dateien, die nicht gerade beschrieben werden. */

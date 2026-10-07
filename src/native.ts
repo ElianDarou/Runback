@@ -58,6 +58,10 @@ import {
   type StrengthHeart,
   type StrengthHeartSummary,
 } from './domain/strengthHeart';
+import {
+  readStrengthWatchInfo,
+  type StrengthWatchInfo,
+} from './domain/wearLink';
 
 export interface Preset {
   id: string;
@@ -453,6 +457,12 @@ export const native = {
   /** Puls einer Krafteinheit von der Uhr, mit Darstellungsreihe; sonst undefined. */
   async strengthHeart(id: string): Promise<StrengthHeart | undefined> {
     return readStrengthHeart(await nativeCall<unknown>('getStrengthHeart', id));
+  },
+  /** Was die Uhr zu einer Krafteinheit misst und übertragen hat; `null` ohne Uhr. */
+  async strengthWatch(id: string): Promise<StrengthWatchInfo | null> {
+    return readStrengthWatchInfo(
+      await nativeCall<unknown>('getStrengthWatch', id),
+    );
   },
   /** Kurzformen ohne Reihe für alle Einheiten mit Puls, nach Einheit. */
   async strengthHeartSummaries(): Promise<

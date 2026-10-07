@@ -152,13 +152,16 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     @ReactMethod fun getStrengthState(promise: Promise) = task(promise) {
         // Nach einem Neustart der App: Benachrichtigung und Uhr wieder an die laufende Einheit hängen.
         StrengthWorkout.resume(context, store)
+        StrengthWorkout.publishTemplates(context)
         strengthState()
     }
     @ReactMethod fun getStrengthSessions(limit: Int, promise: Promise) = task(promise) {
         JSONObject().put("sessions", store.strengthSessions(limit)).put("imports", store.strengthImports(limit))
     }
     @ReactMethod fun saveStrengthTemplates(json: String, promise: Promise) = task(promise) {
-        store.putDocument("strength_templates", JSONObject().put("templates", JSONArray(json))); strengthState()
+        store.putDocument("strength_templates", JSONObject().put("templates", JSONArray(json)))
+        StrengthWorkout.publishTemplates(context)
+        strengthState()
     }
     // Die Bewegungsaufzeichnung hängt nur an; sie darf das Speichern einer Einheit nie verhindern.
     // `conflict`: Uhr oder Benachrichtigung haben inzwischen gespeichert; die App wiederholt auf deren Stand.
@@ -223,6 +226,8 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     // Bewegungsdaten aus dem Krafttraining: Status, Export als ZIP und Löschen.
     // Rohsamples bleiben nativ; JS sieht nur Zähler.
     @ReactMethod fun getMotionStatus(promise: Promise) = task(promise) { MotionSessions.status(context, store) }
+    /** Was die Uhr zu einer Krafteinheit misst und übertragen hat; `null` ohne Uhr. */
+    @ReactMethod fun getStrengthWatch(id: String, promise: Promise) = task(promise) { MotionSessions.watchInfo(context, store, id) ?: JSONObject.NULL }
     @ReactMethod fun exportMotionData(promise: Promise) {
         if ((store.getDocument("motion_index")?.optJSONArray("sessions")?.length() ?: 0) == 0) {
             promise.reject("MOTION_EMPTY", "Noch keine Bewegungsdaten aufgezeichnet."); return

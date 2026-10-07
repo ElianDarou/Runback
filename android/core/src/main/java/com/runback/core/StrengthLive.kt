@@ -23,7 +23,15 @@ object StrengthLive {
     const val RESUME_REST = "resume_rest"
     const val SKIP_REST = "skip_rest"
     const val SELECT_EXERCISE = "select_exercise"
-    val ACTIONS = setOf(COMPLETE_SET, PAUSE_REST, RESUME_REST, SKIP_REST, SELECT_EXERCISE)
+    /** Start von der Uhr; nennt die neue Einheit und optional die Vorlage. */
+    const val START_SESSION = "start_session"
+    val ACTIONS = setOf(COMPLETE_SET, PAUSE_REST, RESUME_REST, SKIP_REST, SELECT_EXERCISE, START_SESSION)
+    /** Gleich wie `STRENGTH_MODEL_VERSION` und `CATALOG_VERSION` in `src/domain/strength.ts`. */
+    const val STRENGTH_MODEL_VERSION = "strength-v1"
+    const val CATALOG_VERSION = "catalog-v2"
+    const val FREE_SESSION_NAME = "Freies Training"
+    /** So viele Vorlagen bekommt die Uhr zur Auswahl. */
+    const val MAX_MIRRORED_TEMPLATES = 20
     /** Mehr Übungen schickt die Uhr-Ansicht nicht mit; die Liste bleibt klein. */
     const val MAX_MIRRORED_EXERCISES = 40
 
@@ -109,6 +117,62 @@ object StrengthLive {
             seconds = if (timed) set.whole("actualSeconds") ?: planned.whole("seconds") ?: reference?.whole("actualSeconds")
                 else set.whole("actualSeconds") ?: planned.whole("seconds"),
         )
+    }
+
+    /**
+     * Wie `startSession`: neue Einheit aus einer Vorlage oder frei. Satzkennungen
+     * entstehen wie in der App aus Übung, Startzeit und Position.
+     */
+    fun startSession(template: JSONObject?, now: Long, sessionId: String): JSONObject {
+        val seed = java.lang.Long.toString(now, 36)
+        val exercises = JSONArray()
+        val templateExercises = template?.optJSONArray("exercises") ?: JSONArray()
+        for (exerciseIndex in 0 until templateExercises.length()) {
+            val exercise = templateExercises.optJSONObject(exerciseIndex) ?: continue
+            val exerciseId = exercise.optString("exerciseId")
+            val plannedSets = exercise.optJSONArray("sets") ?: JSONArray()
+            val sets = JSONArray()
+            for (index in 0 until plannedSets.length()) {
+                val planned = plannedSets.optJSONObject(index) ?: continue
+                sets.put(JSONObject().put("id", "$exerciseId-$seed-$exerciseIndex-$index").put("planned", JSONObject(planned.toString())))
+            }
+            exercises.put(JSONObject().put("exerciseId", exerciseId).put("name", exercise.optString("name")).put("sets", sets))
+        }
+        return JSONObject()
+            .put("id", sessionId)
+            .put("kind", "strength")
+            .put("name", template?.optString("name")?.takeIf { it.isNotBlank() } ?: FREE_SESSION_NAME)
+            .apply { template?.optString("id")?.takeIf { it.isNotBlank() }?.let { put("templateId", it) } }
+            .put("startTime", now)
+            .put("status", "active")
+            .put("exercises", exercises)
+            .put("currentExercise", 0)
+            .put("modelVersion", STRENGTH_MODEL_VERSION)
+            .put("catalogVersion", CATALOG_VERSION)
+    }
+
+    /**
+     * Kleine Vorlagenliste für die Uhr: Name, Wochentage (0 = Sonntag, wie
+     * `Date.getDay`), Zahl der Übungen und Sätze. Die Sätze selbst bleiben auf
+     * dem Handy; gestartet wird dort.
+     */
+    fun templateList(templates: JSONArray, now: Long): JSONObject {
+        val list = JSONArray()
+        for (index in 0 until templates.length()) {
+            if (list.length() >= MAX_MIRRORED_TEMPLATES) break
+            val template = templates.optJSONObject(index) ?: continue
+            val id = template.optString("id").takeIf { it.isNotBlank() && it.length <= 200 } ?: continue
+            val exercises = template.optJSONArray("exercises") ?: JSONArray()
+            var sets = 0
+            for (position in 0 until exercises.length()) sets += exercises.optJSONObject(position)?.optJSONArray("sets")?.length() ?: 0
+            list.put(JSONObject()
+                .put("id", id)
+                .put("name", template.optString("name").ifBlank { "Vorlage" })
+                .put("days", template.optJSONArray("days") ?: JSONArray())
+                .put("exercises", exercises.length())
+                .put("sets", sets))
+        }
+        return JSONObject().put("version", VERSION).put("updatedAt", now).put("templates", list)
     }
 
     private fun clearRest(session: JSONObject): JSONObject = session.apply {

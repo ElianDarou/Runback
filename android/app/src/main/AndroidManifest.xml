@@ -109,6 +109,13 @@
             <category android:name="android.intent.category.BROWSABLE" />
             <data android:scheme="runback" android:host="recording" />
         </intent-filter>
+        <!-- Die Uhr öffnet die App, nachdem sie ein Krafttraining gestartet hat; der Link trägt keine Befehle. -->
+        <intent-filter>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="runback" android:host="strength" />
+        </intent-filter>
       </activity>
     </application>
 </manifest>

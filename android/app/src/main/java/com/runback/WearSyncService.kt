@@ -62,6 +62,7 @@ class WearSyncService : WearableListenerService() {
     override fun onPeerConnected(peer: Node) {
         WearController.retryPending(this)
         worker.execute { MotionSessions.retryPending(this) }
+        StrengthWorkout.publishTemplates(this)
     }
 
     private fun handleWatchControl(event: MessageEvent) {

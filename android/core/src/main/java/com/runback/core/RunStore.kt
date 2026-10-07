@@ -272,6 +272,8 @@ class RunStore(context: Context) : DocumentStore {
                         run.put("lastHeartRate", bpm).put("lastHeartRateAt", sample.time)
                     }
                 }
+                // Für die Live-Anzeige „GPS sucht“; die Strecke zählt weiter nur gültige Positionen.
+                if (sample.kind == "gps" && sample.time >= run.optLong("lastGpsAt", 0L)) run.put("lastGpsAt", sample.time)
             }
             val hasGpsSamples = samples.any { it.kind == "gps" }
             val hasSourceSamples = samples.any { it.kind == "gps" || it.kind == "heartRate" }

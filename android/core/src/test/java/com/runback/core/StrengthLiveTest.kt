@@ -165,4 +165,57 @@ class StrengthLiveTest {
         assertEquals(0, pcm[(pattern[1] * 8 + 40).toInt()].toInt())
         assertTrue(pcm.any { it > 1000 })
     }
+
+    // Gleiche Vorlage und Zeit wie in __tests__/strengthWatchStart.test.ts; beide Seiten müssen dieselben Kennungen bilden.
+    private val template = JSONObject().put("id", "tpl-push").put("name", "Push").put("days", JSONArray(listOf(1, 4)))
+        .put("exercises", JSONArray(listOf(
+            JSONObject().put("exerciseId", "bench").put("name", "Bankdrücken").put("sets", JSONArray(listOf(
+                planned(reps = 8, weight = 80.0), planned(reps = 8, weight = 80.0)))),
+            JSONObject().put("exerciseId", "dip").put("name", "Dips").put("sets", JSONArray(listOf(planned(reps = 10)))),
+        )))
+
+    @Test fun startSessionFromTemplateMatchesTheApp() {
+        val session = StrengthLive.startSession(template, 1_700_000_000_000L, "session-watch")
+        assertEquals("session-watch", session.getString("id"))
+        assertEquals("Push", session.getString("name"))
+        assertEquals("tpl-push", session.getString("templateId"))
+        assertEquals("active", session.getString("status"))
+        assertEquals(0, session.getInt("currentExercise"))
+        assertEquals("strength-v1", session.getString("modelVersion"))
+        assertEquals("catalog-v2", session.getString("catalogVersion"))
+        val exercises = session.getJSONArray("exercises")
+        val ids = (0 until exercises.length()).flatMap { e ->
+            val sets = exercises.getJSONObject(e).getJSONArray("sets")
+            (0 until sets.length()).map { sets.getJSONObject(it).getString("id") }
+        }
+        assertEquals(listOf("bench-loyw3v28-0-0", "bench-loyw3v28-0-1", "dip-loyw3v28-1-0"), ids)
+        val planned = exercises.getJSONObject(0).getJSONArray("sets").getJSONObject(0).getJSONObject("planned")
+        assertEquals(80.0, planned.getDouble("weightKg"), 0.0)
+        assertFalse(exercises.getJSONObject(0).getJSONArray("sets").getJSONObject(0).has("completedAt"))
+    }
+
+    @Test fun startSessionWithoutTemplateIsAFreeTraining() {
+        val session = StrengthLive.startSession(null, 5L, "session-5")
+        assertEquals("Freies Training", session.getString("name"))
+        assertFalse(session.has("templateId"))
+        assertEquals(0, session.getJSONArray("exercises").length())
+    }
+
+    @Test fun templateListKeepsOnlyWhatTheWatchShows() {
+        val list = StrengthLive.templateList(JSONArray(listOf(template, JSONObject().put("name", "ohne Kennung"))), 9L)
+        val only = list.getJSONArray("templates")
+        assertEquals(1, only.length())
+        val item = only.getJSONObject(0)
+        assertEquals("tpl-push", item.getString("id"))
+        assertEquals(2, item.getInt("exercises"))
+        assertEquals(3, item.getInt("sets"))
+        assertEquals(JSONArray(listOf(1, 4)).toString(), item.getJSONArray("days").toString())
+        // Keine Sätze, keine Gewichte: gestartet wird auf dem Handy.
+        assertFalse(item.toString().contains("weightKg"))
+    }
+
+    @Test fun startIsNotAnEditOfARunningSession() {
+        val bench = exercise("bench", "Bankdrücken", set("a", planned(reps = 8)))
+        assertNull(StrengthLive.apply(session(bench), command(StrengthLive.START_SESSION), 20L, emptyList()))
+    }
 }

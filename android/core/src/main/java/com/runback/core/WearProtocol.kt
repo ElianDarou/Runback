@@ -73,12 +73,15 @@ object WearProtocol {
     /**
      * Bewegungsaufzeichnung im Krafttraining. Das Handy sendet `start`, `stop`,
      * `discard` und `ping`; die Uhr antwortet mit `pong` (ihre Uhrzeit beim
-     * Empfang, für den Uhrenversatz) und `status`.
+     * Empfang, für den Uhrenversatz), `status` und während der Aufzeichnung
+     * alle paar Sekunden `live`: den letzten gültigen Puls (`bpm`, `ageMs`) und
+     * ob Bewegungsdaten ankommen. Mehr geht live nicht ans Handy; die Rohdatei
+     * folgt nach dem Ende.
      */
     const val MOTION_PATH = "/runback/motion/v1"
     const val MOTION_DATA_PREFIX = "/runback/motion-data/"
     const val MOTION_ACK_PREFIX = "/runback/motion-acks/"
-    val MOTION_ACTIONS = setOf("start", "stop", "discard", "ping", "pong", "status")
+    val MOTION_ACTIONS = setOf("start", "stop", "discard", "ping", "pong", "status", "live")
 
     fun motion(action: String, sessionId: String, fields: JSONObject = JSONObject()): ByteArray {
         require(action in MOTION_ACTIONS) { "Unbekannte Bewegungsaktion" }
@@ -107,6 +110,8 @@ object WearProtocol {
     const val STRENGTH_COMMAND_PATH = "/runback/strength/command"
     const val STRENGTH_ALERT_PATH = "/runback/strength/alert"
     const val STRENGTH_SEEN_PATH = "/runback/strength/seen"
+    /** Vorlagenliste des Handys (StrengthLive.templateList), damit die Uhr ein Training starten kann. */
+    const val STRENGTH_TEMPLATES_PATH = "/runback/strength/templates"
 
     fun strengthCommand(
         action: String,
@@ -114,6 +119,7 @@ object WearProtocol {
         setId: String? = null,
         exerciseIndex: Int? = null,
         restStartedAt: Long? = null,
+        templateId: String? = null,
     ): ByteArray {
         require(action in StrengthLive.ACTIONS) { "Unbekannter Trainingsbefehl" }
         require(sessionId.matches(ID_PATTERN)) { "Ungültige Einheitskennung" }
@@ -125,6 +131,7 @@ object WearProtocol {
                 setId?.let { put("setId", it) }
                 exerciseIndex?.let { put("exerciseIndex", it) }
                 restStartedAt?.let { put("restStartedAt", it) }
+                templateId?.let { put("templateId", it) }
             }
             .toString().toByteArray(Charsets.UTF_8)
     }
@@ -137,6 +144,7 @@ object WearProtocol {
         if (payload.has("setId")) require(payload.optString("setId").length in 1..200) { "Ungültige Satzkennung" }
         if (payload.has("exerciseIndex")) require(payload.optInt("exerciseIndex", -1) in 0..999) { "Ungültige Übung" }
         if (payload.has("restStartedAt")) require(payload.optLong("restStartedAt", 0L) > 0L) { "Ungültige Pause" }
+        if (payload.has("templateId")) require(payload.optString("templateId").length in 1..200) { "Ungültige Vorlage" }
         return payload
     }
 

@@ -265,3 +265,46 @@ describe('Übungsverlauf', () => {
     expect(texts(tree)).toContain('Noch kein Satz');
   });
 });
+
+describe('watch data on a finished session', () => {
+  const session = strengthSession('session-w', NOW - DAY, [
+    ['bench', 'Bankdrücken', [{ weightKg: 80, reps: 8, at: 5 }]],
+  ]);
+  const watch = (status: string, watchStatus = 'recording') => ({
+    sessionId: 'session-w',
+    status,
+    capture: { motion: false, heartRate: true },
+    watch: { status: watchStatus, message: 'Keine Uhr verbunden.' },
+  });
+  const detail = (
+    info: ReturnType<typeof watch> | null,
+    heart?: StrengthHeart,
+  ) =>
+    texts(
+      create(
+        <StrengthSessionDetail
+          session={session}
+          history={[session]}
+          heartSummaries={{}}
+          heart={heart}
+          watch={info}
+        />,
+      ),
+    );
+
+  it('says the pulse is still on its way', () => {
+    const shown = detail(watch('stopped'));
+    expect(shown).toContain('Wartet');
+    expect(shown).toContain('Puls kommt, sobald die Uhr in der Nähe ist.');
+  });
+
+  it('says when the watch never recorded', () => {
+    const shown = detail(watch('stopped', 'disconnected'));
+    expect(shown).toContain('Nicht aufgezeichnet');
+    expect(shown).toContain('Keine Uhr verbunden.');
+  });
+
+  it('stays quiet without a watch', () => {
+    expect(detail(null)).not.toContain('Uhr');
+  });
+});
