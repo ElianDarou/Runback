@@ -34,7 +34,7 @@
       link.href = targets[link.dataset.download].browser_download_url;
     }
 
-    const version = (phone.name.match(/runback-phone-([\d.]+)/) || [])[1];
+    const version = (phone.name.match(/runback-phone-(\d+(?:\.\d+)*)/) || [])[1];
     const date = new Date(release.published_at).toLocaleDateString('de-DE', {
       day: 'numeric',
       month: 'long',
