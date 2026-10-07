@@ -20,7 +20,7 @@ import com.runback.core.WearProtocol
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
-import java.io.OutputStream
+import java.io.InputStream
 import java.security.MessageDigest
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -36,7 +36,7 @@ import java.util.zip.ZipOutputStream
  * Je Einheit ein Dokument `motion_<id>` (Ereignisse, Uhrenabgleich, Status;
  * Teil des Backups) und eine Datei `files/motion/<id>.rbm.gz`. Die Rohdateien
  * sind bewusst nicht im Backup — eine Stunde Bewegungen sind mehrere MB —,
- * sondern gehen über den eigenen Export hinaus. Bewegungen fließen in keine
+ * sondern gehen mit dem Kraftexport hinaus. Bewegungen fließen in keine
  * Auswertung ein; sie sind Trainingsdaten für spätere Modelle. Der Puls wird
  * nach dem Empfang zu `strength_heart_<id>` zusammengefasst (StrengthHeart);
  * dieses Dokument ist im Backup und bleibt, wenn die Rohdatei gelöscht wird.
@@ -352,30 +352,23 @@ object MotionSessions {
             } ?: JSONObject.NULL)
     }
 
-    fun export(context: Context, store: RunStore, output: OutputStream): JSONObject {
-        val sessions = exportSessions(context, store)
-        require(sessions.isNotEmpty()) { "Noch keine Bewegungsdaten aufgezeichnet." }
-        ZipOutputStream(output.buffered(64 * 1024)).use { zip -> MotionExport.write(zip, sessions, System.currentTimeMillis()) }
-        return JSONObject().put("exported", true).put("sessions", sessions.size)
-    }
-
-    /** Hängt die Bewegungsdaten als Ordner an ein fremdes ZIP; ohne Bewegungsdaten bleibt es unverändert. */
+    /** Hängt die Bewegungsdaten als Ordner an den Kraftexport; ohne Bewegungsdaten bleibt er unverändert. */
     fun exportInto(context: Context, store: RunStore, zip: ZipOutputStream, directory: String): Int {
-        val sessions = exportSessions(context, store)
+        val sessions = ids(store).mapNotNull { id ->
+            val doc = store.getDocument(key(id))?.takeIf(::hasMotion) ?: return@mapNotNull null
+            val file = rawFile(context, id)
+            val raw: (() -> InputStream)? = if (file.exists()) ({ GZIPInputStream(file.inputStream(), 64 * 1024) }) else null
+            // Eine beschädigte Rohdatei darf den Kraftexport nicht verhindern: Sie fehlt, `meta.json` sagt es.
+            val readable = raw?.let(MotionExport::readable)
+            MotionExport.Session(
+                if (readable == false) JSONObject(doc.toString()).put("rawUnreadable", true) else doc,
+                store.getDocument("strength_session_$id"),
+                raw.takeIf { readable == true },
+            )
+        }.sortedBy { it.meta.optLong("startedAt") }
         if (sessions.isNotEmpty()) MotionExport.write(zip, sessions, System.currentTimeMillis(), directory)
         return sessions.size
     }
-
-    private fun exportSessions(context: Context, store: RunStore): List<MotionExport.Session> =
-        ids(store).mapNotNull { id ->
-            val doc = store.getDocument(key(id))?.takeIf(::hasMotion) ?: return@mapNotNull null
-            val file = rawFile(context, id)
-            MotionExport.Session(
-                doc,
-                store.getDocument("strength_session_$id"),
-                if (file.exists()) ({ GZIPInputStream(file.inputStream(), 64 * 1024) }) else null,
-            )
-        }.sortedBy { it.meta.optLong("startedAt") }
 
     private fun start(context: Context, store: RunStore, id: String, capture: Capture) {
         val app = context.applicationContext

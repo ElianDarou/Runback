@@ -571,11 +571,11 @@ export interface StrengthExportSummary {
   sets: number;
   heartSessions: number;
   /**
-   * Einheiten mit Bewegungsdaten (`MotionStatus.sessions`) und davon mit
-   * Rohdatei der Uhr (`received`); fehlt der Zähler, ist er unbekannt.
+   * Einheiten mit Bewegungsdaten (`MotionStatus.sessions`); fehlt der Zähler,
+   * ist er unbekannt. Wie viele Rohdateien dabei sind, steht nur in
+   * `bewegungsdaten/sessions.csv` — die Uhr kann während des Exports liefern.
    */
   motionSessions?: number;
-  motionReceived?: number;
   firstStart?: number;
   lastStart?: number;
   goal?: string;
@@ -604,12 +604,8 @@ export function strengthExportReadme(summary: StrengthExportSummary): string {
       : `- \`${STRENGTH_EXPORT_MOTION_DIRECTORY}/\`: ${
           summary.motionSessions === undefined
             ? 'Bewegungsdaten der Uhr, falls aufgezeichnet'
-            : `Bewegungsdaten der Uhr aus ${summary.motionSessions} Einheiten${
-                summary.motionReceived === undefined
-                  ? ''
-                  : `, ${summary.motionReceived} davon mit Rohdaten`
-              }`
-        } — Beschleunigung, Gyroskop, Puls roh, Ereignisse und Erkennungen je Einheit. Zeit in ms ab Start der Einheit; Beschreibung in \`${STRENGTH_EXPORT_MOTION_DIRECTORY}/manifest.json\` und docs/bewegungsdaten.md im Runback-Repository. \`session_id\` passt zu den Tabellen oben.\n`;
+            : `Bewegungsdaten der Uhr aus ${summary.motionSessions} Einheiten`
+        } — Beschleunigung, Gyroskop, Puls roh, Ereignisse und Erkennungen je Einheit; \`raw_available\` in \`${STRENGTH_EXPORT_MOTION_DIRECTORY}/sessions.csv\` sagt, wo Rohdaten dabei sind. Zeit in ms ab Start der Einheit; Beschreibung in \`${STRENGTH_EXPORT_MOTION_DIRECTORY}/manifest.json\` und docs/bewegungsdaten.md im Runback-Repository. \`session_id\` passt zu den Tabellen oben. Die Bewegungsdaten zeigen die Aufzeichnung, wie sie war: Ein vom Nutzer gesetztes Ende gilt dort nicht, später abgehakte Sätze stehen in ihrem \`sets.csv\`.\n`;
   return `# Runback – Krafttraining-Export
 
 Format \`${STRENGTH_EXPORT_VERSION}\`, exportiert ${iso(summary.exportedAt)}.

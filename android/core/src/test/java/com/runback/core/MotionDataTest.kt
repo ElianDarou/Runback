@@ -46,6 +46,20 @@ class MotionDataTest {
         }
     }
 
+    @Test fun readableSkipsBrokenFilesButKeepsCutOffOnes() {
+        val bytes = raw {
+            anchor(1_000_000_000L, 1_700_000_000_000L)
+            sample(MotionFormat.KIND_ACCEL, 1_020_000_000L, 0.5f, -9.81f, 1.25f)
+        }
+        assertTrue(MotionExport.readable { ByteArrayInputStream(bytes) })
+        assertTrue(MotionExport.readable { ByteArrayInputStream(bytes.copyOf(bytes.size - 5)) })
+        assertFalse(MotionExport.readable { ByteArrayInputStream("NOTMOTION-and-more-bytes".toByteArray()) })
+        // Beschädigtes gzip mitten in der Datei.
+        val gz = ByteArrayOutputStream().also { out -> java.util.zip.GZIPOutputStream(out).use { it.write(bytes) } }.toByteArray()
+        val broken = gz.copyOf().also { for (i in 12 until it.size - 8) it[i] = 0x55 }
+        assertFalse(MotionExport.readable { java.util.zip.GZIPInputStream(ByteArrayInputStream(broken)) })
+    }
+
     @Test fun rejectsForeignFiles() {
         assertThrows(IllegalArgumentException::class.java) {
             MotionFormat.Reader(ByteArrayInputStream("NOTMOTION-and-more-bytes".toByteArray()))

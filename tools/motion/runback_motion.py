@@ -1,11 +1,11 @@
 """Runback-Bewegungsdaten laden und für ein Modell aufbereiten.
 
-Liest den ZIP-Export aus der App („Bewegungsdaten exportieren“ oder den
-Krafttraining-Export mit Ordner `bewegungsdaten/`) und liefert
+Liest den Krafttraining-Export aus der App (Ordner `bewegungsdaten/`; ältere
+Bewegungsexporte ohne Ordner gehen auch) und liefert
 pro Krafteinheit Beschleunigung, Gyroskop, Sätze und Ereignisse als
 pandas-DataFrames. Anleitung und Format: docs/bewegungsdaten.md.
 
-    python tools/motion/runback_motion.py runback-bewegungsdaten-2026-10-04.zip
+    python tools/motion/runback_motion.py runback-krafttraining.zip
     python tools/motion/runback_motion.py export.zip --windows fenster.npz
 
 Abhängigkeiten: numpy, pandas.
@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 
 EXPORT_FORMAT = "runback-motion-export"
-# Im Krafttraining-Export (Meine Daten) liegen die Bewegungsdaten in diesem Ordner.
+# Im Krafttraining-Export liegen die Bewegungsdaten in diesem Ordner; ältere Exporte hatten keinen.
 STRENGTH_EXPORT_DIRECTORY = "bewegungsdaten/"
 SUPPORTED_VERSIONS = {1, 2, 3}
 # Wie MotionLabels.BATCH_WINDOW_MS: dichter liegen zwei echte Sätze derselben Übung nie.

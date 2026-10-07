@@ -37,6 +37,18 @@ object MotionExport {
     )
 
     /**
+     * Liest eine Rohdatei einmal ganz. `false`, wenn sie sich nicht lesen
+     * lässt (fremd, beschädigt): Der Export lässt sie dann weg, statt
+     * mittendrin abzubrechen. Ein abgeschnittenes Ende gilt als lesbar.
+     */
+    fun readable(open: () -> InputStream): Boolean = try {
+        open().use { input -> MotionFormat.Reader(input).use { reader -> while (reader.next() != null) Unit } }
+        true
+    } catch (_: Exception) {
+        false
+    }
+
+    /**
      * `directory` (leer oder mit `/` am Ende) legt den Export in einen Ordner,
      * z. B. `bewegungsdaten/` im Krafttraining-Export; darunter bleibt alles gleich.
      */

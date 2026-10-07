@@ -1144,7 +1144,7 @@ describe('Krafttraining exportieren', () => {
     expect(calls[2][1]['sets.csv']).toContain('b,');
     expect(calls[3][1]['README.md']).toContain('2 Einheiten, 2 Sätze');
     expect(calls[3][1]['README.md']).toContain(
-      'Bewegungsdaten der Uhr aus 1 Einheiten, 1 davon mit Rohdaten',
+      'Bewegungsdaten der Uhr aus 1 Einheiten',
     );
     expect(native.shareExportArchive).toHaveBeenCalledWith(
       'export',

@@ -66,16 +66,15 @@ Stunden hört die Uhr von selbst auf.
 | Sätze mit Gewicht, Wiederholungen, RIR | Krafteinheit, wie immer | Deine Eingaben |
 
 Die Rohdateien sind **nicht im Backup**, weil eine Stunde mehrere MB hat.
-Sicherst du sie, dann über den Krafttraining-Export unter **Meine Daten**
-oder über „Bewegungsdaten exportieren“ in den Geräteeinstellungen. Die
-Ereignisse sind im Backup enthalten. Alles bleibt lokal, bis du den Export selbst
+Sicherst du sie, dann über **Einstellungen → Deine Daten → Krafttraining
+exportieren**. Die Ereignisse sind im Backup enthalten. Alles bleibt lokal, bis du den Export selbst
 weitergibst.
 
 ## Exportformat
 
-„Bewegungsdaten exportieren“ erzeugt `runback-bewegungsdaten-<datum>.zip`.
-Der Krafttraining-Export unter **Meine Daten** enthält denselben Inhalt im
-Ordner `bewegungsdaten/`, neben den Tabellen des Krafttrainings:
+Der Krafttraining-Export (`runback-krafttraining-….zip`) legt die
+Bewegungsdaten neben die Tabellen des Krafttrainings in den Ordner
+`bewegungsdaten/`. Darin:
 
 ```
 manifest.json             Format, Versionen, Zeitpunkt des Exports
@@ -112,7 +111,13 @@ sets_logged, sets_completed, events, heart_samples, detections`.
 Kontakt, 0 unzuverlässig, 1–3 niedrig bis hoch). Runback wertet erst ab 1
 und zwischen 30 und 230 bpm aus. Einheiten, in denen nur der Puls gemessen
 wurde, stehen nicht im Export der Bewegungsdaten. `raw_truncated = 1` heißt: Die Datei
-endet mitten in einem Datensatz (z. B. Akku leer); alles davor ist gültig.
+endet mitten in einem Datensatz (z. B. Akku leer); alles davor ist gültig. Lässt sich
+eine Rohdatei gar nicht lesen, fehlen ihre Tabellen, `raw_available` ist 0
+und `meta.json` trägt `capture.rawUnreadable = true`.
+
+**Endkorrektur.** Setzt du das Ende einer Einheit nachträglich, gilt es in
+den Tabellen des Krafttrainings. Die Bewegungsdaten zeigen die Aufzeichnung
+unverändert, mit allen Sätzen und dem ursprünglichen Ende.
 
 **`sets.csv`**: `exercise_index, exercise_id, exercise_name, set_index,
 set_id, set_kind, load_kind, planned_reps, planned_weight_kg,
@@ -166,11 +171,11 @@ Das Abhaken ist ein **schwaches Label**:
 
 ## Daten laden
 
-`tools/motion/runback_motion.py` (numpy, pandas) liest beide Exporte:
+`tools/motion/runback_motion.py` (numpy, pandas) liest den Export:
 
 ```bash
 pip install numpy pandas
-python tools/motion/runback_motion.py runback-bewegungsdaten-2026-10-04.zip
+python tools/motion/runback_motion.py runback-krafttraining.zip
 python tools/motion/runback_motion.py export.zip --windows fenster.npz
 ```
 

@@ -269,9 +269,9 @@ describe('strength export', () => {
 
   it('names the motion folder with its counts, and drops it when empty', () => {
     const base = { exportedAt: START, sessions: 1, sets: 3, heartSessions: 0 };
-    expect(
-      strengthExportReadme({ ...base, motionSessions: 3, motionReceived: 2 }),
-    ).toContain('Bewegungsdaten der Uhr aus 3 Einheiten, 2 davon mit Rohdaten');
+    expect(strengthExportReadme({ ...base, motionSessions: 3 })).toContain(
+      'Bewegungsdaten der Uhr aus 3 Einheiten —',
+    );
     expect(strengthExportReadme({ ...base, motionSessions: 0 })).not.toContain(
       'bewegungsdaten/',
     );

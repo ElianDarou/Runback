@@ -1133,7 +1133,6 @@ export function RunbackApp({
         sets: 0,
         heartSessions: 0,
         motionSessions: motion?.sessions,
-        motionReceived: motion?.received,
         firstStart: undefined as number | undefined,
         lastStart: undefined as number | undefined,
         goal: settings.strengthGoal,
@@ -4792,8 +4791,8 @@ export function RunbackApp({
           subtitle="Alle aufgezeichneten Einheiten als ZIP teilen"
         >
           <Copy muted>
-            Sätze, Puls und Trainingslog für Tabellen oder ein Sprachmodell.
-            Importe fehlen.
+            Sätze, Puls, Trainingslog und Bewegungsdaten der Uhr für Tabellen
+            oder ein Sprachmodell. Importe fehlen.
           </Copy>
           <Button
             secondary
