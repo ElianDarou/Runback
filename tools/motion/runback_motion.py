@@ -22,7 +22,9 @@ import numpy as np
 import pandas as pd
 
 EXPORT_FORMAT = "runback-motion-export"
-SUPPORTED_VERSIONS = {1}
+SUPPORTED_VERSIONS = {1, 2, 3}
+# Wie MotionLabels.BATCH_WINDOW_MS: dichter liegen zwei echte Sätze derselben Übung nie.
+BATCH_WINDOW_MS = 15_000
 CHANNELS = ["ax", "ay", "az", "gx", "gy", "gz"]
 
 
@@ -34,6 +36,9 @@ class Session:
     gyro: pd.DataFrame  # t_ms, x, y, z  (rad/s)
     sets: pd.DataFrame  # ein Satz je Zeile, Endstand aus der App
     events: pd.DataFrame  # t_ms, event, …
+    # Ab Export 3: Erkennungen der Uhr mit erkannter und bestätigter Zahl, je Wiederholung eine Zeile.
+    detections: pd.DataFrame = None
+    detected_reps: pd.DataFrame = None
 
     @property
     def has_motion(self) -> bool:
@@ -75,9 +80,34 @@ def load_export(path: str | Path) -> list[Session]:
                     gyro=table(f"{session_id}/gyro.csv", ["t_ms", "x", "y", "z"]),
                     sets=table(f"{session_id}/sets.csv", []),
                     events=table(f"{session_id}/events.csv", ["t_ms", "event"]),
+                    detections=table(f"{session_id}/detections.csv", ["kind", "detection_id", "set_id"]),
+                    detected_reps=table(f"{session_id}/detected_reps.csv", ["detection_id", "rep_index", "start_ms", "end_ms"]),
                 )
             )
+        for session in sessions:
+            _add_labels(session)
         return sessions
+
+
+def _add_labels(session: Session) -> None:
+    """Spalte `label` in `sets`: `detected`, `single`, `batch` oder leer (nicht abgehakt).
+
+    Ältere Exporte haben sie nicht; dann gilt dieselbe Regel wie in der App
+    (MotionLabels.completionLabels): Sätze derselben Übung, die binnen
+    `BATCH_WINDOW_MS` abgehakt wurden, sind Nachträge — nur schwache Labels.
+    """
+    sets = session.sets
+    if sets.empty or "label" in sets.columns:
+        return
+    labels = pd.Series("", index=sets.index, dtype=object)
+    done = sets.dropna(subset=["completed_ms"]).sort_values("completed_ms")
+    labels[done.index] = "single"
+    for _, group in done.groupby("exercise_id"):
+        times = group["completed_ms"].to_numpy()
+        for i in np.flatnonzero(np.diff(times) < BATCH_WINDOW_MS):
+            labels[group.index[i]] = "batch"
+            labels[group.index[i + 1]] = "batch"
+    sets["label"] = labels
 
 
 def resample(session: Session, rate_hz: float = 50.0) -> pd.DataFrame:
@@ -132,11 +162,21 @@ def estimate_set_bounds(
     jedem Abhaken der letzte zusammenhängende Abschnitt mit Bewegung, frühestens
     ab dem vorigen Abhaken. Ergebnis ist eine Schätzung (`estimated = True`),
     keine Messung — vor dem Training stichprobenartig im Plot prüfen.
+
+    Hat die Uhr den Satz erkannt und der Nutzer die Zahl bestätigt, gelten
+    ihre Grenzen (`estimated = False`). `weak = True` markiert nachgetragene
+    Sätze (`label = batch`): Ihr Abhaken liegt nicht am Satzende.
     """
     frame = resample(session, rate_hz) if frame is None else frame
     done = session.sets.dropna(subset=["completed_ms"]).sort_values("completed_ms")
     if frame.empty or done.empty:
-        return pd.DataFrame(columns=["set_id", "start_ms", "end_ms", "estimated"])
+        return pd.DataFrame(columns=["set_id", "start_ms", "end_ms", "estimated", "weak"])
+    detected = {}
+    if session.detections is not None and "decision" in session.detections:
+        accepted = session.detections[(session.detections["kind"] == "detected")
+                                      & session.detections["decision"].isin(["confirmed", "corrected"])]
+        detected = {row["set_id"]: row for _, row in accepted.iterrows()}
+    weak = set(session.sets.loc[session.sets["label"] == "batch", "set_id"]) if "label" in session.sets else set()
     level = activity(frame, rate_hz)
     if threshold is None:
         # Zwischen Ruhe (unteres Quartil) und Satz (oberes Dezil).
@@ -147,6 +187,12 @@ def estimate_set_bounds(
     rows, previous = [], -np.inf
     for _, row in done.iterrows():
         tick = row["completed_ms"]
+        if row["set_id"] in detected:
+            hit = detected[row["set_id"]]
+            rows.append({"set_id": row["set_id"], "start_ms": hit["start_ms"], "end_ms": hit["end_ms"],
+                         "estimated": False, "weak": False})
+            previous = tick
+            continue
         mask = (t > previous) & (t <= tick)
         idx = np.flatnonzero(mask & active)
         previous = tick
@@ -162,8 +208,9 @@ def estimate_set_bounds(
             start_i = i
         if (t[end_i] - t[start_i]) < min_set_s * 1000:
             continue
-        rows.append({"set_id": row["set_id"], "start_ms": t[start_i], "end_ms": t[end_i], "estimated": True})
-    return pd.DataFrame(rows)
+        rows.append({"set_id": row["set_id"], "start_ms": t[start_i], "end_ms": t[end_i], "estimated": True,
+                     "weak": row["set_id"] in weak})
+    return pd.DataFrame(rows, columns=["set_id", "start_ms", "end_ms", "estimated", "weak"])
 
 
 def count_reps_autocorr(signal: np.ndarray, rate_hz: float = 50.0, min_period_s: float = 1.0, max_period_s: float = 8.0) -> float | None:

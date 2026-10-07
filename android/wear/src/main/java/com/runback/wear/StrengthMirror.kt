@@ -144,6 +144,8 @@ object StrengthMirror {
                     if (command.has("exerciseIndex")) command.getInt("exerciseIndex") else null,
                     if (command.has("restStartedAt")) command.getLong("restStartedAt") else null,
                     command.optString("templateId").takeIf { it.isNotBlank() },
+                    if (command.has("reps")) command.getInt("reps") else null,
+                    command.optString("detectionId").takeIf { it.isNotBlank() },
                 )
                 val nodes = Tasks.await(Wearable.getNodeClient(app).connectedNodes, 5, TimeUnit.SECONDS)
                 nodes.count { node ->

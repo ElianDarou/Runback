@@ -45,6 +45,19 @@ class StrengthLiveTest {
         assertEquals(90.0, next.getDouble("restSeconds"), 0.0)
     }
 
+    @Test fun completeSetFromTheWatchUsesTheConfirmedRepCount() {
+        val bench = exercise("bench", "Bankdrücken", set("a", planned(reps = 8, weight = 60.0)))
+        val next = StrengthLive.apply(session(bench),
+            command(StrengthLive.COMPLETE_SET, "setId" to "a", "reps" to 11, "detectionId" to "d-1"), 9_000L, emptyList())!!
+        val done = next.getJSONArray("exercises").getJSONObject(0).getJSONArray("sets").getJSONObject(0)
+        assertEquals(11, done.getInt("actualReps"))
+        assertEquals(60.0, done.getDouble("actualWeightKg"), 0.0)
+        assertEquals(9_000L, next.getLong("restStartedAt"))
+        // Eine unsinnige Zahl ändert nichts an der Vorbelegung.
+        val odd = StrengthLive.apply(session(bench), command(StrengthLive.COMPLETE_SET, "setId" to "a", "reps" to -3), 9_000L, emptyList())!!
+        assertEquals(8, odd.getJSONArray("exercises").getJSONObject(0).getJSONArray("sets").getJSONObject(0).getInt("actualReps"))
+    }
+
     @Test fun completeSetWithoutAnyValueLeavesValuesUnknown() {
         val free = exercise("row", "Rudern", set("a", JSONObject().put("kind", "normal").put("loadKind", "kg")))
         val next = StrengthLive.apply(session(free), command(StrengthLive.COMPLETE_SET), 5_000L, emptyList())!!
@@ -127,6 +140,9 @@ class StrengthLiveTest {
         assertEquals("b", mirror.getJSONObject("set").getString("id"))
         assertEquals(2, mirror.getJSONObject("set").getInt("number"))
         assertEquals("82,5 kg × 8 Wdh.", mirror.getJSONObject("set").getString("label"))
+        // Die Uhr wählt damit die Parameter der Satzerkennung; Zeitsätze zählt sie nicht.
+        assertEquals("bench", mirror.getJSONObject("exercise").getString("exerciseId"))
+        assertFalse(mirror.getJSONObject("set").getBoolean("timed"))
         assertEquals(60L, mirror.getJSONObject("rest").getLong("remaining"))
         assertEquals(91_000L, mirror.getJSONObject("rest").getLong("endsAt"))
         assertFalse(StrengthLive.mirror(workout, emptyList(), 31_000L, restTimer = false).has("rest"))
@@ -148,6 +164,13 @@ class StrengthLiveTest {
         assertEquals("bench-1-0-0", decoded.getString("setId"))
         assertEquals(2, decoded.getInt("exerciseIndex"))
         assertThrows(IllegalArgumentException::class.java) { WearProtocol.strengthCommand("delete_all", "session-1") }
+        val counted = WearProtocol.decodeStrengthCommand(WearProtocol.strengthCommand(
+            StrengthLive.COMPLETE_SET, "session-1", setId = "bench-1-0-0", reps = 9, detectionId = "d-1"))
+        assertEquals(9, counted.getInt("reps"))
+        assertEquals("d-1", counted.getString("detectionId"))
+        assertThrows(IllegalArgumentException::class.java) {
+            WearProtocol.decodeStrengthCommand(WearProtocol.strengthCommand(StrengthLive.COMPLETE_SET, "session-1", reps = 5000))
+        }
         assertThrows(IllegalArgumentException::class.java) {
             WearProtocol.decodeStrengthCommand(JSONObject().put("protocolVersion", WearProtocol.VERSION)
                 .put("action", StrengthLive.SKIP_REST).put("sessionId", "../x").toString().toByteArray())

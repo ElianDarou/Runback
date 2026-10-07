@@ -88,6 +88,41 @@ object MotionLabels {
 
     data class ClockOffset(val offsetMs: Double, val uncertaintyMs: Double, val samples: Int)
 
+    /** Regeln von `completionLabels`. */
+    const val COMPLETION_LABELS_VERSION = "completion-labels-v1"
+    /** Zwei echte Sätze derselben Übung liegen nie so dicht beieinander (Satz plus Pause). */
+    const val BATCH_WINDOW_MS = 15_000L
+
+    /**
+     * Wie gut taugt das Abhaken eines Satzes als Satzende? Je Satz zählt das
+     * letzte Abhaken, das nicht zurückgenommen wurde. Mehrere Sätze derselben
+     * Übung, die innerhalb von `BATCH_WINDOW_MS` abgehakt wurden, sind
+     * Nachträge (`batch`): Die Sätze lagen davor, aber nicht an diesen
+     * Zeitpunkten — nur ein schwaches Label. Alle anderen sind `single`.
+     */
+    fun completionLabels(events: JSONArray): Map<String, String> {
+        val last = linkedMapOf<String, JSONObject>()
+        for (index in 0 until events.length()) {
+            val event = events.optJSONObject(index) ?: continue
+            val type = event.optString("type")
+            if (type != "set_completed" && type != "set_reopened") continue
+            val setId = event.optString("setId").takeIf { it.isNotBlank() } ?: continue
+            val previous = last[setId]
+            if (previous == null || event.optLong("t") >= previous.optLong("t")) last[setId] = event
+        }
+        val completed = last.values.filter { it.optString("type") == "set_completed" }.sortedBy { it.optLong("t") }
+        val labels = completed.associate { it.optString("setId") to "single" }.toMutableMap()
+        for ((_, group) in completed.groupBy { it.optString("exerciseId") }) {
+            group.zipWithNext().forEach { (a, b) ->
+                if (b.optLong("t") - a.optLong("t") < BATCH_WINDOW_MS) {
+                    labels[a.optString("setId")] = "batch"
+                    labels[b.optString("setId")] = "batch"
+                }
+            }
+        }
+        return labels
+    }
+
     private const val MAX_ROUND_TRIP_MS = 10_000L
 
     private class LocatedSet(val set: JSONObject, val exercise: JSONObject, val exerciseIndex: Int, val setIndex: Int)

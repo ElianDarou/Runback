@@ -1,11 +1,11 @@
 # Bewegungsdaten aus dem Krafttraining
 
 Runback kann während einer Krafteinheit die Bewegungen der Uhr mitschreiben
-und dazu festhalten, wann du Sätze in der App abhakst. Ziel ist, später
-Wiederholungen, Sätze und Übungen zu erkennen. Heute wird nur **gesammelt**:
-Nichts davon fließt in Auswertungen, Frische oder Empfehlungen ein. Eine
-spätere Erkennung erscheint nur als Vorschlag, den du bestätigst — eine
-Schätzung ersetzt nie eine Eingabe.
+und dazu festhalten, wann du Sätze in der App abhakst. Bei einigen Übungen
+erkennt die Uhr den Satz selbst und zählt die Wiederholungen (siehe unten).
+Die Zahl gilt erst, wenn du sie bestätigst oder korrigierst; davon abgesehen
+fließt nichts aus den Bewegungen in Auswertungen, Frische oder Empfehlungen
+ein. Eine Schätzung ersetzt nie eine Eingabe.
 
 Unabhängig davon misst die Uhr im Krafttraining den **Puls** (Standard an).
 Er kommt in derselben Datei ans Handy und erscheint auf der Detailseite der
@@ -24,6 +24,29 @@ Einheit und in der Statistik — aber in keiner Empfehlung.
 4. Einheit beenden. Die Uhr schickt die Datei, sobald das Handy erreichbar
    ist, und löscht sie erst nach der Bestätigung des Handys.
 
+## Sätze erkennen (Uhr)
+
+Mit „Sätze erkennen“ (Standard an, nur zusammen mit „Bewegungen
+mitschreiben“) erkennt die Uhr bei diesen Übungen den Satz selbst:
+Konzentrationscurl, Trizepsdrücken am Kabel, Bankdrücken, Latzug,
+Arnold-Drücken, Rudern am Kabel sitzend. Die Übung rät sie nicht — sie
+nimmt die, die am Handy gerade dran ist. Jede andere Übung hakst du wie
+bisher ab.
+
+1. Nach dem Satz vibriert die Uhr und zeigt „Satz erkannt“ mit der Zahl.
+   Ein „~“ heißt: nicht ganz sicher.
+2. Mit − / + korrigieren, „Bestätigen“ hakt den Satz am Handy ab und startet
+   die Pause. Ohne Eingabe übernimmt die Uhr die Zahl nach 12 Sekunden,
+   nach einer Korrektur nach 30 Sekunden. „Kein Satz“ verwirft die Erkennung.
+3. Beim Konzentrationscurl gehören beide Arme zu einem Satz; die Uhr wartet
+   nach dem ersten Arm kurz auf den zweiten.
+
+Erkennung (`detectedReps`) und deine Zahl (`finalReps`) werden nebeneinander
+gespeichert, nie überschrieben — genau diese Paare sind später die Labels.
+Ein Satz, den du ohne Erkennung abhakst, wird ebenfalls vermerkt (die Uhr
+hat ihn verpasst). Rechenregeln: `SetDetector.VERSION` und
+`RepProfiles.VERSION`, beide in jeder Erkennung.
+
 Eine Einheit, die schon läuft, wird nicht nachträglich aufgezeichnet. Eine
 verworfene Einheit verwirft auch ihre Bewegungen. Spätestens nach drei
 Stunden hört die Uhr von selbst auf.
@@ -34,6 +57,7 @@ Stunden hört die Uhr von selbst auf.
 |---|---|---|
 | Beschleunigung (m/s², mit Schwerkraft) und Gyroskop (rad/s), 50 Hz | Uhr → Handy, Datei `files/motion/<id>.rbm.gz` | Sensoren der Uhr |
 | Puls (bpm) mit Genauigkeit des Sensors, ungefiltert | Dieselbe Datei (ab Version 2) | Pulssensor der Uhr |
+| Erkannte Sätze: Grenzen, Wiederholungen, Sicherheit, Merkmale; deine Entscheidung | Dieselbe Datei (ab Version 3) | Satzerkennung der Uhr |
 | Puls zusammengefasst (5-s-Fenster) | Dokument `strength_heart_<id>`, im Backup | Aus der Datei gerechnet |
 | Abhaken, Zurücknehmen, Überspringen, Übungswechsel | Dokument `motion_<id>` | Gespeicherte Stände der Einheit |
 | Uhrenabgleich (Ping Handy ↔ Uhr) | Dokument `motion_<id>` | Beim Start, bei jedem abgehakten Satz, am Ende |
@@ -56,6 +80,9 @@ sessions.csv              eine Zeile je Einheit
 <session_id>/heart.csv    t_ms,bpm,accuracy (nur Rohdateien ab Version 2)
 <session_id>/sets.csv     ein Satz je Zeile, Endstand aus der App
 <session_id>/events.csv   t_ms,event,exercise_index,exercise_id,exercise_name,set_index,set_id
+<session_id>/detections.csv     erkannte Sätze und ohne Erkennung abgehakte (Rohdatei ab Version 3)
+<session_id>/detected_reps.csv  detection_id,rep_index,start_ms,end_ms,duration_ms,peak_ms,similarity
+<session_id>/detections.jsonl   je Zeile eine Erkennung mit allen Merkmalen
 <session_id>/meta.json    Kopf der Rohdatei (Uhrmodell, Sensoren), Pings, Einheit als JSON
 ```
 
@@ -72,8 +99,9 @@ nicht angegebene Werte (z. B. `rir`) bleiben leer — nie `0`.
 **`sessions.csv`**: `session_id, start_unix_ms, end_unix_ms, name, wrist,
 rate_hz, watch_model, raw_available, raw_truncated, clock_aligned,
 clock_offset_ms, clock_uncertainty_ms, accel_samples, gyro_samples,
-sets_logged, sets_completed, events, heart_samples`. `heart_samples` ist
-leer, wenn die Rohdatei älter als Version 2 ist.
+sets_logged, sets_completed, events, heart_samples, detections`.
+`heart_samples` ist leer, wenn die Rohdatei älter als Version 2 ist,
+`detections` bei älter als Version 3.
 
 **`heart.csv`**: `accuracy` ist der Sensorstatus von Android (−1 kein
 Kontakt, 0 unzuverlässig, 1–3 niedrig bis hoch). Runback wertet erst ab 1
@@ -84,8 +112,20 @@ endet mitten in einem Datensatz (z. B. Akku leer); alles davor ist gültig.
 **`sets.csv`**: `exercise_index, exercise_id, exercise_name, set_index,
 set_id, set_kind, load_kind, planned_reps, planned_weight_kg,
 planned_seconds, reps, weight_kg, seconds, rir, skipped, completed_ms,
-rest_seconds`. `exercise_id` stammt aus dem Übungskatalog (Version in
-`meta.json` → `strengthSession.catalogVersion`).
+rest_seconds, label, detection_id, detected_reps`. `exercise_id` stammt aus
+dem Übungskatalog (Version in `meta.json` → `strengthSession.catalogVersion`).
+`label`: `detected` (Uhr hat erkannt, du hast bestätigt oder korrigiert —
+`reps` ist dann deine Zahl, `detected_reps` die der Uhr), `single` (einzeln
+abgehakt) oder `batch` (nachgetragen, siehe unten).
+
+**`detections.csv`**: `kind` (`detected` oder `closed` = ohne Erkennung
+abgehakt), `detection_id, exercise_index, exercise_id, exercise_name,
+set_id, algorithm, profiles, start_ms, end_ms, detected_ms, detected_reps,
+confidence, uncertain, reviewed_ms, decision` (`confirmed`, `corrected`,
+`rejected`), `decided_by` (`user` oder `auto` nach Ablauf der Wartezeit),
+`final_reps, user_confirmed, was_corrected, detector_state,
+provisional_reps`. Die Zeiten stammen aus derselben Uhr wie die Messwerte
+und sind daher genauer als jedes Abhaken.
 
 **`events.csv`**: `session_started`, `exercise_selected`, `exercise_added`,
 `set_completed`, `set_reopened`, `set_skipped`, `set_unskipped`,
@@ -109,6 +149,12 @@ Das Abhaken ist ein **schwaches Label**:
   korrigiert auch das Label — gut so.
 - `set_reopened` direkt nach `set_completed` heißt meist „vertippt“. Solche
   Sätze vor dem Training prüfen.
+- Mehrere Sätze **derselben Übung binnen 15 Sekunden** abgehakt heißt:
+  vergessen und nachgetragen. Die Sätze lagen vorher, aber nicht an diesen
+  Zeitpunkten (`label = batch`, Regel `completionLabelsVersion` im Manifest).
+  Für Satzgrenzen nur als schwaches Label verwenden.
+- Am stärksten sind erkannte und bestätigte Sätze (`label = detected`):
+  Grenzen aus der Uhr, Zahl vom Nutzer.
 
 ## Daten laden
 

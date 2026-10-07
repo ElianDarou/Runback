@@ -19,15 +19,18 @@ import java.io.OutputStream
  *     1 Beschleunigung (m/s², inkl. Schwerkraft): int64 Sensorzeit ns · 3 × float32
  *     2 Gyroskop (rad/s): int64 Sensorzeit ns · 3 × float32
  *     3 Puls (ab Version 2): int64 Sensorzeit ns · float32 bpm · int8 Genauigkeit des Sensors
+ *     4 Ereignis (ab Version 3): int64 Sensorzeit ns · int32 Länge · UTF-8-JSON, z. B. ein
+ *       erkannter Satz und die Entscheidung des Nutzers dazu (`SetDetectionLog`)
  *
  * Sensorzeit und Anker teilen die Zeitbasis `elapsedRealtimeNanos`; die
  * Wanduhrzeit eines Messwerts folgt aus dem letzten Anker davor.
  *
- * Version 2 ergänzt nur die Pulsart; Dateien der Version 1 bleiben lesbar.
+ * Version 2 ergänzt nur die Pulsart, Version 3 nur die Ereignisse; ältere
+ * Dateien bleiben lesbar.
  * Welche Arten eine Datei enthält, steht im Kopf unter `capture`.
  */
 object MotionFormat {
-    const val VERSION = 2
+    const val VERSION = 3
     /** Älteste Version, die der Leser noch versteht. */
     const val MIN_READ_VERSION = 1
     const val FORMAT = "runback-motion"
@@ -35,8 +38,10 @@ object MotionFormat {
     const val KIND_ACCEL: Byte = 1
     const val KIND_GYRO: Byte = 2
     const val KIND_HEART: Byte = 3
+    const val KIND_EVENT: Byte = 4
     private val MAGIC = "RBMOTION".toByteArray(Charsets.US_ASCII)
     private const val MAX_HEADER_BYTES = 64 * 1024
+    private const val MAX_EVENT_BYTES = 256 * 1024
 
     class Writer(output: OutputStream, header: JSONObject) : AutoCloseable {
         private val data = DataOutputStream(output)
@@ -74,6 +79,16 @@ object MotionFormat {
             data.writeByte(accuracy.coerceIn(-128, 127))
         }
 
+        /** Ereignis zur Sensorzeit `timestampNanos`; der Inhalt ist JSON. */
+        fun event(timestampNanos: Long, payload: JSONObject) {
+            val bytes = payload.toString().toByteArray(Charsets.UTF_8)
+            require(bytes.size <= MAX_EVENT_BYTES) { "Ereignis ist zu groß" }
+            data.writeByte(KIND_EVENT.toInt())
+            data.writeLong(timestampNanos)
+            data.writeInt(bytes.size)
+            data.write(bytes)
+        }
+
         fun flush() = data.flush()
         override fun close() = data.close()
     }
@@ -89,6 +104,8 @@ object MotionFormat {
         var z = 0f
         /** Nur für Puls: Genauigkeit des Sensors; der Wert steht in `x`. */
         var accuracy = 0
+        /** Nur für Ereignisse: Inhalt als JSON-Text. */
+        var json: String? = null
     }
 
     class Reader(input: InputStream) : AutoCloseable {
@@ -135,6 +152,15 @@ object MotionFormat {
                         record.time = data.readLong()
                         record.x = data.readFloat()
                         record.accuracy = data.readByte().toInt()
+                    }
+                    KIND_EVENT -> {
+                        require(version >= 3) { "Ereignis in einer Datei der Version $version" }
+                        record.time = data.readLong()
+                        val length = data.readInt()
+                        require(length in 0..MAX_EVENT_BYTES) { "Ungültiges Ereignis" }
+                        val bytes = ByteArray(length)
+                        data.readFully(bytes)
+                        record.json = bytes.toString(Charsets.UTF_8)
                     }
                     else -> throw IllegalArgumentException("Unbekannte Datensatzart $kind")
                 }

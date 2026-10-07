@@ -43,6 +43,7 @@ object MotionSync {
                 MotionCaptureService.send(
                     context, MotionCaptureService.START, id, payload.optString("wrist", "unknown"),
                     motion = payload.optBoolean("motion", true), heartRate = payload.optBoolean("heartRate", false),
+                    autoSets = payload.optBoolean("autoSets", false),
                 )
             } catch (_: Exception) {
                 // Android erlaubt den Start aus dem Hintergrund nicht immer; das Handy öffnet dann die App (MainActivity).

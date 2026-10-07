@@ -15,6 +15,8 @@ import java.util.Locale
  *
  * Jeder Befehl nennt Einheit und Satz. Passt beides nicht mehr (schon
  * abgehakt, andere Einheit), ändert sich nichts — doppelt Tippen schadet nicht.
+ * Bringt `complete_set` eine Zahl `reps` mit (von der Uhr erkannt, vom Nutzer
+ * bestätigt), gilt sie statt der Vorbelegung.
  */
 object StrengthLive {
     const val VERSION = "strength-live-v1"
@@ -219,7 +221,9 @@ object StrengthLive {
         if (set == null || !isOpen(set)) return null
         val values = prefill(history, exercise, set)
         values.weightKg?.let { set.put("actualWeightKg", it) }
-        values.reps?.let { set.put("actualReps", it) }
+        // Von der Uhr erkannt und vom Nutzer bestätigt oder korrigiert: diese Zahl gilt.
+        val counted = if (command.has("reps")) command.optInt("reps", -1).takeIf { it in 0..WearProtocol.MAX_REPS } else null
+        (counted ?: values.reps)?.let { set.put("actualReps", it) }
         values.seconds?.let { set.put("actualSeconds", it) }
         set.put("completedAt", now).put("skipped", false)
         clearRest(session)
@@ -284,11 +288,13 @@ object StrengthLive {
             val progress = progress(exercise)
             result.put("exercise", JSONObject()
                 .put("index", current).put("name", exercise.optString("name"))
+                .put("exerciseId", exercise.optString("exerciseId"))
                 .put("completed", progress.completed).put("total", progress.total).put("done", progress.done))
             activeSet(exercise)?.let { set ->
                 val values = prefill(history, exercise, set)
                 result.put("set", JSONObject()
                     .put("id", set.optString("id"))
+                    .put("timed", set.optJSONObject("planned")?.optString("kind") == "timed")
                     .put("number", progress.completed + 1)
                     .put("label", label(set, values)))
             }

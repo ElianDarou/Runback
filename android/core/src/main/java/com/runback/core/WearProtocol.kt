@@ -71,8 +71,8 @@ object WearProtocol {
     }.toString().toByteArray(Charsets.UTF_8)
 
     /**
-     * Bewegungsaufzeichnung im Krafttraining. Das Handy sendet `start`, `stop`,
-     * `discard` und `ping`; die Uhr antwortet mit `pong` (ihre Uhrzeit beim
+     * Bewegungsaufzeichnung im Krafttraining. Das Handy sendet `start` (mit
+     * `autoSets`: Sätze auf der Uhr erkennen), `stop`, `discard` und `ping`; die Uhr antwortet mit `pong` (ihre Uhrzeit beim
      * Empfang, für den Uhrenversatz), `status` und während der Aufzeichnung
      * alle paar Sekunden `live`: den letzten gültigen Puls (`bpm`, `ageMs`) und
      * ob Bewegungsdaten ankommen. Mehr geht live nicht ans Handy; die Rohdatei
@@ -104,7 +104,9 @@ object WearProtocol {
     /**
      * Laufende Krafteinheit vom Handy auf der Uhr (StrengthLive). Das Handy legt
      * den Stand als DataItem ab und schickt am Pausenende `alert`; die Uhr meldet
-     * mit `seen`, dass sie die Einheit zeigt, und schickt Befehle.
+     * mit `seen`, dass sie die Einheit zeigt, und schickt Befehle. Ein Satz, den
+     * die Uhr erkannt hat, kommt als `complete_set` mit `reps` (bestätigte Zahl)
+     * und `detectionId`.
      */
     const val STRENGTH_STATE_PATH = "/runback/strength/state"
     const val STRENGTH_COMMAND_PATH = "/runback/strength/command"
@@ -120,6 +122,8 @@ object WearProtocol {
         exerciseIndex: Int? = null,
         restStartedAt: Long? = null,
         templateId: String? = null,
+        reps: Int? = null,
+        detectionId: String? = null,
     ): ByteArray {
         require(action in StrengthLive.ACTIONS) { "Unbekannter Trainingsbefehl" }
         require(sessionId.matches(ID_PATTERN)) { "Ungültige Einheitskennung" }
@@ -132,6 +136,8 @@ object WearProtocol {
                 exerciseIndex?.let { put("exerciseIndex", it) }
                 restStartedAt?.let { put("restStartedAt", it) }
                 templateId?.let { put("templateId", it) }
+                reps?.let { put("reps", it) }
+                detectionId?.let { put("detectionId", it) }
             }
             .toString().toByteArray(Charsets.UTF_8)
     }
@@ -145,6 +151,8 @@ object WearProtocol {
         if (payload.has("exerciseIndex")) require(payload.optInt("exerciseIndex", -1) in 0..999) { "Ungültige Übung" }
         if (payload.has("restStartedAt")) require(payload.optLong("restStartedAt", 0L) > 0L) { "Ungültige Pause" }
         if (payload.has("templateId")) require(payload.optString("templateId").length in 1..200) { "Ungültige Vorlage" }
+        if (payload.has("reps")) require(payload.optInt("reps", -1) in 0..MAX_REPS) { "Ungültige Wiederholungen" }
+        if (payload.has("detectionId")) require(payload.optString("detectionId").matches(ID_PATTERN)) { "Ungültige Erkennung" }
         return payload
     }
 
@@ -162,6 +170,8 @@ object WearProtocol {
     }
 
     private val ID_PATTERN = Regex("[A-Za-z0-9_-]{1,100}")
+    /** Mehr Wiederholungen nimmt ein Befehl der Uhr nicht an. */
+    const val MAX_REPS = 999
 
     fun decode(bytes: ByteArray): JSONObject {
         require(bytes.size <= MAX_PAYLOAD_BYTES) { "Wear-Paket ist zu groß" }
