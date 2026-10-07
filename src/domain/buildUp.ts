@@ -1,4 +1,4 @@
-import type { Run } from '../native';
+import type { Run } from './trainingRecords';
 import type { RunSlotPlan, ScheduleDate, ScheduleRoutine } from './schedule';
 import { startOfWeek } from './schedule';
 import { peakLongRunKm, formatDistanceKm } from './raceGoal';

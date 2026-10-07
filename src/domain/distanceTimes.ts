@@ -1,4 +1,4 @@
-import type { Run } from '../native';
+import type { Run } from './trainingRecords';
 import { validRun } from './statistics';
 import {
   HALF_MARATHON_KM,

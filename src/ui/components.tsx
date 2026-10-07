@@ -33,10 +33,11 @@ import {
 import type { RoutePoint } from '../native';
 
 /**
- * Design-Token und Bausteine der gesamten Oberfläche. Verbindliche Regeln zu
- * Verwendung, Text und Affordanzen stehen in docs/design-language.md. Bildschirme
- * definieren keine eigenen Farben, Abstände oder Schriftgrößen.
+ * Bausteine der gesamten Oberfläche. Verbindliche Regeln zu Verwendung, Text
+ * und Affordanzen stehen in docs/design-language.md. Bildschirme definieren
+ * keine eigenen Farben, Abstände oder Schriftgrößen.
  */
+// BEGIN SHARED DESIGN TOKENS
 export const color = {
   bg: '#101210',
   surface: '#1A1D1A',
@@ -87,6 +88,7 @@ export const type = {
   label: { fontSize: 14, lineHeight: 20, fontWeight: '500' as const },
   micro: { fontSize: 12, lineHeight: 16, fontWeight: '500' as const },
 };
+// END SHARED DESIGN TOKENS
 
 /** Ab dieser Strecke (oder 40 % der Breite) löscht ein Wischen nach links. */
 const SWIPE_DELETE_MIN = 96;
@@ -771,6 +773,11 @@ export function Segmented<T extends string>({
       })}
     </View>
   );
+}
+
+/** Im Kopf zusätzlich im Buttonlabel benannt; Farbe ist nie die einzige Information. */
+export function ConnectionMark({ attention }: { attention: boolean }) {
+  return attention ? <Text accessible={false} style={{ color: color.danger, ...type.label }}>●</Text> : null;
 }
 
 /** Sichtbarer Zustand als kleines Etikett: Vorschlag · Aktiv · Pausiert. */

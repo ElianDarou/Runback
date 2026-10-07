@@ -1,4 +1,4 @@
-import type { Run } from '../native';
+import type { Run } from './trainingRecords';
 import type { RunPurpose } from './types';
 import { medianOrNull } from './inference';
 import { normalizePurpose, purposeLabel } from './runTitle';

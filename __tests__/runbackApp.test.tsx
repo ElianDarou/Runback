@@ -18,6 +18,7 @@ jest.mock('../src/native', () => {
   return {
     nativeCall: jest.fn(() => Promise.resolve({})),
     native: {
+      serverStatus: jest.fn(() => Promise.resolve({ state: 'off', url: null, scope: { runs: true, strength: true, coach: true, gps: false, health: false } })),
       state: jest.fn(() => Promise.resolve(state)),
       beginRunArchive: jest.fn(() => Promise.resolve('archive')),
       appendRunArchive: jest.fn(() => Promise.resolve()),
@@ -174,6 +175,18 @@ const tapText = async (
 };
 
 describe('Heute', () => {
+  it('zeigt den Serverausfall am Zahnrad und lässt den Trainingsstart offen', async () => {
+    (native.serverStatus as jest.Mock).mockResolvedValueOnce({ state: 'offline', url: 'http://nas.local:8080', scope: { runs: true, strength: true, coach: true, gps: false, health: false }, lastSuccessAt: null, pending: null });
+    const tree = await render();
+    expect(screenText(tree)).toContain('Lauf starten');
+    expect(screenText(tree)).toContain('●');
+    await tap(tree, 'Einstellungen · Server Nicht erreichbar');
+    await tap(tree, 'Eigener Server');
+    expect(screenText(tree)).toContain('Nicht erreichbar');
+    expect(screenText(tree)).toContain('sobald dein Server wieder erreichbar ist');
+    await act(async () => tree.unmount());
+  });
+
   it('shows one start action without a date, a fake plan or settings', async () => {
     const tree = await render();
     const text = screenText(tree);

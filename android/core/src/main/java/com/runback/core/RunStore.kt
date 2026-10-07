@@ -889,6 +889,53 @@ class RunStore(context: Context) : DocumentStore {
         if (to <= from) return@locked null
         ImportedHeart.summarize(importedHeartPoints(from, to), from, to)
     }
+    /** Konsistente, vollständige Kopie für den eigenen Server; keine Rohsamples. */
+    fun serverSnapshot(runs: Boolean, strength: Boolean, coach: Boolean, gps: Boolean, health: Boolean): Map<String, JSONObject> = locked {
+        val result = linkedMapOf<String, JSONObject>()
+        if (runs) db.rawQuery("SELECT id FROM runs ORDER BY id", null).use { rows ->
+            while (rows.moveToNext()) {
+                val id = rows.getString(0)
+                val run = present(read(id))
+                if (run.optString("status") == "recording") continue
+                result["run/$id"] = run
+                val display = series(id, 300)
+                result["runDetail/$id"] = JSONObject().put("series", display).apply {
+                    // Dieselben begrenzten Positionen wie im Graphen; keine Neuberechnung des Originals.
+                    if (gps) put("route", JSONArray().also { route ->
+                        val points = display.optJSONArray("rows") ?: JSONArray()
+                        for (index in 0 until points.length()) {
+                            val point = points.getJSONObject(index)
+                            if (point.has("latitude") && point.has("longitude")) route.put(JSONObject()
+                                .put("latitude", point.get("latitude")).put("longitude", point.get("longitude")))
+                        }
+                    })
+                }
+            }
+        }
+        if (strength) {
+            strengthSessionIds().forEach { id -> strengthSession(id)?.let { result["strength/$id"] = it } }
+            strengthImportIds(Int.MAX_VALUE).forEach { id -> strengthImport(id)?.let { result["strengthImport/$id"] = it } }
+            getDocument("soreness_reports")?.let { result["soreness"] = it }
+        }
+        if (coach) {
+            result["settings"] = settings()
+            getDocument("strength_templates")?.let { result["templates"] = it }
+        }
+        if (health) db.rawQuery("SELECT id,kind,time,end_time,value,unit,source FROM wellness ORDER BY id", null).use { rows ->
+            while (rows.moveToNext()) {
+                // Importkennungen können länger sein als ein Protokollschlüssel.
+                val id = rows.getString(0)
+                val key = java.security.MessageDigest.getInstance("SHA-256").digest(id.toByteArray())
+                    .joinToString("") { "%02x".format(it) }
+                result["wellness/$key"] = JSONObject().put("id", id).put("kind", rows.getString(1))
+                    .put("time", rows.getLong(2)).put("endTime", rows.getLong(3).takeIf { it > 0 } ?: JSONObject.NULL)
+                    .put("value", if (rows.isNull(4)) JSONObject.NULL else rows.getDouble(4))
+                    .put("unit", rows.getString(5)).put("source", rows.getString(6))
+            }
+        }
+        result
+    }
+
     fun settings(): JSONObject = getDocument("settings") ?: JSONObject().put("rawBudgetMb",512).put("weatherEnabled",false)
     fun saveSettings(value: JSONObject) { putDocument("settings",value) }
     fun saveFeedback(id: String, value: JSONObject) = locked {

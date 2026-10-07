@@ -11,6 +11,7 @@ jest.mock('../src/native', () => {
     nativeCall: jest.fn(async () => ({})),
     normalizeRun,
     native: {
+      serverStatus: jest.fn(() => Promise.resolve({ state: 'off', url: null, scope: { runs: true, strength: true, coach: true, gps: false, health: false } })),
       state: jest.fn(),
       run: jest.fn(),
       saveSettings: jest.fn(),

@@ -1,0 +1,215 @@
+import {
+  SERVER_SYNC_PROTOCOL,
+  readServerScope,
+} from '../../src/domain/serverLink';
+import type { Store } from './db';
+import { rebuildDerived } from './records';
+
+/**
+ * Abgleich vom Telefon. Das Telefon ist das Original; der Server übernimmt
+ * dessen Stand und schreibt nie zurück.
+ *
+ * 1. `plan`: Das Telefon schickt sein vollständiges Inventar (Schlüssel →
+ *    Hash). Der Server nennt, was ihm fehlt oder veraltet ist.
+ * 2. `objects`: Das Telefon schickt genau diese Objekte, in Paketen.
+ * 3. `commit`: Das Telefon schickt das Inventar noch einmal. Was nicht darin
+ *    steht, hat das Telefon gelöscht oder nicht mehr freigegeben; der Server
+ *    löscht es auch. Danach entstehen die Tabellen für SQL neu.
+ *
+ * Jeder Schritt lässt sich beliebig wiederholen. Bricht die Verbindung ab,
+ * bleiben bereits übertragene Objekte liegen und werden nicht noch einmal
+ * gebraucht.
+ */
+
+export const KINDS = [
+  'run',
+  'runDetail',
+  'strength',
+  'strengthImport',
+  'strengthHeart',
+  'settings',
+  'templates',
+  'soreness',
+  'wellness',
+] as const;
+export type ObjectKind = (typeof KINDS)[number];
+
+const KEY = /^([a-zA-Z]+)(?:\/([A-Za-z0-9._:@+-]{1,200}))?$/;
+const HASH = /^[a-f0-9]{16,128}$/;
+export const MAX_MANIFEST = 200_000;
+export const MAX_BATCH = 500;
+
+export class SyncError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+  }
+}
+
+export function kindOf(key: string): ObjectKind {
+  const match = KEY.exec(key);
+  const kind = match?.[1] as ObjectKind | undefined;
+  if (!match || !kind || !KINDS.includes(kind)) {
+    throw new SyncError(400, `Unbekannter Schlüssel: ${key.slice(0, 80)}`);
+  }
+  // Einzelobjekte haben keine Kennung, Listen immer eine.
+  const single =
+    kind === 'settings' ||
+    kind === 'templates' ||
+    kind === 'soreness' ||
+    kind === 'strengthHeart';
+  if (single !== (match[2] === undefined)) {
+    throw new SyncError(400, `Unbekannter Schlüssel: ${key.slice(0, 80)}`);
+  }
+  return kind;
+}
+
+function checkProtocol(body: any) {
+  if (body?.protocol !== SERVER_SYNC_PROTOCOL) {
+    throw new SyncError(
+      409,
+      'App und Server sprechen verschiedene Versionen. Aktualisiere den Server oder die App.',
+    );
+  }
+}
+
+function readManifest(raw: unknown): Map<string, string> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new SyncError(400, 'Inventar fehlt.');
+  }
+  const entries = Object.entries(raw as Record<string, unknown>);
+  if (entries.length > MAX_MANIFEST) {
+    throw new SyncError(413, 'Das Inventar ist zu groß.');
+  }
+  const manifest = new Map<string, string>();
+  for (const [key, hash] of entries) {
+    kindOf(key);
+    if (typeof hash !== 'string' || !HASH.test(hash)) {
+      throw new SyncError(400, `Ungültiger Hash für ${key.slice(0, 80)}.`);
+    }
+    manifest.set(key, hash);
+  }
+  return manifest;
+}
+
+function storedHashes(store: Store): Map<string, string> {
+  const rows = store.db
+    .prepare(
+      'SELECT key, hash FROM objects UNION ALL SELECT key, hash FROM staged_objects',
+    )
+    .all() as {
+    key: string;
+    hash: string;
+  }[];
+  return new Map(rows.map(row => [row.key, row.hash]));
+}
+
+export function plan(store: Store, body: any): { need: string[] } {
+  checkProtocol(body);
+  const manifest = readManifest(body.manifest);
+  const stored = storedHashes(store);
+  const need: string[] = [];
+  manifest.forEach((hash, key) => {
+    if (stored.get(key) !== hash) need.push(key);
+  });
+  return { need };
+}
+
+export function receive(
+  store: Store,
+  body: any,
+  now: number,
+): { stored: number } {
+  checkProtocol(body);
+  const objects = body?.objects;
+  if (!Array.isArray(objects) || objects.length > MAX_BATCH) {
+    throw new SyncError(
+      400,
+      `Schicke höchstens ${MAX_BATCH} Objekte je Paket.`,
+    );
+  }
+  const checked = objects.map(entry => {
+    const key = String(entry?.key ?? '');
+    const kind = kindOf(key);
+    const hash = String(entry?.hash ?? '');
+    if (!HASH.test(hash))
+      throw new SyncError(400, `Ungültiger Hash für ${key.slice(0, 80)}.`);
+    if (!entry.body || typeof entry.body !== 'object') {
+      throw new SyncError(400, `Objekt ${key.slice(0, 80)} hat keinen Inhalt.`);
+    }
+    return { key, kind, hash, body: JSON.stringify(entry.body) };
+  });
+  store.transaction(() => {
+    const upsert = store.db.prepare(
+      `INSERT INTO staged_objects(key, kind, hash, body, updated_at) VALUES(?, ?, ?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET kind = excluded.kind, hash = excluded.hash,
+         body = excluded.body, updated_at = excluded.updated_at`,
+    );
+    checked.forEach(entry =>
+      upsert.run(entry.key, entry.kind, entry.hash, entry.body, now),
+    );
+  });
+  return { stored: checked.length };
+}
+
+export function commit(
+  store: Store,
+  body: any,
+  deviceId: string,
+  now: number,
+): { deleted: number; missing: string[] } {
+  checkProtocol(body);
+  const manifest = readManifest(body.manifest);
+  const scope = readServerScope(body.scope);
+  return store.transaction(() => {
+    const stored = storedHashes(store);
+    const missing: string[] = [];
+    manifest.forEach((hash, key) => {
+      if (stored.get(key) !== hash) missing.push(key);
+    });
+    if (missing.length) return { deleted: 0, missing };
+    const remove = store.db.prepare('DELETE FROM objects WHERE key = ?');
+    let deleted = 0;
+    (
+      store.db.prepare('SELECT key FROM objects').all() as { key: string }[]
+    ).forEach(({ key }) => {
+      if (!manifest.has(key)) {
+        remove.run(key);
+        deleted++;
+      }
+    });
+    const promote = store.db
+      .prepare(`INSERT INTO objects(key, kind, hash, body, updated_at)
+      SELECT key, kind, hash, body, updated_at FROM staged_objects WHERE key = ? AND hash = ?
+      ON CONFLICT(key) DO UPDATE SET kind=excluded.kind, hash=excluded.hash, body=excluded.body, updated_at=excluded.updated_at`);
+    manifest.forEach((hash, key) => promote.run(key, hash));
+    store.db.prepare('DELETE FROM staged_objects').run();
+    store.setMeta('scope', JSON.stringify(scope));
+    store.setMeta('lastCommitAt', String(now));
+    if (!missing.length) store.setMeta('lastCompleteAt', String(now));
+    store.db
+      .prepare(
+        'UPDATE devices SET last_sync_at = ?, app_protocol = ? WHERE id = ?',
+      )
+      .run(now, SERVER_SYNC_PROTOCOL, deviceId);
+    store.bumpRevision();
+    rebuildDerived(store);
+    return { deleted, missing };
+  });
+}
+
+/**
+ * Löscht die Kopie auf dem Server und trennt das Telefon. Sonst schickte es
+ * beim nächsten Abgleich wieder alles; neu verbinden ist eine bewusste Aktion.
+ */
+export function deleteCopy(store: Store) {
+  store.transaction(() => {
+    store.db.prepare('DELETE FROM objects').run();
+    store.db.prepare('DELETE FROM staged_objects').run();
+    store.db.prepare('DELETE FROM devices').run();
+    ['scope', 'lastCommitAt', 'lastCompleteAt'].forEach(key =>
+      store.setMeta(key, null),
+    );
+    store.bumpRevision();
+    rebuildDerived(store);
+  });
+}

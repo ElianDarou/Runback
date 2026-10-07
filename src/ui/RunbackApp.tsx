@@ -1,3 +1,6 @@
+import { ServerSettings } from './ServerSettings';
+import { ConnectionMark } from './components';
+import { serverNeedsAttention, serverStateLabel, type ServerLinkStatus } from '../domain/serverLink';
 import React, {
   memo,
   useCallback,
@@ -312,6 +315,7 @@ type Page =
   | 'record-sessions'
   | 'templates'
   | 'muscle-map'
+  | 'server'
   | 'settings'
   | 'devices'
   | 'data'
@@ -341,6 +345,7 @@ interface Trail {
 }
 const PARENT_PAGE: Partial<Record<Page, Page>> = {
   devices: 'settings',
+  server: 'settings',
   'run-audio': 'settings',
   data: 'settings',
   models: 'settings',
@@ -600,6 +605,18 @@ export function RunbackApp({
 } = {}) {
   const insets = useSafeAreaInsets();
   const [state, setState] = useState<AppState>(initial);
+  const [serverStatus, setServerStatus] = useState<ServerLinkStatus | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const update = () => {
+      if (AndroidAppState.currentState === 'background') return;
+      void native.serverStatus().then(next => { if (alive) setServerStatus(next); }).catch(() => {});
+    };
+    update();
+    const timer = setInterval(update, 5000);
+    const subscription = AndroidAppState.addEventListener('change', update);
+    return () => { alive = false; clearInterval(timer); subscription.remove(); };
+  }, []);
   const stateRef = useRef(state);
   const stateGeneration = useRef(0);
   const settingsRevision = useRef(0);
@@ -4609,6 +4626,12 @@ export function RunbackApp({
           onPress={() => openPage('devices')}
         />
         <Row
+          title="Eigener Server"
+          subtitle={serverStatus ? serverStateLabel(serverStatus) : 'Status wird geladen'}
+          trailing={<ConnectionMark attention={Boolean(serverStatus && serverNeedsAttention(serverStatus))} />}
+          onPress={() => openPage('server')}
+        />
+        <Row
           title="Deine Daten"
           subtitle={`${counted(
             runs.length,
@@ -5536,6 +5559,8 @@ export function RunbackApp({
         openPage('features-detail');
       }}
     />
+  ) : page === 'server' ? (
+    <ServerSettings key={serverStatus?.url ?? "off"} status={serverStatus} onStatus={setServerStatus} />
   ) : page === 'settings' ? (
     renderSettings()
   ) : page === 'devices' ? (
@@ -5971,11 +5996,12 @@ export function RunbackApp({
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Einstellungen"
+              accessibilityLabel={serverStatus && serverNeedsAttention(serverStatus) ? `Einstellungen · Server ${serverStateLabel(serverStatus)}` : "Einstellungen"}
               onPress={() => openPage('settings')}
               style={({ pressed }) => [styles.gear, pressed && styles.pressed]}
             >
               <Icon name="Einstellungen" />
+              <ConnectionMark attention={Boolean(serverStatus && serverNeedsAttention(serverStatus))} />
             </Pressable>
           </View>
         ) : null}

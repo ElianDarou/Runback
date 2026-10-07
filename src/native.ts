@@ -1,28 +1,33 @@
-import { NativeEventEmitter, NativeModules } from 'react-native';
-import type { TrainingFocus } from './domain/focus';
 import type {
-  GaitPlacement,
-  RunSummary,
-  RunPurpose,
-  Sport,
-  Experiment,
-  Adherence,
-} from './domain/types';
+  Settings,
+  MotionWrist,
+  Run,
+} from './domain/trainingRecords';
+export type {
+  Preset,
+  Settings,
+  MotionWrist,
+  MotionCaptureSettings,
+  RoutePoint,
+  Run,
+} from './domain/trainingRecords';
+import { readServerLinkStatus, type ServerScope } from './domain/serverLink';
+import { NativeEventEmitter, NativeModules } from 'react-native';
 import type { RouteCoordinate, RoutePlan } from './domain/routes';
 import type { RunTimeline } from './domain/runReport';
 import type { RunSeries } from './domain/runSeries';
-import { normalizeSport } from './domain/sport';
-import { normalizePurpose } from './domain/runTitle';
-import type { PurposeHintProvenance } from './domain/purposeHint';
 import type {
   StrengthSession,
   StrengthState,
   WorkoutTemplate,
 } from './domain/strength';
 import { summarize } from './domain/strength';
-import { importedStrengthSession } from './domain/strengthImports';
-import { applyStrengthEndCorrection } from './domain/endCorrection';
-import type { StrongWorkout } from './domain/vendorImports';
+import {
+  mergeStrengthSessions,
+  normalizeRun,
+  normalizeStrength,
+  strengthSessionFromBridge,
+} from './domain/bridgeRecords';
 
 export interface StrengthEndEditorData {
   startTime: number;
@@ -45,13 +50,10 @@ import {
   type ImportBatch,
   type ImportChoice,
 } from './domain/importReview';
-import type { ScheduleState } from './domain/schedule';
-import { normalizeRunTarget, type RunTarget } from './domain/runTarget';
 import type {
   SorenessReport as CapturedSorenessReport,
   StructuredSorenessItem,
 } from './domain/sorenessInput';
-import type { FeatureSettings } from './domain/features';
 import {
   readStrengthHeart,
   readStrengthHeartSummaries,
@@ -63,72 +65,6 @@ import {
   type StrengthWatchInfo,
 } from './domain/wearLink';
 
-export interface Preset {
-  id: string;
-  name: string;
-  purpose: RunPurpose;
-  minutes: number;
-  cues: boolean;
-}
-export interface Settings {
-  schedule?: ScheduleState;
-  goal?: string;
-  goalTargetDate?: string;
-  /** Zielstrecke in km und Zielzeit in Sekunden fürs Laufziel (`domain/raceGoal`). */
-  goalDistanceKm?: number;
-  goalTargetSeconds?: number;
-  trainingFocus?: TrainingFocus | null;
-  /** Bereich Krafttraining: eigenes Ziel und eigener Fokus. */
-  strengthGoal?: string;
-  strengthGoalTargetDate?: string;
-  strengthFocus?: TrainingFocus | null;
-  strengthPostponedUntil?: number;
-  minutes?: number;
-  purpose?: RunPurpose;
-  /** Zuletzt gewählte Sportart für die freie Aufzeichnung. */
-  sport?: Sport;
-  /** Wo das Handy beim Laufen steckt; Kotlin liest es beim Start für den Laufstil. */
-  gaitPlacement?: GaitPlacement;
-  /** Puls und Bewegungen der Uhr im Krafttraining; Kotlin liest es beim Start einer Einheit. */
-  motionCapture?: MotionCaptureSettings;
-  trainingDays?: number[];
-  cues?: boolean;
-  /** Explizit gewählte Begleitung für den nächsten Lauf. */
-  runTarget?: RunTarget;
-  weather?: boolean;
-  /** Maxpuls in bpm für die Pulszonen; fehlt er, schätzt Runback aus den Läufen. */
-  maxHeartRate?: number;
-  /** Älterer Einzelschalter; gilt nur, solange `features` fehlt. */
-  showHeartRate?: boolean;
-  /** Was der Nutzer sehen will und wann Runback fragt (`domain/features`). */
-  features?: FeatureSettings;
-  presets?: Preset[];
-  experiments?: Experiment[];
-  dismissedRecommendations?: string[];
-  /** Gelöschte Importvorschläge; Originaleinheiten und gespeicherte Vorlagen bleiben erhalten. */
-  dismissedStrengthImportTemplateIds?: string[];
-  adherence?: Record<string, Adherence>;
-  postponedUntil?: number;
-  [key: string]: unknown;
-}
-export type MotionWrist = 'left' | 'right' | 'unknown';
-export interface MotionCaptureSettings {
-  /** Bewegungen mitschreiben (Rohdaten für spätere Satzerkennung). */
-  enabled: boolean;
-  wrist: MotionWrist;
-  /** Puls messen; fehlt der Wert, ist er an (Kotlin `MotionSessions.config`). */
-  heartRate?: boolean;
-  /**
-   * Sätze auf der Uhr erkennen und Wiederholungen zählen; nur mit
-   * `enabled`. Fehlt der Wert, ist sie an (Kotlin `MotionSessions.config`).
-   */
-  autoSets?: boolean;
-  /**
-   * Erkannte Zahl ohne Eingabe nach kurzer Zeit übernehmen; nur mit
-   * `autoSets`. Fehlt der Wert, ist sie aus — der Nutzer bestätigt selbst.
-   */
-  autoConfirm?: boolean;
-}
 /** Zähler aus `MotionSessions.status`; die Rohdaten selbst bleiben nativ. */
 export interface MotionStatus {
   enabled: boolean;
@@ -142,22 +78,6 @@ export interface MotionStatus {
     sessionId: string;
     watch: { status?: string; message?: string };
   } | null;
-}
-export interface RoutePoint {
-  latitude: number;
-  longitude: number;
-  time?: number;
-  gap?: boolean;
-}
-export interface Run extends RunSummary {
-  note?: string;
-  route?: RoutePoint[];
-  events?: { type?: string; at?: number; message?: string }[];
-  target?: RunTarget;
-  /** Laufart ausdrücklich gewählt oder bestätigt; dann fragt die Detailseite nicht mehr. */
-  purposeConfirmed?: boolean;
-  /** Spur eines bestätigten Vorschlags; fehlt bei eigener Wahl. */
-  purposeHint?: PurposeHintProvenance;
 }
 export interface Capabilities {
   gps?: boolean;
@@ -203,6 +123,7 @@ export interface AppState {
   settings: Settings;
   capabilities: Capabilities;
 }
+export { normalizeRun, normalizeStrength };
 const module = NativeModules.Runback;
 /** Gleicher Name wie `StrengthWorkout.EVENT` in Kotlin. */
 const STRENGTH_CHANGED_EVENT = 'runbackStrengthChanged';
@@ -229,32 +150,26 @@ export async function routeCall<T = unknown>(
   const result = await routeModule[method](...args);
   return (typeof result === 'string' ? JSON.parse(result) : result) as T;
 }
-export function normalizeRun(raw: any): Run {
-  const feedback = raw.feedback || {};
-  return {
-    ...raw,
-    startTime: raw.startTime ?? raw.startedAt ?? 0,
-    endTime: raw.endTime ?? raw.endedAt ?? 0,
-    durationSeconds:
-      raw.durationSeconds ?? raw.durationSec ?? (raw.elapsedMs || 0) / 1000,
-    distanceMeters: raw.distanceMeters ?? raw.distanceM ?? 0,
-    source: raw.source || 'phone',
-    purpose: normalizePurpose(feedback.purpose ?? raw.purpose),
-    purposeConfirmed: feedback.purposeConfirmed === true,
-    purposeHint:
-      feedback.purposeHint && typeof feedback.purposeHint === 'object'
-        ? feedback.purposeHint
-        : undefined,
-    sport: normalizeSport(feedback.sport ?? raw.sport),
-    samples: raw.samples ?? raw.rawSampleCount ?? 0,
-    sourceVersion: raw.sourceVersion || 'native-v1',
-    rpe: raw.rpe ?? feedback.rpe,
-    note: raw.note ?? feedback.note,
-    route: raw.route ?? raw.geometry,
-    target: raw.target ? normalizeRunTarget(raw.target) : undefined,
-  };
-}
 export const native = {
+  async serverStatus() {
+    return readServerLinkStatus(await nativeCall('getServerStatus'));
+  },
+  async connectServer(url: string, code: string, scope: ServerScope) {
+    return readServerLinkStatus(
+      await nativeCall('connectServer', url, code, JSON.stringify(scope)),
+    );
+  },
+  async setServerScope(scope: ServerScope) {
+    return readServerLinkStatus(
+      await nativeCall('setServerScope', JSON.stringify(scope)),
+    );
+  },
+  async syncServer() {
+    return readServerLinkStatus(await nativeCall('syncServer'));
+  },
+  async disconnectServer() {
+    return readServerLinkStatus(await nativeCall('disconnectServer'));
+  },
   async runIdsInRange(from: number, until: number): Promise<string[]> {
     const result = await nativeCall<{ ids: string[] }>(
       'runIdsInRange',
@@ -449,33 +364,15 @@ export const native = {
   },
   async strengthSession(id: string): Promise<StrengthSession> {
     const raw = await nativeCall<any>('getStrengthSession', id);
-    return raw?.kind === 'strength'
-      ? applyStrengthEndCorrection(raw, raw.endCorrection)
-      : importedStrengthSession(raw);
+    return strengthSessionFromBridge(raw);
   },
   async strengthSessions(limit = 100): Promise<StrengthSession[]> {
     const raw = await nativeCall<any>('getStrengthSessions', limit);
-    const sessions: StrengthSession[] = Array.isArray(raw?.sessions)
-      ? raw.sessions
-      : [];
-    const imported: StrongWorkout[] = Array.isArray(raw?.imports)
-      ? raw.imports
-      : [];
-    const unique = new Map(
-      sessions.map(session => [
-        session.id,
-        applyStrengthEndCorrection(session, (session as any).endCorrection),
-      ]),
+    return mergeStrengthSessions(
+      Array.isArray(raw?.sessions) ? raw.sessions : [],
+      Array.isArray(raw?.imports) ? raw.imports : [],
+      Math.min(500, limit),
     );
-    imported.forEach(workout => {
-      const session = importedStrengthSession(workout);
-      if (!unique.has(session.id)) {
-        unique.set(session.id, session);
-      }
-    });
-    return Array.from(unique.values())
-      .sort((a, b) => b.startTime - a.startTime || b.id.localeCompare(a.id))
-      .slice(0, Math.max(1, Math.min(500, limit)));
   },
   /** Puls einer Krafteinheit von der Uhr, mit Darstellungsreihe; sonst undefined. */
   async strengthHeart(id: string): Promise<StrengthHeart | undefined> {
@@ -499,7 +396,9 @@ export const native = {
   async strengthEndEditor(id: string): Promise<StrengthEndEditorData> {
     const raw = await nativeCall<any>('getStrengthEndEditor', id);
     const time = (value: unknown) =>
-      typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
+      typeof value === 'number' && Number.isFinite(value) && value > 0
+        ? value
+        : undefined;
     return {
       startTime: raw.startTime,
       rangeEnd: raw.rangeEnd,
@@ -510,11 +409,12 @@ export const native = {
     };
   },
   /** `null` stellt das ursprüngliche Ende wieder her. */
-  async setStrengthEnd(id: string, endTime: number | null): Promise<StrengthSession> {
+  async setStrengthEnd(
+    id: string,
+    endTime: number | null,
+  ): Promise<StrengthSession> {
     const raw = await nativeCall<any>('setStrengthEnd', id, endTime ?? -1);
-    return raw?.kind === 'strength'
-      ? applyStrengthEndCorrection(raw, raw.endCorrection)
-      : importedStrengthSession(raw);
+    return strengthSessionFromBridge(raw);
   },
   /** Unkorrigierter Verlauf eines Laufs für „Ende bearbeiten“. */
   async runEndEditor(id: string): Promise<RunEndEditorData> {
@@ -618,13 +518,3 @@ export const native = {
     await routeCall('saveRoutePlannerState', JSON.stringify(state));
   },
 };
-
-/** Fehlende Felder ergeben einen leeren, benutzbaren Zustand statt eines Fehlers. */
-export function normalizeStrength(raw: any): StrengthState {
-  return {
-    templates: Array.isArray(raw?.templates) ? raw.templates : [],
-    active:
-      raw?.active && raw.active.id ? (raw.active as StrengthSession) : null,
-    history: Array.isArray(raw?.history) ? raw.history : [],
-  };
-}

@@ -25,3 +25,9 @@ npm-debug.log
 
 # OS
 .DS_Store
+
+# Eigener Server
+/server/dist/
+/server/data/
+/server/.generated/
+/server/.env

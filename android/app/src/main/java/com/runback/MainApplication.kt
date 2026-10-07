@@ -51,6 +51,7 @@ class MainApplication : Application(), ReactApplication {
         target = session?.optJSONObject("target")?.toString(),
       )
     }
+    ServerLink.start(this)
     WearController.retryPending(this)
     loadReactNative(this)
   }
