@@ -1,6 +1,6 @@
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { BackHandler, Text, TextInput } from 'react-native';
+import { Alert, BackHandler, Text, TextInput } from 'react-native';
 
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
@@ -62,7 +62,13 @@ jest.mock('../src/native', () => {
 
 import { RunbackApp } from '../src/ui/RunbackApp';
 import { native, nativeCall } from '../src/native';
-import { ChipGroup, Row } from '../src/ui/components';
+import {
+  CheckRow,
+  ChipGroup,
+  Row,
+  Segmented,
+  Sheet,
+} from '../src/ui/components';
 import { acceptRecommendation, analyzeRun } from '../src/domain';
 import {
   buildRunReport,
@@ -425,6 +431,7 @@ describe('Fokus', () => {
     });
     try {
       await tap(tree, 'Coach');
+      await tapText(tree, 'Ziele & Fokus');
       await tapText(tree, 'Noch kein Fokus');
       await act(async () => {
         tree.root.findByType(ChipGroup).props.onChange('injury_free');
@@ -494,6 +501,7 @@ describe('Fokus', () => {
     // Der Fokus ist die Grundlage der Empfehlung und steht im Coach.
     expect(screenText(tree)).not.toContain('Noch kein Fokus');
     await tap(tree, 'Coach');
+    await tapText(tree, 'Ziele & Fokus');
     expect(screenText(tree)).toContain('Noch kein Fokus');
     await tapText(tree, 'Noch kein Fokus');
     const text = screenText(tree);
@@ -519,8 +527,10 @@ describe('Vorlagenverwaltung', () => {
     jest
       .mocked(nativeCall)
       .mockImplementation(
-        async (method) =>
-          (method === 'getStrengthImportCandidates' ? { workouts } : {}) as never,
+        async method =>
+          (method === 'getStrengthImportCandidates'
+            ? { workouts }
+            : {}) as never,
       );
     const savedTemplate = createTemplate(100, 'Meine Vorlage', []);
     jest.mocked(native.strength).mockResolvedValue({
@@ -596,7 +606,7 @@ describe('Vorlagenverwaltung', () => {
       await act(async () => {
         tree.root
           .findAllByType(TextInput)
-          .find((node) => node.props.accessibilityLabel === 'Name des Plans')!
+          .find(node => node.props.accessibilityLabel === 'Name des Plans')!
           .props.onChangeText('Push');
       });
       await tap(tree, 'Plan speichern');
@@ -729,7 +739,7 @@ describe('Funktionen', () => {
     expect(text).toContain('Lauf starten');
     expect(text).not.toContain('Krafttraining starten');
     expect(text).not.toContain('Diese Woche im Plan ansehen');
-    expect(tabLabels(tree)).toEqual(['Heute', 'Verlauf', 'Coach']);
+    expect(tabLabels(tree)).toEqual(['Heute', 'Coach', 'Verlauf']);
     await tap(tree, 'Coach');
     // Ohne Kraft kein Bereichswechsel und ohne Schlüssel kein Chat.
     expect(screenText(tree)).not.toContain('Trainingschat');
@@ -760,10 +770,10 @@ describe('Funktionen', () => {
     await tap(tree, 'Einstellungen');
     await tapText(tree, 'Funktionen');
     expect(screenText(tree)).toContain('deine Daten bleiben');
-    await flip(tree, 'Planung als Tab');
+    await flip(tree, 'Planung');
     expect(settingsSaved().features?.planning.enabled).toBe(false);
     expect(tabLabels(tree)).not.toContain('Plan');
-    await flip(tree, 'Muskelkater melden');
+    await flip(tree, 'Muskelkater');
     expect(settingsSaved().features?.soreness.enabled).toBe(false);
     // Der letzte Bereich lässt sich nicht abwählen.
     await flip(tree, 'Krafttraining');
@@ -815,12 +825,177 @@ describe('Funktionen', () => {
     });
   });
 
+  it('belegt freie Plätze mit Statistik und Vorlagen und behält Funktionen ohne Tab erreichbar', async () => {
+    withFeatures({ planning: { enabled: false }, coach: { enabled: false } });
+    const tree = await render();
+    expect(tabLabels(tree)).toEqual(['Heute', 'Verlauf']);
+    await tap(tree, 'Einstellungen');
+    await tapText(tree, 'Funktionen');
+    const switchSettings = async (value: 'main' | 'navigation') => {
+      await act(async () =>
+        tree.root.findByType(Segmented).props.onChange(value),
+      );
+    };
+    await switchSettings('navigation');
+    const choose = async (title: string, checked: boolean) => {
+      await act(async () =>
+        tree.root
+          .findAllByType(CheckRow)
+          .find(row => row.props.title === title)!
+          .props.onToggle(checked),
+      );
+    };
+    await choose('Statistik', true);
+    await choose('Vorlagen', true);
+    expect(tabLabels(tree)).toEqual([
+      'Heute',
+      'Statistik',
+      'Vorlagen',
+      'Verlauf',
+    ]);
+    await tap(tree, 'Heute');
+    await tap(tree, 'Vorlagen');
+    expect(screenText(tree)).toContain('Vorlagen');
+    await tap(tree, 'Alle Funktionen');
+    await tapText(tree, 'Muskelkater');
+    expect(screenText(tree)).toContain('Muskelkater melden');
+    expect(tabLabels(tree)).not.toContain('Muskelkater');
+    await tap(tree, 'Alle Funktionen');
+    await tapText(tree, 'Ziele & Fokus');
+    expect(screenText(tree)).toContain('Noch kein Fokus');
+    await act(async () => tree.unmount());
+  });
+
+  it('ersetzt nur den gewählten Platz und setzt die Änderung nach Neustart fort', async () => {
+    const tree = await render();
+    await tap(tree, 'Einstellungen');
+    await tapText(tree, 'Funktionen');
+    await act(async () =>
+      tree.root.findByType(Segmented).props.onChange('navigation'),
+    );
+    await act(async () =>
+      tree.root
+        .findAllByType(CheckRow)
+        .find(row => row.props.title === 'Statistik')!
+        .props.onToggle(true),
+    );
+    expect(tabLabels(tree)).toEqual(['Heute', 'Plan', 'Coach', 'Verlauf']);
+    await tapText(tree, 'Coach ersetzen');
+    expect(tabLabels(tree)).toEqual(['Heute', 'Plan', 'Statistik', 'Verlauf']);
+    expect(settingsSaved().features?.coach.enabled).toBe(true);
+    const saved = settingsSaved();
+    await act(async () => tree.unmount());
+    withFeatures(saved.features);
+    const restarted = await render();
+    expect(tabLabels(restarted)).toEqual([
+      'Heute',
+      'Plan',
+      'Statistik',
+      'Verlauf',
+    ]);
+    await tap(restarted, 'Alle Funktionen');
+    await tapText(restarted, 'Coach');
+    expect(screenText(restarted)).toContain('Noch keine Empfehlung');
+    await act(async () => restarted.unmount());
+  });
+
+  it('pausiert den Coach ohne Datenverlust und ohne automatisches Fortsetzen', async () => {
+    const baseline: RunSummary = {
+      id: 'base',
+      startTime: 30 * DAY,
+      endTime: 30 * DAY + 1320000,
+      durationSeconds: 1320,
+      distanceMeters: 2000,
+      purpose: 'easy',
+      source: 'test',
+      status: 'complete',
+      segments: [300, 300, 360, 360].map((durationSeconds, index) => ({
+        id: String(index),
+        durationSeconds,
+        distanceMeters: 500,
+        gradePercent: 0,
+      })),
+    };
+    const accepted = acceptRecommendation(
+      analyzeRun(baseline, undefined, previousRuns(baseline)).recommendation!,
+      30 * DAY + 2000000,
+    );
+    jest.mocked(native.state).mockResolvedValueOnce({
+      runs: [baseline, ...previousRuns(baseline)],
+      recording: null,
+      settings: {
+        onboardedAt: 1,
+        experiments: [accepted],
+        trainingFocus: { kind: 'endurance', label: 'Weiter laufen' },
+        goal: '10 km',
+      },
+      capabilities: {},
+    } as any);
+    const tree = await render();
+    const alert = jest
+      .spyOn(Alert, 'alert')
+      .mockImplementation((_title, _message, buttons) =>
+        buttons?.find(button => button.text === 'Ausblenden')?.onPress?.(),
+      );
+    try {
+      await tap(tree, 'Einstellungen');
+      await tapText(tree, 'Funktionen');
+      await flip(tree, 'Coach');
+      expect(settingsSaved().experiments?.[0].status).toBe('paused');
+      expect(settingsSaved().experiments?.[0].recommendation).toEqual(
+        accepted.recommendation,
+      );
+      expect(settingsSaved().goal).toBe('10 km');
+      expect(tabLabels(tree)).not.toContain('Coach');
+      expect(screenText(tree)).toContain('Schalte ein');
+      await flip(tree, 'Coach');
+      expect(settingsSaved().experiments?.[0].status).toBe('paused');
+      expect(tabLabels(tree)).not.toContain('Coach');
+      await tap(tree, 'Heute');
+      await tap(tree, 'Alle Funktionen');
+      await tapText(tree, 'Coach');
+      expect(screenText(tree)).toContain('Pausiert');
+    } finally {
+      alert.mockRestore();
+      await act(async () => tree.unmount());
+    }
+  });
+
+  it('entfernt ausgeschaltete Statistik und Vorlagen auch aus Verlauf und Trainingsstart', async () => {
+    withFeatures({
+      statistics: { enabled: false },
+      templates: { enabled: false },
+      recording: { routes: false },
+      coach: { enabled: false },
+      planning: { enabled: false },
+      goals: { enabled: false },
+      soreness: { enabled: false },
+    });
+    const tree = await render();
+    await tap(tree, 'Verlauf');
+    expect(screenText(tree)).not.toContain('Statistik');
+    await tap(tree, 'Heute');
+    await tap(tree, 'Krafttraining starten');
+    expect(screenText(tree)).not.toContain('Vorlagen verwalten');
+    await act(async () =>
+      tree.root
+        .findAllByType(Sheet)
+        .find(sheet => sheet.props.visible)!
+        .props.onClose(),
+    );
+    await tap(tree, 'Alle Funktionen');
+    expect(screenText(tree)).toContain(
+      'Keine optionale Funktion eingeschaltet',
+    );
+    await act(async () => tree.unmount());
+  });
+
   it('bietet bestehenden Nutzern die Funktionen einmalig auf Heute an', async () => {
     const tree = await render();
     expect(screenText(tree)).toContain('Neu: Wähle, was Runback zeigt');
     await tapText(tree, 'Neu: Wähle, was Runback zeigt');
     expect(screenText(tree)).toContain('Funktionen');
-    expect(settingsSaved().features?.version).toBe(1);
+    expect(settingsSaved().features?.version).toBe(2);
     await tap(tree, 'Heute');
     expect(screenText(tree)).not.toContain('Neu: Wähle, was Runback zeigt');
     await act(async () => {
@@ -1181,16 +1356,14 @@ describe('Laufart nachtragen', () => {
     await act(async () => activeTree?.unmount());
     activeTree = undefined;
     jest.mocked(native.state).mockReset();
-    jest
-      .mocked(native.state)
-      .mockImplementation(() =>
-        Promise.resolve({
-          runs: [],
-          recording: null,
-          settings: { onboardedAt: 1, purpose: 'free', minutes: 30 },
-          capabilities: {},
-        } as any),
-      );
+    jest.mocked(native.state).mockImplementation(() =>
+      Promise.resolve({
+        runs: [],
+        recording: null,
+        settings: { onboardedAt: 1, purpose: 'free', minutes: 30 },
+        capabilities: {},
+      } as any),
+    );
   });
 
   it('fragt Lauf für Lauf, geht erst nach dem Speichern weiter und zählt „Einfach laufen“ als Antwort', async () => {
@@ -1258,28 +1431,41 @@ describe('Laufart nachtragen', () => {
 describe('Krafthistorie nach Import', () => {
   it('aktualisiert Verlauf und Statistik direkt nach dem Import', async () => {
     const sessions = parseStrongCsvPreview(
-      `Date;Workout Name;Exercise Name;Set Order;Weight (kg);Reps\n${Date.now() - DAY};Import Push;Bench Press (Barbell);1;80;8`,
+      `Date;Workout Name;Exercise Name;Set Order;Weight (kg);Reps\n${
+        Date.now() - DAY
+      };Import Push;Bench Press (Barbell);1;80;8`,
     ).workouts.map(importedStrengthSession);
     const previousCall = jest.mocked(nativeCall).getMockImplementation();
-    const previousSessions = jest.mocked(native.strengthSessions).getMockImplementation();
+    const previousSessions = jest
+      .mocked(native.strengthSessions)
+      .getMockImplementation();
     // Erst eine Vorschau; gespeichert wird erst mit „übernehmen“.
-    jest.mocked(nativeCall).mockImplementation(async method => (
-      method === 'importFiles'
-        ? {
-            state: 'review',
-            token: 'vorschau',
-            files: ['strong.csv'],
-            preview: {
-              strength: {
-                workouts: [
-                  { id: 'strong:push', time: Date.now() - DAY, name: 'Import Push', sets: 1 },
-                ],
+    jest.mocked(nativeCall).mockImplementation(
+      async method =>
+        (method === 'importFiles'
+          ? {
+              state: 'review',
+              token: 'vorschau',
+              files: ['strong.csv'],
+              preview: {
+                strength: {
+                  workouts: [
+                    {
+                      id: 'strong:push',
+                      time: Date.now() - DAY,
+                      name: 'Import Push',
+                      sets: 1,
+                    },
+                  ],
+                },
               },
-            },
-          }
-        : {}
-    ) as never);
-    jest.mocked(native.strengthSessions).mockResolvedValueOnce([]).mockResolvedValueOnce(sessions);
+            }
+          : {}) as never,
+    );
+    jest
+      .mocked(native.strengthSessions)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(sessions);
     const tree = await render();
     try {
       await tap(tree, 'Einstellungen');
@@ -1299,7 +1485,9 @@ describe('Krafthistorie nach Import', () => {
     } finally {
       await act(async () => tree.unmount());
       jest.mocked(nativeCall).mockImplementation(previousCall!);
-      jest.mocked(native.strengthSessions).mockImplementation(previousSessions!);
+      jest
+        .mocked(native.strengthSessions)
+        .mockImplementation(previousSessions!);
     }
   });
 });
