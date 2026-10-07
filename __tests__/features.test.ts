@@ -1,5 +1,10 @@
 import {
   DEFAULT_FEATURES,
+  FEATURES_VERSION,
+  featureEnabled,
+  availableTabs,
+  withFeature,
+  withNavigation,
   availableHomeSections,
   enabledSports,
   normalizeFeatures,
@@ -101,7 +106,7 @@ describe('Ableitungen', () => {
       soreness: { enabled: false },
       recommendations: { running: 'off', strength: 'suggest' },
     });
-    expect(visibleTabs(f)).toEqual(['Heute', 'Verlauf', 'Coach']);
+    expect(visibleTabs(f)).toEqual(['Heute', 'Coach', 'Verlauf']);
     expect(availableHomeSections(f)).toEqual(['goal', 'recent']);
     expect(visibleHomeSections(f)).toEqual(availableHomeSections(f));
     expect(recommendationsShown(f, 'running')).toBe(false);
@@ -237,5 +242,102 @@ describe('shouldPromptSoreness', () => {
     expect(shouldPromptSoreness(f, [{ at: NOW - 3 * DAY }], [], [], NOW)).toBe(
       true,
     );
+  });
+});
+
+describe('Funktionen und Navigation v2', () => {
+  it('migriert alte Einstellungen ohne abgeschaltete Funktionen wieder einzuschalten', () => {
+    const f = normalizeFeatures({
+      version: 1,
+      planning: { enabled: false },
+      recording: { routes: false },
+      recommendations: { running: 'off' },
+    });
+    expect(f.version).toBe(FEATURES_VERSION);
+    expect(f.coach.enabled).toBe(true);
+    expect(f.planning.enabled).toBe(false);
+    expect(f.recording.routes).toBe(false);
+    expect(f.recommendations.running).toBe('off');
+    expect(visibleTabs(f)).toEqual(['Heute', 'Coach', 'Verlauf']);
+  });
+  it('normalisiert Plätze ohne ihre Reihenfolge zu verlieren', () => {
+    const f = normalizeFeatures({
+      navigation: {
+        tabs: ['Routen', 'Statistik', 'Routen', 'Heute', 'Coach', 'garbage'],
+      },
+    });
+    expect(f.navigation.tabs).toEqual(['Routen', 'Statistik']);
+    expect(visibleTabs(f)).toEqual(['Heute', 'Routen', 'Statistik', 'Verlauf']);
+    expect(
+      normalizeFeatures({ navigation: { tabs: [] } }).navigation.tabs,
+    ).toEqual([]);
+  });
+  it('trennt aktive Funktionen von ihren Plätzen und lässt leere Plätze frei', () => {
+    const f = withFeature(
+      withFeature(normalizeFeatures(undefined), 'coach', false),
+      'planning',
+      false,
+    );
+    expect(visibleTabs(f)).toEqual(['Heute', 'Verlauf']);
+    const enabled = withFeature(f, 'coach', true);
+    expect(enabled.coach.enabled).toBe(true);
+    expect(visibleTabs(enabled)).toEqual(['Heute', 'Verlauf']);
+    const pinned = withNavigation(enabled, ['Statistik', 'Routen']);
+    expect(visibleTabs(pinned)).toEqual([
+      'Heute',
+      'Statistik',
+      'Routen',
+      'Verlauf',
+    ]);
+    expect(withNavigation(pinned, []).statistics.enabled).toBe(true);
+  });
+  it('behält Ziele, Fokusmodi und gespeicherte Anzeigeoptionen ohne Coach', () => {
+    const f = withFeature(normalizeFeatures(undefined), 'coach', false);
+    expect(recommendationsShown(f, 'running')).toBe(false);
+    expect(recommendationsShown(f, 'strength')).toBe(false);
+    expect(recommendationsSuggested(f, 'running')).toBe(false);
+    expect(availableHomeSections(f)).not.toContain('recommendation');
+    expect(availableHomeSections(f)).toContain('goal');
+    expect(f.recommendations.running).toBe('suggest');
+    expect(withFeature(f, 'coach', true).recommendations.running).toBe(
+      'suggest',
+    );
+  });
+  it('lässt Vorlagen ohne Planung und Statistik ohne Coach nutzen', () => {
+    const f = normalizeFeatures({
+      planning: { enabled: false },
+      coach: { enabled: false },
+    });
+    expect(availableTabs(f)).toEqual([
+      'Statistik',
+      'Routen',
+      'Vorlagen',
+      'Muskelkater',
+    ]);
+    expect(featureEnabled(f, 'templates')).toBe(true);
+  });
+  it('verhindert inaktive, doppelte und zusätzliche Tab-Ziele', () => {
+    const f = normalizeFeatures({
+      areas: { running: false, strength: true },
+      statistics: { enabled: false },
+      soreness: { enabled: false },
+    });
+    expect(
+      withNavigation(f, [
+        'Routen',
+        'Statistik',
+        'Muskelkater',
+        'Vorlagen',
+        'Vorlagen',
+        'Coach',
+        'Plan',
+      ]).navigation.tabs,
+    ).toEqual(['Vorlagen', 'Coach']);
+    expect(featureEnabled(f, 'routes')).toBe(false);
+  });
+  it('blendet Zielnähe nur über den unabhängigen Zielschalter aus', () => {
+    const f = withFeature(normalizeFeatures(undefined), 'goals', false);
+    expect(availableHomeSections(f)).not.toContain('goal');
+    expect(recommendationsShown(f, 'running')).toBe(true);
   });
 });

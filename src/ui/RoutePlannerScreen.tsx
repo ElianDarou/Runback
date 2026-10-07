@@ -1,6 +1,13 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   Linking,
   Pressable,
   ScrollView,
@@ -137,7 +144,13 @@ function normalizePlannerState(
   };
 }
 
-export function RoutePlannerScreen({ onClose }: { onClose: () => void }) {
+export function RoutePlannerScreen({
+  onClose,
+  embedded = false,
+}: {
+  onClose: () => void;
+  embedded?: boolean;
+}) {
   const insets = useSafeAreaInsets();
   const [view, setView] = useState<PlannerView>('start');
   const [plannerState, setPlannerState] = useState<RoutePlannerState | null>(
@@ -552,7 +565,7 @@ export function RoutePlannerScreen({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const back = () => {
+  const back = useCallback(() => {
     setError('');
     setMessage('');
     switch (view) {
@@ -578,7 +591,19 @@ export function RoutePlannerScreen({ onClose }: { onClose: () => void }) {
         setView('result');
         break;
     }
-  };
+  }, [onClose, view]);
+  useEffect(() => {
+    if (!embedded) return;
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        if (view === 'start') return false;
+        back();
+        return true;
+      },
+    );
+    return () => subscription.remove();
+  }, [back, embedded, view]);
 
   const step =
     view === 'start' || view === 'search'
@@ -596,33 +621,35 @@ export function RoutePlannerScreen({ onClose }: { onClose: () => void }) {
       style={[
         styles.shell,
         {
-          paddingTop: insets.top,
-          paddingBottom: Math.max(insets.bottom, space.xs),
+          paddingTop: embedded ? 0 : insets.top,
+          paddingBottom: embedded ? 0 : Math.max(insets.bottom, space.xs),
         },
       ]}
     >
-      <View style={styles.header}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Zurück"
-          onPress={back}
-          style={styles.back}
-        >
-          <Text style={styles.backText}>‹</Text>
-          <Text style={styles.backLabel}>Zurück</Text>
-        </Pressable>
-        <View style={styles.headerRight}>
-          {step ? <Text style={styles.step}>{step}</Text> : null}
+      {!embedded || view !== 'start' ? (
+        <View style={styles.header}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Routenplaner schließen"
-            onPress={onClose}
-            style={styles.close}
+            accessibilityLabel="Zurück"
+            onPress={back}
+            style={styles.back}
           >
-            <Text style={styles.closeText}>Schließen</Text>
+            <Text style={styles.backText}>‹</Text>
+            <Text style={styles.backLabel}>Zurück</Text>
           </Pressable>
+          <View style={styles.headerRight}>
+            {step ? <Text style={styles.step}>{step}</Text> : null}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Routenplaner schließen"
+              onPress={onClose}
+              style={styles.close}
+            >
+              <Text style={styles.closeText}>Schließen</Text>
+            </Pressable>
+          </View>
         </View>
-      </View>
+      ) : null}
       {error ? (
         <View style={styles.noticeSlot}>
           <Notice
@@ -649,7 +676,7 @@ export function RoutePlannerScreen({ onClose }: { onClose: () => void }) {
 
   const renderStart = () => (
     <>
-      <Title>Wo startest du?</Title>
+      <Title>{embedded ? 'Routen' : 'Wo startest du?'}</Title>
       <Copy muted>Wähle den Start für deine nächste Laufroute.</Copy>
       <Button
         title="Aktuelle Position verwenden"

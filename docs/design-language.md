@@ -36,12 +36,19 @@ Varianten — wer etwas Neues braucht, ergänzt es dort.
 
 ## Navigation
 
-Vier Tabs, je eine Frage: **Heute** (Was mache ich jetzt?), **Plan** (Was
-mache ich diese Woche?), **Verlauf** (Was habe ich gemacht?), **Coach** (Woran
-arbeite ich?). Einstellungen sind kein Tab, sondern eine Seite hinter dem
-Zahnrad im Kopf. Jedes Thema hat genau einen Ort: Fokus, Ziel und Empfehlung
-im Coach; Vorlagen im Plan; Geräte und Daten in den Einstellungen. „Vorlagen
-verwalten“ in den Einstellungen öffnet dieselbe Vorlagenverwaltung.
+**Heute** und **Verlauf** bleiben feste Tabs; bis zu zwei weitere aktive
+Funktionen lassen sich in eigener Reihenfolge anheften: **Plan**, **Coach**,
+**Statistik**, **Routen**, **Vorlagen** oder **Muskelkater**. Freie Plätze bleiben
+frei, bis der Nutzer sie belegt. Abschalten entfernt den Platz; Einschalten
+heftet nichts automatisch an.
+
+Das Raster im Kopf öffnet **Alle Funktionen**, auch aktive Funktionen ohne Tab.
+Das Zahnrad öffnet die Einstellungen. Unter **Funktionen** entscheidet der
+Nutzer, was aktiv ist; unter **Navigation**, was in der Leiste steht.
+Empfehlungen und Prüfungen stehen im optionalen Coach. **Ziele & Fokus** bleiben
+unabhängig vom Coach erreichbar. Vorlagen haben eine gemeinsame Verwaltung,
+die auch ohne Planung nutzbar bleibt. Geräte und Daten bleiben in den
+Einstellungen.
 
 Wo Laufen und Krafttraining beide vorkommen (Coach, Statistik), wählt ein
 `Segmented` oben den Bereich — nicht jede Sektion zweimal.
@@ -95,6 +102,7 @@ der letzten Wahl als Vorgabe.
 | `‹ Zurück` | eine Ebene zurück, im Kopf links |
 | `✓` | ausgewählt |
 | Zahnrad | öffnet die Einstellungen, im Kopf rechts |
+| Raster | öffnet alle aktiven Funktionen, auch ohne eigenen Tab |
 
 Eine Auswahl, die einen Dialog öffnet, trägt kein `⌄`. Was wie Text aussieht,
 ist nicht antippbar. Nichtinteraktive Werte haben keinen Rahmen und keine

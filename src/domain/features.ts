@@ -15,7 +15,7 @@ import type { SorenessReport } from './sorenessInput';
  * Ausnahme: Nach Muskelkater fragt Runback jetzt nach Krafttraining statt
  * täglich.
  */
-export const FEATURES_VERSION = 1 as const;
+export const FEATURES_VERSION = 2 as const;
 
 export type SorenessPrompt =
   | 'never'
@@ -35,7 +35,78 @@ export type RecordingPrimary = 'duration' | 'distance' | 'heartRate';
 export type AfterRun = 'detail' | 'feeling' | 'home';
 export type StatsModule = 'distribution' | 'records' | 'consistency' | 'body';
 export type Area = 'running' | 'strength';
-export type Tab = 'Heute' | 'Plan' | 'Verlauf' | 'Coach';
+export type OptionalTab =
+  | 'Plan'
+  | 'Coach'
+  | 'Statistik'
+  | 'Routen'
+  | 'Vorlagen'
+  | 'Muskelkater';
+export type Tab = 'Heute' | 'Verlauf' | OptionalTab;
+export type FeatureId =
+  | 'planning'
+  | 'coach'
+  | 'statistics'
+  | 'routes'
+  | 'templates'
+  | 'soreness'
+  | 'goals';
+export const FEATURE_CATALOG: readonly {
+  id: FeatureId;
+  title: string;
+  description: string;
+  tab?: OptionalTab;
+}[] = [
+  {
+    id: 'coach',
+    title: 'Coach',
+    description: 'Empfehlungen und ihre Prüfung',
+    tab: 'Coach',
+  },
+  {
+    id: 'planning',
+    title: 'Planung',
+    description: 'Woche und Monat planen',
+    tab: 'Plan',
+  },
+  {
+    id: 'goals',
+    title: 'Ziele & Fokus',
+    description: 'Vorhaben je Bereich festlegen',
+  },
+  {
+    id: 'statistics',
+    title: 'Statistik',
+    description: 'Läufe und Krafttraining auswerten',
+    tab: 'Statistik',
+  },
+  {
+    id: 'routes',
+    title: 'Routen',
+    description: 'Runden planen und mit Ansagen laufen',
+    tab: 'Routen',
+  },
+  {
+    id: 'templates',
+    title: 'Vorlagen',
+    description: 'Kraft- und Lauftraining vorbereiten',
+    tab: 'Vorlagen',
+  },
+  {
+    id: 'soreness',
+    title: 'Muskelkater',
+    description: 'Muskelkater melden und ansehen',
+    tab: 'Muskelkater',
+  },
+];
+const OPTIONAL_TABS: OptionalTab[] = [
+  'Plan',
+  'Coach',
+  'Statistik',
+  'Routen',
+  'Vorlagen',
+  'Muskelkater',
+];
 
 export interface FeatureSettings {
   version: typeof FEATURES_VERSION;
@@ -48,6 +119,10 @@ export interface FeatureSettings {
     voice: boolean;
   };
   home: { sections: HomeSection[] };
+  coach: { enabled: boolean };
+  goals: { enabled: boolean };
+  templates: { enabled: boolean };
+  navigation: { tabs: OptionalTab[] };
   planning: { enabled: boolean; suggest: boolean; month: boolean };
   recommendations: {
     running: RecommendationMode;
@@ -71,7 +146,7 @@ export interface FeatureSettings {
     rir: boolean;
     templateOfDay: boolean;
   };
-  statistics: { modules: StatsModule[] };
+  statistics: { enabled: boolean; modules: StatsModule[] };
 }
 
 export const HOME_SECTIONS: HomeSection[] = [
@@ -122,6 +197,10 @@ export const DEFAULT_FEATURES: FeatureSettings = {
   soreness: { enabled: true, prompt: 'after_strength', map: true, voice: true },
   home: { sections: [...HOME_SECTIONS] },
   planning: { enabled: true, suggest: true, month: true },
+  coach: { enabled: true },
+  goals: { enabled: true },
+  templates: { enabled: true },
+  navigation: { tabs: ['Plan', 'Coach'] },
   recommendations: {
     running: 'suggest',
     strength: 'suggest',
@@ -142,7 +221,7 @@ export const DEFAULT_FEATURES: FeatureSettings = {
     rir: true,
     templateOfDay: true,
   },
-  statistics: { modules: [...STATS_MODULES] },
+  statistics: { enabled: true, modules: [...STATS_MODULES] },
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -183,13 +262,17 @@ export function normalizeFeatures(
       soreness: { ...d.soreness },
       home: { sections: [...d.home.sections] },
       planning: { ...d.planning },
+      coach: { ...d.coach },
+      goals: { ...d.goals },
+      templates: { ...d.templates },
+      navigation: { tabs: [...d.navigation.tabs] },
       recommendations: { ...d.recommendations },
       recording: {
         ...d.recording,
         metrics: RECORDING_METRICS.filter(item => metrics.includes(item)),
       },
       strength: { ...d.strength },
-      statistics: { modules: [...d.statistics.modules] },
+      statistics: { ...d.statistics, modules: [...d.statistics.modules] },
     };
   }
   const areas = isRecord(raw.areas) ? raw.areas : {};
@@ -206,7 +289,20 @@ export function normalizeFeatures(
   const running = bool(areas.running, d.areas.running);
   const strengthArea = bool(areas.strength, d.areas.strength);
   const restSeconds = Number(strength.defaultRestSeconds);
-  return {
+  const coach = isRecord(raw.coach) ? raw.coach : {};
+  const goals = isRecord(raw.goals) ? raw.goals : {};
+  const templates = isRecord(raw.templates) ? raw.templates : {};
+  const navigation = isRecord(raw.navigation) ? raw.navigation : {};
+  const navigationTabs = Array.isArray(navigation.tabs)
+    ? navigation.tabs
+        .filter(
+          (tab, index, all): tab is OptionalTab =>
+            OPTIONAL_TABS.includes(tab as OptionalTab) &&
+            all.indexOf(tab) === index,
+        )
+        .slice(0, 2)
+    : [...d.navigation.tabs];
+  const normalized: FeatureSettings = {
     version: FEATURES_VERSION,
     // Mindestens ein Bereich bleibt an, sonst gäbe es nichts zu starten.
     areas:
@@ -214,6 +310,10 @@ export function normalizeFeatures(
         ? { running, strength: strengthArea }
         : { ...d.areas },
     sports: { cycling: bool(sports.cycling, d.sports.cycling) },
+    coach: { enabled: bool(coach.enabled, d.coach.enabled) },
+    goals: { enabled: bool(goals.enabled, d.goals.enabled) },
+    templates: { enabled: bool(templates.enabled, d.templates.enabled) },
+    navigation: { tabs: navigationTabs },
     soreness: {
       enabled: bool(soreness.enabled, d.soreness.enabled),
       prompt: oneOf(soreness.prompt, SORENESS_PROMPTS, d.soreness.prompt),
@@ -277,9 +377,11 @@ export function normalizeFeatures(
       templateOfDay: bool(strength.templateOfDay, d.strength.templateOfDay),
     },
     statistics: {
+      enabled: bool(statistics.enabled, d.statistics.enabled),
       modules: subset(statistics.modules, STATS_MODULES, d.statistics.modules),
     },
   };
+  return { ...normalized, navigation: { tabs: pinnedTabs(normalized) } };
 }
 
 /** Schaltet einen Bereich; der letzte aktive Bereich lässt sich nicht abwählen. */
@@ -292,7 +394,8 @@ export function withArea(
   if (!next.running && !next.strength) {
     return features;
   }
-  return { ...features, areas: next };
+  const updated = { ...features, areas: next };
+  return { ...updated, navigation: { tabs: pinnedTabs(updated) } };
 }
 
 /** Sportarten, die in der Auswahl vor einer Aufzeichnung stehen. */
@@ -307,11 +410,67 @@ export function enabledSports(features: FeatureSettings): Sport[] {
   return sports;
 }
 
-/** Tabs in Anzeigereihenfolge. Ohne Planung bleiben drei. */
+/** Verfügbare Funktionen und ihre Plätze sind unabhängig; Abschalten belegt keinen Platz. */
+export function featureEnabled(
+  features: FeatureSettings,
+  id: FeatureId,
+): boolean {
+  switch (id) {
+    case 'routes':
+      return features.areas.running && features.recording.routes;
+    default:
+      return features[id].enabled;
+  }
+}
+export function withFeature(
+  features: FeatureSettings,
+  id: FeatureId,
+  enabled: boolean,
+): FeatureSettings {
+  const next =
+    id === 'routes'
+      ? { ...features, recording: { ...features.recording, routes: enabled } }
+      : { ...features, [id]: { ...features[id], enabled } };
+  // Ein ausgeschalteter Platz wird frei; Wiedereinschalten heftet nichts automatisch an.
+  return {
+    ...next,
+    navigation: {
+      tabs: features.navigation.tabs.filter(tab =>
+        availableTabs(next).includes(tab),
+      ),
+    },
+  };
+}
+export function availableTabs(features: FeatureSettings): OptionalTab[] {
+  return FEATURE_CATALOG.filter(
+    entry => entry.tab && featureEnabled(features, entry.id),
+  ).map(entry => entry.tab!);
+}
+export function pinnedTabs(features: FeatureSettings): OptionalTab[] {
+  return features.navigation.tabs
+    .filter(tab => availableTabs(features).includes(tab))
+    .slice(0, 2);
+}
 export function visibleTabs(features: FeatureSettings): Tab[] {
-  return (['Heute', 'Plan', 'Verlauf', 'Coach'] as Tab[]).filter(
-    tab => tab !== 'Plan' || features.planning.enabled,
-  );
+  return ['Heute', ...pinnedTabs(features), 'Verlauf'];
+}
+/** Unbekannte, doppelte und ausgeschaltete Ziele kommen nie in die Leiste. */
+export function withNavigation(
+  features: FeatureSettings,
+  tabs: OptionalTab[],
+): FeatureSettings {
+  return {
+    ...features,
+    navigation: {
+      tabs: tabs
+        .filter(
+          (tab, index) =>
+            availableTabs(features).includes(tab) &&
+            tabs.indexOf(tab) === index,
+        )
+        .slice(0, 2),
+    },
+  };
 }
 
 /** Ob eine Empfehlung dieses Bereichs überhaupt gerechnet und gezeigt wird. */
@@ -319,7 +478,11 @@ export function recommendationsShown(
   features: FeatureSettings,
   area: Area,
 ): boolean {
-  return features.areas[area] && features.recommendations[area] !== 'off';
+  return (
+    features.coach.enabled &&
+    features.areas[area] &&
+    features.recommendations[area] !== 'off'
+  );
 }
 
 /** Ob die Empfehlung dieses Bereichs ungefragt auf Heute und nach der Einheit steht. */
@@ -327,7 +490,11 @@ export function recommendationsSuggested(
   features: FeatureSettings,
   area: Area,
 ): boolean {
-  return features.areas[area] && features.recommendations[area] === 'suggest';
+  return (
+    features.coach.enabled &&
+    features.areas[area] &&
+    features.recommendations[area] === 'suggest'
+  );
 }
 
 /**
@@ -345,7 +512,7 @@ export function availableHomeSections(
       case 'body':
         return features.soreness.enabled;
       case 'goal':
-        return features.areas.running;
+        return features.areas.running && features.goals.enabled;
       case 'recommendation':
         return (
           recommendationsSuggested(features, 'running') ||
