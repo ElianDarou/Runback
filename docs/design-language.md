@@ -42,8 +42,10 @@ Funktionen lassen sich in eigener Reihenfolge anheften: **Plan**, **Coach**,
 frei, bis der Nutzer sie belegt. Abschalten entfernt den Platz; Einschalten
 heftet nichts automatisch an.
 
-Das Raster im Kopf öffnet **Alle Funktionen**, auch aktive Funktionen ohne Tab.
-Das Zahnrad öffnet die Einstellungen. Unter **Funktionen** entscheidet der
+Das Zahnrad öffnet die Einstellungen; ist ein eigener Server eingerichtet,
+steht links davon ein Punkt: grün verbunden, rot nicht erreichbar. In den
+Einstellungen öffnet **Alle Funktionen** auch aktive Funktionen ohne Tab.
+Unter **Funktionen** entscheidet der
 Nutzer, was aktiv ist; unter **Navigation**, was in der Leiste steht.
 Empfehlungen und Prüfungen stehen im optionalen Coach. **Ziele & Fokus** bleiben
 unabhängig vom Coach erreichbar. Vorlagen haben eine gemeinsame Verwaltung,
@@ -102,7 +104,7 @@ der letzten Wahl als Vorgabe.
 | `‹ Zurück` | eine Ebene zurück, im Kopf links |
 | `✓` | ausgewählt |
 | Zahnrad | öffnet die Einstellungen, im Kopf rechts |
-| Raster | öffnet alle aktiven Funktionen, auch ohne eigenen Tab |
+| `●` links vom Zahnrad | eigener Server: grün verbunden, rot nicht erreichbar |
 
 Eine Auswahl, die einen Dialog öffnet, trägt kein `⌄`. Was wie Text aussieht,
 ist nicht antippbar. Nichtinteraktive Werte haben keinen Rahmen und keine

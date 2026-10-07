@@ -776,8 +776,8 @@ export function Segmented<T extends string>({
 }
 
 /** Im Kopf zusätzlich im Buttonlabel benannt; Farbe ist nie die einzige Information. */
-export function ConnectionMark({ attention }: { attention: boolean }) {
-  return attention ? <Text accessible={false} style={{ color: color.danger, ...type.label }}>●</Text> : null;
+export function ConnectionMark({ mark }: { mark: 'connected' | 'attention' | null }) {
+  return mark ? <Text accessible={false} style={{ color: mark === 'attention' ? color.danger : color.green, ...type.label }}>●</Text> : null;
 }
 
 /** Sichtbarer Zustand als kleines Etikett: Vorschlag · Aktiv · Pausiert. */
@@ -1016,7 +1016,6 @@ export function Icon({
       'M12 21A9 9 0 1 0 12 3A9 9 0 0 0 12 21M12 16A4 4 0 1 0 12 8A4 4 0 0 0 12 16M12 12H12.01',
     Einstellungen:
       'M12 15A3 3 0 1 0 12 9A3 3 0 0 0 12 15M19.4 15A1.65 1.65 0 0 0 19.73 16.82L19.79 16.88A2 2 0 1 1 16.96 19.71L16.9 19.65A1.65 1.65 0 0 0 15.08 19.32A1.65 1.65 0 0 0 14.08 20.83V21A2 2 0 1 1 10.08 21V20.91A1.65 1.65 0 0 0 9 19.4A1.65 1.65 0 0 0 7.18 19.73L7.12 19.79A2 2 0 1 1 4.29 16.96L4.35 16.9A1.65 1.65 0 0 0 4.68 15.08A1.65 1.65 0 0 0 3.17 14.08H3A2 2 0 1 1 3 10.08H3.09A1.65 1.65 0 0 0 4.6 9A1.65 1.65 0 0 0 4.27 7.18L4.21 7.12A2 2 0 1 1 7.04 4.29L7.1 4.35A1.65 1.65 0 0 0 8.92 4.68H9A1.65 1.65 0 0 0 10 3.17V3A2 2 0 1 1 14 3V3.09A1.65 1.65 0 0 0 15 4.6A1.65 1.65 0 0 0 16.82 4.27L16.88 4.21A2 2 0 1 1 19.71 7.04L19.65 7.1A1.65 1.65 0 0 0 19.32 8.92V9A1.65 1.65 0 0 0 20.83 10H21A2 2 0 1 1 21 14H20.91A1.65 1.65 0 0 0 19.4 15',
-    Funktionen: 'M3 3H10V10H3ZM14 3H21V10H14ZM3 14H10V21H3ZM14 14H21V21H14Z',
     Statistik: 'M4 20V13M10 20V7M16 20V10M3 20H21',
     Routen: 'M6 20C6 15 18 17 18 11S6 10 6 4M4 4H8M4 20H8',
     Vorlagen: 'M6 3H21V19H6ZM3 7V22H17M10 7H17M10 11H17M10 15H14',

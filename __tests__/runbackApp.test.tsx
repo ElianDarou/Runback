@@ -66,6 +66,7 @@ import { native, nativeCall } from '../src/native';
 import {
   CheckRow,
   ChipGroup,
+  color,
   Row,
   Segmented,
   Sheet,
@@ -179,11 +180,29 @@ describe('Heute', () => {
     (native.serverStatus as jest.Mock).mockResolvedValueOnce({ state: 'offline', url: 'http://nas.local:8080', scope: { runs: true, strength: true, coach: true, gps: false, health: false }, lastSuccessAt: null, pending: null });
     const tree = await render();
     expect(screenText(tree)).toContain('Lauf starten');
-    expect(screenText(tree)).toContain('●');
+    const mark = tree.root.findAllByType(Text).find(item => textContent(item) === '●')!;
+    expect(mark.props.style.color).toBe(color.danger);
     await tap(tree, 'Einstellungen · Server Nicht erreichbar');
     await tap(tree, 'Eigener Server');
     expect(screenText(tree)).toContain('Nicht erreichbar');
     expect(screenText(tree)).toContain('sobald dein Server wieder erreichbar ist');
+    await act(async () => tree.unmount());
+  });
+
+  it('zeigt einen verbundenen Server grün neben dem Zahnrad', async () => {
+    (native.serverStatus as jest.Mock).mockResolvedValueOnce({ state: 'ok', url: 'http://nas.local:8080', scope: { runs: true, strength: true, coach: true, gps: false, health: false }, lastSuccessAt: null, pending: 0 });
+    const tree = await render();
+    const mark = tree.root.findAllByType(Text).find(item => textContent(item) === '●')!;
+    expect(mark.props.style.color).toBe(color.green);
+    await tap(tree, 'Einstellungen · Server Aktuell');
+    expect(screenText(tree)).toContain('Eigener Server');
+    await act(async () => tree.unmount());
+  });
+
+  it('zeigt ohne eingerichteten Server keinen Punkt', async () => {
+    const tree = await render();
+    expect(screenText(tree)).not.toContain('●');
+    await tap(tree, 'Einstellungen');
     await act(async () => tree.unmount());
   });
 
@@ -869,10 +888,15 @@ describe('Funktionen', () => {
     await tap(tree, 'Heute');
     await tap(tree, 'Vorlagen');
     expect(screenText(tree)).toContain('Vorlagen');
+    expect(
+      tree.root.findAll(item => item.props?.accessibilityLabel === 'Alle Funktionen'),
+    ).toHaveLength(0);
+    await tap(tree, 'Einstellungen');
     await tap(tree, 'Alle Funktionen');
     await tapText(tree, 'Muskelkater');
     expect(screenText(tree)).toContain('Muskelkater melden');
     expect(tabLabels(tree)).not.toContain('Muskelkater');
+    await tap(tree, 'Einstellungen');
     await tap(tree, 'Alle Funktionen');
     await tapText(tree, 'Ziele & Fokus');
     expect(screenText(tree)).toContain('Noch kein Fokus');
@@ -906,6 +930,7 @@ describe('Funktionen', () => {
       'Statistik',
       'Verlauf',
     ]);
+    await tap(restarted, 'Einstellungen');
     await tap(restarted, 'Alle Funktionen');
     await tapText(restarted, 'Coach');
     expect(screenText(restarted)).toContain('Noch keine Empfehlung');
@@ -965,6 +990,7 @@ describe('Funktionen', () => {
       expect(settingsSaved().experiments?.[0].status).toBe('paused');
       expect(tabLabels(tree)).not.toContain('Coach');
       await tap(tree, 'Heute');
+      await tap(tree, 'Einstellungen');
       await tap(tree, 'Alle Funktionen');
       await tapText(tree, 'Coach');
       expect(screenText(tree)).toContain('Pausiert');
@@ -996,6 +1022,7 @@ describe('Funktionen', () => {
         .find(sheet => sheet.props.visible)!
         .props.onClose(),
     );
+    await tap(tree, 'Einstellungen');
     await tap(tree, 'Alle Funktionen');
     expect(screenText(tree)).toContain(
       'Keine optionale Funktion eingeschaltet',

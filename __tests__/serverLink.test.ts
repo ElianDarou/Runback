@@ -5,6 +5,7 @@ import {
   normalizeServerAddress,
   readServerLinkStatus,
   readServerScope,
+  serverMark,
   serverNeedsAttention,
   serverStateLabel,
 } from '../src/domain/serverLink';
@@ -95,6 +96,17 @@ describe('Eigener Server', () => {
         readServerLinkStatus({ url: 'http://nas.local', state: 'ok' }),
       ),
     ).toBe(false);
+    expect(serverMark(offline)).toBe('attention');
+    expect(
+      serverMark(readServerLinkStatus({ url: 'http://nas.local', state: 'ok' })),
+    ).toBe('connected');
+    expect(
+      serverMark(
+        readServerLinkStatus({ url: 'http://nas.local', state: 'waiting' }),
+      ),
+    ).toBe('connected');
+    expect(serverMark(readServerLinkStatus({}))).toBeNull();
+    expect(serverMark(null)).toBeNull();
     expect(formatSyncTime(null, Date.now())).toBe('noch nie');
     const now = new Date(2026, 9, 7, 18).getTime();
     expect(formatSyncTime(now, now)).toContain('heute');
