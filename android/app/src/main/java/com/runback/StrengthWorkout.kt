@@ -101,6 +101,7 @@ object StrengthWorkout {
             active to next
         }
         if (next != null) runCatching { MotionSessions.onStrengthSaved(context, store, previous, next, now) }
+        if (next != null && command.has("detectionId")) runCatching { MotionSessions.onWatchDetection(store, command, now) }
         // Auch ein veralteter Befehl bekommt den aktuellen Stand zurück.
         sync(context, command.optString("sessionId"))
         return next != null

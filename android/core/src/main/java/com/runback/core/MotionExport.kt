@@ -19,8 +19,13 @@ import kotlin.math.roundToLong
  */
 object MotionExport {
     const val FORMAT = "runback-motion-export"
-    /** 2: `heart.csv` und Spalte `heart_samples` (Rohdatei ab Version 2). */
-    const val VERSION = 2
+    /**
+     * 2: `heart.csv` und Spalte `heart_samples` (Rohdatei ab Version 2).
+     * 3: Erkennungen der Uhr (`detections.csv`, `detected_reps.csv`,
+     * `detections.jsonl`), Spalten `label`, `detection_id`, `detected_reps` in
+     * `sets.csv` und `detections` in `sessions.csv`.
+     */
+    const val VERSION = 3
 
     class Session(
         /** Dokument `motion_<id>` vom Handy: Ereignisse, Pings, Status. */
@@ -44,6 +49,8 @@ object MotionExport {
                 .put("formatVersion", VERSION)
                 .put("rawFormatVersion", MotionFormat.VERSION)
                 .put("labelsVersion", MotionLabels.VERSION)
+                .put("completionLabelsVersion", MotionLabels.COMPLETION_LABELS_VERSION)
+                .put("detectionLogVersion", SetDetectionLog.VERSION)
                 .put("exportedAt", exportedAt)
                 .put("sessions", sessions.size)
                 .put("timeBase", "t_ms = Millisekunden seit Start der Einheit, Handyuhr")
@@ -55,7 +62,7 @@ object MotionExport {
     private val SESSION_COLUMNS = listOf(
         "session_id", "start_unix_ms", "end_unix_ms", "name", "wrist", "rate_hz", "watch_model",
         "raw_available", "raw_truncated", "clock_aligned", "clock_offset_ms", "clock_uncertainty_ms",
-        "accel_samples", "gyro_samples", "sets_logged", "sets_completed", "events", "heart_samples",
+        "accel_samples", "gyro_samples", "sets_logged", "sets_completed", "events", "heart_samples", "detections",
     )
 
     private fun writeSession(zip: ZipOutputStream, session: Session): List<String> {
@@ -70,6 +77,8 @@ object MotionExport {
         var header: JSONObject? = null
         val counts = IntArray(4)
         var truncated = false
+        var detections: List<SetDetectionLog.Entry>? = null
+        var toMs: ((Long) -> Double)? = null
         session.raw?.let { open ->
             // Je Messart ein Durchgang: zwei ZIP-Einträge lassen sich nicht gleichzeitig schreiben,
             // und eine Stunde Gyroskop soll nicht im Speicher landen.
@@ -88,9 +97,21 @@ object MotionExport {
                     if (reader.version >= 2) counts[MotionFormat.KIND_HEART.toInt()] = writeHeart(zip, "$id/heart.csv", reader, start, clock)
                 }
             }
+            // Erkennungen der Uhr ab Version 3; auch ohne Erkennung eine leere Tabelle, damit „keine“ von „unbekannt“ trennbar bleibt.
+            open().use { input ->
+                MotionFormat.Reader(input).use { reader ->
+                    if (reader.version >= 3) {
+                        val read = readEvents(reader, start, clock)
+                        detections = SetDetectionLog.entries(read.first)
+                        toMs = read.second
+                    }
+                }
+            }
         }
-        val sets = writeSets(zip, id, strength, start)
         val events = meta.optJSONArray("events") ?: JSONArray()
+        val applied = appliedDetections(events)
+        detections?.let { writeDetections(zip, id, it, toMs!!, applied) }
+        val sets = writeSets(zip, id, strength, start, MotionLabels.completionLabels(events), detections, currentDetections(events))
         writeEvents(zip, id, events, start)
         entry(zip, "$id/meta.json") {
             it.write(JSONObject()
@@ -128,6 +149,7 @@ object MotionExport {
             sets.second.toString(),
             events.length().toString(),
             if ((header?.optInt("formatVersion", 1) ?: 0) >= 2) counts[MotionFormat.KIND_HEART.toInt()].toString() else "",
+            detections?.count { it.detected != null }?.toString() ?: "",
         )
     }
 
@@ -200,11 +222,29 @@ object MotionExport {
     private val SET_COLUMNS = listOf(
         "exercise_index", "exercise_id", "exercise_name", "set_index", "set_id", "set_kind", "load_kind",
         "planned_reps", "planned_weight_kg", "planned_seconds", "reps", "weight_kg", "seconds", "rir",
-        "skipped", "completed_ms", "rest_seconds",
+        "skipped", "completed_ms", "rest_seconds", "label", "detection_id", "detected_reps",
     )
 
-    /** Endstand jedes Satzes. Werte, die der Nutzer nicht angegeben hat, bleiben leer. */
-    private fun writeSets(zip: ZipOutputStream, id: String, strength: JSONObject?, start: Long): Pair<Int, Int> {
+    /**
+     * Endstand jedes Satzes. Werte, die der Nutzer nicht angegeben hat, bleiben leer.
+     * `label`: `detected` (von der Uhr erkannt und bestätigt oder korrigiert),
+     * `single` (einzeln abgehakt) oder `batch` (nachgetragen, schwaches Label).
+     */
+    private fun writeSets(
+        zip: ZipOutputStream,
+        id: String,
+        strength: JSONObject?,
+        start: Long,
+        completion: Map<String, String>,
+        detections: List<SetDetectionLog.Entry>?,
+        current: Map<String, String>,
+    ): Pair<Int, Int> {
+        // Nur die Erkennung, mit der das Handy den Satz zuletzt abgehakt hat; eine Bestätigung, die nie
+        // ankam, oder eine, deren Abhaken zurückgenommen wurde, ist kein Label für diesen Satz.
+        val byId = detections.orEmpty().filter { entry ->
+            entry.detected != null && entry.reviewed?.optString("decision") in setOf("confirmed", "corrected")
+        }.associateBy { it.detected!!.optString("detectionId") }
+        val accepted = current.mapNotNull { (setId, detectionId) -> byId[detectionId]?.let { setId to it } }.toMap()
         var logged = 0
         var completed = 0
         entry(zip, "$id/sets.csv") { out ->
@@ -219,6 +259,7 @@ object MotionExport {
                     val completedAt = number(set, "completedAt")
                     logged++
                     if (completedAt != null) completed++
+                    val detection = accepted[set.optString("id")]?.takeIf { completedAt != null }
                     out.write(listOf(
                         exerciseIndex.toString(),
                         csv(exercise.optString("exerciseId")),
@@ -237,11 +278,153 @@ object MotionExport {
                         if (set.optBoolean("skipped", false)) "1" else "0",
                         completedAt?.let { decimal(it - start) } ?: "",
                         number(planned, "restSeconds")?.let(::decimal) ?: "",
+                        when {
+                            completedAt == null -> ""
+                            detection != null -> "detected"
+                            else -> completion[set.optString("id")] ?: "single"
+                        },
+                        csv(detection?.detected?.optString("detectionId") ?: ""),
+                        detection?.detected?.optInt("detectedReps")?.toString() ?: "",
                     ).joinToString(",") + "\n")
                 }
             }
         }
         return logged to completed
+    }
+
+    /**
+     * Je Satz die Erkennung seines letzten Abhakens: `set_detected` folgt
+     * unmittelbar auf das `set_completed`, das sie ausgelöst hat; ein späteres
+     * Abhaken ohne Erkennung oder ein Zurücknehmen löst die Zuordnung.
+     */
+    private fun currentDetections(events: JSONArray): Map<String, String> {
+        val current = mutableMapOf<String, String>()
+        for (index in 0 until events.length()) {
+            val event = events.optJSONObject(index) ?: continue
+            val setId = event.optString("setId").takeIf { it.isNotBlank() } ?: continue
+            when (event.optString("type")) {
+                "set_completed", "set_reopened", "set_removed" -> current.remove(setId)
+                "set_detected" -> event.optString("detectionId").takeIf { it.isNotBlank() }?.let { current[setId] = it }
+            }
+        }
+        return current
+    }
+
+    /** Erkennungen, die das Handy beim Abhaken je übernommen hat (`set_detected` in den Ereignissen). */
+    private fun appliedDetections(events: JSONArray): Set<String> = (0 until events.length()).mapNotNull { index ->
+        events.optJSONObject(index)?.takeIf { it.optString("type") == "set_detected" }?.optString("detectionId")
+            ?.takeIf { it.isNotBlank() }
+    }.toSet()
+
+    /** Ereignisse der Rohdatei mit Sensorzeit und Umrechnung in `t_ms` (wie die Messwerte). */
+    private fun readEvents(
+        reader: MotionFormat.Reader,
+        start: Long,
+        clock: MotionLabels.ClockOffset?,
+    ): Pair<List<Pair<Long, JSONObject>>, (Long) -> Double> {
+        val offset = clock?.offsetMs ?: 0.0
+        val anchors = mutableListOf<Pair<Long, Long>>()
+        val events = mutableListOf<Pair<Long, JSONObject>>()
+        while (true) {
+            val record = reader.next() ?: break
+            when (record.kind) {
+                MotionFormat.KIND_ANCHOR -> anchors += record.time to record.wallMs
+                MotionFormat.KIND_EVENT -> runCatching { JSONObject(record.json ?: "") }.getOrNull()?.let { events += record.time to it }
+            }
+        }
+        // Letzter Anker davor; vor dem ersten Anker der erste.
+        val convert = { nanos: Long ->
+            val anchor = anchors.lastOrNull { it.first <= nanos } ?: anchors.firstOrNull()
+            if (anchor == null) Double.NaN else anchor.second + (nanos - anchor.first) / 1_000_000.0 - offset - start
+        }
+        return events to convert
+    }
+
+    private val DETECTION_COLUMNS = listOf(
+        "kind", "detection_id", "exercise_index", "exercise_id", "exercise_name", "set_id", "algorithm", "profiles",
+        "start_ms", "end_ms", "detected_ms", "detected_reps", "confidence", "uncertain", "reviewed_ms", "decision",
+        "decided_by", "final_reps", "user_confirmed", "was_corrected", "applied", "detector_state", "provisional_reps",
+    )
+
+    /**
+     * Je Erkennung eine Zeile mit Zählung und Entscheidung (`kind = detected`),
+     * dazu jeder Satz, den der Nutzer abgehakt hat, ohne dass die Uhr ihn
+     * erkannt hatte (`kind = closed`). Erkannte und korrigierte Zahl stehen
+     * nebeneinander. Wiederholungen einzeln in `detected_reps.csv`, alle
+     * Merkmale in `detections.jsonl`. `applied`: Das Handy hat den Satz mit
+     * dieser Erkennung abgehakt — nur dann gilt sie als Label des Satzes.
+     */
+    private fun writeDetections(
+        zip: ZipOutputStream,
+        id: String,
+        entries: List<SetDetectionLog.Entry>,
+        toMs: (Long) -> Double,
+        applied: Set<String>,
+    ) {
+        fun ms(nanos: Long?) = nanos?.let(toMs)?.takeIf { !it.isNaN() }?.let(::decimal) ?: ""
+        fun flag(value: Boolean?) = when (value) { true -> "1"; false -> "0"; null -> "" }
+        entry(zip, "$id/detections.csv") { out ->
+            out.write(DETECTION_COLUMNS.joinToString(",") + "\n")
+            for (e in entries) {
+                val target = e.target
+                val detected = e.detected
+                val reviewed = e.reviewed
+                val features = detected?.optJSONObject("features")
+                out.write(listOf(
+                    if (e.closed != null) "closed" else "detected",
+                    csv(detected?.optString("detectionId") ?: reviewed?.optString("detectionId") ?: ""),
+                    target.optInt("exerciseIndex", -1).takeIf { it >= 0 }?.toString() ?: "",
+                    csv(target.optString("exerciseId")),
+                    csv(target.optString("exerciseName")),
+                    csv(target.optString("setId")),
+                    csv(features?.optString("algorithm") ?: ""),
+                    csv(features?.optString("profiles") ?: ""),
+                    ms(detected?.optLong("startNanos")),
+                    ms(detected?.optLong("endNanos")),
+                    ms(if (e.closed != null || detected != null) e.atNanos else null),
+                    detected?.optInt("detectedReps")?.toString() ?: "",
+                    detected?.optDouble("confidence")?.let(::decimal) ?: "",
+                    flag(detected?.optBoolean("uncertain")),
+                    ms(e.reviewedAtNanos),
+                    csv(reviewed?.optString("decision") ?: ""),
+                    csv(reviewed?.optString("by") ?: ""),
+                    reviewed?.takeIf { !it.isNull("finalReps") }?.optInt("finalReps")?.toString() ?: "",
+                    flag(reviewed?.optBoolean("userConfirmed")),
+                    flag(reviewed?.optBoolean("wasCorrected")),
+                    if (detected != null) flag(detected.optString("detectionId") in applied) else "",
+                    csv(e.closed?.optString("detectorState")?.takeIf { !e.closed.isNull("detectorState") } ?: ""),
+                    e.closed?.optInt("provisionalReps")?.toString() ?: "",
+                ).joinToString(",") + "\n")
+            }
+        }
+        entry(zip, "$id/detected_reps.csv") { out ->
+            out.write("detection_id,rep_index,start_ms,end_ms,duration_ms,peak_ms,similarity\n")
+            for (e in entries) {
+                val detected = e.detected ?: continue
+                val reps = detected.optJSONArray("reps") ?: continue
+                for (index in 0 until reps.length()) {
+                    val rep = reps.optJSONObject(index) ?: continue
+                    val startNanos = rep.optLong("startNanos")
+                    val endNanos = rep.optLong("endNanos")
+                    out.write(listOf(
+                        csv(detected.optString("detectionId")), index.toString(), ms(startNanos), ms(endNanos),
+                        decimal((endNanos - startNanos) / 1_000_000.0), ms(rep.optLong("peakNanos")),
+                        decimal(rep.optDouble("similarity")),
+                    ).joinToString(",") + "\n")
+                }
+            }
+        }
+        entry(zip, "$id/detections.jsonl") { out ->
+            for (e in entries) {
+                out.write(JSONObject()
+                    .put("detectedMs", (if (e.closed != null || e.detected != null) toMs(e.atNanos) else null)?.takeIf { !it.isNaN() } ?: JSONObject.NULL)
+                    .put("reviewedMs", e.reviewedAtNanos?.let(toMs)?.takeIf { !it.isNaN() } ?: JSONObject.NULL)
+                    .put("detected", e.detected ?: JSONObject.NULL)
+                    .put("reviewed", e.reviewed ?: JSONObject.NULL)
+                    .put("closed", e.closed ?: JSONObject.NULL)
+                    .toString() + "\n")
+            }
+        }
     }
 
     private fun writeEvents(zip: ZipOutputStream, id: String, events: JSONArray, start: Long) {

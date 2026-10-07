@@ -73,6 +73,15 @@ class RunbackMotionTest(unittest.TestCase):
             self.assertAlmostEqual(b["start_ms"], start, delta=1_500)
             self.assertAlmostEqual(b["end_ms"], start + reps * 2_500, delta=1_500)
 
+    def test_sets_ticked_seconds_apart_are_weak_labels(self):
+        self.assertEqual(list(self.session.sets["label"]), ["single", "single", ""])
+        late = self.session.sets.drop(columns="label")
+        late.loc[1, "completed_ms"] = late.loc[0, "completed_ms"] + 2_000
+        batch = rm.Session("x", {}, self.session.accel, self.session.gyro, late, self.session.events)
+        rm._add_labels(batch)
+        self.assertEqual(list(batch.sets["label"]), ["batch", "batch", ""])
+        self.assertTrue(rm.estimate_set_bounds(batch)["weak"].all())
+
     def test_autocorrelation_counts_reps(self):
         frame = rm.resample(self.session)
         for (_, b), (_, reps, _) in zip(rm.estimate_set_bounds(self.session, frame).iterrows(), SETS):

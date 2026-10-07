@@ -43,7 +43,8 @@ import kotlin.math.roundToInt
  * Uhr-App. Die Uhr zeigt nur, was beim Training zählt: Zeit, Strecke, Puls,
  * den nächsten Satz und die Pause. Alles Weitere steht später auf dem Handy.
  * Krafttraining läuft über das Handy (StrengthMirror); die Uhr startet es,
- * misst den Puls und hakt Sätze ab.
+ * misst den Puls und hakt Sätze ab — bei unterstützten Übungen erkennt sie
+ * den Satz selbst und fragt nur nach der Zahl (AutoSets).
  */
 class MainActivity : Activity() {
     private val bg = Color.rgb(9, 13, 11)
@@ -66,7 +67,10 @@ class MainActivity : Activity() {
     private var strengthRest: TextView? = null
     private var strengthStatus: TextView? = null
     private var strengthHeart: TextView? = null
+    private var autoLine: TextView? = null
+    private var reviewCountdown: TextView? = null
     private var strengthShown = ""
+    private var reviewShown = ""
     private var pendingStart = false
     private var permissionStage = 0
     private val tick = object : Runnable {
@@ -76,9 +80,10 @@ class MainActivity : Activity() {
             val strength = if (active == null) StrengthMirror.current(this@MainActivity) else null
             val strengthKey = strengthKey(strength)
             if (state != lastState && page !in setOf(PAGE_HISTORY, PAGE_DETAIL, PAGE_OPTIONS)) render()
-            else if (page in setOf(PAGE_HOME, PAGE_STRENGTH, PAGE_PICK) && strengthKey != strengthShown) render()
+            else if (page in setOf(PAGE_HOME, PAGE_STRENGTH, PAGE_PICK) && (strengthKey != strengthShown || reviewKey() != reviewShown)) render()
             else updateMetrics(active)
             updateStrengthLive(strength)
+            updateAutoSets()
             handler.postDelayed(this, 1000)
         }
     }
@@ -111,16 +116,26 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         StrengthMirror.listener = { runOnUiThread { if (page in setOf(PAGE_HOME, PAGE_STRENGTH, PAGE_PICK)) render() } }
+        AutoSets.listener = {
+            runOnUiThread {
+                if (page in setOf(PAGE_HOME, PAGE_STRENGTH, PAGE_PICK) && reviewKey() != reviewShown) render() else updateAutoSets()
+            }
+        }
         handler.post(tick)
         // Opening the watch app is an explicit retry point for a queued counterpart command.
         WearSync.retryControl(this, allowRemoteActivity = true)
         WearSync.retry(this)
     }
-    override fun onPause() { StrengthMirror.listener = null; handler.removeCallbacks(tick); super.onPause() }
+    override fun onPause() {
+        StrengthMirror.listener = null
+        AutoSets.listener = null
+        handler.removeCallbacks(tick)
+        super.onPause()
+    }
 
     private fun render() {
         timer = null; distance = null; sensors = null; sync = null
-        strengthRest = null; strengthStatus = null; strengthHeart = null
+        strengthRest = null; strengthStatus = null; strengthHeart = null; autoLine = null; reviewCountdown = null
         val active = store.active()
         lastState = active?.optString("status") ?: "idle"
         scroll = ScrollView(this).apply {
@@ -146,10 +161,13 @@ class MainActivity : Activity() {
         scroll.requestFocus()
         val strength = if (active == null) StrengthMirror.current(this) else null
         strengthShown = strengthKey(strength)
+        val review = AutoSets.review
+        reviewShown = reviewKey()
         when {
             page == PAGE_HISTORY -> history()
             page == PAGE_OPTIONS -> runOptions()
             active != null -> recording(active)
+            review != null && page in setOf(PAGE_HOME, PAGE_STRENGTH, PAGE_PICK) -> review(review)
             strength != null && page in setOf(PAGE_HOME, PAGE_STRENGTH, PAGE_PICK) -> strength(strength)
             page == PAGE_PICK -> pickStrength()
             else -> home()
@@ -236,6 +254,7 @@ class MainActivity : Activity() {
             }
         }
         val index = exercise?.optInt("index") ?: 0
+        if (set != null) autoLine = text("", 12, muted, margin = 4)
         if (set != null) button("Satz fertig", true, 10) {
             send(StrengthMirror.command(StrengthLive.COMPLETE_SET, state, "setId" to set.optString("id"), "exerciseIndex" to index))
         }
@@ -263,6 +282,81 @@ class MainActivity : Activity() {
         }
         button("Startseite", false, 6) { page = PAGE_OVERVIEW; render() }
         updateStrengthLive(state)
+    }
+
+    /**
+     * Erkannter Satz: Zahl prüfen, mit −/+ korrigieren, bestätigen. Ohne Eingabe
+     * übernimmt die Uhr die Zahl nach kurzer Zeit; „Kein Satz“ verwirft.
+     */
+    private fun review(review: AutoSets.Review) {
+        page = PAGE_STRENGTH
+        text("SATZ ERKANNT", 12, green, true)
+        text(review.target.exerciseName, 13, muted, margin = 2)
+        val line = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) }
+        }
+        fun step(label: String, description: String, delta: Int) = Button(this).apply {
+            text = label; textSize = 20f; isAllCaps = false
+            isEnabled = review.status != AutoSets.Status.SENDING && review.reps + delta >= 0
+            setTextColor(if (isEnabled) ink else muted)
+            background = GradientDrawable().apply { setColor(surface); cornerRadius = dp(24).toFloat() }
+            minHeight = dp(48); minimumHeight = dp(48); minWidth = dp(52); minimumWidth = dp(52)
+            contentDescription = description
+            setOnClickListener { vibrate(20); MotionCaptureService.review(this@MainActivity, MotionCaptureService.REVIEW_ADJUST, delta) }
+        }
+        line.addView(step("−", "Eine Wiederholung weniger", -1))
+        line.addView(TextView(this).apply {
+            text = AutoSets.repsLabel(review).removeSuffix(" Wdh.")
+            textSize = 34f; setTextColor(ink); gravity = Gravity.CENTER
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            contentDescription = "${review.reps} Wiederholungen" + if (review.uncertain && !review.touched) ", ungefähr" else ""
+            layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
+        })
+        line.addView(step("+", "Eine Wiederholung mehr", 1))
+        content.addView(line)
+        text("Wdh.", 12, muted)
+        if (review.uncertain && !review.touched) text("Nicht ganz sicher — prüf die Zahl.", 12, muted, margin = 4)
+        val failed = review.status == AutoSets.Status.FAILED
+        button(if (failed) "Erneut senden" else "Bestätigen", true, 10) {
+            vibrate(40)
+            MotionCaptureService.review(this, MotionCaptureService.REVIEW_CONFIRM)
+        }
+        reviewCountdown = text("", 12, muted, margin = 6)
+        if (review.status != AutoSets.Status.SENDING) button("Kein Satz", false, 8, small = true) {
+            MotionCaptureService.review(this, MotionCaptureService.REVIEW_REJECT)
+        }
+        updateAutoSets()
+    }
+
+    /** Neu zeichnen, wenn eine Bestätigung kommt, geht oder sich ihre Zahl ändert. */
+    private fun reviewKey(): String = AutoSets.review?.let { "${it.id}:${it.reps}:${it.status}:${it.touched}" } ?: ""
+
+    /** Sekundentakt: Countdown der Bestätigung und was die Erkennung gerade sieht. */
+    private fun updateAutoSets() {
+        reviewCountdown?.let { label ->
+            val review = AutoSets.review
+            label.text = when {
+                review == null -> ""
+                review.status == AutoSets.Status.SENDING -> "Wird ans Handy gesendet …"
+                review.status == AutoSets.Status.FAILED -> "Handy nicht erreichbar."
+                review.decideAt == null -> ""
+                else -> {
+                    val seconds = ((review.decideAt - android.os.SystemClock.elapsedRealtime() + 999) / 1000).coerceAtLeast(0)
+                    if (review.touched) "Übernimmt in $seconds s" else "Übernimmt in $seconds s ohne Eingabe"
+                }
+            }
+        }
+        autoLine?.let { label ->
+            val live = AutoSets.live
+            label.text = when (live?.state) {
+                null -> ""
+                com.runback.core.SetDetector.State.SET_ACTIVE, com.runback.core.SetDetector.State.SET_END_CANDIDATE ->
+                    "Zählt mit · ${live.reps} Wdh."
+                else -> "Erkennt den Satz selbst"
+            }
+        }
     }
 
     /** Training wählen: heute geplante Vorlagen zuerst, dann frei, dann die übrigen. */
@@ -648,7 +742,9 @@ class MainActivity : Activity() {
         val wrist = uri.getQueryParameter("wrist")?.takeIf { it in setOf("left", "right") } ?: "unknown"
         val motion = uri.getQueryParameter("motion") != "false"
         val heartRate = uri.getQueryParameter("heartRate") == "true"
-        runCatching { MotionCaptureService.send(this, MotionCaptureService.START, sessionId, wrist, motion, heartRate) }
+        val autoSets = uri.getQueryParameter("autoSets") == "true"
+        val autoConfirm = uri.getQueryParameter("autoConfirm") == "true"
+        runCatching { MotionCaptureService.send(this, MotionCaptureService.START, sessionId, wrist, motion, heartRate, autoSets, autoConfirm) }
             .onFailure { MotionSync.reportStatus(this, sessionId, "error", "Uhr konnte die Aufzeichnung nicht starten.") }
         // Der Dienst startet auf seinem eigenen Thread; danach zeigt die Startseite den Hinweis.
         handler.postDelayed({ if (page == PAGE_HOME && store.active() == null) render() }, 800L)

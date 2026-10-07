@@ -118,6 +118,16 @@ export interface MotionCaptureSettings {
   wrist: MotionWrist;
   /** Puls messen; fehlt der Wert, ist er an (Kotlin `MotionSessions.config`). */
   heartRate?: boolean;
+  /**
+   * Sätze auf der Uhr erkennen und Wiederholungen zählen; nur mit
+   * `enabled`. Fehlt der Wert, ist sie an (Kotlin `MotionSessions.config`).
+   */
+  autoSets?: boolean;
+  /**
+   * Erkannte Zahl ohne Eingabe nach kurzer Zeit übernehmen; nur mit
+   * `autoSets`. Fehlt der Wert, ist sie aus — der Nutzer bestätigt selbst.
+   */
+  autoConfirm?: boolean;
 }
 /** Zähler aus `MotionSessions.status`; die Rohdaten selbst bleiben nativ. */
 export interface MotionStatus {

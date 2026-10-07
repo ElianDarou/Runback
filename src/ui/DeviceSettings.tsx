@@ -115,6 +115,8 @@ export function DeviceSettings({
   };
   // Fehlt der Wert, misst die Uhr den Puls (wie Kotlin `MotionSessions.config`).
   const heartRate = motionSettings.heartRate !== false;
+  const autoSets = motionSettings.autoSets !== false;
+  const autoConfirm = motionSettings.autoConfirm === true;
   const saveMotion = (patch: Partial<MotionCaptureSettings>) =>
     save({ motionCapture: { ...motionSettings, ...patch } });
   return (
@@ -182,7 +184,7 @@ export function DeviceSettings({
         />
         <Row
           title="Bewegungen mitschreiben"
-          subtitle="Sammelt Daten, damit Runback später Sätze erkennen kann."
+          subtitle="Sammelt Daten, damit die Uhr Sätze erkennen kann."
           trailing={
             <Switch
               accessibilityLabel="Bewegungen im Krafttraining aufzeichnen"
@@ -195,6 +197,34 @@ export function DeviceSettings({
         />
         {motionSettings.enabled ? (
           <>
+            <Row
+              title="Sätze erkennen"
+              subtitle="Die Uhr zählt Wiederholungen mit, du bestätigst die Zahl."
+              trailing={
+                <Switch
+                  accessibilityLabel="Sätze auf der Uhr automatisch erkennen"
+                  value={autoSets}
+                  onValueChange={value => saveMotion({ autoSets: value })}
+                  trackColor={{ false: color.line, true: color.green }}
+                  thumbColor={autoSets ? color.ink : color.muted}
+                />
+              }
+            />
+            {autoSets ? (
+              <Row
+                title="Ohne Eingabe übernehmen"
+                subtitle="Tippst du nichts, gilt die Zahl der Uhr nach 12 Sekunden."
+                trailing={
+                  <Switch
+                    accessibilityLabel="Erkannte Wiederholungen ohne Eingabe übernehmen"
+                    value={autoConfirm}
+                    onValueChange={value => saveMotion({ autoConfirm: value })}
+                    trackColor={{ false: color.line, true: color.green }}
+                    thumbColor={autoConfirm ? color.ink : color.muted}
+                  />
+                }
+              />
+            ) : null}
             <ChipGroup
               label="Handgelenk mit der Uhr"
               options={WRISTS}

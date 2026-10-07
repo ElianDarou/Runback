@@ -24,6 +24,8 @@ import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
 import com.runback.core.MotionFormat
+import com.runback.core.RepProfiles
+import com.runback.core.SetDetector
 import com.runback.core.StrengthHeart
 import org.json.JSONArray
 import org.json.JSONObject
@@ -34,9 +36,11 @@ import java.io.FileOutputStream
 /**
  * Zeichnet während einer Krafteinheit am Handgelenk auf, was das Handy
  * anfordert: den Puls (für die Auswertung der Einheit) und/oder
- * Beschleunigung und Gyroskop (Rohdaten für spätere Satz- und
- * Übungserkennung). Das Handy startet und stoppt; die Uhr wertet nichts aus.
- * Rohsamples bleiben in Kotlin und gehen nur als Datei ans Handy (MotionSync).
+ * Beschleunigung und Gyroskop (Rohdaten für Satz- und spätere
+ * Übungserkennung). Das Handy startet und stoppt. Ist `autoSets` an, erkennt
+ * die Uhr Sätze der gewählten Übung selbst (AutoSets) und schreibt Erkennung
+ * und Bestätigung in dieselbe Datei. Rohsamples bleiben in Kotlin und gehen
+ * nur als Datei ans Handy (MotionSync).
  */
 class MotionCaptureService : Service(), SensorEventListener {
     private lateinit var sensors: SensorManager
@@ -54,6 +58,15 @@ class MotionCaptureService : Service(), SensorEventListener {
     private var heartCount = 0
     private var heartMax = 0.0
     private var motionSince = false
+    private var autoSets: AutoSets? = null
+    /** Sekündlich: Welche Übung ist am Handy dran? Danach richtet sich die Satzerkennung. */
+    private val followTick = object : Runnable {
+        override fun run() {
+            val sets = autoSets ?: return
+            sets.follow(StrengthMirror.current(this@MotionCaptureService))
+            worker.postDelayed(this, FOLLOW_INTERVAL_MS)
+        }
+    }
     /** Meldet dem Handy alle paar Sekunden Puls und ob Bewegungen ankommen. */
     private val liveTick = object : Runnable {
         override fun run() {
@@ -84,6 +97,19 @@ class MotionCaptureService : Service(), SensorEventListener {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
+        if (action == REVIEW) {
+            val decision = intent.getStringExtra(EXTRA_DECISION)
+            val delta = intent.getIntExtra(EXTRA_DELTA, 0)
+            worker.post {
+                val sets = autoSets ?: return@post
+                when (decision) {
+                    REVIEW_CONFIRM -> sets.confirm()
+                    REVIEW_REJECT -> sets.reject()
+                    REVIEW_ADJUST -> sets.adjust(delta)
+                }
+            }
+            return START_NOT_STICKY
+        }
         val requested = intent?.getStringExtra(EXTRA_SESSION)
         if (action == STOP || action == DISCARD) {
             worker.post { finish(requested, discard = action == DISCARD) }
@@ -108,11 +134,13 @@ class MotionCaptureService : Service(), SensorEventListener {
         // Ältere Handy-Versionen kennen nur Bewegungen.
         val motion = intent.getBooleanExtra(EXTRA_MOTION, true)
         val heart = intent.getBooleanExtra(EXTRA_HEART, false)
-        worker.post { begin(requested, wrist, motion, heart) }
+        val sets = intent.getBooleanExtra(EXTRA_AUTO_SETS, false)
+        val confirm = intent.getBooleanExtra(EXTRA_AUTO_CONFIRM, false)
+        worker.post { begin(requested, wrist, motion, heart, sets, confirm) }
         return START_NOT_STICKY
     }
 
-    private fun begin(id: String, wrist: String, motion: Boolean, heartRequested: Boolean) {
+    private fun begin(id: String, wrist: String, motion: Boolean, heartRequested: Boolean, setsRequested: Boolean, autoConfirm: Boolean) {
         if (sessionId == id) return
         // Neue Einheit, bevor die alte gestoppt wurde: alte Datei abschließen, Dienst weiterlaufen lassen.
         if (sessionId != null) finish(sessionId, discard = false, stopService = false)
@@ -146,7 +174,9 @@ class MotionCaptureService : Service(), SensorEventListener {
             .put("startedAt", System.currentTimeMillis())
             .put("device", JSONObject()
                 .put("manufacturer", Build.MANUFACTURER).put("model", Build.MODEL).put("sdk", Build.VERSION.SDK_INT))
-            .put("capture", JSONObject().put("motion", accel != null).put("heartRate", heart != null))
+            .put("capture", JSONObject().put("motion", accel != null).put("heartRate", heart != null)
+                .put("autoSets", setsRequested && accel != null).put("autoConfirm", setsRequested && autoConfirm))
+            .put("setDetection", JSONObject().put("algorithm", SetDetector.VERSION).put("profiles", RepProfiles.VERSION))
             .put("sensors", JSONArray().apply {
                 if (accel != null) put(describe("accel", accel, "m/s²"))
                 if (gyro != null) put(describe("gyro", gyro, "rad/s"))
@@ -172,6 +202,14 @@ class MotionCaptureService : Service(), SensorEventListener {
         if (heart != null) sensors.registerListener(this, heart, SensorManager.SENSOR_DELAY_NORMAL, BATCH_LATENCY_US, worker)
         recordsHeart = heart != null
         recordsMotion = accel != null
+        if (setsRequested && accel != null) {
+            autoSets = AutoSets(this, id, gyro != null, autoConfirm,
+                log = { time, event ->
+                    runCatching { writer?.event(time, event) }.onFailure { Log.e(TAG, "Detection event could not be written", it) }
+                },
+                later = { delay, block -> worker.postDelayed(block, delay) })
+            worker.post(followTick)
+        }
         MotionSync.markRecording(this, id)
         val message = when {
             heart != null && accel != null && gyro == null -> "Uhr misst Puls und Bewegungen, ohne Gyroskop."
@@ -200,8 +238,12 @@ class MotionCaptureService : Service(), SensorEventListener {
                 Sensor.TYPE_ACCELEROMETER -> {
                     output.sample(MotionFormat.KIND_ACCEL, event.timestamp, event.values[0], event.values[1], event.values[2])
                     motionSince = true
+                    autoSets?.accel(event.timestamp, event.values[0], event.values[1], event.values[2])
                 }
-                Sensor.TYPE_GYROSCOPE -> output.sample(MotionFormat.KIND_GYRO, event.timestamp, event.values[0], event.values[1], event.values[2])
+                Sensor.TYPE_GYROSCOPE -> {
+                    output.sample(MotionFormat.KIND_GYRO, event.timestamp, event.values[0], event.values[1], event.values[2])
+                    autoSets?.gyro(event.timestamp, event.values[0], event.values[1], event.values[2])
+                }
                 // Ungefiltert gespeichert; Kontakt und Genauigkeit prüft erst die Auswertung (StrengthHeart).
                 Sensor.TYPE_HEART_RATE -> {
                     output.heart(event.timestamp, event.values[0], event.accuracy)
@@ -245,6 +287,9 @@ class MotionCaptureService : Service(), SensorEventListener {
         if (requested != null && current != null && requested != current) return
         sensors.unregisterListener(this)
         worker.removeCallbacks(liveTick)
+        worker.removeCallbacks(followTick)
+        autoSets?.stop()
+        autoSets = null
         if (current != null && !discard) MotionSync.log(this, current, startedAt, System.currentTimeMillis(),
             heartSum.takeIf { heartCount > 0 }?.let { it / heartCount }, heartMax.takeIf { heartCount > 0 }, recordsHeart, recordsMotion)
         runCatching { writer?.let { writeAnchor(SystemClock.elapsedRealtimeNanos()); it.flush(); output?.fd?.sync(); it.close() } }
@@ -278,7 +323,8 @@ class MotionCaptureService : Service(), SensorEventListener {
 
     override fun onDestroy() {
         runCatching { unregisterReceiver(shutdownReceiver) }
-        if (sessionId != null) finish(sessionId, discard = false)
+        // Abschluss auf dem Arbeitsthread: dort schreiben Sensoren und Satzerkennung in dieselbe Datei.
+        worker.post { if (sessionId != null) finish(sessionId, discard = false, stopService = false) }
         thread.quitSafely()
         super.onDestroy()
     }
@@ -304,6 +350,25 @@ class MotionCaptureService : Service(), SensorEventListener {
         const val EXTRA_WRIST = "wrist"
         const val EXTRA_MOTION = "motion"
         const val EXTRA_HEART = "heartRate"
+        const val EXTRA_AUTO_SETS = "autoSets"
+        const val EXTRA_AUTO_CONFIRM = "autoConfirm"
+        /** Entscheidung zu einem erkannten Satz aus Uhr-App oder Benachrichtigung. */
+        const val REVIEW = "com.runback.motion.REVIEW"
+        const val EXTRA_DECISION = "decision"
+        const val EXTRA_DELTA = "delta"
+        const val REVIEW_CONFIRM = "confirm"
+        const val REVIEW_REJECT = "reject"
+        const val REVIEW_ADJUST = "adjust"
+        private const val FOLLOW_INTERVAL_MS = 1_000L
+
+        fun reviewIntent(context: Context, decision: String, delta: Int = 0): Intent =
+            Intent(context, MotionCaptureService::class.java).setAction(REVIEW)
+                .putExtra(EXTRA_DECISION, decision).putExtra(EXTRA_DELTA, delta)
+
+        /** Aus der Uhr-App; der Dienst läuft während der Einheit ohnehin im Vordergrund. */
+        fun review(context: Context, decision: String, delta: Int = 0) {
+            runCatching { context.startService(reviewIntent(context, decision, delta)) }
+        }
         /** Einheit, deren Datei gerade beschrieben wird; sie wird noch nicht übertragen. */
         @Volatile var activeSession: String? = null
             private set
@@ -342,10 +407,13 @@ class MotionCaptureService : Service(), SensorEventListener {
             wrist: String? = null,
             motion: Boolean = true,
             heartRate: Boolean = false,
+            autoSets: Boolean = false,
+            autoConfirm: Boolean = false,
         ) {
             val intent = Intent(context, MotionCaptureService::class.java)
                 .setAction(action).putExtra(EXTRA_SESSION, sessionId).putExtra(EXTRA_WRIST, wrist)
-                .putExtra(EXTRA_MOTION, motion).putExtra(EXTRA_HEART, heartRate)
+                .putExtra(EXTRA_MOTION, motion).putExtra(EXTRA_HEART, heartRate).putExtra(EXTRA_AUTO_SETS, autoSets)
+                .putExtra(EXTRA_AUTO_CONFIRM, autoConfirm)
             if (action == START) context.startForegroundService(intent) else context.startService(intent)
         }
     }
