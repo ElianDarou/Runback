@@ -172,6 +172,33 @@ class MotionDataTest {
         assertEquals(MotionExport.FORMAT, JSONObject(files["manifest.json"]!!).getString("format"))
     }
 
+    @Test fun exportIntoAFolderLeavesTheOtherFilesAlone() {
+        val rawBytes = raw {
+            anchor(5_000_000_000L, 1_000_000L)
+            sample(MotionFormat.KIND_ACCEL, 5_020_000_000L, 1f, 2f, 3f)
+        }
+        val meta = JSONObject().put("sessionId", "session-1").put("startedAt", 1_000_000L)
+        val out = ByteArrayOutputStream()
+        ZipOutputStream(out).use { zip ->
+            // Wie im Krafttraining-Export: gleichnamige Tabelle auf oberster Ebene.
+            zip.putNextEntry(java.util.zip.ZipEntry("sessions.csv"))
+            zip.write("kraft\n".toByteArray())
+            zip.closeEntry()
+            MotionExport.write(zip, listOf(MotionExport.Session(meta, null) { ByteArrayInputStream(rawBytes) }), 2_000_000L, "bewegungsdaten/")
+        }
+        val files = unzip(out.toByteArray())
+
+        assertEquals("kraft\n", files["sessions.csv"])
+        assertEquals("t_ms,x,y,z\n20,1.0,2.0,3.0\n", files["bewegungsdaten/session-1/accel.csv"])
+        assertTrue(files["bewegungsdaten/sessions.csv"]!!.lines()[1].startsWith("session-1,"))
+        assertEquals(MotionExport.FORMAT, JSONObject(files["bewegungsdaten/manifest.json"]!!).getString("format"))
+        assertTrue(files.keys.filter { it != "sessions.csv" }.all { it.startsWith("bewegungsdaten/") })
+    }
+
+    @Test(expected = IllegalArgumentException::class) fun exportFolderMustBeASimpleName() {
+        ZipOutputStream(ByteArrayOutputStream()).use { MotionExport.write(it, emptyList(), 0L, "../") }
+    }
+
     @Test fun exportKeepsDetectedAndCorrectedRepsSideBySide() {
         val target = SetDetectionLog.Target("session-1", "bench", "Bankdrücken", 0, "a1")
         val set = SetDetector.DetectedSet(5_100_000_000L, 5_900_000_000L, listOf(

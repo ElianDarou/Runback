@@ -8,7 +8,8 @@ import java.util.zip.ZipOutputStream
  * ZIP aus wenigen flachen Dateien, die JS stückweise anhängt (z. B. eine
  * CSV-Zeile je Einheit). Teile landen erst in Dateien neben dem Archiv, damit
  * weder JS noch Kotlin die ganze Ausgabe im Speicher halten; `finish` packt
- * sie in der Reihenfolge ihres ersten Auftretens.
+ * sie in der Reihenfolge ihres ersten Auftretens; `extra` schreibt danach
+ * weitere Einträge direkt aus Kotlin (z. B. Bewegungsdaten).
  */
 internal class ExportArchive(val file: File) {
     private val parts = File(file.parentFile, "${file.name}.parts").apply { deleteRecursively(); mkdirs() }
@@ -23,7 +24,7 @@ internal class ExportArchive(val file: File) {
         }
     }
 
-    fun finish(): File {
+    fun finish(extra: (ZipOutputStream) -> Unit = {}): File {
         check(names.isNotEmpty()) { "Nichts zu exportieren." }
         ZipOutputStream(file.outputStream().buffered(64 * 1024)).use { zip ->
             names.forEach { name ->
@@ -31,6 +32,7 @@ internal class ExportArchive(val file: File) {
                 File(parts, name).inputStream().use { it.copyTo(zip) }
                 zip.closeEntry()
             }
+            extra(zip)
         }
         parts.deleteRecursively()
         return file

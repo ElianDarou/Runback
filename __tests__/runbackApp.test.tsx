@@ -30,6 +30,9 @@ jest.mock('../src/native', () => {
       discardExportArchive: jest.fn(() => Promise.resolve()),
       recordedStrengthSessionIds: jest.fn(() => Promise.resolve([])),
       strengthHeart: jest.fn(() => Promise.resolve(undefined)),
+      motionStatus: jest.fn(() =>
+        Promise.resolve({ sessions: 1, received: 1 }),
+      ),
       runTimeline: jest.fn(() =>
         Promise.resolve({ rows: [], stepSeconds: 60 }),
       ),
@@ -1140,9 +1143,13 @@ describe('Krafttraining exportieren', () => {
     expect(calls[1][1]['sets.csv']).toContain('a,');
     expect(calls[2][1]['sets.csv']).toContain('b,');
     expect(calls[3][1]['README.md']).toContain('2 Einheiten, 2 Sätze');
+    expect(calls[3][1]['README.md']).toContain(
+      'Bewegungsdaten der Uhr aus 1 Einheiten, 1 davon mit Rohdaten',
+    );
     expect(native.shareExportArchive).toHaveBeenCalledWith(
       'export',
       'Krafttraining teilen',
+      { includeMotion: true },
     );
     expect(native.discardExportArchive).toHaveBeenCalledWith('export');
     jest.mocked(native.strengthSession).mockReset();

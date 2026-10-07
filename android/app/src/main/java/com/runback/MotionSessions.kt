@@ -353,7 +353,21 @@ object MotionSessions {
     }
 
     fun export(context: Context, store: RunStore, output: OutputStream): JSONObject {
-        val sessions = ids(store).mapNotNull { id ->
+        val sessions = exportSessions(context, store)
+        require(sessions.isNotEmpty()) { "Noch keine Bewegungsdaten aufgezeichnet." }
+        ZipOutputStream(output.buffered(64 * 1024)).use { zip -> MotionExport.write(zip, sessions, System.currentTimeMillis()) }
+        return JSONObject().put("exported", true).put("sessions", sessions.size)
+    }
+
+    /** Hängt die Bewegungsdaten als Ordner an ein fremdes ZIP; ohne Bewegungsdaten bleibt es unverändert. */
+    fun exportInto(context: Context, store: RunStore, zip: ZipOutputStream, directory: String): Int {
+        val sessions = exportSessions(context, store)
+        if (sessions.isNotEmpty()) MotionExport.write(zip, sessions, System.currentTimeMillis(), directory)
+        return sessions.size
+    }
+
+    private fun exportSessions(context: Context, store: RunStore): List<MotionExport.Session> =
+        ids(store).mapNotNull { id ->
             val doc = store.getDocument(key(id))?.takeIf(::hasMotion) ?: return@mapNotNull null
             val file = rawFile(context, id)
             MotionExport.Session(
@@ -362,10 +376,6 @@ object MotionSessions {
                 if (file.exists()) ({ GZIPInputStream(file.inputStream(), 64 * 1024) }) else null,
             )
         }.sortedBy { it.meta.optLong("startedAt") }
-        require(sessions.isNotEmpty()) { "Noch keine Bewegungsdaten aufgezeichnet." }
-        ZipOutputStream(output.buffered(64 * 1024)).use { zip -> MotionExport.write(zip, sessions, System.currentTimeMillis()) }
-        return JSONObject().put("exported", true).put("sessions", sessions.size)
-    }
 
     private fun start(context: Context, store: RunStore, id: String, capture: Capture) {
         val app = context.applicationContext

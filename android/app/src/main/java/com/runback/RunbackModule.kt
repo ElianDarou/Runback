@@ -681,11 +681,14 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         exportArchives.remove(id)?.discard()
         JSONObject().put("discarded", true)
     }
-    @ReactMethod fun shareExportArchive(id: String, title: String, promise: Promise) {
+    // `includeMotion`: Bewegungsdaten der Uhr als Ordner `bewegungsdaten/` (Kraftexport).
+    @ReactMethod fun shareExportArchive(id: String, title: String, includeMotion: Boolean, promise: Promise) {
         worker.execute {
             try {
                 val archive = exportArchives[id] ?: error("Der Export ist nicht mehr verfügbar.")
-                val file = archive.finish()
+                val file = archive.finish { zip ->
+                    if (includeMotion) MotionSessions.exportInto(context, store, zip, "bewegungsdaten/")
+                }
                 exportArchives.remove(id)
                 shareUris(listOf(FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)), "application/zip", title, promise)
             } catch (error: Exception) { promise.reject("SHARE_ERROR", error.message, error) }

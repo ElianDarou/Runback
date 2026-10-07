@@ -1118,6 +1118,7 @@ export function RunbackApp({
   // Alle in Runback aufgezeichneten Krafteinheiten als ein ZIP, ohne Importe.
   // Je Einheit ein Aufruf; Kotlin hängt an die Dateien an und packt erst am
   // Ende. Das README steht vorn, sein Inhalt kommt zuletzt (mit den Zählern).
+  // Die Bewegungsdaten der Uhr legt Kotlin beim Packen dazu; sie bleiben nativ.
   const shareStrength = () => {
     void action(async () => {
       const ids = await native.recordedStrengthSessionIds();
@@ -1125,11 +1126,14 @@ export function RunbackApp({
       const files = STRENGTH_EXPORT_FILES;
       const headers = strengthExportHeaders();
       const settings = stateRef.current.settings;
+      const motion = await native.motionStatus().catch(() => undefined);
       const summary = {
         exportedAt: Date.now(),
         sessions: 0,
         sets: 0,
         heartSessions: 0,
+        motionSessions: motion?.sessions,
+        motionReceived: motion?.received,
         firstStart: undefined as number | undefined,
         lastStart: undefined as number | undefined,
         goal: settings.strengthGoal,
@@ -1170,7 +1174,9 @@ export function RunbackApp({
         await native.appendExportArchive(archive, {
           [files.readme]: strengthExportReadme(summary),
         });
-        await native.shareExportArchive(archive, 'Krafttraining teilen');
+        await native.shareExportArchive(archive, 'Krafttraining teilen', {
+          includeMotion: true,
+        });
       } finally {
         setExportProgress('');
         await native.discardExportArchive(archive).catch(() => {});

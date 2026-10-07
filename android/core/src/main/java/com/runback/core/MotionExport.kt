@@ -36,14 +36,19 @@ object MotionExport {
         val raw: (() -> InputStream)?,
     )
 
-    fun write(zip: ZipOutputStream, sessions: List<Session>, exportedAt: Long) {
+    /**
+     * `directory` (leer oder mit `/` am Ende) legt den Export in einen Ordner,
+     * z. B. `bewegungsdaten/` im Krafttraining-Export; darunter bleibt alles gleich.
+     */
+    fun write(zip: ZipOutputStream, sessions: List<Session>, exportedAt: Long, directory: String = "") {
+        require(directory.isEmpty() || directory.matches(Regex("[A-Za-z0-9_-]{1,40}/"))) { "Ungültiger Ordner im Export" }
         val summary = StringBuilder(SESSION_COLUMNS.joinToString(",")).append('\n')
         for (session in sessions) {
-            val row = writeSession(zip, session)
+            val row = writeSession(zip, session, directory)
             summary.append(row.joinToString(",")).append('\n')
         }
-        entry(zip, "sessions.csv") { it.write(summary.toString()) }
-        entry(zip, "manifest.json") {
+        entry(zip, "${directory}sessions.csv") { it.write(summary.toString()) }
+        entry(zip, "${directory}manifest.json") {
             it.write(JSONObject()
                 .put("format", FORMAT)
                 .put("formatVersion", VERSION)
@@ -65,11 +70,12 @@ object MotionExport {
         "accel_samples", "gyro_samples", "sets_logged", "sets_completed", "events", "heart_samples", "detections",
     )
 
-    private fun writeSession(zip: ZipOutputStream, session: Session): List<String> {
+    private fun writeSession(zip: ZipOutputStream, session: Session, directory: String): List<String> {
         val meta = session.meta
         val id = meta.optString("sessionId").also {
             require(it.matches(Regex("[A-Za-z0-9_-]{1,100}"))) { "Ungültige Einheit im Export" }
         }
+        val dir = "$directory$id"
         val strength = session.strength
         val start = strength?.optLong("startTime")?.takeIf { it > 0 } ?: meta.optLong("startedAt")
         val end = strength?.optLong("endTime")?.takeIf { it > 0 } ?: meta.optLong("stoppedAt").takeIf { it > 0 }
@@ -86,7 +92,7 @@ object MotionExport {
                 open().use { input ->
                     MotionFormat.Reader(input).use { reader ->
                         header = reader.header
-                        counts[kind.toInt()] = writeImu(zip, "$id/${if (kind == MotionFormat.KIND_ACCEL) "accel" else "gyro"}.csv", reader, kind, start, clock)
+                        counts[kind.toInt()] = writeImu(zip, "$dir/${if (kind == MotionFormat.KIND_ACCEL) "accel" else "gyro"}.csv", reader, kind, start, clock)
                         truncated = truncated || reader.truncated
                     }
                 }
@@ -94,7 +100,7 @@ object MotionExport {
             // Puls gibt es erst ab Version 2 der Rohdatei; ältere Dateien bekommen keine leere Tabelle.
             open().use { input ->
                 MotionFormat.Reader(input).use { reader ->
-                    if (reader.version >= 2) counts[MotionFormat.KIND_HEART.toInt()] = writeHeart(zip, "$id/heart.csv", reader, start, clock)
+                    if (reader.version >= 2) counts[MotionFormat.KIND_HEART.toInt()] = writeHeart(zip, "$dir/heart.csv", reader, start, clock)
                 }
             }
             // Erkennungen der Uhr ab Version 3; auch ohne Erkennung eine leere Tabelle, damit „keine“ von „unbekannt“ trennbar bleibt.
@@ -110,10 +116,10 @@ object MotionExport {
         }
         val events = meta.optJSONArray("events") ?: JSONArray()
         val applied = appliedDetections(events)
-        detections?.let { writeDetections(zip, id, it, toMs!!, applied) }
-        val sets = writeSets(zip, id, strength, start, MotionLabels.completionLabels(events), detections, currentDetections(events))
-        writeEvents(zip, id, events, start)
-        entry(zip, "$id/meta.json") {
+        detections?.let { writeDetections(zip, dir, it, toMs!!, applied) }
+        val sets = writeSets(zip, dir, strength, start, MotionLabels.completionLabels(events), detections, currentDetections(events))
+        writeEvents(zip, dir, events, start)
+        entry(zip, "$dir/meta.json") {
             it.write(JSONObject()
                 .put("sessionId", id)
                 .put("startUnixMs", start)
@@ -232,7 +238,7 @@ object MotionExport {
      */
     private fun writeSets(
         zip: ZipOutputStream,
-        id: String,
+        dir: String,
         strength: JSONObject?,
         start: Long,
         completion: Map<String, String>,
@@ -247,7 +253,7 @@ object MotionExport {
         val accepted = current.mapNotNull { (setId, detectionId) -> byId[detectionId]?.let { setId to it } }.toMap()
         var logged = 0
         var completed = 0
-        entry(zip, "$id/sets.csv") { out ->
+        entry(zip, "$dir/sets.csv") { out ->
             out.write(SET_COLUMNS.joinToString(",") + "\n")
             val exercises = strength?.optJSONArray("exercises") ?: JSONArray()
             for (exerciseIndex in 0 until exercises.length()) {
@@ -356,14 +362,14 @@ object MotionExport {
      */
     private fun writeDetections(
         zip: ZipOutputStream,
-        id: String,
+        dir: String,
         entries: List<SetDetectionLog.Entry>,
         toMs: (Long) -> Double,
         applied: Set<String>,
     ) {
         fun ms(nanos: Long?) = nanos?.let(toMs)?.takeIf { !it.isNaN() }?.let(::decimal) ?: ""
         fun flag(value: Boolean?) = when (value) { true -> "1"; false -> "0"; null -> "" }
-        entry(zip, "$id/detections.csv") { out ->
+        entry(zip, "$dir/detections.csv") { out ->
             out.write(DETECTION_COLUMNS.joinToString(",") + "\n")
             for (e in entries) {
                 val target = e.target
@@ -397,7 +403,7 @@ object MotionExport {
                 ).joinToString(",") + "\n")
             }
         }
-        entry(zip, "$id/detected_reps.csv") { out ->
+        entry(zip, "$dir/detected_reps.csv") { out ->
             out.write("detection_id,rep_index,start_ms,end_ms,duration_ms,peak_ms,similarity\n")
             for (e in entries) {
                 val detected = e.detected ?: continue
@@ -414,7 +420,7 @@ object MotionExport {
                 }
             }
         }
-        entry(zip, "$id/detections.jsonl") { out ->
+        entry(zip, "$dir/detections.jsonl") { out ->
             for (e in entries) {
                 out.write(JSONObject()
                     .put("detectedMs", (if (e.closed != null || e.detected != null) toMs(e.atNanos) else null)?.takeIf { !it.isNaN() } ?: JSONObject.NULL)
@@ -427,8 +433,8 @@ object MotionExport {
         }
     }
 
-    private fun writeEvents(zip: ZipOutputStream, id: String, events: JSONArray, start: Long) {
-        entry(zip, "$id/events.csv") { out ->
+    private fun writeEvents(zip: ZipOutputStream, dir: String, events: JSONArray, start: Long) {
+        entry(zip, "$dir/events.csv") { out ->
             out.write("t_ms,event,exercise_index,exercise_id,exercise_name,set_index,set_id\n")
             for (index in 0 until events.length()) {
                 val event = events.optJSONObject(index) ?: continue

@@ -66,13 +66,16 @@ Stunden hört die Uhr von selbst auf.
 | Sätze mit Gewicht, Wiederholungen, RIR | Krafteinheit, wie immer | Deine Eingaben |
 
 Die Rohdateien sind **nicht im Backup**, weil eine Stunde mehrere MB hat.
-Sicherst du sie, dann über „Bewegungsdaten exportieren“. Die Ereignisse
-sind im Backup enthalten. Alles bleibt lokal, bis du den Export selbst
+Sicherst du sie, dann über den Krafttraining-Export unter **Meine Daten**
+oder über „Bewegungsdaten exportieren“ in den Geräteeinstellungen. Die
+Ereignisse sind im Backup enthalten. Alles bleibt lokal, bis du den Export selbst
 weitergibst.
 
 ## Exportformat
 
-„Bewegungsdaten exportieren“ erzeugt `runback-bewegungsdaten-<datum>.zip`:
+„Bewegungsdaten exportieren“ erzeugt `runback-bewegungsdaten-<datum>.zip`.
+Der Krafttraining-Export unter **Meine Daten** enthält denselben Inhalt im
+Ordner `bewegungsdaten/`, neben den Tabellen des Krafttrainings:
 
 ```
 manifest.json             Format, Versionen, Zeitpunkt des Exports
@@ -163,7 +166,7 @@ Das Abhaken ist ein **schwaches Label**:
 
 ## Daten laden
 
-`tools/motion/runback_motion.py` (numpy, pandas) liest den Export:
+`tools/motion/runback_motion.py` (numpy, pandas) liest beide Exporte:
 
 ```bash
 pip install numpy pandas
