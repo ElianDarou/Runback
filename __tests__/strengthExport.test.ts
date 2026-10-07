@@ -261,5 +261,19 @@ describe('strength export', () => {
     expect(readme).toContain('Ziel Krafttraining: 100 kg Bankdrücken');
     expect(readme).toContain('Fokus Krafttraining: Stärker werden');
     expect(readme).toContain('Importe (z. B. Strong) fehlen');
+    // Zähler unbekannt: Der Ordner wird erwähnt, ohne eine Zahl zu erfinden.
+    expect(readme).toContain(
+      '`bewegungsdaten/`: Bewegungsdaten der Uhr, falls aufgezeichnet',
+    );
+  });
+
+  it('names the motion folder with its counts, and drops it when empty', () => {
+    const base = { exportedAt: START, sessions: 1, sets: 3, heartSessions: 0 };
+    expect(strengthExportReadme({ ...base, motionSessions: 3 })).toContain(
+      'Bewegungsdaten der Uhr aus 3 Einheiten —',
+    );
+    expect(strengthExportReadme({ ...base, motionSessions: 0 })).not.toContain(
+      'bewegungsdaten/',
+    );
   });
 });

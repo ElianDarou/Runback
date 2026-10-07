@@ -1,10 +1,11 @@
 """Runback-Bewegungsdaten laden und für ein Modell aufbereiten.
 
-Liest den ZIP-Export aus der App („Bewegungsdaten exportieren“) und liefert
+Liest den Krafttraining-Export aus der App (Ordner `bewegungsdaten/`; ältere
+Bewegungsexporte ohne Ordner gehen auch) und liefert
 pro Krafteinheit Beschleunigung, Gyroskop, Sätze und Ereignisse als
 pandas-DataFrames. Anleitung und Format: docs/bewegungsdaten.md.
 
-    python tools/motion/runback_motion.py runback-bewegungsdaten-2026-10-04.zip
+    python tools/motion/runback_motion.py runback-krafttraining.zip
     python tools/motion/runback_motion.py export.zip --windows fenster.npz
 
 Abhängigkeiten: numpy, pandas.
@@ -22,6 +23,8 @@ import numpy as np
 import pandas as pd
 
 EXPORT_FORMAT = "runback-motion-export"
+# Im Krafttraining-Export liegen die Bewegungsdaten in diesem Ordner; ältere Exporte hatten keinen.
+STRENGTH_EXPORT_DIRECTORY = "bewegungsdaten/"
 SUPPORTED_VERSIONS = {1, 2, 3}
 # Wie MotionLabels.BATCH_WINDOW_MS: dichter liegen zwei echte Sätze derselben Übung nie.
 BATCH_WINDOW_MS = 15_000
@@ -56,22 +59,26 @@ class Session:
 def load_export(path: str | Path) -> list[Session]:
     """Alle Einheiten eines Exports. Fehlende Werte sind NaN, nie 0."""
     with zipfile.ZipFile(path) as archive:
-        manifest = json.loads(archive.read("manifest.json"))
+        names = set(archive.namelist())
+        root = STRENGTH_EXPORT_DIRECTORY if f"{STRENGTH_EXPORT_DIRECTORY}manifest.json" in names else ""
+        if f"{root}manifest.json" not in names:
+            raise ValueError("Kein Runback-Bewegungsexport")
+        manifest = json.loads(archive.read(f"{root}manifest.json"))
         if manifest.get("format") != EXPORT_FORMAT:
             raise ValueError("Kein Runback-Bewegungsexport")
         if manifest.get("formatVersion") not in SUPPORTED_VERSIONS:
             raise ValueError(f"Exportversion {manifest.get('formatVersion')} wird nicht unterstützt")
-        names = set(archive.namelist())
-        summary = pd.read_csv(io.BytesIO(archive.read("sessions.csv")), dtype={"session_id": str})
+        summary = pd.read_csv(io.BytesIO(archive.read(f"{root}sessions.csv")), dtype={"session_id": str})
 
         def table(name: str, columns: list[str]) -> pd.DataFrame:
+            name = root + name
             if name not in names:
                 return pd.DataFrame(columns=columns)
             return pd.read_csv(io.BytesIO(archive.read(name)), keep_default_na=True)
 
         sessions = []
         for session_id in summary["session_id"]:
-            meta = json.loads(archive.read(f"{session_id}/meta.json"))
+            meta = json.loads(archive.read(f"{root}{session_id}/meta.json"))
             sessions.append(
                 Session(
                     id=session_id,

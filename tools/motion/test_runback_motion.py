@@ -33,7 +33,7 @@ def _imu() -> tuple[str, str]:
     return as_csv(accel), as_csv(gyro)
 
 
-def _export(path: Path) -> None:
+def _export(path: Path, root: str = "") -> None:
     accel, gyro = _imu()
     sets = ["exercise_index,exercise_id,exercise_name,set_index,set_id,set_kind,load_kind,planned_reps,planned_weight_kg,"
             "planned_seconds,reps,weight_kg,seconds,rir,skipped,completed_ms,rest_seconds"]
@@ -41,13 +41,16 @@ def _export(path: Path) -> None:
         sets.append(f"0,biceps_curl,Bizepscurls,{i},c{i + 1},normal,kg,{reps},12,,{reps},12,,,0,{start + reps * 2_500 + lag},60")
     sets.append("0,biceps_curl,Bizepscurls,2,c3,normal,kg,8,12,,,,,,0,,60")
     with zipfile.ZipFile(path, "w") as archive:
-        archive.writestr("manifest.json", json.dumps({"format": rm.EXPORT_FORMAT, "formatVersion": 1}))
-        archive.writestr("sessions.csv", "session_id\nsession-demo\n")
-        archive.writestr("session-demo/meta.json", json.dumps({"wrist": "right", "clock": {"offsetMs": 180}}))
-        archive.writestr("session-demo/accel.csv", accel)
-        archive.writestr("session-demo/gyro.csv", gyro)
-        archive.writestr("session-demo/sets.csv", "\n".join(sets) + "\n")
-        archive.writestr("session-demo/events.csv", "t_ms,event\n0,session_started\n")
+        if root:
+            # Krafttraining-Export: eigene Tabellen gleichen Namens auf oberster Ebene.
+            archive.writestr("sessions.csv", "session_id,start_utc\nandere,2026-10-04\n")
+        archive.writestr(f"{root}manifest.json", json.dumps({"format": rm.EXPORT_FORMAT, "formatVersion": 1}))
+        archive.writestr(f"{root}sessions.csv", "session_id\nsession-demo\n")
+        archive.writestr(f"{root}session-demo/meta.json", json.dumps({"wrist": "right", "clock": {"offsetMs": 180}}))
+        archive.writestr(f"{root}session-demo/accel.csv", accel)
+        archive.writestr(f"{root}session-demo/gyro.csv", gyro)
+        archive.writestr(f"{root}session-demo/sets.csv", "\n".join(sets) + "\n")
+        archive.writestr(f"{root}session-demo/events.csv", "t_ms,event\n0,session_started\n")
 
 
 class RunbackMotionTest(unittest.TestCase):
@@ -93,6 +96,13 @@ class RunbackMotionTest(unittest.TestCase):
         self.assertEqual(x.shape[1:], (200, 6))
         self.assertIn("biceps_curl", set(y))
         self.assertEqual(set(groups), {"session-demo"})
+
+    def test_reads_the_folder_inside_the_strength_export(self):
+        path = Path(self.dir.name) / "kraft.zip"
+        _export(path, rm.STRENGTH_EXPORT_DIRECTORY)
+        sessions = rm.load_export(path)
+        self.assertEqual([s.id for s in sessions], ["session-demo"])
+        self.assertEqual(len(sessions[0].accel), len(self.session.accel))
 
     def test_rejects_other_zip(self):
         other = Path(self.dir.name) / "other.zip"

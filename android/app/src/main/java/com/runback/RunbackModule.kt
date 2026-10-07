@@ -223,23 +223,11 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         JSONObject().put("sessions", MotionSessions.heartSummaries(context, store))
     }
 
-    // Bewegungsdaten aus dem Krafttraining: Status, Export als ZIP und Löschen.
-    // Rohsamples bleiben nativ; JS sieht nur Zähler.
+    // Bewegungsdaten aus dem Krafttraining: Status und Löschen; exportiert
+    // werden sie mit dem Kraftexport (shareExportArchive). JS sieht nur Zähler.
     @ReactMethod fun getMotionStatus(promise: Promise) = task(promise) { MotionSessions.status(context, store) }
     /** Was die Uhr zu einer Krafteinheit misst und übertragen hat; `null` ohne Uhr. */
     @ReactMethod fun getStrengthWatch(id: String, promise: Promise) = task(promise) { MotionSessions.watchInfo(context, store, id) ?: JSONObject.NULL }
-    @ReactMethod fun exportMotionData(promise: Promise) {
-        if ((store.getDocument("motion_index")?.optJSONArray("sessions")?.length() ?: 0) == 0) {
-            promise.reject("MOTION_EMPTY", "Noch keine Bewegungsdaten aufgezeichnet."); return
-        }
-        val day = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT).format(java.util.Date())
-        launch(Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/zip")
-            .putExtra(Intent.EXTRA_TITLE, "runback-bewegungsdaten-$day.zip"), promise) { code, data ->
-            val uri = data?.data
-            if (code != Activity.RESULT_OK || uri == null) promise.resolve("{\"cancelled\":true}")
-            else task(promise) { context.contentResolver.openOutputStream(uri, "wt")!!.use { MotionSessions.export(context, store, it) } }
-        }
-    }
     @ReactMethod fun deleteMotionData(promise: Promise) = task(promise) {
         MotionSessions.deleteAll(context, store)
         MotionSessions.status(context, store)
@@ -681,11 +669,14 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         exportArchives.remove(id)?.discard()
         JSONObject().put("discarded", true)
     }
-    @ReactMethod fun shareExportArchive(id: String, title: String, promise: Promise) {
+    // `includeMotion`: Bewegungsdaten der Uhr als Ordner `bewegungsdaten/` (Kraftexport).
+    @ReactMethod fun shareExportArchive(id: String, title: String, includeMotion: Boolean, promise: Promise) {
         worker.execute {
             try {
                 val archive = exportArchives[id] ?: error("Der Export ist nicht mehr verfügbar.")
-                val file = archive.finish()
+                val file = archive.finish { zip ->
+                    if (includeMotion) MotionSessions.exportInto(context, store, zip, "bewegungsdaten/")
+                }
                 exportArchives.remove(id)
                 shareUris(listOf(FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)), "application/zip", title, promise)
             } catch (error: Exception) { promise.reject("SHARE_ERROR", error.message, error) }

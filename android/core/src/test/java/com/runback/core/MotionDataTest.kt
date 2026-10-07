@@ -46,6 +46,20 @@ class MotionDataTest {
         }
     }
 
+    @Test fun readableSkipsBrokenFilesButKeepsCutOffOnes() {
+        val bytes = raw {
+            anchor(1_000_000_000L, 1_700_000_000_000L)
+            sample(MotionFormat.KIND_ACCEL, 1_020_000_000L, 0.5f, -9.81f, 1.25f)
+        }
+        assertTrue(MotionExport.readable { ByteArrayInputStream(bytes) })
+        assertTrue(MotionExport.readable { ByteArrayInputStream(bytes.copyOf(bytes.size - 5)) })
+        assertFalse(MotionExport.readable { ByteArrayInputStream("NOTMOTION-and-more-bytes".toByteArray()) })
+        // Beschädigtes gzip mitten in der Datei.
+        val gz = ByteArrayOutputStream().also { out -> java.util.zip.GZIPOutputStream(out).use { it.write(bytes) } }.toByteArray()
+        val broken = gz.copyOf().also { for (i in 12 until it.size - 8) it[i] = 0x55 }
+        assertFalse(MotionExport.readable { java.util.zip.GZIPInputStream(ByteArrayInputStream(broken)) })
+    }
+
     @Test fun rejectsForeignFiles() {
         assertThrows(IllegalArgumentException::class.java) {
             MotionFormat.Reader(ByteArrayInputStream("NOTMOTION-and-more-bytes".toByteArray()))
@@ -170,6 +184,33 @@ class MotionDataTest {
         assertEquals("session-2,1000000,,,left,,,0,0,0,,,,,0,0,1,,", summary[2])
         assertFalse(files.containsKey("session-2/accel.csv"))
         assertEquals(MotionExport.FORMAT, JSONObject(files["manifest.json"]!!).getString("format"))
+    }
+
+    @Test fun exportIntoAFolderLeavesTheOtherFilesAlone() {
+        val rawBytes = raw {
+            anchor(5_000_000_000L, 1_000_000L)
+            sample(MotionFormat.KIND_ACCEL, 5_020_000_000L, 1f, 2f, 3f)
+        }
+        val meta = JSONObject().put("sessionId", "session-1").put("startedAt", 1_000_000L)
+        val out = ByteArrayOutputStream()
+        ZipOutputStream(out).use { zip ->
+            // Wie im Krafttraining-Export: gleichnamige Tabelle auf oberster Ebene.
+            zip.putNextEntry(java.util.zip.ZipEntry("sessions.csv"))
+            zip.write("kraft\n".toByteArray())
+            zip.closeEntry()
+            MotionExport.write(zip, listOf(MotionExport.Session(meta, null) { ByteArrayInputStream(rawBytes) }), 2_000_000L, "bewegungsdaten/")
+        }
+        val files = unzip(out.toByteArray())
+
+        assertEquals("kraft\n", files["sessions.csv"])
+        assertEquals("t_ms,x,y,z\n20,1.0,2.0,3.0\n", files["bewegungsdaten/session-1/accel.csv"])
+        assertTrue(files["bewegungsdaten/sessions.csv"]!!.lines()[1].startsWith("session-1,"))
+        assertEquals(MotionExport.FORMAT, JSONObject(files["bewegungsdaten/manifest.json"]!!).getString("format"))
+        assertTrue(files.keys.filter { it != "sessions.csv" }.all { it.startsWith("bewegungsdaten/") })
+    }
+
+    @Test(expected = IllegalArgumentException::class) fun exportFolderMustBeASimpleName() {
+        ZipOutputStream(ByteArrayOutputStream()).use { MotionExport.write(it, emptyList(), 0L, "../") }
     }
 
     @Test fun exportKeepsDetectedAndCorrectedRepsSideBySide() {
