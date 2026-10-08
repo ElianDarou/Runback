@@ -80,6 +80,7 @@ p { margin: 0; }
 .lang a, .lang span { padding: 6px 7px; border-radius: 6px; text-decoration: none; color: var(--muted); }
 .lang span { color: var(--text); background: rgba(242, 244, 239, 0.06); }
 .lang a:hover { color: var(--text); }
+.lang abbr { text-decoration: none; }
 
 /* ---------- Buttons ---------- */
 .cta { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 34px; }
