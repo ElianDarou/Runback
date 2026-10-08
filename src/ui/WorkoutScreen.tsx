@@ -1,10 +1,4 @@
-import React, {
-  memo,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -14,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import {
+  displaySessionName,
   exerciseProgress,
   formatWeight,
   referenceLabel,
@@ -40,44 +35,52 @@ import {
   SwipeToDelete,
   type,
 } from './components';
+import { tr } from '../domain/i18n';
+import { exerciseDisplayName } from '../domain/catalog';
 
-/** Labels der Uhr im Training; ein Satz Hinweis nur, wenn der Nutzer etwas tun kann. */
-const WATCH_WORDS: Record<
-  StrengthWatchLive,
-  { label: string; muted: boolean }
-> = {
-  measuring: { label: 'Misst', muted: false },
-  starting: { label: 'Startet', muted: true },
-  silent: { label: 'Keine Daten', muted: true },
-  failed: { label: 'Misst nicht', muted: true },
-  disconnected: { label: 'Nicht verbunden', muted: true },
-};
+/** Watch labels during training; a hint only when the user can act on it. Built per call: the language can change at runtime. */
+const watchWords = (
+  state: StrengthWatchLive,
+): { label: string; muted: boolean } =>
+  ({
+    measuring: { label: tr('Misst', 'Measuring'), muted: false },
+    starting: { label: tr('Startet', 'Starting'), muted: true },
+    silent: { label: tr('Keine Daten', 'No data'), muted: true },
+    failed: { label: tr('Misst nicht', 'Not measuring'), muted: true },
+    disconnected: {
+      label: tr('Nicht verbunden', 'Not connected'),
+      muted: true,
+    },
+  }[state]);
 
 /**
- * Eine schmale Zeile unter dem Kopf: was die Uhr gerade misst und der Puls
- * jetzt. Ohne frischen Wert steht „–“, kein alter Puls.
+ * A narrow line under the header: what the watch is measuring and the heart
+ * rate right now. Without a fresh value it shows "–", never an old heart rate.
  */
 function WatchStrip({
   watch,
 }: {
   watch: { state: StrengthWatchLive; bpm?: number; hint?: string };
 }) {
-  const words = WATCH_WORDS[watch.state];
+  const words = watchWords(watch.state);
   const measuring = watch.state === 'measuring';
   return (
     <View
       accessibilityLiveRegion="polite"
-      accessibilityLabel={`Uhr: ${words.label}${
+      accessibilityLabel={`${tr('Uhr', 'Watch')}: ${words.label}${
         measuring
           ? watch.bpm !== undefined
-            ? `, Puls ${watch.bpm} Schläge pro Minute`
-            : ', noch kein Puls'
+            ? tr(
+                `, Puls ${watch.bpm} Schläge pro Minute`,
+                `, heart rate ${watch.bpm} beats per minute`,
+              )
+            : tr(', noch kein Puls', ', no heart rate yet')
           : ''
       }${watch.hint ? `. ${watch.hint}` : ''}`}
       style={styles.watch}
     >
       <View style={styles.watchLine}>
-        <Text style={styles.watchTitle}>Uhr</Text>
+        <Text style={styles.watchTitle}>{tr('Uhr', 'Watch')}</Text>
         <Badge muted={words.muted}>{words.label}</Badge>
         <View style={styles.watchSpacer} />
         {measuring ? (
@@ -93,15 +96,15 @@ function WatchStrip({
 }
 
 /**
- * Aktive Trainingsansicht: Sätze in Sekunden bestätigen, Abweichungen ohne Wertung erfassen.
+ * Active workout view: confirm sets in seconds, log deviations without judgment.
  *
- * Aufbau: erledigte Übungen als schmale Zeilen oben, die aktuelle Übung als
- * ausgeklappte Karte in der Mitte, kommende Übungen als schmale Zeilen unten.
- * Eine Zeile antippen wechselt die Übung. Ein Satz lässt sich nach links
- * wegwischen; bis zur nächsten Änderung steht an seiner Stelle „Rückgängig“.
+ * Layout: finished exercises as narrow rows at the top, the current exercise
+ * as an expanded card in the middle, upcoming exercises as narrow rows at the
+ * bottom. Tapping a row switches the exercise. A set can be swiped to the
+ * left; until the next change, "Undo" takes its place.
  */
 
-/** So lange bleibt „Rückgängig“ nach dem Löschen eines Satzes stehen. */
+/** How long "Undo" stays after a set is deleted. */
 const UNDO_MS = 8000;
 
 interface RemovedSet {
@@ -132,26 +135,36 @@ const plannedLabel = (set: LoggedSet) => {
   }
   const weight =
     planned.loadKind === 'bodyweight'
-      ? 'Eigengewicht'
+      ? tr('Eigengewicht', 'Bodyweight')
       : planned.weightKg
       ? `${formatWeight(planned.weightKg)} kg`
       : null;
-  const reps = planned.reps ? `${planned.reps} Wdh.` : null;
-  return [weight, reps].filter(Boolean).join(' × ') || 'frei';
+  const reps = planned.reps
+    ? tr(`${planned.reps} Wdh.`, `${planned.reps} reps`)
+    : null;
+  return [weight, reps].filter(Boolean).join(' × ') || tr('frei', 'free');
 };
 
-/** Voreinstellung eines Eingabefeldes aus der letzten vergleichbaren Einheit. */
+/** Starting value of an input field, from the last comparable session. */
 interface SetSuggestion {
   weightKg?: number;
   reps?: number;
   seconds?: number;
 }
 
-const kindLabel: Record<string, string> = {
-  warmup: 'Aufwärmen',
-  failure: 'bis Versagen',
-  dropset: 'Dropsatz',
-  timed: 'Zeitsatz',
+const kindLabel = (kind: string): string => {
+  switch (kind) {
+    case 'warmup':
+      return tr('Aufwärmen', 'Warm-up');
+    case 'failure':
+      return tr('bis Versagen', 'to failure');
+    case 'dropset':
+      return tr('Dropsatz', 'Drop set');
+    case 'timed':
+      return tr('Zeitsatz', 'Timed set');
+    default:
+      return '';
+  }
 };
 
 function CompactRow({
@@ -169,13 +182,16 @@ function CompactRow({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${exercise.name}, ${progress.completed} von ${progress.total} Sätzen erledigt`}
+      accessibilityLabel={tr(
+        `${exerciseDisplayName(exercise.exerciseId, exercise.name)}, ${progress.completed} von ${progress.total} Sätzen erledigt`,
+        `${exerciseDisplayName(exercise.exerciseId, exercise.name)}, ${progress.completed} of ${progress.total} sets done`,
+      )}
       onPress={() => onPress(index)}
       style={({ pressed }) => [styles.compact, pressed && styles.pressed]}
     >
       <Text style={styles.compactArrow}>{direction === 'up' ? '↑' : '↓'}</Text>
       <Text numberOfLines={1} style={styles.compactName}>
-        {exercise.name}
+        {exerciseDisplayName(exercise.exerciseId, exercise.name)}
       </Text>
       <Text style={styles.compactCount}>
         {progress.completed}/{progress.total}
@@ -201,11 +217,11 @@ const SetRow = memo(function SetRow({
   set: LoggedSet;
   position: number;
   reference: string | null;
-  /** Unter dem Kopf „Zuletzt“ kennzeichnet die Zeile eine bloße Vorgabe. */
+  /** Under the "Last" header, the row marks a plain target. */
   markPlanned: boolean;
   suggestion: SetSuggestion | null;
   active: boolean;
-  /** Ohne das Feld bleibt die Reserve unbekannt; gespeicherte Werte bleiben. */
+  /** Without the field, reserve stays unknown; saved values are kept. */
   showRir: boolean;
   onComplete: (
     setId: string,
@@ -223,9 +239,9 @@ const SetRow = memo(function SetRow({
   ) => void;
 }) {
   const timed = set.planned.kind === 'timed';
-  // Erfasster Wert schlägt Planwert, Planwert schlägt Vorschlag aus der
-  // Historie. Der Vorschlag ist nur eine Voreinstellung im Eingabefeld; erst
-  // das Häkchen macht daraus einen tatsächlichen Wert (T-5).
+  // A logged value beats the plan value, and the plan value beats the
+  // suggestion from history. The suggestion is only a preset in the input
+  // field; only the check mark turns it into an actual value (T-5).
   const ownWeight = set.actualWeightKg ?? set.planned.weightKg ?? undefined;
   const ownReps = timed
     ? set.actualSeconds ?? set.planned.seconds ?? undefined
@@ -240,14 +256,14 @@ const SetRow = memo(function SetRow({
   const [reps, setReps] = useState(
     initialReps === undefined ? '' : String(initialReps),
   );
-  // Reserve (RIR) ist freiwillig und nur eine Nutzereingabe. Leer heißt
-  // unbekannt; die App schätzt sie nicht aus demselben Satz.
+  // Reserve (RIR) is optional and only user input. Empty means unknown; the
+  // app doesn't estimate it from the same set.
   const [rir, setRir] = useState(
     set.actualRir === undefined ? '' : String(set.actualRir),
   );
   const [touched, setTouched] = useState(false);
-  // Uhr, Benachrichtigung oder ein gelöschter Satz davor ändern Werte und
-  // Vorschläge, während die Zeile stehen bleibt. Ohne eigene Eingabe folgt sie.
+  // A watch, a notification, or a deleted set before it changes values and
+  // suggestions while the row stays put. Without its own input, it follows.
   useEffect(() => {
     if (touched) return;
     setWeight(initialWeight === undefined ? '' : formatWeight(initialWeight));
@@ -263,7 +279,7 @@ const SetRow = memo(function SetRow({
   const repsIsSuggested =
     !touched && !done && ownReps === undefined && suggestedReps !== undefined;
   const bodyweight = set.planned.loadKind === 'bodyweight';
-  const note = kindLabel[set.planned.kind];
+  const note = kindLabel(set.planned.kind);
 
   return (
     <View
@@ -282,15 +298,20 @@ const SetRow = memo(function SetRow({
         <Text numberOfLines={1} style={styles.referenceText}>
           {reference || plannedLabel(set)}
         </Text>
-        {/* Der Spaltenkopf nennt die Herkunft; nur Abweichungen stehen hier. */}
+        {/* The column header names the origin; only deviations appear here. */}
         {markPlanned && !reference ? (
-          <Text style={styles.referenceHint}>Vorgabe</Text>
+          <Text style={styles.referenceHint}>{tr('Vorgabe', 'Target')}</Text>
         ) : null}
       </View>
       <TextInput
-        accessibilityLabel={`Gewicht für Satz ${position}${
-          weightIsSuggested ? ', Vorschlag aus der letzten Einheit' : ''
-        }`}
+        accessibilityLabel={tr(
+          `Gewicht für Satz ${position}${
+            weightIsSuggested ? ', Vorschlag aus der letzten Einheit' : ''
+          }`,
+          `Weight for set ${position}${
+            weightIsSuggested ? ', suggested from the last session' : ''
+          }`,
+        )}
         editable={!bodyweight}
         keyboardType="decimal-pad"
         onBlur={() => onEdit(set.id, weight, reps, rir, timed)}
@@ -309,11 +330,14 @@ const SetRow = memo(function SetRow({
         value={bodyweight ? '' : weight}
       />
       <TextInput
-        accessibilityLabel={`${
-          timed ? 'Sekunden' : 'Wiederholungen'
-        } für Satz ${position}${
-          repsIsSuggested ? ', Vorschlag aus der letzten Einheit' : ''
-        }`}
+        accessibilityLabel={tr(
+          `${timed ? 'Sekunden' : 'Wiederholungen'} für Satz ${position}${
+            repsIsSuggested ? ', Vorschlag aus der letzten Einheit' : ''
+          }`,
+          `${timed ? 'Seconds' : 'Reps'} for set ${position}${
+            repsIsSuggested ? ', suggested from the last session' : ''
+          }`,
+        )}
         keyboardType="number-pad"
         onBlur={() => onEdit(set.id, weight, reps, rir, timed)}
         onChangeText={value => {
@@ -330,7 +354,10 @@ const SetRow = memo(function SetRow({
         <View style={styles.inputSmall} />
       ) : (
         <TextInput
-          accessibilityLabel={`Wiederholungen im Tank für Satz ${position}, optional`}
+          accessibilityLabel={tr(
+            `Wiederholungen im Tank für Satz ${position}, optional`,
+            `Reps in reserve for set ${position}, optional`,
+          )}
           keyboardType="number-pad"
           onBlur={() => onEdit(set.id, weight, reps, rir, timed)}
           onChangeText={value => {
@@ -346,7 +373,9 @@ const SetRow = memo(function SetRow({
       )}
       <Pressable
         accessibilityLabel={
-          done ? `Satz ${position} zurücknehmen` : `Satz ${position} bestätigen`
+          done
+            ? tr(`Satz ${position} zurücknehmen`, `Undo set ${position}`)
+            : tr(`Satz ${position} bestätigen`, `Confirm set ${position}`)
         }
         accessibilityRole="button"
         accessibilityState={{ checked: done }}
@@ -365,8 +394,8 @@ const SetRow = memo(function SetRow({
 });
 
 /**
- * Kurzfassung des Kraftverlaufs einer Übung, sichtbar sobald alle Sätze
- * erledigt sind. Zeigt eine Einschätzung mit Unsicherheit, keine Bewertung.
+ * Short summary of an exercise's strength trend, visible once all its sets are
+ * done. Shows an assessment with its uncertainty, not a judgment.
  */
 function ProgressionNote({
   assessment,
@@ -377,37 +406,61 @@ function ProgressionNote({
   if (!latest) {
     return null;
   }
-  const headline = `Bestes geschätztes Maximum: ${formatWeight(
-    Math.round(latest.e1rm * 10) / 10,
-  )} kg`;
+  const headline = tr(
+    `Bestes geschätztes Maximum: ${formatWeight(
+      Math.round(latest.e1rm * 10) / 10,
+    )} kg`,
+    `Best estimated max: ${formatWeight(Math.round(latest.e1rm * 10) / 10)} kg`,
+  );
   const missing =
     MINIMUM_SESSIONS_FOR_DIRECTION - collapseToDays(assessment.series).length;
   const detail =
     assessment.verdict === 'not_assessable'
       ? missing > 0
-        ? `Noch ${missing} ${
-            missing === 1 ? 'Trainingstag' : 'Trainingstage'
-          } bis zur ersten Einschätzung des Verlaufs.`
-        : 'Der Verlauf ist noch nicht belastbar einzuschätzen.'
-      : // Nur Beobachtung: Eine Handlung („steigern“, „reduzieren“) gibt es
-      // allein als Empfehlung im Coach (Grundregeln 3 und 15).
+        ? tr(
+            `Noch ${missing} ${
+              missing === 1 ? 'Trainingstag' : 'Trainingstage'
+            } bis zur ersten Einschätzung des Verlaufs.`,
+            `${missing} more ${
+              missing === 1 ? 'training day' : 'training days'
+            } until the first assessment of the trend.`,
+          )
+        : tr(
+            'Der Verlauf ist noch nicht belastbar einzuschätzen.',
+            "The trend can't be assessed reliably yet.",
+          )
+      : // Observation only: an action ("increase", "reduce") exists only as a
+      // recommendation in the Coach (ground rules 3 and 15).
       assessment.verdict === 'increase'
-      ? 'Der Verlauf zeigt nach oben.'
+      ? tr('Der Verlauf zeigt nach oben.', 'The trend is going up.')
       : assessment.verdict === 'reduce'
-      ? 'Der Verlauf zeigt nach unten.'
+      ? tr('Der Verlauf zeigt nach unten.', 'The trend is going down.')
       : assessment.verdict === 'plateau'
-      ? `Seit ${Math.round(
-          assessment.plateau.spanWeeks,
-        )} Wochen nachweislich stabil.`
-      : 'Noch nicht klar: Änderung und Stillstand sind beide möglich. So weitermachen ist eine eigene Entscheidung.';
+      ? tr(
+          `Seit ${Math.round(
+            assessment.plateau.spanWeeks,
+          )} Wochen nachweislich stabil.`,
+          `Demonstrably stable for ${Math.round(
+            assessment.plateau.spanWeeks,
+          )} weeks.`,
+        )
+      : tr(
+          'Noch nicht klar: Änderung und Stillstand sind beide möglich. So weitermachen ist eine eigene Entscheidung.',
+          'Not clear yet: change and standstill are both possible. Carrying on as before is your own decision.',
+        );
   return (
     <View style={styles.progression}>
       <Text style={styles.progressionHeadline}>{headline}</Text>
       <Text style={styles.progressionDetail}>{detail}</Text>
       <Text style={styles.progressionSource}>
-        Schätzung aus {assessment.series.length}{' '}
-        {assessment.series.length === 1 ? 'Einheit' : 'Einheiten'}, keine
-        Messung.
+        {tr(
+          `Schätzung aus ${assessment.series.length} ${
+            assessment.series.length === 1 ? 'Einheit' : 'Einheiten'
+          }, keine Messung.`,
+          `Estimate from ${assessment.series.length} ${
+            assessment.series.length === 1 ? 'session' : 'sessions'
+          }, not a measurement.`,
+        )}
       </Text>
     </View>
   );
@@ -435,17 +488,17 @@ export function WorkoutScreen({
   onMinimize,
   watch = null,
 }: {
-  /** Live-Zustand der Uhr (`strengthWatchLive`); ohne Uhr keine Zeile. */
+  /** Live state of the watch (`strengthWatchLive`); without a watch there is no row. */
   watch?: { state: StrengthWatchLive; bpm?: number; hint?: string } | null;
   session: StrengthSession;
   history: StrengthSession[];
-  /** Vollstaendige Historie fuer den Verlauf. Fehlt sie, entfaellt die Notiz. */
+  /** Full history for the trend. Without it, the note is left out. */
   sessions?: StrengthSession[];
   now: number;
   busy?: boolean;
-  /** Eingabefeld „Wiederholungen im Tank“ anbieten. */
+  /** Offer the "Reps in reserve" input field. */
   showRir?: boolean;
-  /** Pausenbalken nach einem Satz zeigen. Die Pause selbst wird immer gespeichert. */
+  /** Show the rest bar after a set. The rest itself is always saved. */
   showRestTimer?: boolean;
   onSelectExercise: (index: number) => void;
   onCompleteSet: (
@@ -470,9 +523,13 @@ export function WorkoutScreen({
   ) => void;
   onAddSet: (exerciseIndex: number) => void;
   onAddExercise: () => void;
-  /** Ohne Rückruf lässt sich kein Satz wegwischen. */
+  /** Without a callback, a set can't be swiped away. */
   onRemoveSet?: (exerciseIndex: number, setId: string) => void;
-  onRestoreSet?: (exerciseIndex: number, set: LoggedSet, position: number) => void;
+  onRestoreSet?: (
+    exerciseIndex: number,
+    set: LoggedSet,
+    position: number,
+  ) => void;
   onPauseRest?: () => void;
   onResumeRest?: () => void;
   onSkipRest?: () => void;
@@ -503,9 +560,17 @@ export function WorkoutScreen({
     removed && removed.exerciseIndex === index && onRestoreSet ? removed : null;
   const undoRow = undo ? (
     <View key="undo" style={styles.undo}>
-      <Text style={styles.undoText}>Satz {undo.position + 1} gelöscht</Text>
+      <Text style={styles.undoText}>
+        {tr(
+          `Satz ${undo.position + 1} gelöscht`,
+          `Set ${undo.position + 1} deleted`,
+        )}
+      </Text>
       <Pressable
-        accessibilityLabel={`Satz ${undo.position + 1} wiederherstellen`}
+        accessibilityLabel={tr(
+          `Satz ${undo.position + 1} wiederherstellen`,
+          `Restore set ${undo.position + 1}`,
+        )}
         accessibilityRole="button"
         onPress={() => {
           onRestoreSet?.(undo.exerciseIndex, undo.set, undo.position);
@@ -513,7 +578,7 @@ export function WorkoutScreen({
         }}
         style={({ pressed }) => [styles.undoButton, pressed && styles.pressed]}
       >
-        <Text style={styles.ghostText}>Rückgängig</Text>
+        <Text style={styles.ghostText}>{tr('Rückgängig', 'Undo')}</Text>
       </Pressable>
     </View>
   ) : null;
@@ -580,8 +645,8 @@ export function WorkoutScreen({
     [current, history],
   );
 
-  // Vorschläge aus der letzten vergleichbaren Einheit. Sie füllen nur die
-  // Eingabefelder vor, damit ein bestätigter Satz ein Tippen kostet.
+  // Suggestions from the last comparable session. They only prefill the
+  // input fields, so a confirmed set costs one tap.
   const suggestions = useMemo<(SetSuggestion | null)[]>(
     () =>
       current
@@ -607,7 +672,7 @@ export function WorkoutScreen({
     ? exerciseProgress(current)
     : { completed: 0, total: 0, done: false, activeSetId: undefined };
 
-  // Erst rechnen, wenn die Übung fertig ist. Vorher lenkt der Verlauf nur ab.
+  // Only compute once the exercise is done; before that, the trend only distracts.
   const progression = useMemo(() => {
     if (!current || !currentProgress.done || !sessions?.length) {
       return null;
@@ -621,7 +686,10 @@ export function WorkoutScreen({
     <View style={styles.screen}>
       <View style={styles.header}>
         <Pressable
-          accessibilityLabel="Training in den Hintergrund legen"
+          accessibilityLabel={tr(
+            'Training in den Hintergrund legen',
+            'Move workout to background',
+          )}
           accessibilityRole="button"
           onPress={onMinimize}
           style={({ pressed }) => [
@@ -633,15 +701,18 @@ export function WorkoutScreen({
         </Pressable>
         <View style={styles.headerCenter}>
           <Text numberOfLines={1} style={styles.headerTitle}>
-            {session.name}
+            {displaySessionName(session.name)}
           </Text>
           <Text style={styles.headerMeta}>
-            {formatElapsed(elapsed)} · {progress.completedSets} von{' '}
-            {progress.totalSets} Sätzen
+            {formatElapsed(elapsed)} ·{' '}
+            {tr(
+              `${progress.completedSets} von ${progress.totalSets} Sätzen`,
+              `${progress.completedSets} of ${progress.totalSets} sets`,
+            )}
           </Text>
         </View>
         <Pressable
-          accessibilityLabel="Training beenden"
+          accessibilityLabel={tr('Training beenden', 'End workout')}
           accessibilityRole="button"
           disabled={busy}
           onPress={onFinish}
@@ -651,7 +722,7 @@ export function WorkoutScreen({
             pressed && styles.pressed,
           ]}
         >
-          <Text style={styles.finishText}>Beenden</Text>
+          <Text style={styles.finishText}>{tr('Beenden', 'End')}</Text>
         </Pressable>
       </View>
       {watch ? <WatchStrip watch={watch} /> : null}
@@ -674,25 +745,37 @@ export function WorkoutScreen({
 
         {current ? (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>{current.name}</Text>
+            <Text style={styles.cardTitle}>
+              {exerciseDisplayName(current.exerciseId, current.name)}
+            </Text>
             <Text style={styles.cardMeta}>
               {currentProgress.done
-                ? 'Alle Sätze erledigt'
-                : `Satz ${Math.min(
-                    currentProgress.completed + 1,
-                    currentProgress.total,
-                  )} von ${currentProgress.total}`}
-              {current.added ? ' · frei ergänzt' : ''}
+                ? tr('Alle Sätze erledigt', 'All sets done')
+                : tr(
+                    `Satz ${Math.min(
+                      currentProgress.completed + 1,
+                      currentProgress.total,
+                    )} von ${currentProgress.total}`,
+                    `Set ${Math.min(
+                      currentProgress.completed + 1,
+                      currentProgress.total,
+                    )} of ${currentProgress.total}`,
+                  )}
+              {current.added ? tr(' · frei ergänzt', ' · added') : ''}
             </Text>
 
             <View style={styles.columns}>
               <Text style={[styles.columnLabel, styles.columnNumber]}>#</Text>
               <Text style={[styles.columnLabel, styles.columnReference]}>
-                {/* Ohne frühere Sätze steht dort die Vorgabe, nicht „zuletzt“. */}
-                {references.some(Boolean) ? 'Zuletzt' : 'Vorgabe'}
+                {/* Without earlier sets, the column shows the target, not the last session. */}
+                {references.some(Boolean)
+                  ? tr('Zuletzt', 'Last')
+                  : tr('Vorgabe', 'Target')}
               </Text>
               <Text style={[styles.columnLabel, styles.columnInput]}>kg</Text>
-              <Text style={[styles.columnLabel, styles.columnInput]}>Wdh.</Text>
+              <Text style={[styles.columnLabel, styles.columnInput]}>
+                {tr('Wdh.', 'Reps')}
+              </Text>
               <Text style={[styles.columnLabel, styles.columnInputSmall]}>
                 {showRir ? 'RIR' : ''}
               </Text>
@@ -704,7 +787,10 @@ export function WorkoutScreen({
                 {undo && undo.position === position ? undoRow : null}
                 <SwipeToDelete
                   enabled={Boolean(onRemoveSet) && current.sets.length > 1}
-                  label={`Satz ${position + 1} löschen`}
+                  label={tr(
+                    `Satz ${position + 1} löschen`,
+                    `Delete set ${position + 1}`,
+                  )}
                   onDelete={() => remove(set, position)}
                 >
                   <SetRow
@@ -725,9 +811,14 @@ export function WorkoutScreen({
                 set.completedAt === session.restStartedAt ? (
                   <View style={styles.restBlock}>
                     <View
-                      accessibilityLabel={`Pause${
-                        restPaused ? ' angehalten' : ''
-                      }, noch ${formatClock(rest)}`}
+                      accessibilityLabel={tr(
+                        `Pause${
+                          restPaused ? ' angehalten' : ''
+                        }, noch ${formatClock(rest)}`,
+                        `Rest${restPaused ? ' paused' : ''}, ${formatClock(
+                          rest,
+                        )} left`,
+                      )}
                       style={styles.rest}
                     >
                       <View
@@ -741,7 +832,9 @@ export function WorkoutScreen({
                         ]}
                       />
                       <Text style={styles.restText}>
-                        {restPaused ? 'Pause angehalten' : 'Pause'}{' '}
+                        {restPaused
+                          ? tr('Pause angehalten', 'Rest paused')
+                          : tr('Pause', 'Rest')}{' '}
                         {formatClock(rest)}
                       </Text>
                     </View>
@@ -749,7 +842,9 @@ export function WorkoutScreen({
                       <View style={styles.restActions}>
                         <Pressable
                           accessibilityLabel={
-                            restPaused ? 'Pause weiterlaufen lassen' : 'Pause anhalten'
+                            restPaused
+                              ? tr('Pause weiterlaufen lassen', 'Resume rest')
+                              : tr('Pause anhalten', 'Pause rest')
                           }
                           accessibilityRole="button"
                           onPress={restPaused ? onResumeRest : onPauseRest}
@@ -759,11 +854,16 @@ export function WorkoutScreen({
                           ]}
                         >
                           <Text style={styles.ghostText}>
-                            {restPaused ? 'Weiter' : 'Anhalten'}
+                            {restPaused
+                              ? tr('Weiter', 'Resume')
+                              : tr('Anhalten', 'Pause')}
                           </Text>
                         </Pressable>
                         <Pressable
-                          accessibilityLabel="Pause überspringen"
+                          accessibilityLabel={tr(
+                            'Pause überspringen',
+                            'Skip rest',
+                          )}
                           accessibilityRole="button"
                           onPress={onSkipRest}
                           style={({ pressed }) => [
@@ -771,7 +871,9 @@ export function WorkoutScreen({
                             pressed && styles.pressed,
                           ]}
                         >
-                          <Text style={styles.ghostText}>Überspringen</Text>
+                          <Text style={styles.ghostText}>
+                            {tr('Überspringen', 'Skip')}
+                          </Text>
                         </Pressable>
                       </View>
                     ) : null}
@@ -784,19 +886,24 @@ export function WorkoutScreen({
             {progression ? <ProgressionNote assessment={progression} /> : null}
 
             <Pressable
-              accessibilityLabel="Satz hinzufügen"
+              accessibilityLabel={tr('Satz hinzufügen', 'Add set')}
               accessibilityRole="button"
               onPress={() => onAddSet(index)}
               style={({ pressed }) => [styles.ghost, pressed && styles.pressed]}
             >
-              <Text style={styles.ghostText}>+ Satz</Text>
+              <Text style={styles.ghostText}>{tr('+ Satz', '+ Set')}</Text>
             </Pressable>
           </View>
         ) : (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Noch keine Übung</Text>
+            <Text style={styles.cardTitle}>
+              {tr('Noch keine Übung', 'No exercise yet')}
+            </Text>
             <Copy muted>
-              Füge eine Übung hinzu, um mit dem Aufzeichnen zu beginnen.
+              {tr(
+                'Füge eine Übung hinzu, um mit dem Aufzeichnen zu beginnen.',
+                'Add an exercise to start recording.',
+              )}
             </Copy>
           </View>
         )}
@@ -814,12 +921,12 @@ export function WorkoutScreen({
         )}
 
         <Pressable
-          accessibilityLabel="Übung hinzufügen"
+          accessibilityLabel={tr('Übung hinzufügen', 'Add exercise')}
           accessibilityRole="button"
           onPress={onAddExercise}
           style={({ pressed }) => [styles.ghost, pressed && styles.pressed]}
         >
-          <Text style={styles.ghostText}>+ Übung</Text>
+          <Text style={styles.ghostText}>{tr('+ Übung', '+ Exercise')}</Text>
         </Pressable>
       </ScrollView>
     </View>
@@ -964,7 +1071,7 @@ const styles = StyleSheet.create({
   progressionHeadline: { color: color.text, fontSize: 15, fontWeight: '600' },
   progressionDetail: { color: color.text, fontSize: 14 },
   progressionSource: { color: color.muted, fontSize: 12 },
-  // Vorschlag aus der Historie: sichtbar, aber erkennbar noch nicht erfasst.
+  // Suggestion from history: visible, but clearly not logged yet.
   inputSuggested: { color: color.muted, fontWeight: '400' },
 
   check: {

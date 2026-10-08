@@ -51,8 +51,8 @@ const run: RunSummary = {
   },
 };
 
-describe('Darstellungsreihe', () => {
-  it('formatiert Tempo, Gegenwind und Himmelsrichtung deutsch', () => {
+describe('Display series', () => {
+  it('formats pace, headwind and compass direction in German', () => {
     expect(formatPace(299.6)).toBe('5:00');
     expect(formatPace(undefined)).toBe('–:––');
     expect(formatHeadwind(2.14)).toBe('+2,1');
@@ -62,7 +62,7 @@ describe('Darstellungsreihe', () => {
     expect(compassLabel(359)).toBe('N');
   });
 
-  it('kennt Tempo nur in Bewegung und bietet nur Metriken mit Werten an', () => {
+  it('knows pace only while moving and offers only metrics with values', () => {
     expect(metricValue(row(0), 'pace')).toBeCloseTo(333.3, 0);
     expect(
       metricValue(row(0, { speedMps: undefined }), 'pace'),
@@ -81,7 +81,7 @@ describe('Darstellungsreihe', () => {
     expect(availableMetrics(null)).toEqual([]);
   });
 
-  it('findet die nächste Zeile nach Distanz, Zeit und Position', () => {
+  it('finds the next row by distance, time and position', () => {
     const rows = [row(0), row(1), row(2), row(3)];
     expect(nearestIndex(rows, 'distance', 0)).toBe(0);
     expect(nearestIndex(rows, 'distance', 22)).toBe(1);
@@ -94,7 +94,7 @@ describe('Darstellungsreihe', () => {
     );
   });
 
-  it('macht aus nativen Abschnitten Kilometer mit Restlabel und Unsicherheit', () => {
+  it('turns native segments into kilometers with a remainder label and uncertainty', () => {
     const segments: SegmentAggregate[] = [
       {
         distanceMeters: 1000,
@@ -129,7 +129,7 @@ describe('Darstellungsreihe', () => {
     expect(splitRange(rows, splits[2])).toBeNull();
   });
 
-  it('rechnet Gesamtwerte aus Bewegungszeit, Puls, Höhe und Wind', () => {
+  it('computes totals from moving time, heart rate, elevation and wind', () => {
     expect(averagePace(run)).toBe(290);
     expect(averagePace({ ...run, distanceMeters: 10 })).toBeUndefined();
     const totals = seriesTotals(

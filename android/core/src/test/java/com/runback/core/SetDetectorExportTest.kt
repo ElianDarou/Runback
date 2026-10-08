@@ -5,10 +5,9 @@ import org.junit.Test
 import java.io.File
 
 /**
- * Lässt die Satzerkennung über einen entpackten Bewegungsexport laufen und
- * druckt Erkennungen neben den Abhak-Ereignissen. Nur lokal, wenn
- * `RUNBACK_MOTION_EXPORT` auf den entpackten Ordner zeigt; Rohdaten gehören
- * nicht ins Repository.
+ * Runs set detection over an unpacked motion export and prints detections
+ * next to the check-off events. Local only, when `RUNBACK_MOTION_EXPORT` points
+ * at the unpacked folder; raw data does not belong in the repository.
  *
  *     RUNBACK_MOTION_EXPORT=/tmp/export ./gradlew :core:testDebugUnitTest --tests '*SetDetectorExportTest*' -i
  */

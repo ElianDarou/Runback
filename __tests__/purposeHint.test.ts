@@ -36,7 +36,7 @@ const history = (distanceMeters: number, count = 4): RunSummary[] =>
   );
 
 describe('suggestRunPurpose', () => {
-  it('erkennt den täglichen 5-km-Lauf auf Zeit am Puls, nicht am Tempo', () => {
+  it('recognizes the daily 5 km timed run by heart rate, not by pace', () => {
     const hint = suggestRunPurpose(
       run({ avgHeartRate: 172, heartRateCoverage: 0.95 }),
       history(5000),
@@ -48,7 +48,7 @@ describe('suggestRunPurpose', () => {
     expect(hint?.maxHeartRate).toEqual(MAX);
   });
 
-  it('schlägt bei niedrigem Puls eine ruhige Runde vor', () => {
+  it('suggests an easy run at a low heart rate', () => {
     const hint = suggestRunPurpose(
       run({ avgHeartRate: 140, heartRateCoverage: 0.9 }),
       history(5000),
@@ -60,7 +60,7 @@ describe('suggestRunPurpose', () => {
     );
   });
 
-  it('nennt eine ruhige, deutlich längere Runde eine lange Runde', () => {
+  it('calls a clearly longer easy run a long run', () => {
     const hint = suggestRunPurpose(
       run({
         distanceMeters: 12000,
@@ -73,11 +73,11 @@ describe('suggestRunPurpose', () => {
     expect(hint?.purpose).toBe('long');
     expect(hint?.signals).toContain('longer_than_usual');
     expect(hint?.baselineRunIds).toEqual(['old-0', 'old-1', 'old-2', 'old-3']);
-    // Ohne Puls wurde kein Maxpuls benutzt, also steht keiner in der Spur.
+    // Without heart rate no max heart rate was used, so none appears in the trace.
     expect(hint?.maxHeartRate).toBeUndefined();
   });
 
-  it('bleibt ohne Vergleichsläufe bei einer ruhigen Runde', () => {
+  it('stays with an easy run without comparison runs', () => {
     const hint = suggestRunPurpose(
       run({ distanceMeters: 12000, rpe: { breathing: 3, recordedAt: START } }),
       [],
@@ -86,7 +86,7 @@ describe('suggestRunPurpose', () => {
     expect(hint?.purpose).toBe('easy');
   });
 
-  it('erkennt stark wechselndes Tempo auf flacher Strecke als Tempowechsel', () => {
+  it('recognizes strongly varying pace on a flat route as pace changes', () => {
     const hint = suggestRunPurpose(
       run({
         avgHeartRate: 168,
@@ -110,7 +110,7 @@ describe('suggestRunPurpose', () => {
       ...patch,
     });
 
-  it('liest die Höhe aus der nativen Aufzeichnung', () => {
+  it('reads the elevation from the native recording', () => {
     const elevation = (ascentMeters: number) => ({
       model_version: 'elevation-1',
       available: true as const,
@@ -130,7 +130,7 @@ describe('suggestRunPurpose', () => {
     ).toBe('intervals');
   });
 
-  it('schlägt auf hügeliger oder unbekannter Strecke keinen Tempowechsel vor', () => {
+  it('suggests no pace changes on hilly or unknown routes', () => {
     expect(
       suggestRunPurpose(intervalRun({ elevationGainMeters: 300 }), [], MAX),
     ).toBeUndefined();
@@ -151,7 +151,7 @@ describe('suggestRunPurpose', () => {
     ).toBeUndefined();
   });
 
-  it('braucht für Tempowechsel Puls oder eine Angabe zur Atmung', () => {
+  it('needs heart rate or a breathing note for pace changes', () => {
     expect(
       suggestRunPurpose(
         intervalRun({
@@ -165,7 +165,7 @@ describe('suggestRunPurpose', () => {
     ).toBeUndefined();
   });
 
-  it('hält stetiges Nachlassen eines harten Laufs nicht für Tempowechsel', () => {
+  it('does not take steady fading of a hard run for pace changes', () => {
     expect(
       suggestRunPurpose(
         run({
@@ -180,11 +180,11 @@ describe('suggestRunPurpose', () => {
     ).toBeUndefined();
   });
 
-  it('schweigt ohne Puls und ohne Angabe zur Atmung', () => {
+  it('stays silent without heart rate and without a breathing note', () => {
     expect(suggestRunPurpose(run(), history(5000), MAX)).toBeUndefined();
   });
 
-  it('schweigt, wenn Puls und Atmung sich widersprechen', () => {
+  it('stays silent when heart rate and breathing contradict each other', () => {
     expect(
       suggestRunPurpose(
         run({
@@ -198,7 +198,7 @@ describe('suggestRunPurpose', () => {
     ).toBeUndefined();
   });
 
-  it('nutzt keinen Puls mit zu geringer Abdeckung oder ohne Maxpuls', () => {
+  it('uses no heart rate with too little coverage or without max heart rate', () => {
     expect(
       suggestRunPurpose(
         run({ avgHeartRate: 175, heartRateCoverage: 0.4 }),
@@ -215,7 +215,7 @@ describe('suggestRunPurpose', () => {
     ).toBeUndefined();
   });
 
-  it('schweigt im Graubereich des Pulses', () => {
+  it('stays silent in the gray zone of the heart rate', () => {
     expect(
       suggestRunPurpose(
         run({ avgHeartRate: 155, heartRateCoverage: 0.95 }),
@@ -225,7 +225,7 @@ describe('suggestRunPurpose', () => {
     ).toBeUndefined();
   });
 
-  it('macht für Radfahrten und Fehlstarts keinen Vorschlag', () => {
+  it('makes no suggestion for rides and false starts', () => {
     const hard = { avgHeartRate: 175, heartRateCoverage: 0.95 };
     expect(
       suggestRunPurpose(run({ ...hard, sport: 'cycling' }), [], MAX),

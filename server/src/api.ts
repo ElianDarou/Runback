@@ -13,9 +13,8 @@ import { PUBLIC_VIEWS, type PublicView, type Store } from './db';
 import { loadDataset, loadRunDetail, loadObject } from './records';
 
 /**
- * Lesende API unter `/api/v1`. Antworten sind JSON; Zeitpunkte als ISO-8601
- * in UTC (`*_utc`) oder als Millisekunden (`*Time`, wie in der App).
- * Unbekannte Werte sind `null`.
+ * Read-only API under `/api/v1`. Responses are JSON; times are ISO 8601 in UTC
+ * (`*_utc`) or milliseconds (`*Time`, as in the app). Unknown values are `null`.
  */
 
 export class ApiError extends Error {
@@ -34,14 +33,14 @@ function limitParam(
   const limit = Number(url.searchParams.get('limit') ?? fallback);
   const offset = Number(url.searchParams.get('offset') ?? 0);
   if (!Number.isInteger(limit) || limit < 1 || limit > max) {
-    throw new ApiError(400, `limit muss zwischen 1 und ${max} liegen.`);
+    throw new ApiError(400, `limit must be between 1 and ${max}.`);
   }
   if (!Number.isInteger(offset) || offset < 0)
-    throw new ApiError(400, 'offset muss ≥ 0 sein.');
+    throw new ApiError(400, 'offset must be ≥ 0.');
   return { limit, offset };
 }
 
-/** `from`/`to` als Datum oder Zeitpunkt (ISO 8601); `to` ist exklusiv. */
+/** `from`/`to` as a date or time (ISO 8601); `to` is exclusive. */
 function timeFilter(
   url: URL,
   column: string,
@@ -53,7 +52,7 @@ function timeFilter(
     if (!raw) return;
     const at = Date.parse(raw);
     if (!Number.isFinite(at))
-      throw new ApiError(400, `${name} ist kein gültiges Datum.`);
+      throw new ApiError(400, `${name} is not a valid date.`);
     where.push(`${column} ${name === 'from' ? '>=' : '<'} ?`);
     values.push(new Date(at).toISOString());
   });
@@ -92,7 +91,7 @@ function listView(
 function rangeParam(url: URL): StatsRange {
   const value = url.searchParams.get('range') ?? '12w';
   if (!(RANGES as string[]).includes(value))
-    throw new ApiError(400, `range ist eins von ${RANGES.join(', ')}.`);
+    throw new ApiError(400, `range must be one of ${RANGES.join(', ')}.`);
   return value as StatsRange;
 }
 
@@ -132,7 +131,7 @@ export function apiRead(
     const id = decodeURIComponent(match[1]);
     const run = data.runs.find(entry => entry.id === id);
     if (!run)
-      throw new ApiError(404, 'Diese Einheit gibt es auf dem Server nicht.');
+      throw new ApiError(404, 'This workout does not exist on the server.');
     const detail = loadRunDetail(store, id);
     return { run, series: detail.series, route: detail.route };
   }
@@ -147,7 +146,7 @@ export function apiRead(
     const id = decodeURIComponent(match[1]);
     const session = data.strength.find(entry => entry.id === id);
     if (!session)
-      throw new ApiError(404, 'Diese Einheit gibt es auf dem Server nicht.');
+      throw new ApiError(404, 'This workout does not exist on the server.');
     return { session, heart: data.heart[id] ?? null };
   }
   if (path === '/strength/sets') {
@@ -209,7 +208,7 @@ export function apiRead(
     );
     return view;
   }
-  throw new ApiError(404, 'Unbekannter Endpunkt.');
+  throw new ApiError(404, 'Unknown endpoint.');
 }
 
 const csvCell = (value: unknown) => {
@@ -237,7 +236,7 @@ export function exportView(store: Store, res: ServerResponse, name: string) {
   const match = /^(v1_[a-z_]+)\.(csv|jsonl)$/.exec(name);
   const view = match?.[1] as PublicView | undefined;
   if (!match || !view || !PUBLIC_VIEWS.includes(view))
-    throw new ApiError(404, 'Unbekannter Export.');
+    throw new ApiError(404, 'Unknown export.');
   const statement = store.db.prepare(`SELECT * FROM ${view}`);
   const columns = statement.columns().map(column => column.name);
   if (match[2] === 'csv') {
@@ -261,8 +260,8 @@ export function exportView(store: Store, res: ServerResponse, name: string) {
 }
 
 /**
- * Ganze Datenbank als Datei, ohne Zugangsdaten: Passwort, Sitzungen, Tokens
- * und Geräte bleiben auf dem Server.
+ * Whole database as a file, without credentials: password, sessions, tokens
+ * and devices stay on the server.
  */
 export function exportDatabase(store: Store, res: ServerResponse) {
   const dir = mkdtempSync(join(tmpdir(), 'runback-export-'));

@@ -7,7 +7,7 @@ import org.junit.Test
 class StrengthImportTest {
     @Test fun legacyRowsAreReadableWithoutWritingOrInventingMissingData() {
         val old = StrengthWorkout("strong:old", 1234, "Push", source = "strong")
-        val document = StrengthImport.legacyDocument(old, listOf(StrengthSet("Übung", 1, reps = 8)))
+        val document = StrengthImport.legacyDocument(old, listOf(StrengthSet("Exercise", 1, reps = 8)))
         assertEquals("unknown", document.getString("modelVersion"))
         assertTrue(document.isNull("durationSeconds"))
         assertTrue(document.getJSONArray("sets").getJSONObject(0).isNull("restSeconds"))
@@ -18,7 +18,7 @@ class StrengthImportTest {
     @Test fun missingDataRemainsUnknownAndProvenanceSurvives() {
         val workout = StrengthWorkout("strong:test", 1234, "A", source = "strong",
             extra = "{\"modelVersion\":\"strong-import-v3\",\"durationKnown\":false,\"workoutNotes\":\"Behalten\"}")
-        val document = StrengthImport.document(workout, listOf(StrengthSet("Übung", 1, weight = 80.0,
+        val document = StrengthImport.document(workout, listOf(StrengthSet("Exercise", 1, weight = 80.0,
             weightUnit = "unknown", reps = 8, rpe = 9.0, notes = "Notiz")))
         assertTrue(document.isNull("durationSeconds"))
         assertEquals("strong-import-v3", document.getString("modelVersion"))
@@ -39,7 +39,7 @@ class StrengthImportTest {
         assertEquals(0.0, document.getJSONArray("sets").getJSONObject(0).getDouble("restSeconds"), 0.0)
     }
     @Test fun unfinishedStrongDurationBecomesUnknownButOriginalStays() {
-        // 18 Sätze: Rahmen 30 + 18 × 6 = 138 Minuten.
+        // 18 sets: frame 30 + 18 × 6 = 138 minutes.
         assertEquals(138 * 60.0, StrongDuration.limitSeconds(18), 0.0)
         assertFalse(StrongDuration.isSuspect(127 * 60.0, 20))
         assertTrue(StrongDuration.isSuspect(255 * 60.0, 18))

@@ -1,6 +1,6 @@
 import { runExportRange } from '../src/ui/runExportRange';
 
-test('schließt beide lokalen Kalendertage ein', () => {
+test('includes both local calendar days', () => {
   expect(runExportRange('01.10.2026', '02.10.2026')).toEqual({
     from: new Date(2026, 9, 1).getTime(),
     until: new Date(2026, 9, 3).getTime(),
@@ -20,7 +20,7 @@ test.each([
   expect(() => runExportRange(input, '02.10.2026')).toThrow();
 });
 
-test('prüft Reihenfolge und Schaltjahre', () => {
+test('checks order and leap years', () => {
   expect(() => runExportRange('03.10.2026', '02.10.2026')).toThrow('Ende');
   expect(runExportRange('29.02.2024', '29.02.2024').until).toBe(
     new Date(2024, 2, 1).getTime(),

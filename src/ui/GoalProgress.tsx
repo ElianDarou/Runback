@@ -16,32 +16,33 @@ import {
   space,
   type,
 } from './components';
+import { dateFormat, tr } from '../domain/i18n';
 
-const dateFormatter = new Intl.DateTimeFormat('de-DE', {
-  day: '2-digit',
-  month: '2-digit',
-  year: 'numeric',
-});
+// Formats are read per call: the language can change at runtime.
+const formatDate = (date: Date) =>
+  dateFormat({ day: '2-digit', month: '2-digit', year: 'numeric' }).format(
+    date,
+  );
 
 const formatDateKey = (key: string) => {
   const [year, month, day] = key.split('-').map(Number);
   const date = new Date(year, month - 1, day, 12);
-  return Number.isNaN(date.getTime()) ? key : dateFormatter.format(date);
+  return Number.isNaN(date.getTime()) ? key : formatDate(date);
 };
 
 const daysLabel = (days: number) =>
   days < 0
-    ? 'Zieldatum vorbei'
+    ? tr('Zieldatum vorbei', 'Target date passed')
     : days === 0
-    ? 'Heute'
+    ? tr('Heute', 'Today')
     : days === 1
-    ? 'Noch 1 Tag'
-    : `Noch ${days} Tage`;
+    ? tr('Noch 1 Tag', '1 day left')
+    : tr(`Noch ${days} Tage`, `${days} days left`);
 
 /**
- * Zielnähe: ein Ring, ein Satz, darunter die Fakten. Schätzung und Messung
- * bleiben getrennt beschriftet; unter „Details“ stehen Lauf, Modell und
- * Grenzen der Schätzung.
+ * Goal progress: a ring, one sentence, the facts below. Estimate and
+ * measurement stay labeled separately; under "Details" are the run, the model,
+ * and the limits of the estimate.
  */
 export function GoalProgress({
   prediction,
@@ -50,7 +51,7 @@ export function GoalProgress({
 }: {
   prediction: RacePrediction;
   onEdit?: () => void;
-  /** Auf Heute: nur Ring und Satz, Details bleiben der Zielseite. */
+  /** On Today: only the ring and sentence; details stay on the goal page. */
   compact?: boolean;
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -63,12 +64,17 @@ export function GoalProgress({
     <View style={styles.header}>
       <Ring
         value={ringValue}
-        label={`Zielnähe ${prediction.goal || 'kein Ziel'}`}
-        caption="Zielnähe"
+        label={tr(
+          `Zielnähe ${prediction.goal || 'kein Ziel'}`,
+          `Goal progress ${prediction.goal || 'no goal'}`,
+        )}
+        caption={tr('Zielnähe', 'Goal progress')}
       />
       <View style={styles.headerText}>
         <Text style={styles.goal} numberOfLines={2}>
-          {hasGoal ? prediction.goal : 'Noch kein Ziel festgelegt'}
+          {hasGoal
+            ? prediction.goal
+            : tr('Noch kein Ziel festgelegt', 'No goal set yet')}
         </Text>
         {prediction.targetDate ? (
           <Text style={styles.meta}>
@@ -80,7 +86,7 @@ export function GoalProgress({
         ) : null}
         {prediction.targetSeconds !== undefined ? (
           <Text style={styles.meta}>
-            Ziel {formatGoalTime(prediction.targetSeconds)}
+            {tr('Ziel', 'Goal')} {formatGoalTime(prediction.targetSeconds)}
           </Text>
         ) : null}
       </View>
@@ -92,14 +98,19 @@ export function GoalProgress({
       <Copy>{prediction.message}</Copy>
       {compact ? (
         onEdit ? (
-          <Button secondary small title="Ziel ansehen" onPress={onEdit} />
+          <Button
+            secondary
+            small
+            title={tr('Ziel ansehen', 'View goal')}
+            onPress={onEdit}
+          />
         ) : null
       ) : (
         <>
           {prediction.status === 'estimated' ? (
             <View style={styles.facts}>
               <Fact
-                label="Geschätzt"
+                label={tr('Geschätzt', 'Estimated')}
                 value={
                   prediction.predictedSeconds === undefined
                     ? '–'
@@ -112,7 +123,7 @@ export function GoalProgress({
                 }
               />
               <Fact
-                label="Längster Lauf"
+                label={tr('Längster Lauf', 'Longest run')}
                 value={
                   prediction.longestRunKm === undefined
                     ? '–'
@@ -121,7 +132,14 @@ export function GoalProgress({
                 note={
                   prediction.peakLongRunKm === undefined
                     ? undefined
-                    : `Aufbau bis ${formatDistanceKm(prediction.peakLongRunKm)}`
+                    : tr(
+                        `Aufbau bis ${formatDistanceKm(
+                          prediction.peakLongRunKm,
+                        )}`,
+                        `Build-up to ${formatDistanceKm(
+                          prediction.peakLongRunKm,
+                        )}`,
+                      )
                 }
               />
             </View>
@@ -129,45 +147,96 @@ export function GoalProgress({
           {prediction.status === 'estimated' && prediction.reference ? (
             <Disclosure
               title="Details"
-              subtitle="Lauf, Modell und Grenzen der Schätzung"
+              subtitle={tr(
+                'Lauf, Modell und Grenzen der Schätzung',
+                'Run, model, and limits of the estimate',
+              )}
               open={detailsOpen}
               onToggle={setDetailsOpen}
             >
               <Copy muted>
-                {`Grundlage: dein Lauf über ${formatDistanceKm(
-                  prediction.reference.distanceKm,
-                )} in ${formatGoalTime(
-                  prediction.reference.durationSeconds,
-                )} vom ${dateFormatter.format(
-                  new Date(prediction.reference.startTime),
-                )}.`}
+                {tr(
+                  `Grundlage: dein Lauf über ${formatDistanceKm(
+                    prediction.reference.distanceKm,
+                  )} in ${formatGoalTime(
+                    prediction.reference.durationSeconds,
+                  )} vom ${formatDate(
+                    new Date(prediction.reference.startTime),
+                  )}.`,
+                  `Based on your run over ${formatDistanceKm(
+                    prediction.reference.distanceKm,
+                  )} in ${formatGoalTime(
+                    prediction.reference.durationSeconds,
+                  )} on ${formatDate(
+                    new Date(prediction.reference.startTime),
+                  )}.`,
+                )}
               </Copy>
               <Copy muted>
-                {`Zielnähe: ${
-                  prediction.limitedBy === 'time'
-                    ? 'die Zielzeit begrenzt'
-                    : 'die Strecke begrenzt'
-                } — ${Math.round(
-                  (prediction.distanceShare ?? 0) * 100,
-                )} % der Aufbaustrecke${
-                  prediction.timeShare === undefined
-                    ? ''
-                    : `, ${Math.round(prediction.timeShare * 100)} % der Zielzeit`
-                }.`}
+                {prediction.limitedBy === 'time'
+                  ? tr(
+                      `Zielnähe: die Zielzeit begrenzt — ${Math.round(
+                        (prediction.distanceShare ?? 0) * 100,
+                      )} % der Aufbaustrecke${
+                        prediction.timeShare === undefined
+                          ? ''
+                          : `, ${Math.round(
+                              prediction.timeShare * 100,
+                            )} % der Zielzeit`
+                      }.`,
+                      `Goal progress: the goal time limits it — ${Math.round(
+                        (prediction.distanceShare ?? 0) * 100,
+                      )}% of the build-up distance${
+                        prediction.timeShare === undefined
+                          ? ''
+                          : `, ${Math.round(
+                              prediction.timeShare * 100,
+                            )}% of the goal time`
+                      }.`,
+                    )
+                  : tr(
+                      `Zielnähe: die Strecke begrenzt — ${Math.round(
+                        (prediction.distanceShare ?? 0) * 100,
+                      )} % der Aufbaustrecke${
+                        prediction.timeShare === undefined
+                          ? ''
+                          : `, ${Math.round(
+                              prediction.timeShare * 100,
+                            )} % der Zielzeit`
+                      }.`,
+                      `Goal progress: the distance limits it — ${Math.round(
+                        (prediction.distanceShare ?? 0) * 100,
+                      )}% of the build-up distance${
+                        prediction.timeShare === undefined
+                          ? ''
+                          : `, ${Math.round(
+                              prediction.timeShare * 100,
+                            )}% of the goal time`
+                      }.`,
+                    )}
               </Copy>
               {prediction.limits.map(limit => (
                 <Copy muted key={limit}>
                   {limit}
                 </Copy>
               ))}
-              <Copy muted>{`Modell ${prediction.version}`}</Copy>
+              <Copy muted>
+                {tr(
+                  `Modell ${prediction.version}`,
+                  `Model ${prediction.version}`,
+                )}
+              </Copy>
             </Disclosure>
           ) : null}
           {onEdit ? (
             <Button
               secondary
               small
-              title={hasGoal ? 'Ziel bearbeiten' : 'Ziel festlegen'}
+              title={
+                hasGoal
+                  ? tr('Ziel bearbeiten', 'Edit goal')
+                  : tr('Ziel festlegen', 'Set goal')
+              }
               onPress={onEdit}
             />
           ) : null}

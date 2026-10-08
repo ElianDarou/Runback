@@ -149,7 +149,7 @@ describe('buildRunReport', () => {
 
   it('lists the key figures in German format with units', () => {
     expect(report).toContain('| Distanz | 8,52 km |');
-    // Ohne Phasenerkennung gibt es nur die Aufzeichnungszeit — sie heißt nicht Bewegungszeit.
+    // Without phase detection there is only the recorded time — it is not called moving time.
     expect(report).toContain('| Aufzeichnungszeit (ohne Pausen) | 45:00 |');
     expect(report).not.toContain('Bewegungszeit (Laufen + Gehen)');
     expect(report).toContain(
@@ -175,7 +175,7 @@ describe('buildRunReport', () => {
       '| 1 | 1,00 | 1,00 km | 5:15 | 5:15 /km | 0,4 % | +6 / −4 m |',
     );
     expect(report).toContain('| 9 | 8,52 | 0,52 km | 2:50 | 5:26 /km |');
-    // Puls je Abschnitt ist nicht bekannt, also erscheint keine Pulsspalte.
+    // Heart rate per split is unknown, so no heart rate column appears.
     expect(report).not.toMatch(/\| # \| Bis km \|.*Ø Puls/);
   });
 
@@ -207,7 +207,7 @@ describe('buildRunReport', () => {
       '- Ziel: Halbmarathon unter 1:50 (bis 2024-10-06)',
     );
     expect(report).toContain('- Fokus: Ausdauer aufbauen');
-    // Nur frühere Einheiten zählen; der Lauf selbst und spätere nicht.
+    // Only earlier sessions count; neither the run itself nor later ones.
     expect(report).toContain(
       '- Vorher in den letzten 7 Tagen: 1 Einheit, 6,0 km',
     );
@@ -229,7 +229,7 @@ describe('buildRunReport', () => {
     expect(data.time.activeSeconds).toBe(2700);
     expect(data.time.movingSeconds).toBeUndefined();
     expect(data.pace.activeSecondsPerKm).toBe(317);
-    // Zeitreihe und Koordinaten gehören in die anderen Dateien.
+    // Time series and coordinates belong in the other files.
     expect(data.timeline).toBeUndefined();
     expect(data.route).toBeUndefined();
     expect(data.dataQuality.model_version).toBe(QUALITY_VERSION);
@@ -421,7 +421,7 @@ describe('buildRunReport with movement phases', () => {
       reason: 'NO_VERTICAL_ACCURACY',
     });
     expect(quality).not.toHaveProperty('overall');
-    // Der Abschnitt mit 40 s Lücke ist nicht für Pacing geeignet — mit Zeitbereich.
+    // The split with the 40 s gap is not suitable for pacing — with time range.
     const gap = quality.issues.find(issue => issue.code === 'gap');
     expect(gap?.count).toBe(1);
     expect(gap?.ranges).toEqual([[0, 300]]);

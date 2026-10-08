@@ -1,4 +1,4 @@
-"""Prüft runback_motion.py an einem künstlichen Export im App-Format.
+"""Tests runback_motion.py against a synthetic export in the app format.
 
     python -m unittest tools/motion/test_runback_motion.py
 """
@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import runback_motion as rm  # noqa: E402
 
 RATE = 50
-# Zwei Sätze Curls: 10 und 8 Wiederholungen à 2,5 s, abgehakt einige Sekunden danach.
+# Two curl sets: 10 and 8 reps at 2.5 s each, ticked off a few seconds later.
 SETS = [(30_000, 10, 4_000), (119_000, 8, 3_000)]
 
 
@@ -38,11 +38,11 @@ def _export(path: Path, root: str = "") -> None:
     sets = ["exercise_index,exercise_id,exercise_name,set_index,set_id,set_kind,load_kind,planned_reps,planned_weight_kg,"
             "planned_seconds,reps,weight_kg,seconds,rir,skipped,completed_ms,rest_seconds"]
     for i, (start, reps, lag) in enumerate(SETS):
-        sets.append(f"0,biceps_curl,Bizepscurls,{i},c{i + 1},normal,kg,{reps},12,,{reps},12,,,0,{start + reps * 2_500 + lag},60")
-    sets.append("0,biceps_curl,Bizepscurls,2,c3,normal,kg,8,12,,,,,,0,,60")
+        sets.append(f"0,biceps_curl,Biceps curls,{i},c{i + 1},normal,kg,{reps},12,,{reps},12,,,0,{start + reps * 2_500 + lag},60")
+    sets.append("0,biceps_curl,Biceps curls,2,c3,normal,kg,8,12,,,,,,0,,60")
     with zipfile.ZipFile(path, "w") as archive:
         if root:
-            # Krafttraining-Export: eigene Tabellen gleichen Namens auf oberster Ebene.
+            # Strength training export: its own tables with the same names at the top level.
             archive.writestr("sessions.csv", "session_id,start_utc\nandere,2026-10-04\n")
         archive.writestr(f"{root}manifest.json", json.dumps({"format": rm.EXPORT_FORMAT, "formatVersion": 1}))
         archive.writestr(f"{root}sessions.csv", "session_id\nsession-demo\n")

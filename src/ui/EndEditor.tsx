@@ -21,13 +21,14 @@ import {
   type as type_,
 } from './components';
 import { formatElapsed } from '../domain/runSeries';
+import { dateFormat, tr } from '../domain/i18n';
 
 export interface EndLine {
   key: string;
   label: string;
   stroke: string;
   unit: string;
-  /** Zeit in ms; `null` ist eine Lücke, kein Nullwert. */
+  /** Time in ms; `null` is a gap, not a zero value. */
   points: { t: number; value: number | null }[];
 }
 
@@ -36,25 +37,19 @@ const MARGIN = { top: 8, bottom: 6, left: 36, right: 8 };
 const AXIS = 18;
 const STRIP = 40;
 
-const clock = new Intl.DateTimeFormat('de-DE', {
-  hour: '2-digit',
-  minute: '2-digit',
-});
-const clockSeconds = new Intl.DateTimeFormat('de-DE', {
-  hour: '2-digit',
-  minute: '2-digit',
-  second: '2-digit',
-});
+const clock = () => dateFormat({ hour: '2-digit', minute: '2-digit' });
+const clockSeconds = () =>
+  dateFormat({ hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-const REASON: Record<EndSuggestion['reason'], string> = {
-  last_set: 'letzter abgehakter Satz',
-  last_movement: 'letzte Bewegung',
-};
+const reasonLabel = (reason: EndSuggestion['reason']) =>
+  reason === 'last_set'
+    ? tr('letzter abgehakter Satz', 'last ticked set')
+    : tr('letzte Bewegung', 'last movement');
 
 /**
- * „Ende bearbeiten“ für Lauf und Krafteinheit: Tippen oder Wischen im
- * Verlauf setzt das Ende, ± verschiebt um eine Minute. Was danach liegt, ist
- * abgedunkelt und zählt nach dem Speichern nicht mehr; das Original bleibt.
+ * "Edit end" for a run and a strength session: tapping or swiping in the
+ * history sets the end, ± moves it by one minute. What lies after it is dimmed
+ * and no longer counts after saving; the original stays.
  */
 export function EndEditor({
   startTime,
@@ -71,13 +66,13 @@ export function EndEditor({
 }: {
   startTime: number;
   rangeEnd: number;
-  /** Aufgezeichnetes oder gemeldetes Ende, als Strich markiert. */
+  /** Recorded or reported end, marked with a line. */
   originalEnd?: number;
-  /** Bisher gesetzte Korrektur. */
+  /** Correction set so far. */
   currentEnd?: number;
   suggestion?: EndSuggestion;
   lines: EndLine[];
-  /** Zeiten abgehakter Sätze. */
+  /** Times of ticked sets. */
   marks?: number[];
   emptyHint: string;
   busy: boolean;
@@ -206,26 +201,47 @@ export function EndEditor({
   return (
     <View style={styles.block}>
       <Text accessibilityLiveRegion="polite" style={styles.readout}>
-        {`Ende ${clockSeconds.format(new Date(end))} · Dauer ${formatElapsed(
-          (end - startTime) / 1000,
-        )}`}
+        {tr(
+          `Ende ${clockSeconds().format(new Date(end))} · Dauer ${formatElapsed(
+            (end - startTime) / 1000,
+          )}`,
+          `End ${clockSeconds().format(
+            new Date(end),
+          )} · Duration ${formatElapsed((end - startTime) / 1000)}`,
+        )}
       </Text>
       {drawable.length ? null : <Copy muted>{emptyHint}</Copy>}
       {marksAfter ? (
-        <Copy muted>{`${marksAfter} ${
-          marksAfter === 1 ? 'abgehakter Satz liegt' : 'abgehakte Sätze liegen'
-        } danach und ${
-          marksAfter === 1 ? 'zählt' : 'zählen'
-        } dann nicht mehr.`}</Copy>
+        <Copy muted>
+          {tr(
+            `${marksAfter} ${
+              marksAfter === 1
+                ? 'abgehakter Satz liegt'
+                : 'abgehakte Sätze liegen'
+            } danach und ${
+              marksAfter === 1 ? 'zählt' : 'zählen'
+            } dann nicht mehr.`,
+            `${marksAfter} ${
+              marksAfter === 1 ? 'ticked set falls' : 'ticked sets fall'
+            } after this point and will no longer count.`,
+          )}
+        </Copy>
       ) : null}
       {drawable.length || marks.length ? (
         <View
           accessibilityRole="adjustable"
-          accessibilityLabel={`Verlauf von ${clock.format(
-            new Date(startTime),
-          )} bis ${clock.format(
-            new Date(rangeEnd),
-          )}. Tippe, wo die Einheit endete.`}
+          accessibilityLabel={tr(
+            `Verlauf von ${clock().format(
+              new Date(startTime),
+            )} bis ${clock().format(
+              new Date(rangeEnd),
+            )}. Tippe, wo die Einheit endete.`,
+            `History from ${clock().format(
+              new Date(startTime),
+            )} to ${clock().format(
+              new Date(rangeEnd),
+            )}. Tap where the workout ended.`,
+          )}
           onLayout={event => setWidth(event.nativeEvent.layout.width)}
           onStartShouldSetResponder={() => true}
           onMoveShouldSetResponder={() => true}
@@ -243,7 +259,9 @@ export function EndEditor({
           ))}
           {drawable.length ? null : (
             <>
-              <Text style={styles.lineLabel}>Abgehakte Sätze</Text>
+              <Text style={styles.lineLabel}>
+                {tr('Abgehakte Sätze', 'Ticked sets')}
+              </Text>
               <Svg width={width} height={STRIP}>
                 {marks.map((time, index) => (
                   <Line
@@ -285,20 +303,20 @@ export function EndEditor({
                 fill={color.muted}
                 textAnchor={time === startTime ? 'start' : 'middle'}
               >
-                {clock.format(new Date(time))}
+                {clock().format(new Date(time))}
               </SvgText>
             ))}
           </Svg>
         </View>
       ) : null}
       <Row
-        title="Um eine Minute verschieben"
+        title={tr('Um eine Minute verschieben', 'Move by one minute')}
         trailing={
           <Stepper
             onDecrease={() => shift(-1)}
             onIncrease={() => shift(1)}
-            decreaseLabel="Eine Minute früher"
-            increaseLabel="Eine Minute später"
+            decreaseLabel={tr('Eine Minute früher', 'One minute earlier')}
+            increaseLabel={tr('Eine Minute später', 'One minute later')}
             canDecrease={end > startTime + MIN_DURATION_SECONDS * 1000}
             canIncrease={end < rangeEnd}
             disabled={busy}
@@ -308,22 +326,27 @@ export function EndEditor({
       {suggestion ? (
         <Button
           secondary
-          title={`${clock.format(new Date(suggestion.time))} übernehmen · ${
-            REASON[suggestion.reason]
-          }`}
+          title={tr(
+            `${clock().format(
+              new Date(suggestion.time),
+            )} übernehmen · ${reasonLabel(suggestion.reason)}`,
+            `Use ${clock().format(new Date(suggestion.time))} · ${reasonLabel(
+              suggestion.reason,
+            )}`,
+          )}
           onPress={() => setEnd(clampEnd(suggestion.time, startTime, rangeEnd))}
           disabled={busy}
         />
       ) : null}
       <Button
-        title="Ende speichern"
+        title={tr('Ende speichern', 'Save end')}
         onPress={() => onSave(end)}
         disabled={busy || !changed}
       />
       {onReset ? (
         <Button
           secondary
-          title="Ursprüngliches Ende"
+          title={tr('Ursprüngliches Ende', 'Original end')}
           onPress={onReset}
           disabled={busy}
         />

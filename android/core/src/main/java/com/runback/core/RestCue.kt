@@ -5,8 +5,8 @@ import kotlin.math.min
 import kotlin.math.sin
 
 /**
- * Signal am Ende einer Satzpause: kurz, kurz, lang. Gleiches Muster für
- * Vibration (Uhr oder Handy) und Ton (nur Handy).
+ * Signal at the end of a rest between sets: short, short, long. Same pattern
+ * for vibration (watch or phone) and sound (phone only).
  */
 object RestCue {
     const val VERSION = "rest-cue-v1"
@@ -14,18 +14,18 @@ object RestCue {
     private const val GAP_MS = 110L
     private const val LONG_MS = 450L
 
-    /** Für `VibrationEffect.createWaveform`: erst Pause, dann abwechselnd an und aus. */
+    /** For `VibrationEffect.createWaveform`: first a pause, then alternating on and off. */
     val VIBRATION = longArrayOf(0L, SHORT_MS, GAP_MS, SHORT_MS, GAP_MS, LONG_MS)
 
-    /** Gesamtdauer des Signals. */
+    /** Total duration of the signal. */
     val DURATION_MS = VIBRATION.sum()
 
     /**
-     * 16-bit-Mono-PCM desselben Musters: 880 Hz mit 8 ms Ein- und Ausblenden,
-     * damit es nicht knackt. `volume` 0..1.
+     * 16-bit mono PCM of the same pattern: 880 Hz with 8 ms fade-in and fade-out
+     * so it doesn't click. `volume` 0..1.
      */
     fun pcm(sampleRate: Int, volume: Double = 0.6): ShortArray {
-        require(sampleRate in 8_000..96_000) { "Ungültige Abtastrate" }
+        require(sampleRate in 8_000..96_000) { "Invalid sample rate" }
         val samples = ShortArray((DURATION_MS * sampleRate / 1000).toInt())
         val fade = sampleRate * 8 / 1000
         var cursor = 0L

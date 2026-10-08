@@ -3,12 +3,12 @@ package com.runback.core
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** Importabbild neben den Originalen; fehlende Werte bleiben JSON-null. */
+/** Import image alongside the originals; missing values stay JSON null. */
 object StrengthImport {
     fun legacyDocument(workout: StrengthWorkout, sets: List<StrengthSet>): JSONObject {
         val extra = JSONObject(workout.extra)
         if (!extra.has("durationKnown")) extra.put("durationKnown", workout.durationSec > 0)
-        // Satzart und Pausen wurden früher nicht gespeichert; fehlende Metadaten bleiben offen.
+        // Set type and rests were not stored earlier; missing metadata stays open.
         return document(workout.copy(extra = extra.toString()), sets)
             .put("modelVersion", extra.optString("modelVersion", "unknown"))
     }
@@ -33,19 +33,19 @@ object StrengthImport {
 }
 
 /**
- * Strong exportiert je Satz keine Uhrzeit, nur Start und „Workout beenden“.
- * Wer das Beenden vergisst, bekommt Stunden statt einer Stunde. Das echte Ende
- * steht nicht in der Datei; Runback erkennt nur eine Dauer, die zu keiner
- * Satzzahl passt, und behandelt sie dann als unbekannt. Die gemeldete Dauer
- * bleibt im Original stehen.
+ * Strong exports no time per set, only the start and "Finish workout". If the
+ * user forgets to finish, the duration comes out as hours instead of an hour.
+ * The real end is not in the file; Runback only flags a duration that doesn't
+ * fit the number of sets, and then treats it as unknown. The reported duration
+ * stays in the original.
  */
 object StrongDuration {
     const val MODEL_VERSION = "strong-duration-v1"
-    /** Großzügig: 30 Minuten Rahmen plus 6 Minuten je Satz, Pause eingeschlossen. */
+    /** Generous: a 30-minute frame plus 6 minutes per set, rest included. */
     fun limitSeconds(sets: Int): Double = 30 * 60.0 + 6 * 60.0 * sets.coerceAtLeast(0)
     fun isSuspect(durationSec: Double?, sets: Int): Boolean =
         durationSec != null && durationSec.isFinite() && durationSec > limitSeconds(sets)
-    /** Legt die Entscheidung neben das Original; `decidedBy` ist "default" oder "user". */
+    /** Stores the decision next to the original; `decidedBy` is "default" or "user". */
     fun reject(workout: StrengthWorkout, decidedBy: String): StrengthWorkout {
         val extra = JSONObject(workout.extra).put("durationKnown", false)
             .put("durationRejected", JSONObject().put("reason", "not_finished")

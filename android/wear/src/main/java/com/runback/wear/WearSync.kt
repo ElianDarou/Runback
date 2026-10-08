@@ -23,6 +23,7 @@ import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
 import com.google.android.gms.wearable.WearableListenerService
 import com.google.android.gms.wearable.MessageEvent
+import com.runback.core.Lang
 import com.runback.core.RecordingService
 import com.runback.core.RunStore
 import com.runback.core.RawSample
@@ -46,8 +47,17 @@ object WearSync {
     private val sequenceLock = Any()
     private val retryLock = Any()
     private var retryScheduled = false
-    @Volatile var status: String = "Originale bleiben auf der Uhr"
-        private set
+    /** Which sync status is current; the text is looked up when read, so it follows the language. */
+    @Volatile private var statusKey = SyncStatus.KEPT
+    private enum class SyncStatus { KEPT, ALL_ON_PHONE, NO_PHONE, SENT, RETRY_LATER, ON_PHONE }
+    val status: String get() = when (statusKey) {
+        SyncStatus.KEPT -> Lang.tr("Originale bleiben auf der Uhr", "Originals stay on the watch")
+        SyncStatus.ALL_ON_PHONE -> Lang.tr("✓ Alle Läufe auf dem Handy", "✓ All runs on phone")
+        SyncStatus.NO_PHONE -> Lang.tr("Kein Handy verbunden", "No phone connected")
+        SyncStatus.SENT -> Lang.tr("Gesendet · Handy bestätigt gleich", "Sent · phone confirms shortly")
+        SyncStatus.RETRY_LATER -> Lang.tr("Nicht übertragen · später erneut", "Not sent · try again later")
+        SyncStatus.ON_PHONE -> Lang.tr("✓ Auf dem Handy", "✓ On phone")
+    }
 
     fun schedule(context: Context) {
         val app = context.applicationContext
@@ -97,13 +107,13 @@ object WearSync {
                     }
                 }
                 val peers = Tasks.await(Wearable.getNodeClient(app).connectedNodes, 10, TimeUnit.SECONDS)
-                status = when {
-                    pending == 0 -> "✓ Alle Läufe auf dem Handy"
-                    peers.isEmpty() -> "Kein Handy verbunden"
-                    else -> "Gesendet · Handy bestätigt gleich"
+                statusKey = when {
+                    pending == 0 -> SyncStatus.ALL_ON_PHONE
+                    peers.isEmpty() -> SyncStatus.NO_PHONE
+                    else -> SyncStatus.SENT
                 }
             } catch (_: Exception) {
-                status = "Nicht übertragen · später erneut"
+                statusKey = SyncStatus.RETRY_LATER
             } finally { done?.invoke() }
         }
     }
@@ -178,7 +188,7 @@ object WearSync {
             }
             RunStore(app).putDocument("wearLinkStatus", JSONObject()
                 .put("status", if (sent > 0) "sent" else "disconnected")
-                .put("message", if (sent > 0) "Handy wird ${actionLabel(action)}" else "Kein Handy verbunden")
+                .put("message", if (sent > 0) actionMessage(action) else Lang.tr("Kein Handy verbunden", "No phone connected"))
                 .put("action", action).put("runId", runId)
                 .put("commandId", resolvedCommandId).put("sequence", resolvedSequence)
                 .put("updatedAt", System.currentTimeMillis()))
@@ -237,12 +247,13 @@ object WearSync {
         .appendQueryParameter("sourceNodeId", sourceNodeId ?: "")
         .build()
 
-    private fun actionLabel(action: String): String = when (action) {
-        RecordingService.START -> "gestartet"
-        RecordingService.PAUSE -> "pausiert"
-        RecordingService.RESUME -> "fortgesetzt"
-        RecordingService.FINISH -> "beendet"
-        else -> "aktualisiert"
+    /** Status line for the phone while it follows a command. */
+    private fun actionMessage(action: String): String = when (action) {
+        RecordingService.START -> Lang.tr("Handy wird gestartet", "Phone is starting")
+        RecordingService.PAUSE -> Lang.tr("Handy wird pausiert", "Phone is pausing")
+        RecordingService.RESUME -> Lang.tr("Handy wird fortgesetzt", "Phone is resuming")
+        RecordingService.FINISH -> Lang.tr("Handy wird beendet", "Phone is finishing")
+        else -> Lang.tr("Handy wird aktualisiert", "Phone is updating")
     }
 
     private fun nextSequence(store: RunStore): Long {
@@ -273,7 +284,7 @@ object WearSync {
         store.putDocument("sync_$id", record.put("status", "acknowledged").put("acknowledgedAt", System.currentTimeMillis()))
         // Delete only the transfer copy. Original recording remains in RunStore.
         File(context.filesDir, "wear_outbox/$id.zip").delete()
-        status = "✓ Auf dem Handy"
+        statusKey = SyncStatus.ON_PHONE
     }
 }
 
@@ -327,12 +338,12 @@ class WearSyncListener : WearableListenerService() {
             val command = WearProtocol.decode(event.data)
             action = command.optString("action")
             require(action in setOf(RecordingService.START, RecordingService.PAUSE, RecordingService.RESUME, RecordingService.FINISH)) {
-                "Unbekannter Aufzeichnungsbefehl"
+                Lang.tr("Unbekannter Aufzeichnungsbefehl", "Unknown recording command")
             }
             runId = WearProtocol.requireRunId(command)
             commandId = WearProtocol.commandId(command)
             sequence = WearProtocol.commandSequence(command)
-            require(!commandId.isNullOrBlank() && sequence > 0L) { "Aufzeichnungsbefehl ohne Korrelation" }
+            require(!commandId.isNullOrBlank() && sequence > 0L) { Lang.tr("Aufzeichnungsbefehl ohne Korrelation", "Recording command without correlation") }
             val purpose = command.optString("purpose", "easy")
             val sport = command.optString("sport", "running")
             val target = command.optString("target").takeIf { it.isNotBlank() && it != "null" }
@@ -351,34 +362,34 @@ class WearSyncListener : WearableListenerService() {
             }
             val routePlanId = if (action == RecordingService.START) localRoutePlanId(store, command) else null
             if (action == RecordingService.START && current != null && current.optString("id") != runId) {
-                error("Auf der Uhr läuft bereits eine andere Aufzeichnung.")
+                error(Lang.tr("Auf der Uhr läuft bereits eine andere Aufzeichnung.", "Another recording is already running on the watch."))
             }
             if (action == RecordingService.START && !RecordingService.hasLiveService()) {
-                sendAck(event.sourceNodeId, action, runId, "retry", "Uhr muss für den Start sichtbar geöffnet werden.", commandId, sequence)
+                sendAck(event.sourceNodeId, action, runId, "retry", Lang.tr("Uhr muss für den Start sichtbar geöffnet werden.", "Watch must be opened visibly to start."), commandId, sequence)
                 return
             }
             if (action != RecordingService.START && current?.optString("id") == runId && !RecordingService.hasLiveService()) {
-                sendAck(event.sourceNodeId, action, runId, "retry", "Uhr muss für diesen Befehl sichtbar geöffnet werden.", commandId, sequence)
+                sendAck(event.sourceNodeId, action, runId, "retry", Lang.tr("Uhr muss für diesen Befehl sichtbar geöffnet werden.", "Watch must be opened visibly for this command."), commandId, sequence)
                 return
             }
             when (WearCommandGate.claim(store, runId, commandId, sequence)) {
                 WearCommandGate.Decision.INVALID, WearCommandGate.Decision.STALE -> {
-                    sendAck(event.sourceNodeId, action, runId, "error", "Veralteter Aufzeichnungsbefehl.", commandId, sequence)
+                    sendAck(event.sourceNodeId, action, runId, "error", Lang.tr("Veralteter Aufzeichnungsbefehl.", "Outdated recording command."), commandId, sequence)
                     return
                 }
                 WearCommandGate.Decision.DUPLICATE -> {
                     try {
                         waitForState(runId, action)
                     } catch (retry: Exception) {
-                        sendAck(event.sourceNodeId, action, runId, "retry", retry.message ?: "Befehl wird erneut versucht.", commandId, sequence)
+                        sendAck(event.sourceNodeId, action, runId, "retry", retry.message ?: Lang.tr("Befehl wird erneut versucht.", "Command will be retried."), commandId, sequence)
                         return
                     }
                     WearCommandGate.markApplied(store, runId, commandId, sequence)
-                    sendAck(event.sourceNodeId, action, runId, "accepted", "Aufzeichnungsbefehl bereits angewendet.", commandId, sequence)
+                    sendAck(event.sourceNodeId, action, runId, "accepted", Lang.tr("Aufzeichnungsbefehl bereits angewendet.", "Recording command already applied."), commandId, sequence)
                     return
                 }
                 WearCommandGate.Decision.WAIT -> {
-                    sendAck(event.sourceNodeId, action, runId, "retry", "Vorheriger Aufzeichnungsbefehl wird noch verarbeitet.", commandId, sequence)
+                    sendAck(event.sourceNodeId, action, runId, "retry", Lang.tr("Vorheriger Aufzeichnungsbefehl wird noch verarbeitet.", "Previous recording command is still being processed."), commandId, sequence)
                     return
                 }
                 WearCommandGate.Decision.ACCEPT -> claimed = true
@@ -386,16 +397,16 @@ class WearSyncListener : WearableListenerService() {
             if (action == RecordingService.START && current?.optString("id") == runId &&
                 current?.optString("status") in listOf("recording", "paused")) {
                 WearCommandGate.markApplied(store, runId, commandId, sequence)
-                sendAck(event.sourceNodeId, action, runId, "accepted", "Aufzeichnung auf der Uhr bereits aktiv.", commandId, sequence)
+                sendAck(event.sourceNodeId, action, runId, "accepted", Lang.tr("Aufzeichnung auf der Uhr bereits aktiv.", "Recording already active on the watch."), commandId, sequence)
                 return
             }
             if (action != RecordingService.START && current?.optString("id") != runId) {
                 if (action == RecordingService.FINISH && store.runStatus(runId) == "completed") {
                     WearCommandGate.markApplied(store, runId, commandId, sequence)
-                    sendAck(event.sourceNodeId, action, runId, "accepted", "Aufzeichnung auf der Uhr bereits beendet.", commandId, sequence)
+                    sendAck(event.sourceNodeId, action, runId, "accepted", Lang.tr("Aufzeichnung auf der Uhr bereits beendet.", "Recording already ended on the watch."), commandId, sequence)
                     return
                 }
-                error("Auf der Uhr läuft dieser Lauf nicht.")
+                error(Lang.tr("Auf der Uhr läuft dieser Lauf nicht.", "This run is not running on the watch."))
             }
             val alreadyApplied = when (action) {
                 RecordingService.PAUSE -> current?.optString("status") == "paused"
@@ -421,17 +432,17 @@ class WearSyncListener : WearableListenerService() {
             }
             waitForState(runId, action)
             WearCommandGate.markApplied(store, runId, commandId, sequence)
-            sendAck(event.sourceNodeId, action, runId, "accepted", "Aufzeichnung auf der Uhr synchronisiert.", commandId, sequence)
+            sendAck(event.sourceNodeId, action, runId, "accepted", Lang.tr("Aufzeichnung auf der Uhr synchronisiert.", "Recording synced on the watch."), commandId, sequence)
             if (action == RecordingService.FINISH) WearSync.retry(this)
         } catch (error: Exception) {
             if (claimed && executionStarted) {
-                sendAck(event.sourceNodeId, action, runId, "retry", error.message ?: "Befehl wird erneut versucht.", commandId, sequence)
+                sendAck(event.sourceNodeId, action, runId, "retry", error.message ?: Lang.tr("Befehl wird erneut versucht.", "Command will be retried."), commandId, sequence)
                 return
             }
             if (claimed && runId.isNotBlank()) {
                 WearCommandGate.release(RunStore(this), runId, commandId, sequence)
             }
-            sendAck(event.sourceNodeId, action, runId, "error", error.message ?: "Uhr konnte nicht gestartet werden.", commandId, sequence)
+            sendAck(event.sourceNodeId, action, runId, "error", error.message ?: Lang.tr("Uhr konnte nicht gestartet werden.", "Watch could not start."), commandId, sequence)
         }
     }
 
@@ -460,7 +471,7 @@ class WearSyncListener : WearableListenerService() {
             val current = RunStore(this).active()
             if ((expected == "completed" && current == null && RunStore(this).runStatus(runId) == "completed") ||
                 (current?.optString("id") == runId && current.optString("status") == expected)) return
-            check(SystemClock.elapsedRealtime() < deadline) { "Die Uhr hat nicht rechtzeitig reagiert." }
+            check(SystemClock.elapsedRealtime() < deadline) { Lang.tr("Die Uhr hat nicht rechtzeitig reagiert.", "The watch did not respond in time.") }
             SystemClock.sleep(50)
         }
     }
@@ -471,7 +482,7 @@ class WearSyncListener : WearableListenerService() {
             val id = WearProtocol.requireRunId(payload)
             val samples = WearProtocol.samples(payload)
             val sequence = payload.optLong("sequence", -1L)
-            require(sequence >= 0) { "Ungültige Sensorpaket-Nummer" }
+            require(sequence >= 0) { "Invalid sensor packet number" }
             val store = RunStore(this)
             val active = store.active()
             if (active?.optString("id") != id || active?.optString("status") != "recording") return@runCatching

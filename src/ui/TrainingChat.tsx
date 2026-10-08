@@ -21,6 +21,7 @@ import {
   space,
   type,
 } from './components';
+import { tr } from '../domain/i18n';
 
 type ChatMessage = {
   role: 'user' | 'assistant';
@@ -39,16 +40,17 @@ type ProseSettings = {
   model?: string;
 };
 
-const SUGGESTIONS = [
-  'Was steht diese Woche an?',
-  'Wie war mein letzter Lauf?',
-  'Erkläre meine Empfehlung',
+// Built per call: the language can change at runtime.
+const suggestions = () => [
+  tr('Was steht diese Woche an?', "What's on this week?"),
+  tr('Wie war mein letzter Lauf?', 'How was my last run?'),
+  tr('Erkläre meine Empfehlung', 'Explain my recommendation'),
 ];
 
 /**
- * Trainingschat als Chat-Oberfläche: der Verlauf füllt den Bildschirm, die
- * Eingabe steht fest am unteren Rand, alles Übrige (Datenfreigabe, Modell,
- * Verlauf löschen) liegt hinter „Optionen“ statt zwischen den Nachrichten.
+ * Training chat as a chat interface: the history fills the screen, the input
+ * stays fixed at the bottom, and everything else (data sharing, model, clear
+ * history) sits behind "Options" instead of between the messages.
  */
 export function TrainingChat({ onSettings }: { onSettings: () => void }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -86,7 +88,10 @@ export function TrainingChat({ onSettings }: { onSettings: () => void }) {
           setError(
             value instanceof Error
               ? value.message
-              : 'Der Chat konnte nicht geladen werden.',
+              : tr(
+                  'Der Chat konnte nicht geladen werden.',
+                  'The chat could not be loaded.',
+                ),
           );
         }
       })
@@ -112,7 +117,10 @@ export function TrainingChat({ onSettings }: { onSettings: () => void }) {
     if (!text || busy || sendingRef.current) return;
     if (!settings?.enabled || !settings.hasKey) {
       setError(
-        'Bitte richte zuerst den OpenRouter-Zugang in den Einstellungen ein.',
+        tr(
+          'Bitte richte zuerst den OpenRouter-Zugang in den Einstellungen ein.',
+          'First set up OpenRouter access in Settings.',
+        ),
       );
       return;
     }
@@ -144,7 +152,10 @@ export function TrainingChat({ onSettings }: { onSettings: () => void }) {
       setError(
         value instanceof Error
           ? value.message
-          : 'Die Nachricht konnte nicht gesendet werden.',
+          : tr(
+              'Die Nachricht konnte nicht gesendet werden.',
+              'The message could not be sent.',
+            ),
       );
     } finally {
       sendingRef.current = false;
@@ -169,7 +180,10 @@ export function TrainingChat({ onSettings }: { onSettings: () => void }) {
       setError(
         value instanceof Error
           ? value.message
-          : 'Die Unterhaltung konnte nicht gelöscht werden.',
+          : tr(
+              'Die Unterhaltung konnte nicht gelöscht werden.',
+              'The conversation could not be deleted.',
+            ),
       );
     } finally {
       setBusy(false);
@@ -197,7 +211,10 @@ export function TrainingChat({ onSettings }: { onSettings: () => void }) {
       setError(
         valueError instanceof Error
           ? valueError.message
-          : 'Die neue Chat-Einstellung konnte nicht übernommen werden.',
+          : tr(
+              'Die neue Chat-Einstellung konnte nicht übernommen werden.',
+              'The new chat setting could not be applied.',
+            ),
       );
     } finally {
       setBusy(false);
@@ -211,17 +228,17 @@ export function TrainingChat({ onSettings }: { onSettings: () => void }) {
   return (
     <View style={styles.screen}>
       <View style={styles.head}>
-        <Title>Trainingschat</Title>
+        <Title>{tr('Trainingschat', 'Training chat')}</Title>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Chat-Optionen"
+          accessibilityLabel={tr('Chat-Optionen', 'Chat options')}
           onPress={() => setOptionsOpen(true)}
           style={({ pressed }) => [
             styles.headAction,
             pressed && styles.pressed,
           ]}
         >
-          <Text style={styles.headActionText}>Optionen</Text>
+          <Text style={styles.headActionText}>{tr('Optionen', 'Options')}</Text>
         </Pressable>
       </View>
 
@@ -237,9 +254,9 @@ export function TrainingChat({ onSettings }: { onSettings: () => void }) {
         renderItem={({ item }) => (
           <View
             accessibilityRole="text"
-            accessibilityLabel={`${item.role === 'user' ? 'Du' : 'Runback'}: ${
-              item.content
-            }`}
+            accessibilityLabel={`${
+              item.role === 'user' ? tr('Du', 'You') : 'Runback'
+            }: ${item.content}`}
             style={[
               styles.bubble,
               item.role === 'user' ? styles.bubbleUser : styles.bubbleAssistant,
@@ -250,28 +267,45 @@ export function TrainingChat({ onSettings }: { onSettings: () => void }) {
         )}
         ListEmptyComponent={
           loading ? (
-            <Copy muted>Unterhaltung wird geladen …</Copy>
+            <Copy muted>
+              {tr('Unterhaltung wird geladen …', 'Loading conversation …')}
+            </Copy>
           ) : (
             <View style={styles.emptyWrap}>
               <EmptyState
-                title="Stelle eine Frage zu deinem Training"
+                title={tr(
+                  'Stelle eine Frage zu deinem Training',
+                  'Ask a question about your training',
+                )}
                 copy={
                   ready
-                    ? 'Runback antwortet mit deinen freigegebenen Trainingsdaten.'
-                    : 'Dafür fehlt noch der OpenRouter-Zugang.'
+                    ? tr(
+                        'Runback antwortet mit deinen freigegebenen Trainingsdaten.',
+                        'Runback answers with the training data you have shared.',
+                      )
+                    : tr(
+                        'Dafür fehlt noch der OpenRouter-Zugang.',
+                        'OpenRouter access is still missing for that.',
+                      )
                 }
                 action={
                   ready
                     ? undefined
-                    : { title: 'OpenRouter einrichten', onPress: onSettings }
+                    : {
+                        title: tr('OpenRouter einrichten', 'Set up OpenRouter'),
+                        onPress: onSettings,
+                      }
                 }
               />
               <View style={styles.chips}>
-                {SUGGESTIONS.map(prompt => (
+                {suggestions().map(prompt => (
                   <Pressable
                     key={prompt}
                     accessibilityRole="button"
-                    accessibilityLabel={`Frage verwenden: ${prompt}`}
+                    accessibilityLabel={tr(
+                      `Frage verwenden: ${prompt}`,
+                      `Use question: ${prompt}`,
+                    )}
                     disabled={busy}
                     onPress={() => setDraft(prompt)}
                     style={({ pressed }) => [
@@ -289,7 +323,7 @@ export function TrainingChat({ onSettings }: { onSettings: () => void }) {
         ListFooterComponent={
           busy ? (
             <Text accessibilityLiveRegion="polite" style={styles.pending}>
-              Runback antwortet …
+              {tr('Runback antwortet …', 'Runback is replying …')}
             </Text>
           ) : null
         }
@@ -305,7 +339,7 @@ export function TrainingChat({ onSettings }: { onSettings: () => void }) {
           <Button
             secondary
             small
-            title="Erneut laden"
+            title={tr('Erneut laden', 'Load again')}
             disabled={busy}
             onPress={() => {
               setLoadingFailed(false);
@@ -319,21 +353,27 @@ export function TrainingChat({ onSettings }: { onSettings: () => void }) {
 
       <View style={styles.composer}>
         <TextInput
-          accessibilityLabel="Nachricht an den Trainingschat"
-          accessibilityHint="Frage eingeben und anschließend senden"
+          accessibilityLabel={tr(
+            'Nachricht an den Trainingschat',
+            'Message to the training chat',
+          )}
+          accessibilityHint={tr(
+            'Frage eingeben und anschließend senden',
+            'Type a question, then send',
+          )}
           multiline
           editable={!busy}
           maxLength={6000}
           value={draft}
           onChangeText={setDraft}
-          placeholder="Frage stellen …"
+          placeholder={tr('Frage stellen …', 'Ask a question …')}
           placeholderTextColor={color.muted}
           selectionColor={color.green}
           style={styles.input}
         />
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Senden"
+          accessibilityLabel={tr('Senden', 'Send')}
           accessibilityState={{ disabled: !canSend }}
           disabled={!canSend}
           onPress={() => void send()}
@@ -355,18 +395,31 @@ export function TrainingChat({ onSettings }: { onSettings: () => void }) {
       >
         <View style={styles.backdrop}>
           <View style={styles.sheet}>
-            <Text style={styles.sheetTitle}>Chat-Optionen</Text>
+            <Text style={styles.sheetTitle}>
+              {tr('Chat-Optionen', 'Chat options')}
+            </Text>
             <View style={styles.accessRow}>
               <View style={styles.accessText}>
-                <Text style={styles.label}>Trainingsdaten einbeziehen</Text>
+                <Text style={styles.label}>
+                  {tr('Trainingsdaten einbeziehen', 'Include training data')}
+                </Text>
                 <Text style={styles.hint}>
                   {includeTraining
-                    ? 'Profil, Läufe, Laufgefühl und Notizen. Nur lesend.'
-                    : 'Allgemeiner Chat ohne Zugriff auf Trainingsdaten.'}
+                    ? tr(
+                        'Profil, Läufe, Laufgefühl und Notizen. Nur lesend.',
+                        'Profile, runs, how runs felt, and notes. Read-only.',
+                      )
+                    : tr(
+                        'Allgemeiner Chat ohne Zugriff auf Trainingsdaten.',
+                        'General chat without access to training data.',
+                      )}
                 </Text>
               </View>
               <Switch
-                accessibilityLabel="Trainingsdaten einbeziehen"
+                accessibilityLabel={tr(
+                  'Trainingsdaten einbeziehen',
+                  'Include training data',
+                )}
                 accessibilityState={{
                   checked: includeTraining,
                   disabled: busy || loading,
@@ -378,18 +431,26 @@ export function TrainingChat({ onSettings }: { onSettings: () => void }) {
                 thumbColor={includeTraining ? color.ink : color.muted}
               />
             </View>
-            {model ? <Copy muted>Modell: {model}</Copy> : null}
+            {model ? (
+              <Copy muted>
+                {tr('Modell', 'Model')}: {model}
+              </Copy>
+            ) : null}
             <Copy muted>
-              Nachrichten und freigegebene Trainingsdaten gehen an OpenRouter
-              und den gewählten Modellanbieter. GPS-Koordinaten und Rohsamples
-              nicht.
+              {tr(
+                'Nachrichten und freigegebene Trainingsdaten gehen an OpenRouter und den gewählten Modellanbieter. GPS-Koordinaten und Rohsamples nicht.',
+                'Messages and shared training data go to OpenRouter and the chosen model provider. GPS coordinates and raw samples do not.',
+              )}
             </Copy>
             <Copy muted>
-              Antworten sind Einschätzungen und ändern keine Auswertung.
+              {tr(
+                'Antworten sind Einschätzungen und ändern keine Auswertung.',
+                'Answers are assessments and do not change any analysis.',
+              )}
             </Copy>
             <Button
               secondary
-              title="OpenRouter-Einstellungen"
+              title={tr('OpenRouter-Einstellungen', 'OpenRouter settings')}
               disabled={busy}
               onPress={() => {
                 setOptionsOpen(false);
@@ -398,14 +459,14 @@ export function TrainingChat({ onSettings }: { onSettings: () => void }) {
             />
             <Button
               danger
-              title="Unterhaltung löschen"
+              title={tr('Unterhaltung löschen', 'Delete conversation')}
               disabled={busy || messages.length === 0}
               onPress={() => void clearConversation()}
             />
             <Button
               secondary
               small
-              title="Schließen"
+              title={tr('Schließen', 'Close')}
               onPress={() => setOptionsOpen(false)}
             />
           </View>

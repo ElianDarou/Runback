@@ -20,33 +20,35 @@ import {
   space,
 } from './components';
 import { formatDuration } from './StatsParts';
+import { dateFormat, tr } from '../domain/i18n';
+import { displaySessionName } from '../domain/strength';
 
-const dayFormat = new Intl.DateTimeFormat('de-DE', {
-  day: '2-digit',
-  month: '2-digit',
-  year: 'numeric',
-});
+const formatDay = (time: number) =>
+  dateFormat({ day: '2-digit', month: '2-digit', year: 'numeric' }).format(
+    new Date(time),
+  );
 
-const setsLabel = (n: number) => `${formatCount(n)} ${n === 1 ? 'Satz' : 'Sätze'}`;
+const setsLabel = (n: number) =>
+  `${formatCount(n)} ${n === 1 ? tr('Satz', 'set') : tr('Sätze', 'sets')}`;
 
 function workoutSubtitle(workout: PreviewWorkout): string {
   return [
-    dayFormat.format(new Date(workout.time)),
+    formatDay(workout.time),
     setsLabel(workout.sets),
     workout.durationSeconds !== null
       ? formatDuration(workout.durationSeconds)
       : '',
-    workout.incomplete ? 'Unvollständig' : '',
+    workout.incomplete ? tr('Unvollständig', 'Incomplete') : '',
   ]
     .filter(Boolean)
     .join(' · ');
 }
 
 /**
- * Inhalt des Sheets „Import prüfen“: Nichts ist gespeichert, bis der Nutzer
- * übernimmt. Vorgabe ist alles Neue; verdächtige Strong-Dauern bleiben offen.
- * Die Wahl lebt so lange wie die Vorschau: Eine neue Vorschau bekommt einen
- * neuen `key` (Token) und beginnt wieder bei der Vorgabe.
+ * Content of the "Check import" sheet: nothing is saved until the user accepts.
+ * The default is everything new; suspicious Strong durations stay open.
+ * The choice lasts as long as the preview: a new preview gets a new `key`
+ * (token) and starts again from the default.
  */
 export interface ImportProblems {
   failed: number;
@@ -65,7 +67,7 @@ export function ImportReview({
 }: {
   preview: ImportPreview;
   files: string[];
-  /** Was beim Lesen nicht ging; steht vor der Wahl, damit nichts still fehlt. */
+  /** What could not be read; shown before the choice so nothing goes missing silently. */
   problems?: ImportProblems;
   busy: boolean;
   onCommit: (choice: ImportChoice) => void;
@@ -84,28 +86,47 @@ export function ImportReview({
   );
   const fileLine = files.length
     ? files.slice(0, 3).join(', ') +
-      (files.length > 3 ? ` und ${files.length - 3} weitere` : '')
+      (files.length > 3
+        ? tr(
+            ` und ${files.length - 3} weitere`,
+            ` and ${files.length - 3} more`,
+          )
+        : '')
     : '';
 
   const problemLines = [
     problems?.failed
-      ? `${formatCount(problems.failed)} ${
-          problems.failed === 1 ? 'Datei ließ' : 'Dateien ließen'
-        } sich nicht lesen.`
+      ? tr(
+          `${formatCount(problems.failed)} ${
+            problems.failed === 1 ? 'Datei ließ' : 'Dateien ließen'
+          } sich nicht lesen.`,
+          `${formatCount(problems.failed)} ${
+            problems.failed === 1 ? 'file' : 'files'
+          } could not be read.`,
+        )
       : '',
     problems?.skipped
-      ? `${formatCount(problems.skipped)} Dateien oder Zeilen übersprungen.`
+      ? tr(
+          `${formatCount(problems.skipped)} Dateien oder Zeilen übersprungen.`,
+          `${formatCount(problems.skipped)} files or rows skipped.`,
+        )
       : '',
     problems?.nonRunning
-      ? `${formatCount(problems.nonRunning)} Aktivitäten sind keine Läufe.`
+      ? tr(
+          `${formatCount(problems.nonRunning)} Aktivitäten sind keine Läufe.`,
+          `${formatCount(problems.nonRunning)} activities are not runs.`,
+        )
       : '',
     preview.runs.deleted
-      ? `${formatCount(preview.runs.deleted)} von dir gelöschte Läufe bleiben gelöscht.`
+      ? tr(
+          `${formatCount(preview.runs.deleted)} von dir gelöschte Läufe bleiben gelöscht.`,
+          `${formatCount(preview.runs.deleted)} runs you deleted stay deleted.`,
+        )
       : '',
   ].filter(Boolean);
   const problemBlock =
     problemLines.length || problems?.errors.length ? (
-      <Section title="Nicht dabei">
+      <Section title={tr('Nicht dabei', 'Not included')}>
         {problemLines.map(line => (
           <Copy muted key={line}>
             {line}
@@ -130,12 +151,22 @@ export function ImportReview({
         {fileLine ? <Copy muted>{fileLine}</Copy> : null}
         <Copy>
           {somethingKnown
-            ? 'Alles Lesbare aus diesen Dateien ist schon gespeichert.'
-            : 'In diesen Dateien hat Runback nichts gefunden, was es übernehmen kann.'}
+            ? tr(
+                'Alles Lesbare aus diesen Dateien ist schon gespeichert.',
+                'Everything readable in these files is already saved.',
+              )
+            : tr(
+                'In diesen Dateien hat Runback nichts gefunden, was es übernehmen kann.',
+                'Runback found nothing in these files it can import.',
+              )}
         </Copy>
         {problemBlock}
         <View style={styles.actions}>
-          <Button title="Schließen" onPress={onDiscard} disabled={busy} />
+          <Button
+            title={tr('Schließen', 'Close')}
+            onPress={onDiscard}
+            disabled={busy}
+          />
         </View>
       </>
     );
@@ -143,10 +174,22 @@ export function ImportReview({
 
   const known = [
     preview.runs.duplicates
-      ? `${formatCount(preview.runs.duplicates)} Läufe`
+      ? tr(
+          `${formatCount(preview.runs.duplicates)} Läufe`,
+          `${formatCount(preview.runs.duplicates)} ${
+            preview.runs.duplicates === 1 ? 'run' : 'runs'
+          }`,
+        )
       : '',
     preview.strength.duplicates
-      ? `${formatCount(preview.strength.duplicates)} Krafteinheiten`
+      ? tr(
+          `${formatCount(preview.strength.duplicates)} Krafteinheiten`,
+          `${formatCount(preview.strength.duplicates)} ${
+            preview.strength.duplicates === 1
+              ? 'strength session'
+              : 'strength sessions'
+          }`,
+        )
       : '',
   ].filter(Boolean);
 
@@ -154,11 +197,14 @@ export function ImportReview({
     <>
       {fileLine ? <Copy muted>{fileLine}</Copy> : null}
       {problemBlock}
-      <Section title="Übernehmen">
+      <Section title={tr('Übernehmen', 'Import')}>
         {preview.runs.new > 0 ? (
           <CheckRow
-            title="Läufe"
-            subtitle={`${formatCount(preview.runs.new)} neu`}
+            title={tr('Läufe', 'Runs')}
+            subtitle={tr(
+              `${formatCount(preview.runs.new)} neu`,
+              `${formatCount(preview.runs.new)} new`,
+            )}
             checked={choice.runs}
             onToggle={runs => update({ runs })}
             disabled={busy}
@@ -166,10 +212,15 @@ export function ImportReview({
         ) : null}
         {workouts.length + preview.strength.omitted > 0 ? (
           <CheckRow
-            title="Krafteinheiten"
-            subtitle={`${formatCount(
-              workouts.length + preview.strength.omitted,
-            )} neu`}
+            title={tr('Krafteinheiten', 'Strength sessions')}
+            subtitle={tr(
+              `${formatCount(
+                workouts.length + preview.strength.omitted,
+              )} neu`,
+              `${formatCount(
+                workouts.length + preview.strength.omitted,
+              )} new`,
+            )}
             checked={choice.strength}
             onToggle={strength => update({ strength })}
             disabled={busy}
@@ -177,8 +228,11 @@ export function ImportReview({
         ) : null}
         {choice.strength && workouts.length ? (
           <CheckRow
-            title="Vorlagen vorschlagen"
-            subtitle="Aus deinen Trainings neue Kraftvorlagen zum Prüfen."
+            title={tr('Vorlagen vorschlagen', 'Suggest templates')}
+            subtitle={tr(
+              'Aus deinen Trainings neue Kraftvorlagen zum Prüfen.',
+              'New strength templates from your workouts to review.',
+            )}
             checked={choice.templateSuggestions}
             onToggle={templateSuggestions => update({ templateSuggestions })}
             disabled={busy}
@@ -189,7 +243,7 @@ export function ImportReview({
             key={group.label}
             title={group.label}
             subtitle={`${formatCount(group.count)} ${
-              group.count === 1 ? 'Wert' : 'Werte'
+              group.count === 1 ? tr('Wert', 'value') : tr('Werte', 'values')
             }`}
             checked={group.kinds.every(kind =>
               choice.wellnessKinds.includes(kind),
@@ -206,24 +260,37 @@ export function ImportReview({
           />
         ))}
         {known.length ? (
-          <Copy muted>{`Schon gespeichert: ${known.join(' · ')}`}</Copy>
+          <Copy muted>
+            {tr(
+              `Schon gespeichert: ${known.join(' · ')}`,
+              `Already saved: ${known.join(' · ')}`,
+            )}
+          </Copy>
         ) : null}
       </Section>
       {choice.strength && suspect.length ? (
-        <Section title="Dauer übernehmen?">
+        <Section title={tr('Dauer übernehmen?', 'Keep duration?')}>
           <Copy muted>
-            Strong speichert keine Satzzeiten. Diese Dauern passen nicht zu den
-            Sätzen; ohne Haken bleibt das Ende offen.
+            {tr(
+              'Strong speichert keine Satzzeiten. Diese Dauern passen nicht zu den Sätzen; ohne Haken bleibt das Ende offen.',
+              'Strong does not save set times. These durations do not match the sets; without a tick the end stays open.',
+            )}
           </Copy>
           {suspect.map(workout => (
             <CheckRow
               key={workout.id}
-              title={`${workout.name || 'Krafttraining'} · ${dayFormat.format(
-                new Date(workout.time),
-              )}`}
-              subtitle={`${formatDuration(
-                workout.durationSeconds ?? 0,
-              )} für ${setsLabel(workout.sets)}`}
+              title={`${
+                displaySessionName(workout.name) ||
+                tr('Krafttraining', 'Strength training')
+              } · ${formatDay(workout.time)}`}
+              subtitle={tr(
+                `${formatDuration(
+                  workout.durationSeconds ?? 0,
+                )} für ${setsLabel(workout.sets)}`,
+                `${formatDuration(
+                  workout.durationSeconds ?? 0,
+                )} for ${setsLabel(workout.sets)}`,
+              )}
               checked={choice.keepDurationIds.includes(workout.id)}
               onToggle={on =>
                 update({
@@ -241,20 +308,38 @@ export function ImportReview({
       ) : null}
       {choice.strength && workouts.length > 1 ? (
         <Disclosure
-          title="Einzelne Krafteinheiten wählen"
-          subtitle={`${formatCount(
-            workouts.length - choice.excludedStrengthIds.length,
-          )} von ${formatCount(workouts.length)}`}
+          title={tr(
+            'Einzelne Krafteinheiten wählen',
+            'Choose individual strength sessions',
+          )}
+          subtitle={tr(
+            `${formatCount(
+              workouts.length - choice.excludedStrengthIds.length,
+            )} von ${formatCount(workouts.length)}`,
+            `${formatCount(
+              workouts.length - choice.excludedStrengthIds.length,
+            )} of ${formatCount(workouts.length)}`,
+          )}
         >
           {preview.strength.omitted ? (
-            <Copy muted>{`Weitere ${formatCount(
-              preview.strength.omitted,
-            )} Krafteinheiten übernimmst du mit den Vorgaben.`}</Copy>
+            <Copy muted>
+              {tr(
+                `Weitere ${formatCount(
+                  preview.strength.omitted,
+                )} Krafteinheiten übernimmst du mit den Vorgaben.`,
+                `You import the other ${formatCount(
+                  preview.strength.omitted,
+                )} strength sessions with the defaults.`,
+              )}
+            </Copy>
           ) : null}
           {workouts.map(workout => (
             <CheckRow
               key={workout.id}
-              title={workout.name || 'Krafttraining'}
+              title={
+                displaySessionName(workout.name) ||
+                tr('Krafttraining', 'Strength training')
+              }
               subtitle={workoutSubtitle(workout)}
               checked={!choice.excludedStrengthIds.includes(workout.id)}
               onToggle={on =>
@@ -275,17 +360,22 @@ export function ImportReview({
         <Button
           title={
             total
-              ? `${formatCount(total)} ${
-                  total === 1 ? 'Eintrag' : 'Einträge'
-                } übernehmen`
-              : 'Nichts gewählt'
+              ? tr(
+                  `${formatCount(total)} ${
+                    total === 1 ? 'Eintrag' : 'Einträge'
+                  } übernehmen`,
+                  `Import ${formatCount(total)} ${
+                    total === 1 ? 'entry' : 'entries'
+                  }`,
+                )
+              : tr('Nichts gewählt', 'Nothing selected')
           }
           onPress={() => onCommit(choice)}
           disabled={busy || total === 0}
         />
         <Button
           secondary
-          title="Verwerfen"
+          title={tr('Verwerfen', 'Discard')}
           onPress={onDiscard}
           disabled={busy}
         />

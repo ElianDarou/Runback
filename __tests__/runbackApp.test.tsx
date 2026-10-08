@@ -7,7 +7,7 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 
 jest.mock('../src/native', () => {
-  // Innerhalb der Factory, weil jest.mock vor die Importe gehoben wird.
+  // Inside the factory, because jest.mock is hoisted above the imports.
   const { emptyStrengthState } = require('../src/domain/strength');
   const state = {
     runs: [],
@@ -84,7 +84,7 @@ import { parseStrongCsvPreview } from '../src/domain/vendorImports';
 import { importedStrengthSession } from '../src/domain/strengthImports';
 
 const DAY = 86400000;
-/** Zwei vergleichbare Vorläufe: erst der Median mehrerer Läufe trägt eine Empfehlung. */
+/** Two comparable earlier runs: only the median of several runs supports a recommendation. */
 const previousRuns = (base: RunSummary): RunSummary[] =>
   [1, 2].map(index => ({
     ...base,
@@ -117,7 +117,7 @@ async function render() {
   return tree;
 }
 
-/** Schalter (Switch) tragen keinen Titel; sie hängen an der Zeile davor. */
+/** Switches (Switch) carry no title; they hang on the row before them. */
 const flip = async (tree: TestRenderer.ReactTestRenderer, rowTitle: string) => {
   const row = tree.root
     .findAll(
@@ -159,7 +159,7 @@ const tap = async (
   });
 };
 
-/** Zeilen tragen ihren Namen als Text, nicht als `accessibilityLabel`. */
+/** Rows carry their name as text, not as `accessibilityLabel`. */
 const tapText = async (
   tree: TestRenderer.ReactTestRenderer,
   label: string,
@@ -168,15 +168,15 @@ const tapText = async (
     .findAll(item => typeof item.props?.onPress === 'function')
     .find(item => textContent(item).includes(label));
   if (!node) {
-    throw new Error(`Kein antippbares Element mit „${label}“ gefunden.`);
+    throw new Error(`No pressable element found with “${label}”.`);
   }
   await act(async () => {
     node.props.onPress();
   });
 };
 
-describe('Heute', () => {
-  it('zeigt den Serverausfall am Zahnrad und lässt den Trainingsstart offen', async () => {
+describe('Today', () => {
+  it('shows the server outage at the gear and leaves the training start open', async () => {
     (native.serverStatus as jest.Mock).mockResolvedValueOnce({ state: 'offline', url: 'http://nas.local:8080', scope: { runs: true, strength: true, coach: true, gps: false, health: false }, lastSuccessAt: null, pending: null });
     const tree = await render();
     expect(screenText(tree)).toContain('Lauf starten');
@@ -189,7 +189,7 @@ describe('Heute', () => {
     await act(async () => tree.unmount());
   });
 
-  it('zeigt einen verbundenen Server grün neben dem Zahnrad', async () => {
+  it('shows a connected server in green next to the gear', async () => {
     (native.serverStatus as jest.Mock).mockResolvedValueOnce({ state: 'ok', url: 'http://nas.local:8080', scope: { runs: true, strength: true, coach: true, gps: false, health: false }, lastSuccessAt: null, pending: 0 });
     const tree = await render();
     const mark = tree.root.findAllByType(Text).find(item => textContent(item) === '●')!;
@@ -199,7 +199,7 @@ describe('Heute', () => {
     await act(async () => tree.unmount());
   });
 
-  it('zeigt ohne eingerichteten Server keinen Punkt', async () => {
+  it('shows no dot without a configured server', async () => {
     const tree = await render();
     expect(screenText(tree)).not.toContain('●');
     await tap(tree, 'Einstellungen');
@@ -211,17 +211,17 @@ describe('Heute', () => {
     const text = screenText(tree);
 
     expect(text).toContain('Lauf starten');
-    // Das Gerät zeigt das Datum bereits an (Design Language § 6).
+    // The device already shows the date (Design Language § 6).
     expect(text).not.toMatch(/\d{1,2}\.\s|Montag|Dienstag|Mittwoch/);
     expect(text).not.toContain('Starte einfach');
     expect(text).not.toContain('Minuten eingeplant');
-    // Kein Pfeil, der ein Aufklappen verspricht (Design Language § 8).
+    // No arrow that promises an expansion (Design Language § 8).
     expect(text).not.toContain('⌄');
-    // Fokus, Ziel und Vorlagen haben ihren Ort im Coach und im Plan.
+    // Focus, goal and templates have their place in Coach and Plan.
     expect(text).not.toContain('Dein Fokus');
     expect(text).not.toContain('Dein Ziel');
     expect(text).not.toContain('Laufvorlagen');
-    // Die Laufart wird erst im Moment des Startens gewählt.
+    // The run type is chosen only at the moment of starting.
     expect(text).not.toContain('Zweck');
     await tap(tree, 'Lauf starten');
     expect(screenText(tree)).toContain('Wie willst du laufen?');
@@ -241,7 +241,7 @@ describe('Heute', () => {
   });
 });
 
-describe('Verlauf', () => {
+describe('History', () => {
   it('opens record runs and returns through the strongest week to statistics', async () => {
     const monday = new Date();
     monday.setHours(0, 0, 0, 0);
@@ -323,11 +323,11 @@ describe('Verlauf', () => {
 
     expect(text).toContain('Einheiten');
     expect(text).toContain('Statistik');
-    // Läufe, Radfahrten und Krafteinheiten teilen sich eine Liste; ohne
-    // Einheiten gibt es nichts zu filtern.
+    // Runs, rides and strength sessions share one list; without
+    // sessions there is nothing to filter.
     expect(text).toContain('Hier beginnt deine Historie');
     expect(text).not.toContain('Alle');
-    // Importieren bleibt eine Einstellung, keine Zeile in der Historie.
+    // Importing stays a setting, not a row in the history.
     expect(text).not.toContain('Importieren');
     expect(text).not.toContain('Vorhandene Läufe importieren');
     await act(async () => {
@@ -336,7 +336,7 @@ describe('Verlauf', () => {
   });
 });
 
-describe('Fokus', () => {
+describe('Focus', () => {
   it.each(['active', 'paused'] as const)(
     'shows a read-only follow-up when %s, including missing comparison data and real alternatives',
     async status => {
@@ -387,7 +387,7 @@ describe('Fokus', () => {
         tree = TestRenderer.create(<RunbackApp />);
       });
       try {
-        // Heute zeigt die Empfehlung kompakt mit Zustand; der Coach trägt den Rest.
+        // Today shows the recommendation compactly with its state; Coach carries the rest.
         expect(screenText(tree)).toContain(accepted.recommendation.action);
         expect(screenText(tree)).toContain(
           status === 'paused' ? 'Pausiert' : 'Aktiv',
@@ -530,7 +530,7 @@ describe('Fokus', () => {
   });
   it('is reachable from Coach and replaces the old wording', async () => {
     const tree = await render();
-    // Der Fokus ist die Grundlage der Empfehlung und steht im Coach.
+    // The focus is the basis of the recommendation and lives in Coach.
     expect(screenText(tree)).not.toContain('Noch kein Fokus');
     await tap(tree, 'Coach');
     await tapText(tree, 'Ziele & Fokus');
@@ -549,8 +549,8 @@ describe('Fokus', () => {
   });
 });
 
-describe('Vorlagenverwaltung', () => {
-  it('speichert gelöschte Importvorschläge getrennt von Vorlagen und zeigt sie nach dem Neustart nicht erneut', async () => {
+describe('Template management', () => {
+  it('stores deleted import suggestions apart from templates and does not show them again after a restart', async () => {
     const workouts = parseStrongCsvPreview(
       'Date;Workout Name;Exercise Name;Set Order;Weight (kg);Reps\n2024-01-01 18:00:00;Push;Bench Press (Barbell);1;60;8\n2024-01-02 18:00:00;Pull;Deadlift (Barbell);1;80;6',
     ).workouts;
@@ -616,7 +616,7 @@ describe('Vorlagenverwaltung', () => {
     }
   });
 
-  it('öffnet über Einstellungen die vorhandene Verwaltung und speichert Bearbeiten, Duplizieren und Löschen', async () => {
+  it('opens the existing management via settings and saves editing, duplicating and deleting', async () => {
     const template = addTemplateExercise(
       createTemplate(100, 'Oberkörper', []),
       catalogExercise('barbell_bench_press')!,
@@ -677,7 +677,7 @@ describe('Vorlagenverwaltung', () => {
     }
   });
 
-  it('öffnet ohne Planung und Krafttraining Laufvorlagen und kehrt per Android-Zurück zu Einstellungen zurück', async () => {
+  it('opens run templates without planning and strength training and returns to settings via Android back', async () => {
     jest.mocked(native.state).mockResolvedValueOnce({
       runs: [],
       recording: null,
@@ -719,7 +719,7 @@ describe('Vorlagenverwaltung', () => {
   });
 });
 
-describe('Funktionen', () => {
+describe('Features', () => {
   const settingsSaved = () =>
     jest.mocked(native.saveSettings).mock.calls.at(-1)![0];
   const withFeatures = (features: unknown, extra: object = {}) =>
@@ -730,8 +730,8 @@ describe('Funktionen', () => {
       capabilities: {},
     });
 
-  it('fragt nur nach Muskelkater, wenn die Einstellung es will', async () => {
-    // Standard: nach Krafttraining. Ohne Krafteinheit keine Abfrage.
+  it('asks about soreness only when the setting asks for it', async () => {
+    // Default: after strength training. Without a strength session, no prompt.
     const quiet = await render();
     expect(screenText(quiet)).not.toContain('Überspringen');
     expect(screenText(quiet)).toContain('Muskelkater melden');
@@ -748,7 +748,7 @@ describe('Funktionen', () => {
     });
   });
 
-  it('nimmt abgeschaltetem Muskelkater Zeile, Abfrage und Muskelkarte', async () => {
+  it('removes the soreness row, prompt and body map when soreness is switched off', async () => {
     withFeatures({ soreness: { enabled: false, prompt: 'daily' } });
     const tree = await render();
     const text = screenText(tree);
@@ -761,7 +761,7 @@ describe('Funktionen', () => {
     });
   });
 
-  it('nimmt abgewähltem Krafttraining und abgewähltem Plan alle Einstiege', async () => {
+  it('removes all entry points for deselected strength training and plan', async () => {
     withFeatures({
       areas: { running: true, strength: false },
       planning: { enabled: false },
@@ -773,7 +773,7 @@ describe('Funktionen', () => {
     expect(text).not.toContain('Diese Woche im Plan ansehen');
     expect(tabLabels(tree)).toEqual(['Heute', 'Coach', 'Verlauf']);
     await tap(tree, 'Coach');
-    // Ohne Kraft kein Bereichswechsel und ohne Schlüssel kein Chat.
+    // Without strength there is no area switch, and without a key there is no chat.
     expect(screenText(tree)).not.toContain('Trainingschat');
     expect(
       tree.root.findAll(item => item.props?.accessibilityLabel === 'Bereich'),
@@ -783,7 +783,7 @@ describe('Funktionen', () => {
     });
   });
 
-  it('zeigt ohne Laufen den Kraft-Coach und den Kraftstart allein', async () => {
+  it('shows the strength coach and the strength start alone without running', async () => {
     withFeatures({ areas: { running: false, strength: true } });
     const tree = await render();
     const text = screenText(tree);
@@ -797,7 +797,7 @@ describe('Funktionen', () => {
     });
   });
 
-  it('schaltet Funktionen sofort und speichert sie in den Einstellungen', async () => {
+  it('switches features immediately and saves them in the settings', async () => {
     const tree = await render();
     await tap(tree, 'Einstellungen');
     await tapText(tree, 'Funktionen');
@@ -807,7 +807,7 @@ describe('Funktionen', () => {
     expect(tabLabels(tree)).not.toContain('Plan');
     await flip(tree, 'Muskelkater');
     expect(settingsSaved().features?.soreness.enabled).toBe(false);
-    // Der letzte Bereich lässt sich nicht abwählen.
+    // The last area cannot be deselected.
     await flip(tree, 'Krafttraining');
     expect(settingsSaved().features?.areas.strength).toBe(false);
     await flip(tree, 'Laufen');
@@ -822,7 +822,7 @@ describe('Funktionen', () => {
     });
   });
 
-  it('zeigt Empfehlungen auf Nachfrage nur im Coach', async () => {
+  it('shows recommendations on request only in Coach', async () => {
     const baseline = {
       id: 'base',
       startTime: 30 * DAY,
@@ -857,7 +857,7 @@ describe('Funktionen', () => {
     });
   });
 
-  it('belegt freie Plätze mit Statistik und Vorlagen und behält Funktionen ohne Tab erreichbar', async () => {
+  it('fills free slots with statistics and templates and keeps features without a tab reachable', async () => {
     withFeatures({ planning: { enabled: false }, coach: { enabled: false } });
     const tree = await render();
     expect(tabLabels(tree)).toEqual(['Heute', 'Verlauf']);
@@ -903,7 +903,7 @@ describe('Funktionen', () => {
     await act(async () => tree.unmount());
   });
 
-  it('ersetzt nur den gewählten Platz und setzt die Änderung nach Neustart fort', async () => {
+  it('replaces only the chosen slot and keeps the change after a restart', async () => {
     const tree = await render();
     await tap(tree, 'Einstellungen');
     await tapText(tree, 'Funktionen');
@@ -937,7 +937,7 @@ describe('Funktionen', () => {
     await act(async () => restarted.unmount());
   });
 
-  it('pausiert den Coach ohne Datenverlust und ohne automatisches Fortsetzen', async () => {
+  it('pauses Coach without data loss and without automatic resume', async () => {
     const baseline: RunSummary = {
       id: 'base',
       startTime: 30 * DAY,
@@ -1000,7 +1000,7 @@ describe('Funktionen', () => {
     }
   });
 
-  it('entfernt ausgeschaltete Statistik und Vorlagen auch aus Verlauf und Trainingsstart', async () => {
+  it('removes switched-off statistics and templates also from history and the training start', async () => {
     withFeatures({
       statistics: { enabled: false },
       templates: { enabled: false },
@@ -1030,7 +1030,7 @@ describe('Funktionen', () => {
     await act(async () => tree.unmount());
   });
 
-  it('bietet bestehenden Nutzern die Funktionen einmalig auf Heute an', async () => {
+  it('offers existing users the features once on Today', async () => {
     const tree = await render();
     expect(screenText(tree)).toContain('Neu: Wähle, was Runback zeigt');
     await tapText(tree, 'Neu: Wähle, was Runback zeigt');
@@ -1044,8 +1044,8 @@ describe('Funktionen', () => {
   });
 });
 
-describe('Lauf-Detail', () => {
-  it('zeigt Einblicke und färbt das Tempo gegenüber den letzten Läufen', async () => {
+describe('Run detail', () => {
+  it('shows insights and colors the pace against the last runs', async () => {
     const base: RunSummary = {
       id: 'now',
       startTime: 60 * DAY,
@@ -1086,7 +1086,7 @@ describe('Lauf-Detail', () => {
         gradePercent: 0,
       })),
     };
-    // Drei langsamere Vorläufe: das heutige Tempo ist deutlich besser.
+    // Three slower earlier runs: today's pace is clearly better.
     const slower = [1, 2, 3].map(index => ({
       ...base,
       id: `prev-${index}`,
@@ -1113,7 +1113,7 @@ describe('Lauf-Detail', () => {
       expect(text).toContain(
         'Gegenüber dem Median deiner letzten 3 gleichartigen Läufe.',
       );
-      // Die Tempo-Kachel trägt den Vergleich als Pfeil und Text, nicht nur als Farbe.
+      // The pace tile carries the comparison as arrow and text, not only as color.
       expect(
         tree.root.findAll(
           item =>
@@ -1130,7 +1130,7 @@ describe('Lauf-Detail', () => {
   });
 });
 
-describe('Laufberichte gesammelt exportieren', () => {
+describe('Export run reports together', () => {
   beforeEach(() => jest.clearAllMocks());
   let activeTree: TestRenderer.ReactTestRenderer | undefined;
   afterEach(async () => {
@@ -1296,7 +1296,7 @@ describe('Laufberichte gesammelt exportieren', () => {
   });
 });
 
-describe('Krafttraining exportieren', () => {
+describe('Export strength training', () => {
   beforeEach(() => jest.clearAllMocks());
   const session = (id: string, start: number) => ({
     id,
@@ -1380,7 +1380,7 @@ describe('Krafttraining exportieren', () => {
   });
 });
 
-describe('Laufart nachtragen', () => {
+describe('Adding run type later', () => {
   const run = (id: string, day: number, purpose: string) => ({
     id,
     startTime: new Date(2026, 9, day, 7).getTime(),
@@ -1406,7 +1406,7 @@ describe('Laufart nachtragen', () => {
     );
   });
 
-  it('fragt Lauf für Lauf, geht erst nach dem Speichern weiter und zählt „Einfach laufen“ als Antwort', async () => {
+  it('asks run by run, moves on only after saving, and counts “Just run” as an answer', async () => {
     let runs = [run('neu', 2, 'unknown'), run('alt', 1, 'unknown')];
     jest.mocked(native.state).mockImplementation(() =>
       Promise.resolve({
@@ -1442,7 +1442,7 @@ describe('Laufart nachtragen', () => {
     expect(screenText(tree)).toContain('1 Lauf bleibt ohne Laufart.');
   });
 
-  it('bleibt beim Lauf, wenn das Speichern scheitert', async () => {
+  it('stays on the run when saving fails', async () => {
     jest.mocked(native.state).mockImplementation(() =>
       Promise.resolve({
         runs: [run('neu', 2, 'unknown')],
@@ -1468,8 +1468,8 @@ describe('Laufart nachtragen', () => {
   });
 });
 
-describe('Krafthistorie nach Import', () => {
-  it('aktualisiert Verlauf und Statistik direkt nach dem Import', async () => {
+describe('Strength history after import', () => {
+  it('updates history and statistics right after the import', async () => {
     const sessions = parseStrongCsvPreview(
       `Date;Workout Name;Exercise Name;Set Order;Weight (kg);Reps\n${
         Date.now() - DAY
@@ -1479,7 +1479,7 @@ describe('Krafthistorie nach Import', () => {
     const previousSessions = jest
       .mocked(native.strengthSessions)
       .getMockImplementation();
-    // Erst eine Vorschau; gespeichert wird erst mit „übernehmen“.
+    // First a preview; saved only with “accept”.
     jest.mocked(nativeCall).mockImplementation(
       async method =>
         (method === 'importFiles'

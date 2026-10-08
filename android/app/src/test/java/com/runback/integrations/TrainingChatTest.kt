@@ -34,7 +34,7 @@ class TrainingChatTest {
         run = JSONObject().put("id", "run-1").put("distanceMeters", 6000)
             .put("geometry", JSONArray().put(JSONObject().put("latitude", 52)))
             .put("rawSamples", "SECRET_RAW").put("apiKey", "SECRET_KEY")
-            .put("feedback", JSONObject().put("note", "Müde Beine").put("latitude", 51))
+            .put("feedback", JSONObject().put("note", "Tired legs").put("latitude", 51))
         var round = 0
         val result = chat { messages, tools, _ ->
             assertNotNull(tools)
@@ -42,12 +42,12 @@ class TrainingChatTest {
             else {
                 val data = JSONObject(messages.getJSONObject(messages.length() - 1).getString("content"))
                 assertEquals(6000, data.getInt("distanceMeters"))
-                assertEquals("Müde Beine", data.getJSONObject("feedback").getString("note"))
+                assertEquals("Tired legs", data.getJSONObject("feedback").getString("note"))
                 assertFalse(data.toString().contains("latitude"))
                 assertFalse(data.toString().contains("SECRET"))
-                answer("Dein Lauf war 6 km lang.")
+                answer("Your run was 6 km long.")
             }
-        }.send("Wie war mein Lauf?", true)
+        }.send("How was my run?", true)
         assertEquals(2, result.getJSONArray("messages").length())
         assertFalse(result.toString().contains("tool_calls"))
     }
@@ -64,9 +64,9 @@ class TrainingChatTest {
         chat { messages, _, _ ->
             if (round++ == 0) call("delete_all_data") else {
                 assertTrue(messages.getJSONObject(messages.length() - 1).getString("content").contains("error"))
-                answer("Ich kann keine Daten löschen.")
+                answer("I cannot delete data.")
             }
-        }.send("Lösche Daten", true)
+        }.send("Delete data", true)
         assertEquals(2, round)
     }
 

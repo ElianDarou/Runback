@@ -10,9 +10,12 @@ import {
   type RunSeries,
 } from '../domain/runSeries';
 import {
+  driftVerdictLabel,
   endRecovery,
   environmentCost,
+  evennessLabel,
   fatiguePattern,
+  formatSignedNumber,
   formatSignedPercent,
   formatSignedSeconds,
   gradeAdjustedPace,
@@ -33,6 +36,7 @@ import {
   type RecentComparison,
 } from '../domain/insights';
 import { gaitInsight, type GaitLine } from '../domain/gait';
+import { fixed, tr } from '../domain/i18n';
 import {
   Copy,
   Disclosure,
@@ -49,34 +53,43 @@ import {
 } from './components';
 
 /**
- * Tiefere Einblicke auf der Detailseite eines Laufs. Jede Sektion zeigt nur,
- * was die Daten tragen: Ohne Zeitbudget keine Bewegung, ohne Puls keine
- * Zonen, unter drei Vergleichsläufen kein Vergleich. Nichts hier ist eine
- * Empfehlung — das bleibt beim „Nächsten Schritt“.
+ * Deeper insights on a run's detail page. Each section shows only what the
+ * data supports: no time budget, no movement; no heart rate, no zones; fewer
+ * than three comparison runs, no comparison. Nothing here is a recommendation —
+ * that stays with "Next step".
  */
 export interface RunInsightsProps {
   run: RunSummary;
   series: RunSeries | null;
   history: RunSummary[];
   pacing?: PacingAnalysis;
-  /** Eingestellter Maxpuls; fehlt er, schätzt Runback aus den letzten Läufen. */
+  /** Max heart rate set by the user; if missing, Runback estimates it from recent runs. */
   maxHeartRateSetting?: number;
   onMaxHeartRate?: (value: number | undefined) => void;
 }
 
-const number = (value: number, digits = 0) =>
-  value.toFixed(digits).replace('.', ',');
+const formatNumber = (value: number, digits = 0) => fixed(value, digits);
 const bpm = (value: number | undefined) =>
   value === undefined ? '–' : `${Math.round(value)} bpm`;
 
-export const METRIC_WORDS: Record<ComparedMetric, string> = {
-  pace: 'Tempo',
-  heartRate: 'Ø Puls',
-  metersPerBeat: 'Meter je Herzschlag',
-  cadence: 'Kadenz',
-  drift: 'Puls-Drift',
-  fade: 'Tempoabfall',
+/** Name of a compared metric as shown to the user. */
+export const metricWord = (metric: ComparedMetric): string => {
+  switch (metric) {
+    case 'pace':
+      return tr('Tempo', 'Pace');
+    case 'heartRate':
+      return tr('Ø Puls', 'Ø Heart rate');
+    case 'metersPerBeat':
+      return tr('Meter je Herzschlag', 'Meters per beat');
+    case 'cadence':
+      return tr('Kadenz', 'Cadence');
+    case 'drift':
+      return tr('Puls-Drift', 'Heart rate drift');
+    case 'fade':
+      return tr('Tempoabfall', 'Pace fade');
+  }
 };
+
 function metricText(metric: ComparedMetric, value: number): string {
   switch (metric) {
     case 'pace':
@@ -84,15 +97,15 @@ function metricText(metric: ComparedMetric, value: number): string {
     case 'heartRate':
       return bpm(value);
     case 'metersPerBeat':
-      return `${number(value, 2)} m`;
+      return `${formatNumber(value, 2)} m`;
     case 'cadence':
       return `${Math.round(value)} spm`;
     case 'drift':
     case 'fade':
-      return `${number(value, 1)} %`;
+      return `${formatNumber(value, 1)}${tr(' %', '%')}`;
   }
 }
-/** Unterschied zur Basis in der Einheit der Kennzahl, mit Vorzeichen. */
+/** Difference to the baseline in the metric's unit, with sign. */
 export function deltaText(item: MetricComparison): string {
   const diff = item.value - item.reference;
   switch (item.metric) {
@@ -114,7 +127,10 @@ export function deltaText(item: MetricComparison): string {
       return formatSignedPercent(item.deltaPercent);
     case 'drift':
     case 'fade':
-      return `${formatSignedPercent(diff, 1).replace(' %', '')} Punkte`;
+      return tr(
+        `${formatSignedNumber(diff, 1)} Punkte`,
+        `${formatSignedNumber(diff, 1)} points`,
+      );
   }
 }
 export function toneFor(
@@ -182,27 +198,27 @@ export function RunInsights({
   return (
     <>
       {budget || movement ? (
-        <Section title="Bewegung">
+        <Section title={tr('Bewegung', 'Movement')}>
           {budget ? (
             <StackedBar
-              label="Zeitbudget"
+              label={tr('Zeitbudget', 'Time budget')}
               parts={[
                 {
                   value: budget.runningSeconds,
                   color: color.green,
-                  label: 'gelaufen',
+                  label: tr('gelaufen', 'running'),
                   text: formatElapsed(budget.runningSeconds),
                 },
                 {
                   value: budget.walkingSeconds,
                   color: color.series.cadence,
-                  label: 'gegangen',
+                  label: tr('gegangen', 'walking'),
                   text: formatElapsed(budget.walkingSeconds),
                 },
                 {
                   value: budget.stoppedSeconds,
                   color: color.muted,
-                  label: 'gestanden',
+                  label: tr('gestanden', 'standing'),
                   text: formatElapsed(budget.stoppedSeconds),
                 },
               ]}
@@ -210,36 +226,44 @@ export function RunInsights({
           ) : null}
           {budget && budget.pausedSeconds >= 30 ? (
             <Copy muted>
-              Dazu {formatElapsed(budget.pausedSeconds)} pausiert.
+              {tr(
+                `Dazu ${formatElapsed(budget.pausedSeconds)} pausiert.`,
+                `Plus ${formatElapsed(budget.pausedSeconds)} paused.`,
+              )}
             </Copy>
           ) : null}
           {movement?.longestRunMeters !== undefined &&
           movement.longestRunSeconds !== undefined ? (
             <Row
-              title="Längster Abschnitt am Stück"
-              subtitle={`${formatKm(
-                movement.longestRunMeters,
-              )} km · ${formatElapsed(
-                movement.longestRunSeconds,
-              )} ohne Gehpause`}
+              title={tr('Längster Abschnitt am Stück', 'Longest stretch without a break')}
+              subtitle={
+                tr(
+                  `${formatKm(movement.longestRunMeters)} km · ${formatElapsed(
+                    movement.longestRunSeconds,
+                  )} ohne Gehpause`,
+                  `${formatKm(movement.longestRunMeters)} km · ${formatElapsed(
+                    movement.longestRunSeconds,
+                  )} without a walk break`,
+                )
+              }
             />
           ) : null}
           {movement ? (
             <Row
-              title="Wechsel zwischen Laufen und Gehen"
+              title={tr('Wechsel zwischen Laufen und Gehen', 'Switches between running and walking')}
               subtitle={
-                // Keine erkannten Wechsel belegen kein durchgehendes Laufen:
-                // Stillstand und unbekannte Abschnitte zählen hier nicht mit.
+                // No detected switches does not prove continuous running:
+                // standing and unknown stretches don't count here.
                 movement.runWalkTransitions > 0
                   ? `${movement.runWalkTransitions}×`
-                  : 'Keiner erkannt'
+                  : tr('Keiner erkannt', 'None detected')
               }
             />
           ) : null}
           {movement?.runningHeartRate !== undefined &&
           movement.walkingHeartRate !== undefined ? (
             <Row
-              title="Puls laufend · gehend"
+              title={tr('Puls laufend · gehend', 'Heart rate running · walking')}
               subtitle={`${bpm(movement.runningHeartRate)} · ${bpm(
                 movement.walkingHeartRate,
               )}`}
@@ -249,22 +273,28 @@ export function RunInsights({
       ) : null}
 
       {verdict || drift || gap ? (
-        <Section title="Einteilung">
+        <Section title={tr('Einteilung', 'Pacing')}>
           {verdict ? <Copy>{verdict.sentence}</Copy> : null}
           {verdict ? (
             <Row
-              title="Gleichmäßigkeit"
-              subtitle={`${verdict.evenness} · Schwankung ${number(
-                verdict.coefficientOfVariation * 100,
-                1,
-              )} %`}
+              title={tr('Gleichmäßigkeit', 'Evenness')}
+              subtitle={tr(
+                `${evennessLabel(verdict.evenness)} · Schwankung ${formatNumber(
+                  verdict.coefficientOfVariation * 100,
+                  1,
+                )} %`,
+                `${evennessLabel(verdict.evenness)} · variation ${formatNumber(
+                  verdict.coefficientOfVariation * 100,
+                  1,
+                )}%`,
+              )}
             />
           ) : null}
           {verdict?.fastestSecondsPerKm !== undefined &&
           verdict.slowestSecondsPerKm !== undefined &&
           verdict.fastestSegmentIndex !== verdict.slowestSegmentIndex ? (
             <Row
-              title="Schnellster · langsamster Kilometer"
+              title={tr('Schnellster · langsamster Kilometer', 'Fastest · slowest kilometer')}
               subtitle={`${formatPace(verdict.fastestSecondsPerKm)} (${kmLabel(
                 verdict.fastestSegmentIndex,
               )}) · ${formatPace(verdict.slowestSecondsPerKm)} (${kmLabel(
@@ -274,63 +304,90 @@ export function RunInsights({
           ) : null}
           {drift ? (
             <Row
-              title="Puls-Drift"
-              subtitle={`${formatSignedPercent(drift.percent, 1)} · ${
-                drift.verdict
-              }`}
+              title={tr('Puls-Drift', 'Heart rate drift')}
+              subtitle={`${formatSignedPercent(drift.percent, 1)} · ${driftVerdictLabel(
+                drift.verdict,
+              )}`}
             />
           ) : null}
           {gap &&
           Math.abs(gap.adjustedSecondsPerKm - gap.realSecondsPerKm) >= 2 ? (
             <Row
-              title="Flach-Äquivalent"
-              subtitle={`${formatPace(
-                gap.realSecondsPerKm,
-              )} real · ${formatPace(
-                gap.adjustedSecondsPerKm,
-              )} /km in der Ebene — geschätzt`}
+              title={tr('Flach-Äquivalent', 'Flat equivalent')}
+              subtitle={
+                tr(
+                  `${formatPace(gap.realSecondsPerKm)} real · ${formatPace(
+                    gap.adjustedSecondsPerKm,
+                  )} /km in der Ebene — geschätzt`,
+                  `${formatPace(gap.realSecondsPerKm)} actual · ${formatPace(
+                    gap.adjustedSecondsPerKm,
+                  )} /km on the flat — estimated`,
+                )
+              }
             />
           ) : null}
         </Section>
       ) : null}
 
       {hasHeartRate || cadenceSpan ? (
-        <Section title="Puls & Schritt">
-          {heartRateSpan ? <Row title="Puls" subtitle={heartRateSpan} /> : null}
-          {cadenceSpan ? <Row title="Kadenz" subtitle={cadenceSpan} /> : null}
+        <Section title={tr('Puls & Schritt', 'Heart rate & stride')}>
+          {heartRateSpan ? (
+            <Row title={tr('Puls', 'Heart rate')} subtitle={heartRateSpan} />
+          ) : null}
+          {cadenceSpan ? (
+            <Row title={tr('Kadenz', 'Cadence')} subtitle={cadenceSpan} />
+          ) : null}
           {efficiency !== undefined ? (
             <Row
-              title="Meter je Herzschlag"
-              subtitle={`${number(efficiency, 2)} m`}
+              title={tr('Meter je Herzschlag', 'Meters per beat')}
+              subtitle={`${formatNumber(efficiency, 2)} m`}
             />
           ) : null}
           {walk ? (
             <Row
-              title="Erholung in Gehpausen"
-              subtitle={`Puls fällt in der ersten Minute um ${Math.round(
-                walk.dropFirstMinute,
-              )} bpm (${walk.pauses} ${
-                walk.pauses === 1 ? 'Pause' : 'Pausen'
-              })${
-                walk.lowestHeartRate !== undefined
-                  ? ` · tiefster Wert ${Math.round(walk.lowestHeartRate)} bpm`
-                  : ''
-              }`}
+              title={tr('Erholung in Gehpausen', 'Recovery in walk breaks')}
+              subtitle={
+                tr(
+                  `Puls fällt in der ersten Minute um ${Math.round(
+                    walk.dropFirstMinute,
+                  )} bpm (${walk.pauses} ${
+                    walk.pauses === 1 ? 'Pause' : 'Pausen'
+                  })${
+                    walk.lowestHeartRate !== undefined
+                      ? ` · tiefster Wert ${Math.round(walk.lowestHeartRate)} bpm`
+                      : ''
+                  }`,
+                  `Heart rate drops ${Math.round(
+                    walk.dropFirstMinute,
+                  )} bpm in the first minute (${walk.pauses} ${
+                    walk.pauses === 1 ? 'break' : 'breaks'
+                  })${
+                    walk.lowestHeartRate !== undefined
+                      ? ` · lowest value ${Math.round(walk.lowestHeartRate)} bpm`
+                      : ''
+                  }`,
+                )
+              }
             />
           ) : null}
           {end ? (
             <Row
-              title="Erholung nach dem Ende"
-              subtitle={`Von ${Math.round(
-                end.heartRateAtEnd,
-              )} bpm um ${Math.round(
-                end.dropFirstMinute,
-              )} bpm in der ersten Minute`}
+              title={tr('Erholung nach dem Ende', 'Recovery after finishing')}
+              subtitle={
+                tr(
+                  `Von ${Math.round(end.heartRateAtEnd)} bpm um ${Math.round(
+                    end.dropFirstMinute,
+                  )} bpm in der ersten Minute`,
+                  `From ${Math.round(end.heartRateAtEnd)} bpm, down ${Math.round(
+                    end.dropFirstMinute,
+                  )} bpm in the first minute`,
+                )
+              }
             />
           ) : null}
           {zones ? (
             <StackedBar
-              label="Zeit in Pulszonen"
+              label={tr('Zeit in Pulszonen', 'Time in heart rate zones')}
               parts={zones.zones.map((zone, i) => ({
                 value: zone.seconds,
                 color: [
@@ -355,23 +412,35 @@ export function RunInsights({
         </Section>
       ) : null}
 
-      {fatigue && fatigue.verdict !== 'unklar' ? (
-        <Section title="Ermüdung">
+      {fatigue && fatigue.verdict !== 'unclear' ? (
+        <Section title={tr('Ermüdung', 'Fatigue')}>
           <Copy>{fatigue.sentence}</Copy>
           <Row
-            title="Letztes gegen erstes Drittel"
+            title={tr('Letztes gegen erstes Drittel', 'Last vs. first third')}
             subtitle={[
               fatigue.paceChangePercent !== undefined
-                ? `Tempo ${formatSignedPercent(fatigue.paceChangePercent)}`
+                ? tr(
+                    `Tempo ${formatSignedPercent(fatigue.paceChangePercent)}`,
+                    `Pace ${formatSignedPercent(fatigue.paceChangePercent)}`,
+                  )
                 : null,
               fatigue.heartRateChangePercent !== undefined
-                ? `Puls ${formatSignedPercent(fatigue.heartRateChangePercent)}`
+                ? tr(
+                    `Puls ${formatSignedPercent(fatigue.heartRateChangePercent)}`,
+                    `Heart rate ${formatSignedPercent(fatigue.heartRateChangePercent)}`,
+                  )
                 : null,
               fatigue.cadenceChangePercent !== undefined
-                ? `Kadenz ${formatSignedPercent(fatigue.cadenceChangePercent)}`
+                ? tr(
+                    `Kadenz ${formatSignedPercent(fatigue.cadenceChangePercent)}`,
+                    `Cadence ${formatSignedPercent(fatigue.cadenceChangePercent)}`,
+                  )
                 : null,
               fatigue.strideChangePercent !== undefined
-                ? `Schrittlänge ${formatSignedPercent(fatigue.strideChangePercent)}`
+                ? tr(
+                    `Schrittlänge ${formatSignedPercent(fatigue.strideChangePercent)}`,
+                    `Stride length ${formatSignedPercent(fatigue.strideChangePercent)}`,
+                  )
                 : null,
             ]
               .filter(Boolean)
@@ -381,16 +450,25 @@ export function RunInsights({
       ) : null}
 
       {gait ? (
-        <Section title="Laufstil">
+        <Section title={tr('Laufstil', 'Running form')}>
           {gait.notice ? <Notice>{gait.notice}</Notice> : null}
           {gait.headline ? <Copy>{gait.headline}</Copy> : null}
           {gait.lines.map(item => (
             <GaitRow key={`${item.device}-${item.metric}`} item={item} />
           ))}
           {gait.late ? (
-            <Row title="Letztes gegen erstes Drittel" subtitle={gait.late} />
+            <Row
+              title={tr('Letztes gegen erstes Drittel', 'Last vs. first third')}
+              subtitle={gait.late}
+            />
           ) : null}
-          <Disclosure title="Details" subtitle="Trageort, Datenbasis, Modell">
+          <Disclosure
+            title={tr('Details', 'Details')}
+            subtitle={tr(
+              'Trageort, Datenbasis, Modell',
+              'Carry position, data basis, model',
+            )}
+          >
             {gait.details.map(text => (
               <Copy muted key={text}>
                 {text}
@@ -401,16 +479,19 @@ export function RunInsights({
       ) : null}
 
       {weather ? (
-        <Section title="Bedingungen">
+        <Section title={tr('Bedingungen', 'Conditions')}>
           <Copy>
             {[
               weather.temperatureC !== undefined
-                ? `${number(weather.temperatureC)} °C`
+                ? `${formatNumber(weather.temperatureC)} °C`
                 : null,
               weather.windMps !== undefined
-                ? `Wind ${number(weather.windMps)} m/s${
+                ? `${tr('Wind', 'Wind')} ${formatNumber(weather.windMps)} m/s${
                     weather.windFromDeg !== undefined
-                      ? ` aus ${compassLabel(weather.windFromDeg)}`
+                      ? tr(
+                          ` aus ${compassLabel(weather.windFromDeg)}`,
+                          ` from ${compassLabel(weather.windFromDeg)}`,
+                        )
                       : ''
                   }`
                 : null,
@@ -420,45 +501,61 @@ export function RunInsights({
           </Copy>
           {weather.headwindKilometers.length ? (
             <Row
-              title="Gegenwind"
+              title={tr('Gegenwind', 'Headwind')}
               subtitle={`km ${weather.headwindKilometers.join(', ')}`}
             />
           ) : null}
           {weather.tailwindKilometers.length ? (
             <Row
-              title="Rückenwind"
+              title={tr('Rückenwind', 'Tailwind')}
               subtitle={`km ${weather.tailwindKilometers.join(', ')}`}
             />
           ) : null}
           {cost?.windSecondsPerKm !== undefined ? (
             <Row
-              title="Wind am Tempo"
-              subtitle={`${formatSignedSeconds(
-                cost.windSecondsPerKm,
-              )}/km — geschätzt${
-                cost.windCoverage !== undefined && cost.windCoverage < 0.9
-                  ? `, ${Math.round(cost.windCoverage * 100)} % der Strecke`
-                  : ''
-              }`}
+              title={tr('Wind am Tempo', 'Wind effect on pace')}
+              subtitle={
+                tr(
+                  `${formatSignedSeconds(cost.windSecondsPerKm)}/km — geschätzt${
+                    cost.windCoverage !== undefined && cost.windCoverage < 0.9
+                      ? `, ${Math.round(cost.windCoverage * 100)} % der Strecke`
+                      : ''
+                  }`,
+                  `${formatSignedSeconds(cost.windSecondsPerKm)}/km — estimated${
+                    cost.windCoverage !== undefined && cost.windCoverage < 0.9
+                      ? `, ${Math.round(cost.windCoverage * 100)} % of the route`
+                      : ''
+                  }`,
+                )
+              }
             />
           ) : null}
           {cost?.heatSecondsPerKm !== undefined ? (
             <Row
-              title="Wärme am Tempo"
-              subtitle={`${formatSignedSeconds(
-                cost.heatSecondsPerKm,
-              )}/km — grobe Schätzung ab 15 °C`}
+              title={tr('Wärme am Tempo', 'Heat effect on pace')}
+              subtitle={
+                tr(
+                  `${formatSignedSeconds(cost.heatSecondsPerKm)}/km — grobe Schätzung ab 15 °C`,
+                  `${formatSignedSeconds(cost.heatSecondsPerKm)}/km — rough estimate from 15 °C`,
+                )
+              }
             />
           ) : null}
         </Section>
       ) : null}
 
       {comparison || route || curve?.line ? (
-        <Section title="Im Vergleich zu dir">
+        <Section title={tr('Im Vergleich zu dir', 'Compared with you')}>
           {comparison ? (
             <Copy muted>
-              Gegenüber dem Median deiner letzten {comparison.count}
-              {comparison.samePurpose ? ' gleichartigen' : ''} Läufe.
+              {tr(
+                `Gegenüber dem Median deiner letzten ${comparison.count}${
+                  comparison.samePurpose ? ' gleichartigen' : ''
+                } Läufe.`,
+                `Against the median of your last ${comparison.count}${
+                  comparison.samePurpose ? ' similar' : ''
+                } runs.`,
+              )}
             </Copy>
           ) : null}
           {comparison?.metrics.map(item => (
@@ -466,30 +563,53 @@ export function RunInsights({
           ))}
           {route ? (
             <Row
-              title={`${route.ordinal}. Mal auf dieser Strecke`}
+              title={tr(
+                `${route.ordinal}. Mal auf dieser Strecke`,
+                `Run ${route.ordinal} on this route`,
+              )}
               subtitle={`${formatElapsed(route.currentSeconds)} · ${
                 route.deltaToLastSeconds === 0
-                  ? 'wie zuletzt'
-                  : `${formatSignedSeconds(
-                      route.deltaToLastSeconds,
-                    )} gegenüber zuletzt`
+                  ? tr('wie zuletzt', 'same as recently')
+                  : tr(
+                      `${formatSignedSeconds(
+                        route.deltaToLastSeconds,
+                      )} gegenüber zuletzt`,
+                      `${formatSignedSeconds(
+                        route.deltaToLastSeconds,
+                      )} compared with last time`,
+                    )
               }${
-                route.currentSeconds <= route.bestSeconds ? ' · Bestzeit' : ''
+                route.currentSeconds <= route.bestSeconds
+                  ? tr(' · Bestzeit', ' · Personal best')
+                  : ''
               }`}
             />
           ) : null}
           {curve?.line ? (
             <>
               <Copy>
-                {curve.verdict === 'effizienter'
-                  ? `Bei gleichem Tempo ${Math.round(
-                      Math.abs(curve.residualBpm ?? 0),
-                    )} bpm unter deinem Normalniveau.`
-                  : curve.verdict === 'höher'
-                  ? `Bei gleichem Tempo ${Math.round(
-                      curve.residualBpm ?? 0,
-                    )} bpm über deinem Normalniveau.`
-                  : 'Puls zum Tempo wie bei deinen letzten Läufen.'}
+                {curve.verdict === 'efficient'
+                  ? tr(
+                      `Bei gleichem Tempo ${Math.round(
+                        Math.abs(curve.residualBpm ?? 0),
+                      )} bpm unter deinem Normalniveau.`,
+                      `At the same pace, ${Math.round(
+                        Math.abs(curve.residualBpm ?? 0),
+                      )} bpm below your usual level.`,
+                    )
+                  : curve.verdict === 'higher'
+                  ? tr(
+                      `Bei gleichem Tempo ${Math.round(
+                        curve.residualBpm ?? 0,
+                      )} bpm über deinem Normalniveau.`,
+                      `At the same pace, ${Math.round(
+                        curve.residualBpm ?? 0,
+                      )} bpm above your usual level.`,
+                    )
+                  : tr(
+                      'Puls zum Tempo wie bei deinen letzten Läufen.',
+                      'Heart rate for your pace matches your recent runs.',
+                    )}
               </Copy>
               <HeartRatePaceChart points={curve.points} line={curve.line} />
             </>
@@ -510,12 +630,15 @@ function CompareRow({ item }: { item: MetricComparison }) {
   const mark = TONE_MARK[item.rating];
   return (
     <Row
-      title={METRIC_WORDS[item.metric]}
-      subtitle={`Basis ${metricText(item.metric, item.reference)}`}
+      title={metricWord(item.metric)}
+      subtitle={tr(
+        `Basis ${metricText(item.metric, item.reference)}`,
+        `Baseline ${metricText(item.metric, item.reference)}`,
+      )}
       trailing={
         <Text
           style={[styles.compareValue, { color: toneColor(item.rating) }]}
-          accessibilityLabel={`${METRIC_WORDS[item.metric]} ${metricText(
+          accessibilityLabel={`${metricWord(item.metric)} ${metricText(
             item.metric,
             item.value,
           )}, ${deltaText(item)}`}
@@ -530,7 +653,7 @@ function CompareRow({ item }: { item: MetricComparison }) {
   );
 }
 
-/** Laufstil-Zeile; der Vergleich steht rechts, bei neutralen Werten ohne Farbe. */
+/** Running-form row; the comparison sits on the right, without color for neutral values. */
 function GaitRow({ item }: { item: GaitLine }) {
   const comparison = item.comparison;
   const mark = comparison ? TONE_MARK[comparison.rating] : '';
@@ -545,13 +668,16 @@ function GaitRow({ item }: { item: GaitLine }) {
               styles.compareValue,
               { color: toneColor(comparison.rating) },
             ]}
-            accessibilityLabel={`${item.title}: ${comparison.delta} gegenüber deinen letzten ${comparison.count} Läufen`}
+            accessibilityLabel={tr(
+              `${item.title}: ${comparison.delta} gegenüber deinen letzten ${comparison.count} Läufen`,
+              `${item.title}: ${comparison.delta} compared with your last ${comparison.count} runs`,
+            )}
           >
             {comparison.delta}
             {mark ? ` ${mark}` : ''}
             {'\n'}
             <Text style={styles.compareDelta}>
-              zu {comparison.count} Läufen
+              {tr(`zu ${comparison.count} Läufen`, `vs. ${comparison.count} runs`)}
             </Text>
           </Text>
         ) : undefined
@@ -580,28 +706,38 @@ function MaxHeartRateField({
   };
   return (
     <Disclosure
-      title="Maxpuls"
+      title={tr('Maxpuls', 'Max heart rate')}
       subtitle={
         current
-          ? `${current.value} bpm · ${
-              current.source === 'setting'
-                ? 'eingestellt'
-                : `geschätzt aus ${current.runs} Läufen`
-            }`
-          : 'Noch nicht bekannt — eintragen oder drei Läufe mit Puls'
+          ? current.source === 'setting'
+            ? tr(
+                `${current.value} bpm · eingestellt`,
+                `${current.value} bpm · set`,
+              )
+            : tr(
+                `${current.value} bpm · geschätzt aus ${current.runs} Läufen`,
+                `${current.value} bpm · estimated from ${current.runs} runs`,
+              )
+          : tr(
+              'Noch nicht bekannt — eintragen oder drei Läufe mit Puls',
+              'Not known yet — enter it or use three runs with heart rate',
+            )
       }
     >
       <Copy muted>
-        Die Zonen rechnen mit dem Maxpuls. Trag ihn ein, wenn du ihn kennst.
+        {tr(
+          'Die Zonen rechnen mit dem Maxpuls. Trag ihn ein, wenn du ihn kennst.',
+          'The zones use your max heart rate. Enter it if you know it.',
+        )}
       </Copy>
       <Input
-        label="Maxpuls in bpm"
+        label={tr('Maxpuls in bpm', 'Max heart rate in bpm')}
         keyboardType="number-pad"
         value={text}
         onChangeText={setText}
         onBlur={commit}
         onSubmitEditing={commit}
-        placeholder="z. B. 190"
+        placeholder={tr('z. B. 190', 'e.g. 190')}
       />
     </Disclosure>
   );
@@ -610,9 +746,9 @@ function MaxHeartRateField({
 const CHART_HEIGHT = 150;
 const CHART_MARGIN = { top: 8, bottom: 22, left: 36, right: 8 };
 /**
- * Puls über Tempo: Punkte dieses Laufs, Gerade aus den letzten Läufen. Die
- * x-Achse zeigt Tempo (links langsam, rechts schnell), damit die Kurve wie
- * gewohnt nach rechts oben steigt.
+ * Heart rate over pace: this run's points, the line from recent runs. The
+ * x-axis shows pace (slow on the left, fast on the right), so the curve rises
+ * to the upper right as usual.
  */
 function HeartRatePaceChart({
   points,
@@ -643,7 +779,10 @@ function HeartRatePaceChart({
   return (
     <View
       accessibilityRole="image"
-      accessibilityLabel={`Puls über Tempo: ${points.length} Kilometer dieses Laufs gegen die Gerade aus ${line.runs} Läufen.`}
+      accessibilityLabel={tr(
+        `Puls über Tempo: ${points.length} Kilometer dieses Laufs gegen die Gerade aus ${line.runs} Läufen.`,
+        `Heart rate over pace: ${points.length} kilometers of this run against the line from ${line.runs} runs.`,
+      )}
       onLayout={event => setWidth(event.nativeEvent.layout.width)}
     >
       <Svg width={width} height={CHART_HEIGHT}>
@@ -704,11 +843,18 @@ function HeartRatePaceChart({
           <View
             style={[styles.legendDot, { backgroundColor: color.series.heart }]}
           />
-          <Text style={styles.legendText}>Kilometer dieses Laufs</Text>
+          <Text style={styles.legendText}>
+            {tr('Kilometer dieses Laufs', 'Kilometers of this run')}
+          </Text>
         </View>
         <View style={styles.legendItem}>
           <View style={[styles.legendLine, { backgroundColor: color.muted }]} />
-          <Text style={styles.legendText}>Deine letzten {line.runs} Läufe</Text>
+          <Text style={styles.legendText}>
+            {tr(
+              `Deine letzten ${line.runs} Läufe`,
+              `Your last ${line.runs} runs`,
+            )}
+          </Text>
         </View>
       </View>
     </View>

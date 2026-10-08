@@ -394,6 +394,6 @@ it('does not resurrect a recurring strength workout after moving it into next we
   await mount();
   const text = tree.root.findAllByType(Text).map(textContent).join(' ');
   expect(text).not.toContain('Beintraining');
-  // Heute steht nur der geplante Lauf; die verschobene Kraft kehrt nicht zurück.
+  // Today shows only the planned run; the moved strength session does not come back.
   expect(text).toContain('Locker 30');
 });

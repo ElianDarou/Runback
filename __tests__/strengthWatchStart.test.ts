@@ -10,8 +10,8 @@ import {
   type WorkoutTemplate,
 } from '../src/domain/strength';
 
-// Die Uhr startet Einheiten über Kotlin `StrengthLive.startSession`. Dieselbe
-// Vorlage und Zeit stehen in StrengthLiveTest.kt; beide müssen gleich rechnen.
+// The watch starts sessions through Kotlin `StrengthLive.startSession`. The same
+// template and time live in StrengthLiveTest.kt; both must compute the same.
 const template: WorkoutTemplate = {
   id: 'tpl-push',
   name: 'Push',

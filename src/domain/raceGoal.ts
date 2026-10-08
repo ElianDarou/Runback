@@ -1,21 +1,22 @@
 import type { Run } from './trainingRecords';
 import { validRun } from './statistics';
+import { numberFormat, tr } from './i18n';
 
 /**
- * Wettkampfziel: Strecke, Datum, Zielzeit — und eine Schätzung, wie nah der
- * Nutzer dran ist.
+ * Race goal: distance, date, goal time — and an estimate of how close the
+ * user is.
  *
- * Die Schätzung ist eine Rechnung nach Riegel (T2 = T1 · (D2/D1)^1,06) aus
- * einem tatsächlichen Lauf. Sie ist keine Messung und kein Versprechen; jede
- * Ausgabe nennt den Lauf, aus dem sie stammt, und ihre Grenzen. Fehlt ein
- * passender Lauf, bleibt sie leer statt zu raten.
+ * The estimate is a Riegel calculation (T2 = T1 · (D2/D1)^1.06) from an actual
+ * run. It is not a measurement and not a promise; every output names the run
+ * it comes from and its limits. If no suitable run exists, it stays empty
+ * instead of guessing.
  */
 export const RACE_GOAL_VERSION = 'race-goal-v1';
-/** Riegel-Exponent für Ausdauerläufe. Redaktionell, nicht gelernt. */
+/** Riegel exponent for endurance runs. Editorial, not learned. */
 export const RIEGEL_EXPONENT = 1.06;
-/** Nur Läufe der letzten acht Wochen tragen die Schätzung. */
+/** Only runs from the last eight weeks carry the estimate. */
 export const REFERENCE_WINDOW_DAYS = 56;
-/** Ein Referenzlauf ist mindestens ein Viertel der Zielstrecke, sonst wird die Extrapolation zu weit. */
+/** A reference run is at least a quarter of the goal distance, otherwise the extrapolation gets too far. */
 export const REFERENCE_MIN_SHARE = 0.25;
 export const REFERENCE_MIN_KM = 3;
 
@@ -25,14 +26,18 @@ export const MARATHON_KM = 42.195;
 const DAY = 86400000;
 
 const NAMED_DISTANCES: { pattern: RegExp; km: number }[] = [
-  { pattern: /halb\s*-?\s*marathon|\bhm\b|\bhalf\b/i, km: HALF_MARATHON_KM },
+  {
+    pattern: /(?:halb|half)\s*-?\s*marathon|\bhm\b|\bhalf\b/i,
+    km: HALF_MARATHON_KM,
+  },
   { pattern: /\bultra/i, km: 0 },
   { pattern: /marathon/i, km: MARATHON_KM },
 ];
 
 /**
- * Liest die Strecke aus dem Zieltext: „Halbmarathon“, „HM“, „Marathon“,
- * „10 km“, „5k“, „21,1 Kilometer“. Ultra ohne Zahl bleibt unbekannt.
+ * Reads the distance from the goal text: "Halbmarathon", "HM", "Marathon",
+ * "10 km", "5k", "21,1 Kilometer", and the English "half marathon", "10k",
+ * "21.1 kilometers". Ultra without a number stays unknown.
  */
 export function parseGoalDistanceKm(text: string): number | undefined {
   const value = text.trim();
@@ -51,9 +56,9 @@ export function parseGoalDistanceKm(text: string): number | undefined {
 }
 
 /**
- * Zielzeit als „h:mm:ss“ oder „mm:ss“. Zwei Teile gelten ab 15 km als
- * „h:mm“, wenn die erste Zahl einstellig ist — niemand schreibt einen
- * Halbmarathon in Minuten:Sekunden, aber „59:30“ bleiben Minuten.
+ * Goal time as "h:mm:ss" or "mm:ss". Two parts count as "h:mm" from 15 km on
+ * when the first number is a single digit — nobody writes a half marathon in
+ * minutes:seconds, but "59:30" stays minutes.
  */
 export function parseGoalTime(
   text: string,
@@ -89,7 +94,7 @@ export function formatGoalTime(seconds: number): string {
     : `${minutes}:${pad(rest)} min`;
 }
 
-/** Riegel: Zeit über D2 aus einer Zeit über D1. */
+/** Riegel: time over D2 from a time over D1. */
 export function riegelSeconds(
   durationSeconds: number,
   fromKm: number,
@@ -99,8 +104,8 @@ export function riegelSeconds(
 }
 
 /**
- * Der lange Lauf, den der Aufbau anpeilt: neun Zehntel der Strecke bis 25 km,
- * darüber drei Viertel, höchstens 32 km. Redaktionelle Setzung.
+ * The long run the build-up aims for: nine tenths of the distance up to 25 km,
+ * above that three quarters, at most 32 km. An editorial choice.
  */
 export function peakLongRunKm(distanceKm: number): number {
   const peak = distanceKm <= 25 ? distanceKm * 0.9 : Math.min(32, distanceKm * 0.75);
@@ -133,31 +138,31 @@ export interface RacePrediction {
   version: typeof RACE_GOAL_VERSION;
   status: RacePredictionStatus;
   goal: string;
-  /** Ein Satz für die Karte. */
+  /** One sentence for the card. */
   message: string;
   distanceKm?: number;
   targetDate?: string;
   targetSeconds?: number;
-  /** Geschätzte Zielzeit nach Riegel aus `reference`. */
+  /** Estimated goal time by Riegel from `reference`. */
   predictedSeconds?: number;
   predictedPaceSecondsPerKm?: number;
   targetPaceSecondsPerKm?: number;
-  /** Geschätztes minus Zieltempo in s/km; positiv heißt: noch zu langsam. */
+  /** Estimated minus goal pace in s/km; positive means still too slow. */
   paceGapSecondsPerKm?: number;
   reference?: RaceReference;
-  /** Längster Lauf im Fenster und der lange Lauf, den der Aufbau anpeilt. */
+  /** Longest run in the window and the long run the build-up aims for. */
   longestRunKm?: number;
   peakLongRunKm?: number;
-  /** Anteil 0–1: längster Lauf gegen den angepeilten langen Lauf. */
+  /** Share 0–1: longest run against the targeted long run. */
   distanceShare?: number;
-  /** Anteil 0–1: Zielzeit gegen geschätzte Zeit. Nur mit Zielzeit. */
+  /** Share 0–1: goal time against estimated time. Only with a goal time. */
   timeShare?: number;
   /**
-   * Zielnähe 0–1 für den Ring: das kleinere von Strecken- und Zeitanteil.
-   * Fehlt die Schätzung, fehlt auch die Zielnähe.
+   * Goal progress 0–1 for the ring: the smaller of the distance and time shares.
+   * Without an estimate there is no goal progress either.
    */
   progress?: number;
-  /** Welche Größe die Zielnähe gerade begrenzt. */
+  /** Which value currently limits the goal progress. */
   limitedBy?: 'distance' | 'time';
   daysToGo?: number;
   limits: string[];
@@ -166,7 +171,7 @@ export interface RacePrediction {
 const round1 = (value: number) => Math.round(value * 10) / 10;
 
 export function effectiveGoalDistanceKm(input: {
-  /** Zieltext; `name` für ein Ziel aus dem Plan. */
+  /** Goal text; `name` for a goal from the plan. */
   goal?: string;
   name?: string;
   distanceKm?: number;
@@ -191,7 +196,7 @@ export function daysUntil(targetDate: string, now: number): number | undefined {
   return Number.isFinite(days) ? days : undefined;
 }
 
-/** Schätzt, wie nah der Nutzer an seinem Wettkampfziel ist. */
+/** Estimates how close the user is to their race goal. */
 export function predictRace(input: RaceGoalInput): RacePrediction {
   const goal = input.goal.trim();
   const base = {
@@ -200,7 +205,11 @@ export function predictRace(input: RaceGoalInput): RacePrediction {
     limits: [] as string[],
   };
   if (!goal) {
-    return { ...base, status: 'no_goal', message: 'Noch kein Ziel hinterlegt.' };
+    return {
+      ...base,
+      status: 'no_goal',
+      message: tr('Noch kein Ziel hinterlegt.', 'No goal set yet.'),
+    };
   }
   const distanceKm = effectiveGoalDistanceKm(input);
   const daysToGo =
@@ -215,7 +224,10 @@ export function predictRace(input: RaceGoalInput): RacePrediction {
     return {
       ...base,
       status: 'no_distance',
-      message: 'Trage eine Strecke ein, dann schätzt Runback deine Zielzeit.',
+      message: tr(
+        'Trage eine Strecke ein, dann schätzt Runback deine Zielzeit.',
+        'Enter a distance, then Runback estimates your goal time.',
+      ),
       targetDate: input.targetDate,
       daysToGo,
     };
@@ -238,8 +250,8 @@ export function predictRace(input: RaceGoalInput): RacePrediction {
   );
   const longestRunKm = longest ? round1(longest.distanceMeters / 1000) : undefined;
   const minReferenceKm = Math.max(REFERENCE_MIN_KM, distanceKm * REFERENCE_MIN_SHARE);
-  // Der beste Lauf ist der mit der kleinsten hochgerechneten Zielzeit, nicht
-  // der längste: ein flotter 10er sagt mehr als ein zäher 15er.
+  // The best run is the one with the smallest projected goal time, not the
+  // longest: a fast 10k says more than a slow 15k.
   let reference: RaceReference | undefined;
   let predictedSeconds: number | undefined;
   for (const run of recent) {
@@ -269,9 +281,14 @@ export function predictRace(input: RaceGoalInput): RacePrediction {
     return {
       ...common,
       status: 'insufficient_data',
-      message: `Für eine Schätzung fehlt ein Lauf über mindestens ${formatDistanceKm(
-        minReferenceKm,
-      )} aus den letzten acht Wochen.`,
+      message: tr(
+        `Für eine Schätzung fehlt ein Lauf über mindestens ${formatDistanceKm(
+          minReferenceKm,
+        )} aus den letzten acht Wochen.`,
+        `An estimate needs a run of at least ${formatDistanceKm(
+          minReferenceKm,
+        )} from the last eight weeks.`,
+      ),
     };
   }
   const distanceShare = Math.min(1, (longestRunKm ?? 0) / peak);
@@ -284,25 +301,50 @@ export function predictRace(input: RaceGoalInput): RacePrediction {
   const targetPace = targetSeconds === undefined ? undefined : targetSeconds / distanceKm;
   const paceGap = targetPace === undefined ? undefined : predictedPace - targetPace;
   const limits = [
-    `Die Schätzung rechnet deinen Lauf über ${formatDistanceKm(
-      reference.distanceKm,
-    )} nach Riegel hoch und nimmt an, dass du ihn mit vollem Einsatz gelaufen bist.`,
-    'Schätzung, keine Messung. Sie ersetzt keinen Testlauf über die Zielstrecke.',
+    tr(
+      `Die Schätzung rechnet deinen Lauf über ${formatDistanceKm(
+        reference.distanceKm,
+      )} nach Riegel hoch und nimmt an, dass du ihn mit vollem Einsatz gelaufen bist.`,
+      `The estimate scales your run of ${formatDistanceKm(
+        reference.distanceKm,
+      )} up with Riegel and assumes you ran it at full effort.`,
+    ),
+    tr(
+      'Schätzung, keine Messung. Sie ersetzt keinen Testlauf über die Zielstrecke.',
+      'An estimate, not a measurement. It does not replace a test run over the goal distance.',
+    ),
   ];
   const message =
     targetSeconds === undefined
-      ? `Nach deinem Lauf über ${formatDistanceKm(reference.distanceKm)} wären etwa ${formatGoalTime(
-          predictedSeconds,
-        )} möglich.`
+      ? tr(
+          `Nach deinem Lauf über ${formatDistanceKm(reference.distanceKm)} wären etwa ${formatGoalTime(
+            predictedSeconds,
+          )} möglich.`,
+          `After your run over ${formatDistanceKm(reference.distanceKm)}, about ${formatGoalTime(
+            predictedSeconds,
+          )} would be possible.`,
+        )
       : paceGap !== undefined && paceGap <= 0
-      ? `Nach deinem Lauf über ${formatDistanceKm(
-          reference.distanceKm,
-        )} liegt dein Ziel von ${formatGoalTime(targetSeconds)} rechnerisch drin.`
-      : `Etwa ${formatGoalTime(
-          predictedSeconds,
-        )} sind rechnerisch drin — für ${formatGoalTime(
-          targetSeconds,
-        )} fehlen noch ${formatPaceGap(paceGap as number)} pro Kilometer.`;
+      ? tr(
+          `Nach deinem Lauf über ${formatDistanceKm(
+            reference.distanceKm,
+          )} liegt dein Ziel von ${formatGoalTime(targetSeconds)} rechnerisch drin.`,
+          `After your run over ${formatDistanceKm(
+            reference.distanceKm,
+          )}, your goal of ${formatGoalTime(targetSeconds)} is within reach on paper.`,
+        )
+      : tr(
+          `Etwa ${formatGoalTime(
+            predictedSeconds,
+          )} sind rechnerisch drin — für ${formatGoalTime(
+            targetSeconds,
+          )} fehlen noch ${formatPaceGap(paceGap as number)} pro Kilometer.`,
+          `About ${formatGoalTime(
+            predictedSeconds,
+          )} is possible on paper — for ${formatGoalTime(
+            targetSeconds,
+          )} you still need to gain ${formatPaceGap(paceGap as number)} per kilometer.`,
+        );
   return {
     ...common,
     status: 'estimated',
@@ -320,13 +362,12 @@ export function predictRace(input: RaceGoalInput): RacePrediction {
   };
 }
 
-const kmFormatter = new Intl.NumberFormat('de-DE', {
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 1,
-});
-
 export function formatDistanceKm(km: number): string {
-  return `${kmFormatter.format(km)} km`;
+  const text = numberFormat({
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 1,
+  }).format(km);
+  return `${text} km`;
 }
 
 function formatPaceGap(seconds: number): string {

@@ -7,6 +7,7 @@ import {
 import type { StrongWorkout } from '../domain/vendorImports';
 import type { WorkoutTemplate } from '../domain/strength';
 import { formatWeight } from '../domain/strength';
+import { locale, tr } from '../domain/i18n';
 import {
   Button,
   Copy,
@@ -17,7 +18,7 @@ import {
   Sheet,
 } from './components';
 
-/** Importvorschau am Ort der Vorlagen; Speichern braucht eine eigene Nutzeraktion. */
+/** Import preview where the templates are; saving needs its own user action. */
 export function ImportedTemplates({
   templates,
   onSave,
@@ -55,7 +56,13 @@ export function ImportedTemplates({
         }
       })
       .catch(() => {
-        if (active) setError('Vorlagen konnten nicht geladen werden.');
+        if (active)
+          setError(
+            tr(
+              'Vorlagen konnten nicht geladen werden.',
+              'Templates could not be loaded.',
+            ),
+          );
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -77,7 +84,12 @@ export function ImportedTemplates({
       await onSave(selected.template);
       setSelected(null);
     } catch {
-      setError('Vorlage konnte nicht gespeichert werden.');
+      setError(
+        tr(
+          'Vorlage konnte nicht gespeichert werden.',
+          'Template could not be saved.',
+        ),
+      );
     } finally {
       setSaving(false);
     }
@@ -91,22 +103,30 @@ export function ImportedTemplates({
       setSelected(null);
       setConfirmDelete(false);
     } catch {
-      setError('Vorschlag konnte nicht gelöscht werden.');
+      setError(
+        tr(
+          'Vorschlag konnte nicht gelöscht werden.',
+          'Suggestion could not be deleted.',
+        ),
+      );
     } finally {
       setSaving(false);
     }
   };
-  if (loading) return <Copy muted>Vorlagen werden geladen.</Copy>;
+  if (loading)
+    return (
+      <Copy muted>{tr('Vorlagen werden geladen.', 'Loading templates.')}</Copy>
+    );
   if (!candidates.length && !error && !omitted && !incomplete) return null;
   return (
-    <Section title="Aus deinem Import">
+    <Section title={tr('Aus deinem Import', 'From your import')}>
       {error && !selected ? (
         <>
           <Notice>{error}</Notice>
           <Button
             secondary
             small
-            title="Erneut laden"
+            title={tr('Erneut laden', 'Load again')}
             onPress={() => setRetry(value => value + 1)}
             disabled={saving}
           />
@@ -114,26 +134,36 @@ export function ImportedTemplates({
       ) : null}
       {incomplete ? (
         <Copy muted>
-          Prüfe {incomplete} unvollständige Einheiten; daraus entsteht keine
-          Vorlage.
+          {tr(
+            `Prüfe ${incomplete} unvollständige Einheiten; daraus entsteht keine Vorlage.`,
+            `Check ${incomplete} incomplete ${incomplete === 1 ? 'workout' : 'workouts'}; no template comes from ${incomplete === 1 ? 'it' : 'them'}.`,
+          )}
         </Copy>
       ) : null}
       {omitted ? (
         <Copy muted>
-          Begrenze den Export; {omitted} weitere Trainingsnamen passen nicht in
-          die Vorschau.
+          {tr(
+            `Begrenze den Export; ${omitted} weitere Trainingsnamen passen nicht in die Vorschau.`,
+            `Narrow the export; ${omitted} more workout names do not fit in the preview.`,
+          )}
         </Copy>
       ) : null}
       {candidates.length ? (
         <Copy muted>
-          Übernimm die letzte Einheit je Trainingsname als Vorlage.
+          {tr(
+            'Übernimm die letzte Einheit je Trainingsname als Vorlage.',
+            'Take the latest workout for each workout name as a template.',
+          )}
         </Copy>
       ) : null}
       {candidates.map(candidate => (
         <Row
           key={candidate.template.id}
           title={candidate.template.name}
-          subtitle={`${candidate.template.exercises.length} Übungen · ${candidate.source.sets.length} Sätze`}
+          subtitle={tr(
+            `${candidate.template.exercises.length} Übungen · ${candidate.source.sets.length} Sätze`,
+            `${candidate.template.exercises.length} ${candidate.template.exercises.length === 1 ? 'exercise' : 'exercises'} · ${candidate.source.sets.length} ${candidate.source.sets.length === 1 ? 'set' : 'sets'}`,
+          )}
           onPress={() => {
             setSelected(candidate);
             setConfirmDelete(false);
@@ -143,7 +173,7 @@ export function ImportedTemplates({
       ))}
       <Sheet
         visible={selected !== null}
-        title={selected?.template.name ?? 'Vorlage prüfen'}
+        title={selected?.template.name ?? tr('Vorlage prüfen', 'Check template')}
         onClose={() => {
           if (!saving) {
             setSelected(null);
@@ -154,8 +184,8 @@ export function ImportedTemplates({
         {selected ? (
           <>
             <Copy muted>
-              Prüfe die Werte aus der Einheit vom{' '}
-              {new Date(selected.source.time).toLocaleDateString('de-DE')}.
+              {tr('Prüfe die Werte aus der Einheit vom', 'Check the values from the workout on')}{' '}
+              {new Date(selected.source.time).toLocaleDateString(locale())}.
             </Copy>
             {selected.warnings.map(warning => (
               <Copy muted key={warning}>
@@ -166,25 +196,33 @@ export function ImportedTemplates({
             {selected.template.exercises.map((exercise, index) => (
               <Disclosure
                 key={`${exercise.exerciseId}:${index}`}
-                title={`${exercise.name} · ${exercise.sets.length} Sätze`}
+                title={tr(
+                  `${exercise.name} · ${exercise.sets.length} Sätze`,
+                  `${exercise.name} · ${exercise.sets.length} ${exercise.sets.length === 1 ? 'set' : 'sets'}`,
+                )}
               >
                 {exercise.sets.map((set, position) => (
                   <Row
                     key={position}
-                    title={`Satz ${position + 1}`}
+                    title={tr(`Satz ${position + 1}`, `Set ${position + 1}`)}
                     subtitle={[
                       set.loadKind === 'bodyweight'
-                        ? 'Eigengewicht'
+                        ? tr('Eigengewicht', 'Bodyweight')
                         : set.weightKg !== undefined
                         ? `${formatWeight(set.weightKg)} kg`
-                        : 'Last unbekannt',
-                      set.reps !== undefined ? `${set.reps} Wdh.` : '',
+                        : tr('Last unbekannt', 'Load unknown'),
+                      set.reps !== undefined
+                        ? tr(`${set.reps} Wdh.`, `${set.reps} reps`)
+                        : '',
                       set.seconds !== undefined
                         ? `${formatWeight(set.seconds)} s`
                         : '',
                       set.restSeconds !== undefined
-                        ? `${formatWeight(set.restSeconds)} s Pause`
-                        : 'Pause unbekannt',
+                        ? tr(
+                            `${formatWeight(set.restSeconds)} s Pause`,
+                            `${formatWeight(set.restSeconds)} s rest`,
+                          )
+                        : tr('Pause unbekannt', 'Rest unknown'),
                     ]
                       .filter(Boolean)
                       .join(' · ')}
@@ -192,9 +230,10 @@ export function ImportedTemplates({
                 ))}
               </Disclosure>
             ))}
-            <Disclosure title="Details">
+            <Disclosure title={tr('Details', 'Details')}>
               <Copy muted>
-                {selected.source.workoutNotes || 'Keine Trainingsnotiz'}
+                {selected.source.workoutNotes ||
+                  tr('Keine Trainingsnotiz', 'No workout note')}
               </Copy>
               {selected.source.sets
                 .filter(
@@ -203,14 +242,20 @@ export function ImportedTemplates({
                 .map((set, index) => (
                   <Row
                     key={index}
-                    title={`${set.exercise} · Satz ${set.setOrder}`}
+                    title={tr(
+                      `${set.exercise} · Satz ${set.setOrder}`,
+                      `${set.exercise} · Set ${set.setOrder}`,
+                    )}
                     subtitle={[
                       set.notes,
                       set.rpe !== null
-                        ? `Anstrengung ${formatWeight(set.rpe)} von 10`
+                        ? tr(
+                            `Anstrengung ${formatWeight(set.rpe)} von 10`,
+                            `Effort ${formatWeight(set.rpe)} of 10`,
+                          )
                         : '',
                       set.distance !== null
-                        ? `${formatWeight(set.distance)} ${set.distanceUnit === 'm' ? 'm' : '· Einheit unbekannt'}`
+                        ? `${formatWeight(set.distance)} ${set.distanceUnit === 'm' ? 'm' : tr('· Einheit unbekannt', '· unit unknown')}`
                         : '',
                     ]
                       .filter(Boolean)
@@ -226,18 +271,24 @@ export function ImportedTemplates({
             {confirmDelete ? (
               <>
                 <Copy muted>
-                  Lösche diesen Vorschlag dauerhaft; die importierte Einheit
-                  bleibt erhalten.
+                  {tr(
+                    'Lösche diesen Vorschlag dauerhaft; die importierte Einheit bleibt erhalten.',
+                    'Delete this suggestion for good; the imported workout stays.',
+                  )}
                 </Copy>
                 <Button
                   danger
-                  title={saving ? 'Wird gelöscht' : 'Löschen bestätigen'}
+                  title={
+                    saving
+                      ? tr('Wird gelöscht', 'Deleting')
+                      : tr('Löschen bestätigen', 'Confirm delete')
+                  }
                   onPress={() => void dismiss()}
                   disabled={saving || busy}
                 />
                 <Button
                   secondary
-                  title="Behalten"
+                  title={tr('Behalten', 'Keep')}
                   onPress={() => {
                     setConfirmDelete(false);
                     setError('');
@@ -248,13 +299,17 @@ export function ImportedTemplates({
             ) : (
               <>
                 <Button
-                  title={saving ? 'Wird übernommen' : 'Vorlage übernehmen'}
+                  title={
+                    saving
+                      ? tr('Wird übernommen', 'Saving')
+                      : tr('Vorlage übernehmen', 'Save template')
+                  }
                   onPress={() => void save()}
                   disabled={saving || busy}
                 />
                 <Button
                   danger
-                  title="Vorschlag löschen"
+                  title={tr('Vorschlag löschen', 'Delete suggestion')}
                   onPress={() => setConfirmDelete(true)}
                   disabled={saving || busy}
                 />

@@ -11,40 +11,56 @@ import {
   section,
   title,
 } from './ui';
-import { date, decimal, counted } from './format';
+import { counted, date, decimal, numberFormat } from './format';
 import { loadObject } from '../records';
 import { catalogExercise } from '../../../src/domain/catalog';
 
-/** Nur bereits gespeicherte Termine und Vorlagen; der Server erzeugt keinen Plan. */
+/** Only appointments and templates already saved; the server creates no plan. */
 export function planPage(ctx: PageContext) {
+  const { tx } = ctx;
   const settings = ctx.data.settings;
   const sessions = settings?.schedule?.sessions ?? [];
   const templates = loadObject(ctx.store, 'templates')?.templates;
   const appointments = !settings
     ? emptyState(
-        'Noch kein Plan übertragen',
-        'Gib in der App „Coach“ für deinen Server frei.',
+        tx.t('Noch kein Plan übertragen', 'No plan transferred yet'),
+        tx.t(
+          'Gib in der App „Coach“ für deinen Server frei.',
+          'Share “Coach” with your server in the app.',
+        ),
       )
     : !sessions.length
-    ? emptyState('Noch keine Termine', 'Plane deine Einheiten in der App.')
+    ? emptyState(
+        tx.t('Noch keine Termine', 'No appointments yet'),
+        tx.t(
+          'Plane deine Einheiten in der App.',
+          'Plan your workouts in the app.',
+        ),
+      )
     : section(
-        'Deine Termine',
+        tx.t('Deine Termine', 'Your appointments'),
         [...sessions]
           .sort((a, b) => a.date.localeCompare(b.date))
           .map(entry =>
             row({
               title: entry.title,
               subtitle: `${date(
+                tx,
                 new Date(`${entry.date}T12:00:00`).getTime(),
               )} · ${
-                entry.kind === 'strength' ? 'Krafttraining' : 'Laufen'
-              } · ${entry.minutes.toLocaleString('de-DE')} Minuten`,
+                entry.kind === 'strength'
+                  ? tx.t('Krafttraining', 'Strength training')
+                  : tx.t('Laufen', 'Running')
+              } · ${numberFormat(tx).format(entry.minutes)} ${tx.t(
+                'Minuten',
+                'minutes',
+              )}`,
               value: badge(
                 entry.status === 'skipped'
-                  ? 'Übersprungen'
+                  ? tx.t('Übersprungen', 'Skipped')
                   : entry.activityId
-                  ? 'Verknüpft'
-                  : 'Geplant',
+                  ? tx.t('Verknüpft', 'Linked')
+                  : tx.t('Geplant', 'Planned'),
                 'muted',
               ),
             }),
@@ -53,21 +69,28 @@ export function planPage(ctx: PageContext) {
   const strengthTemplates =
     Array.isArray(templates) && templates.length
       ? section(
-          'Vorlagen',
+          tx.t('Vorlagen', 'Templates'),
           templates.map(template => {
             const exercises = Array.isArray(template.exercises)
               ? template.exercises
               : [];
             return disclosure(
-              template.name || 'Krafttraining',
+              template.name || tx.t('Krafttraining', 'Strength training'),
               null,
               exercises.map((exercise: any) =>
                 row({
                   title:
                     exercise.name ??
                     catalogExercise(exercise.exerciseId)?.name ??
-                    'Unbekannte Übung',
-                  subtitle: Array.isArray(exercise.sets) ? counted(exercise.sets.length, 'Satz', 'Sätze') : '–', 
+                    tx.t('Unbekannte Übung', 'Unknown exercise'),
+                  subtitle: Array.isArray(exercise.sets)
+                    ? counted(
+                        tx,
+                        exercise.sets.length,
+                        ['Satz', 'Sätze'],
+                        ['set', 'sets'],
+                      )
+                    : '–',
                 }),
               ),
             );
@@ -77,22 +100,32 @@ export function planPage(ctx: PageContext) {
   const presets =
     Array.isArray(settings?.presets) && settings.presets.length
       ? section(
-          'Laufvorlagen',
+          tx.t('Laufvorlagen', 'Running presets'),
           settings.presets.map((preset: any) =>
             row({
-              title: preset.name ?? 'Lauf',
+              title: preset.name ?? tx.t('Lauf', 'Run'),
               subtitle:
                 typeof preset.minutes === 'number'
-                  ? `${decimal(preset.minutes, 0)} Minuten`
+                  ? tx.t(
+                      `${decimal(tx, preset.minutes, 0)} Minuten`,
+                      `${decimal(tx, preset.minutes, 0)} minutes`,
+                    )
                   : undefined,
             }),
           ),
         )
       : null;
   return page(
-    { title: 'Plan', tab: 'Plan', status: syncStatus(ctx.data, ctx.now) },
-    html`${title('Plan')}${appointments}${strengthTemplates}${presets}${copy(
-      'Ändere deinen Plan in der App.',
+    tx,
+    {
+      title: tx.t('Plan', 'Plan'),
+      tab: 'plan',
+      status: syncStatus(tx, ctx.data, ctx.now),
+    },
+    html`${title(
+      tx.t('Plan', 'Plan'),
+    )}${appointments}${strengthTemplates}${presets}${copy(
+      tx.t('Ändere deinen Plan in der App.', 'Change your plan in the app.'),
       true,
     )}`,
   );

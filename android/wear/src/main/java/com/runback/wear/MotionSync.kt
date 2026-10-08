@@ -7,6 +7,7 @@ import com.google.android.gms.wearable.Asset
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
+import com.runback.core.Lang
 import com.runback.core.MotionFormat
 import com.runback.core.RunStore
 import com.runback.core.WearProtocol
@@ -19,9 +20,9 @@ import java.util.concurrent.TimeUnit
 import java.util.zip.GZIPOutputStream
 
 /**
- * Uhrseite der Bewegungsaufzeichnung: Befehle vom Handy annehmen, fertige
- * Rohdateien gepackt übertragen und erst nach der Bestätigung des Handys
- * löschen — wie bei Läufen (WearSync).
+ * Watch side of motion recording: accepts commands from the phone, sends
+ * finished raw files packed, and deletes them only after the phone confirms
+ * — as with runs (WearSync).
  */
 object MotionSync {
     private val executor = Executors.newSingleThreadExecutor()
@@ -47,8 +48,8 @@ object MotionSync {
                     autoConfirm = payload.optBoolean("autoConfirm", false),
                 )
             } catch (_: Exception) {
-                // Android erlaubt den Start aus dem Hintergrund nicht immer; das Handy öffnet dann die App (MainActivity).
-                reportStatus(context, id, "waiting", "Öffne Runback auf der Uhr.")
+                // Android doesn't always allow starting from the background; the phone then opens the app (MainActivity).
+                reportStatus(context, id, "waiting", Lang.tr("Öffne Runback auf der Uhr.", "Open Runback on the watch."))
             }
             "stop" -> runCatching { MotionCaptureService.send(context, MotionCaptureService.STOP, id) }
                 .onFailure { close(context, id) }
@@ -69,7 +70,7 @@ object MotionSync {
         }
     }
 
-    /** Live-Wert ans Handy; hängt die Verbindung, fällt der nächste aus, statt sich zu stauen. */
+    /** Sends a live value to the phone; if the connection hangs, the next one is dropped instead of queuing up. */
     fun sendLive(context: Context, id: String, fields: JSONObject) {
         if (!liveSending.compareAndSet(false, true)) return
         val app = context.applicationContext
@@ -85,15 +86,15 @@ object MotionSync {
     }
 
     /**
-     * Kurzer Eintrag je Krafteinheit für den Verlauf auf der Uhr: Zeitraum,
-     * Puls (nur gültige Werte, sonst leer) und Name vom Handy. Die Einheit
-     * selbst und alle Sätze liegen auf dem Handy.
+     * Short entry per strength session for the history on the watch: time span,
+     * heart rate (valid readings only, otherwise empty), and name from the
+     * phone. The session itself and all sets live on the phone.
      */
     fun log(context: Context, id: String, startedAt: Long, endedAt: Long, averageBpm: Double?, maxBpm: Double?, heart: Boolean, motion: Boolean) {
         val store = RunStore(context)
         val mirror = store.getDocument("strength_mirror")?.takeIf { it.optString("sessionId") == id }
         val entry = JSONObject().put("id", id).put("startedAt", startedAt).put("endedAt", endedAt)
-            .put("name", mirror?.optString("name")?.takeIf { it.isNotBlank() } ?: "Krafttraining")
+            .put("name", mirror?.optString("name")?.takeIf { it.isNotBlank() } ?: Lang.tr("Krafttraining", "Strength training"))
             .put("heart", heart).put("motion", motion)
         averageBpm?.let { entry.put("averageBpm", Math.round(it)) }
         maxBpm?.let { entry.put("maxBpm", Math.round(it)) }
@@ -105,13 +106,13 @@ object MotionSync {
         }
     }
 
-    /** Krafteinheiten der Uhr, neueste zuerst. */
+    /** Strength sessions on the watch, newest first. */
     fun history(context: Context): List<JSONObject> {
         val sessions = synchronized(stateLock) { RunStore(context).getDocument(LOG)?.optJSONArray("sessions") } ?: return emptyList()
         return (0 until sessions.length()).mapNotNull { sessions.optJSONObject(it) }.sortedByDescending { it.optLong("startedAt") }
     }
 
-    /** Liegen die Daten dieser Einheit schon auf dem Handy? */
+    /** Is this session's data already on the phone? */
     fun delivered(context: Context, id: String): Boolean =
         RunStore(context).getDocument("motion_sync_$id")?.optString("status") == "acknowledged" ||
             (!rawFile(context, id).exists() && id != MotionCaptureService.activeSession)
@@ -127,7 +128,7 @@ object MotionSync {
 
     fun markRecording(context: Context, id: String) = update(context) { it.put("recording", id) }
 
-    /** Aufzeichnung ist zu Ende; die Datei wartet auf die Übertragung. */
+    /** Recording is over; the file waits for transfer. */
     fun close(context: Context, id: String) {
         update(context) { state ->
             if (state.optString("recording") == id) state.remove("recording")
@@ -137,9 +138,9 @@ object MotionSync {
     }
 
     /**
-     * Neuer Prozess, aber eine Aufzeichnung steht noch auf „recording“: Die Uhr
-     * ist abgestürzt oder ausgegangen. Die Datei endet dort; sie wird so, wie
-     * sie ist, übertragen (der Leser verkraftet einen halben letzten Datensatz).
+     * New process, but a recording is still marked "recording": the watch
+     * crashed or powered off. The file ends there; it is sent as it is (the
+     * reader copes with a half-written last record).
      */
     fun recoverStale(context: Context) {
         val stale = synchronized(stateLock) { RunStore(context).getDocument(STATE)?.optString("recording") }
@@ -147,7 +148,7 @@ object MotionSync {
         close(context, stale)
     }
 
-    /** Einheit wurde auf dem Handy verworfen: Rohdaten sind wertlos und werden gelöscht. */
+    /** Session was discarded on the phone: raw data is worthless and gets deleted. */
     fun discard(context: Context, id: String) {
         update(context) { state ->
             if (state.optString("recording") == id) state.remove("recording")
@@ -156,7 +157,7 @@ object MotionSync {
         rawFile(context, id).delete()
         outboxFile(context, id).delete()
         RunStore(context).deleteDocument("motion_sync_$id")
-        // Auf dem Handy gelöscht: auch aus dem Verlauf der Uhr.
+        // Deleted on the phone: remove it from the watch history too.
         synchronized(stateLock) {
             val store = RunStore(context)
             val previous = store.getDocument(LOG)?.optJSONArray("sessions") ?: return
@@ -165,7 +166,7 @@ object MotionSync {
         }
     }
 
-    /** Überträgt alle Dateien, die nicht gerade beschrieben werden. */
+    /** Sends every file that is not being written right now. */
     fun retry(context: Context) {
         val app = context.applicationContext
         executor.execute {
@@ -185,14 +186,14 @@ object MotionSync {
             outboxFile(context, id).delete()
             return
         }
-        // Prüft den Kopf, bevor etwas das Gerät verlässt.
+        // Check the header before anything leaves the device.
         raw.inputStream().use { MotionFormat.Reader(it).header }
         val packed = outboxFile(context, id)
         if (!packed.exists()) {
             packed.parentFile?.mkdirs()
             val temporary = File(packed.parentFile, "$id.tmp")
             raw.inputStream().use { input -> GZIPOutputStream(temporary.outputStream()).use { input.copyTo(it, 64 * 1024) } }
-            check(temporary.renameTo(packed)) { "Übertragungsdatei konnte nicht angelegt werden" }
+            check(temporary.renameTo(packed)) { "Transfer file could not be created" }
         }
         val digest = MessageDigest.getInstance("SHA-256")
         packed.inputStream().use { input ->
@@ -216,12 +217,12 @@ object MotionSync {
         val record = store.getDocument("motion_sync_$id") ?: return
         if (record.optString("sha256") != sha) return
         store.putDocument("motion_sync_$id", record.put("status", "acknowledged").put("acknowledgedAt", System.currentTimeMillis()))
-        // Erst jetzt liegt die Datei sicher auf dem Handy.
+        // Only now is the file safely on the phone.
         rawFile(context, id).delete()
         outboxFile(context, id).delete()
     }
 
-    /** Für die Startseite: Einheiten, deren Bewegungen noch nicht auf dem Handy sind. */
+    /** For the home screen: sessions whose motion data is not yet on the phone. */
     fun pendingCount(context: Context): Int =
         File(context.filesDir, "motion").listFiles { file -> file.name.endsWith(".rbm") }
             ?.count { it.name.removeSuffix(".rbm") != MotionCaptureService.activeSession } ?: 0

@@ -6,12 +6,13 @@ import {
   detectVendorForFile,
   type VendorId,
 } from '../domain/vendorImports';
+import { tr } from '../domain/i18n';
 import { Button, Copy, Row, Section, Title, space } from './components';
 
 /**
- * App-Importe: erst die Quelle wählen, dann die Schritte genau dieser Quelle.
- * Vorher standen die Anleitungen aller Anbieter gleichzeitig auf der Seite.
- * Siehe docs/design-language.md, Abschnitt „Text“ (erst die Wahl, dann die Schritte).
+ * App imports: choose the source first, then only that source's steps.
+ * Before, the guides of all providers stood on the page at once.
+ * See docs/design-language.md, section "Text" (the choice first, then the steps).
  */
 export function VendorImport({
   onImport,
@@ -57,41 +58,75 @@ export function VendorImport({
     status.state === 'running' ? (
       <>
         <Copy>
-          Import läuft: {status.processed ?? 0} Dateien verarbeitet
+          {tr(
+            `Import läuft: ${status.processed ?? 0} Dateien verarbeitet`,
+            `Import running: ${status.processed ?? 0} files processed`,
+          )}
           {status.currentFile ? ` · ${status.currentFile}` : ''}
         </Copy>
         <Button
           secondary
           small
-          title="Import abbrechen"
+          title={tr('Import abbrechen', 'Cancel import')}
           onPress={onCancelImport}
         />
       </>
     ) : null;
 
-  // Während der Prüfung ist noch nichts gespeichert; die Zahlen stehen im Sheet.
+  // Nothing is saved during the review; the numbers are in the sheet.
   const result =
     status.state !== 'review' &&
     (status.imported !== undefined || status.wellness !== undefined) ? (
       <Copy>
-        Läufe: {status.imported ?? 0} importiert · {status.duplicates ?? 0}{' '}
-        doppelt
+        {tr(
+          `Läufe: ${status.imported ?? 0} importiert · ${
+            status.duplicates ?? 0
+          } doppelt`,
+          `Runs: ${status.imported ?? 0} imported · ${
+            status.duplicates ?? 0
+          } duplicate`,
+        )}
         {status.wellness !== undefined
-          ? ` · Kontextwerte: ${status.wellness}`
+          ? tr(
+              ` · Kontextwerte: ${status.wellness}`,
+              ` · Context values: ${status.wellness}`,
+            )
           : ''}
         {status.strength !== undefined
-          ? ` · Krafteinheiten: ${status.strength}`
+          ? tr(
+              ` · Krafteinheiten: ${status.strength}`,
+              ` · Strength sessions: ${status.strength}`,
+            )
           : ''}
         {status.strengthDuplicates
-          ? ` · ${status.strengthDuplicates} Krafteinheiten doppelt`
+          ? tr(
+              ` · ${status.strengthDuplicates} Krafteinheiten doppelt`,
+              ` · ${status.strengthDuplicates} strength sessions duplicate`,
+            )
           : ''}
-        {status.nonRunning ? ` · ${status.nonRunning} keine Läufe` : ''}
-        {status.excluded ? ` · ${status.excluded} nicht gewählt` : ''}
+        {status.nonRunning
+          ? tr(
+              ` · ${status.nonRunning} keine Läufe`,
+              ` · ${status.nonRunning} not runs`,
+            )
+          : ''}
+        {status.excluded
+          ? tr(
+              ` · ${status.excluded} nicht gewählt`,
+              ` · ${status.excluded} not selected`,
+            )
+          : ''}
         {status.skipped !== undefined
-          ? ` · ${status.skipped} übersprungen`
+          ? tr(
+              ` · ${status.skipped} übersprungen`,
+              ` · ${status.skipped} skipped`,
+            )
           : ''}
         {status.failed !== undefined
-          ? ` · ${status.failed} fehlgeschlagen`
+          ? tr(
+              ` · ${status.failed} fehlgeschlagen`,
+              ` · ${status.failed} failed`,
+            )
           : ''}
       </Copy>
     ) : null;
@@ -116,12 +151,15 @@ export function VendorImport({
         {errors}
         {vendor.id === 'strong' && onOpenTemplates ? (
           <Row
-            title="Vorlagen ansehen"
-            subtitle="Prüfe und übernimm deine importierten Trainings."
+            title={tr('Vorlagen ansehen', 'View templates')}
+            subtitle={tr(
+              'Prüfe und übernimm deine importierten Trainings.',
+              'Check and save your imported workouts.',
+            )}
             onPress={onOpenTemplates}
           />
         ) : null}
-        <Section title="So exportierst du">
+        <Section title={tr('So exportierst du', 'How to export')}>
           {vendor.exportSteps.map((step, i) => (
             <Copy key={i}>
               {i + 1}. {step}
@@ -129,13 +167,13 @@ export function VendorImport({
           ))}
         </Section>
         {vendor.notes?.length ? (
-          <Section title="Beachte">
+          <Section title={tr('Beachte', 'Keep in mind')}>
             {vendor.notes.map((note, i) => (
               <Copy key={i}>{note}</Copy>
             ))}
           </Section>
         ) : null}
-        <Section title="Diese Dateien">
+        <Section title={tr('Diese Dateien', 'These files')}>
           {vendor.filePatterns.map((pattern, i) => (
             <Copy muted key={i}>
               • {pattern}
@@ -144,24 +182,37 @@ export function VendorImport({
         </Section>
         <View style={styles.action}>
           <Button
-            title="Dateien wählen & importieren"
+            title={tr('Dateien wählen & importieren', 'Choose files & import')}
             onPress={onImport}
             disabled={busy}
           />
         </View>
         {counts ? (
           <Copy muted>
-            Bereits übernommen: {counts.imported ?? 0} Läufe ·{' '}
-            {counts.wellness ?? 0} Kontext
-            {counts.strength ? ` · ${counts.strength} Kraft` : ''}
+            {tr(
+              `Bereits übernommen: ${counts.imported ?? 0} Läufe · ${
+                counts.wellness ?? 0
+              } Kontext`,
+              `Already imported: ${counts.imported ?? 0} runs · ${
+                counts.wellness ?? 0
+              } context`,
+            )}
+            {counts.strength
+              ? tr(
+                  ` · ${counts.strength} Kraft`,
+                  ` · ${counts.strength} strength`,
+                )
+              : ''}
           </Copy>
         ) : null}
-        <Section title="Was Runback damit macht">
+        <Section
+          title={tr('Was Runback damit macht', 'What Runback does with it')}
+        >
           {vendor.useful.map((item, i) => (
             <Row key={i} title={item.label} subtitle={item.howUsed} />
           ))}
         </Section>
-        <Section title="Grenzen">
+        <Section title={tr('Grenzen', 'Limits')}>
           {vendor.limitations.map((line, i) => (
             <Copy muted key={i}>
               • {line}
@@ -172,7 +223,7 @@ export function VendorImport({
         <View style={styles.action}>
           <Button
             secondary
-            title="Andere Quelle wählen"
+            title={tr('Andere Quelle wählen', 'Choose another source')}
             onPress={() => setSelected(null)}
           />
         </View>
@@ -182,24 +233,35 @@ export function VendorImport({
 
   return (
     <>
-      <Title>App-Importe</Title>
-      <Copy muted>Wähle, woher deine Daten kommen.</Copy>
+      <Title>{tr('App-Importe', 'App imports')}</Title>
+      <Copy muted>
+        {tr(
+          'Wähle, woher deine Daten kommen.',
+          'Choose where your data comes from.',
+        )}
+      </Copy>
       {progress}
       {result}
       {errors}
       {status.strength !== undefined &&
       status.state !== 'review' &&
       onOpenTemplates ? (
-        <Row title="Vorlagen ansehen" onPress={onOpenTemplates} />
+        <Row
+          title={tr('Vorlagen ansehen', 'View templates')}
+          onPress={onOpenTemplates}
+        />
       ) : null}
       {onOpenImports ? (
         <Row
-          title="Deine Importe"
-          subtitle="Frühere Importe ansehen oder löschen"
+          title={tr('Deine Importe', 'Your imports')}
+          subtitle={tr(
+            'Frühere Importe ansehen oder löschen',
+            'View or delete earlier imports',
+          )}
           onPress={onOpenImports}
         />
       ) : null}
-      <Section title="Quelle">
+      <Section title={tr('Quelle', 'Source')}>
         {VENDOR_INFOS.map(item => {
           const counts = vendors[item.id] || vendors[item.id.replace('_', '')];
           return (
@@ -208,7 +270,10 @@ export function VendorImport({
               title={item.name}
               subtitle={
                 counts
-                  ? `${item.short} · ${counts.imported ?? 0} übernommen`
+                  ? tr(
+                      `${item.short} · ${counts.imported ?? 0} übernommen`,
+                      `${item.short} · ${counts.imported ?? 0} imported`,
+                    )
                   : item.short
               }
               onPress={() => setSelected(item.id)}
@@ -217,7 +282,7 @@ export function VendorImport({
         })}
       </Section>
       {summary?.wellness && Object.keys(summary.wellness).length ? (
-        <Section title="Gespeicherter Kontext">
+        <Section title={tr('Gespeicherter Kontext', 'Saved context')}>
           <Copy muted>
             {Object.entries(summary.wellness)
               .map(([kind, info]: [string, any]) => `${kind} (${info.count})`)
@@ -225,20 +290,26 @@ export function VendorImport({
           </Copy>
           {summary?.strength?.workouts ? (
             <Copy muted>
-              Krafteinheiten: {summary.strength.workouts} gespeichert
+              {tr(
+                `Krafteinheiten: ${summary.strength.workouts} gespeichert`,
+                `Strength sessions: ${summary.strength.workouts} saved`,
+              )}
             </Copy>
           ) : null}
         </Section>
       ) : null}
-      <Section title="Was nicht passiert">
+      <Section title={tr('Was nicht passiert', 'What does not happen')}>
         <Copy muted>
-          Keine Cloud-Synchronisierung, keine Readiness-Scores, keine Diagnosen.
+          {tr(
+            'Keine Cloud-Synchronisierung, keine Readiness-Scores, keine Diagnosen.',
+            'No cloud sync, no readiness scores, no diagnoses.',
+          )}
         </Copy>
         {onOpenDocs ? (
           <Button
             secondary
             small
-            title="Ausführliche Anleitung"
+            title={tr('Ausführliche Anleitung', 'Detailed guide')}
             onPress={onOpenDocs}
           />
         ) : null}
@@ -250,7 +321,7 @@ export function VendorImport({
 export function vendorHintForFileName(fileName: string): string {
   const vendor = detectVendorForFile(fileName);
   const info = VENDOR_INFOS.find(v => v.id === vendor);
-  return info ? `${info.name}` : 'Unbekannte Quelle';
+  return info ? `${info.name}` : tr('Unbekannte Quelle', 'Unknown source');
 }
 
 const styles = StyleSheet.create({

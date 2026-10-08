@@ -357,7 +357,7 @@ describe('PlanningScreen', () => {
     unmount(tree);
   });
 
-  it('plant mit Wettkampfziel den Aufbau statt der gleichförmigen Routine', async () => {
+  it('plans the build-up instead of the uniform routine when there is a race goal', async () => {
     const onSave = jest.fn<Promise<void>, [ScheduleState]>();
     onSave.mockResolvedValue(undefined);
     const longRun = (id: string, date: string, km: number): Run => ({
@@ -390,12 +390,12 @@ describe('PlanningScreen', () => {
     await press(tree, 'Vorschlag übernehmen');
     const saved = onSave.mock.calls[0][0].sessions;
     expect(saved.map(session => session.purpose)).toEqual(['easy', 'long']);
-    // 9,5 km × 1,1 = 10,5 km bei 6:00 /km ≈ 63 min → 65 min, über dem üblichen Budget.
+    // 9.5 km × 1.1 = 10.5 km at 6:00 /km ≈ 63 min → 65 min, above the usual budget.
     expect(saved[1].minutes).toBe(65);
     unmount(tree);
   });
 
-  it('bietet den Routenplaner als Zeile an, nicht als Schwebeknopf', () => {
+  it('offers the route planner as a row, not as a floating button', () => {
     const onOpenRoutePlanner = jest.fn();
     const props: PlanningScreenProps = {
       state: emptySchedule(),

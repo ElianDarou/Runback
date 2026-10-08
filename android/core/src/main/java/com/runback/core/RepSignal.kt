@@ -6,15 +6,15 @@ import kotlin.math.min
 import kotlin.math.sqrt
 
 /**
- * Signalbausteine der Satzerkennung (SetDetector): gleitende Mittel,
- * Hauptachse, Autokorrelation, Spitzen und Wiederholungsformen. Alles auf
- * gleichmäßig abgetasteten Fenstern mit `RepSignal.RATE_HZ`, ohne Zustand.
+ * Signal building blocks for set detection (SetDetector): moving averages,
+ * main axis, autocorrelation, peaks and rep shapes. All on evenly sampled
+ * windows at `RepSignal.RATE_HZ`, without state.
  */
 object RepSignal {
     const val RATE_HZ = 50
     const val DT = 1.0 / RATE_HZ
 
-    /** Zentriertes gleitendes Mittel über `width` Werte; an den Rändern schrumpft das Fenster. */
+    /** Centered moving average over `width` values; the window shrinks at the edges. */
     fun movingAverage(x: DoubleArray, width: Int): DoubleArray {
         val n = x.size
         val w = max(1, width)
@@ -29,9 +29,9 @@ object RepSignal {
     }
 
     /**
-     * Bandbegrenzung je Achse: langsame Lage (Schwerkraft, Haltung) über ein
-     * breites Mittel abziehen, dann zweimal schmal glätten. Die Breiten folgen
-     * der Wiederholungsdauer, sobald sie bekannt ist.
+     * Band limit per axis: subtract the slow position (gravity, posture) via a
+     * wide average, then smooth twice with a narrow one. The widths follow the
+     * rep duration once it is known.
      */
     fun prepare(axes: Array<DoubleArray>, periodS: Double?): Array<DoubleArray> {
         val baselineS = if (periodS == null) 12.0 else (2.5 * periodS).coerceIn(5.0, 12.0)
@@ -46,7 +46,7 @@ object RepSignal {
         }
     }
 
-    /** Hauptachse dreier Kanäle und ihr Anteil an der Gesamtstreuung. */
+    /** Main axis of three channels and its share of the total spread. */
     class Axis(val vector: DoubleArray, val dominance: Double)
 
     fun principalAxis(axes: Array<DoubleArray>): Axis {
@@ -67,7 +67,7 @@ object RepSignal {
     fun project(axes: Array<DoubleArray>, axis: DoubleArray, sign: Int = 1): DoubleArray =
         DoubleArray(axes[0].size) { i -> sign * (axes[0][i] * axis[0] + axes[1][i] * axis[1] + axes[2][i] * axis[2]) }
 
-    /** Jacobi-Verfahren für 3 × 3; Spalten von `vectors` sind die Eigenvektoren. */
+    /** Jacobi method for 3 × 3; columns of `vectors` are the eigenvectors. */
     private fun symmetricEigen(input: Array<DoubleArray>): Pair<DoubleArray, Array<DoubleArray>> {
         val a = Array(3) { input[it].copyOf() }
         val v = Array(3) { r -> DoubleArray(3) { if (it == r) 1.0 else 0.0 } }
@@ -98,7 +98,7 @@ object RepSignal {
         return DoubleArray(3) { a[it][it] } to v
     }
 
-    /** Halbe Spannweite zwischen 5. und 95. Perzentil — robust gegen einzelne Ausreißer. */
+    /** Half the span between the 5th and 95th percentile — robust against single outliers. */
     fun amplitude(x: DoubleArray, from: Int = 0): Double {
         if (x.size - from < 2) return 0.0
         val sorted = x.copyOfRange(from, x.size).also { it.sort() }
@@ -115,10 +115,9 @@ object RepSignal {
     class Periodicity(val r: Double, val periodS: Double?)
 
     /**
-     * Normierte Autokorrelation über Verschiebungen `minLag until maxLag`
-     * (Abtastwerte). Gewählt wird die kürzeste lokale Spitze, die mindestens
-     * `fraction` der höchsten erreicht — so gewinnt die Grundperiode vor ihren
-     * Vielfachen.
+     * Normalized autocorrelation over lags `minLag until maxLag` (samples).
+     * The shortest local peak that reaches at least `fraction` of the highest
+     * is chosen — so the base period wins over its multiples.
      */
     fun periodicity(signal: DoubleArray, minLag: Int, maxLag: Int, fraction: Double): Periodicity {
         val n = signal.size
@@ -139,7 +138,7 @@ object RepSignal {
         return Periodicity(r[chosen], (chosen + minLag).toDouble() / RATE_HZ)
     }
 
-    /** Normierte Autokorrelation bei genau einer Verschiebung (Abtastwerte). */
+    /** Normalized autocorrelation at exactly one lag (samples). */
     fun autocorrelationAt(signal: DoubleArray, lag: Int): Double {
         val n = signal.size
         if (lag <= 0 || lag >= n) return 0.0
@@ -153,9 +152,9 @@ object RepSignal {
     }
 
     /**
-     * Lokale Maxima mit topografischer Prominenz (Suche je Seite höchstens
-     * eine Periode weit), dann Unterdrückung von Nachbarn näher als 0,6
-     * Perioden — der höhere gewinnt. Eine Wiederholung mit zwei Buckeln zählt so einmal.
+     * Local maxima with topographic prominence (search at most one period
+     * to each side), then suppression of neighbors closer than 0.6
+     * periods — the higher one wins. A rep with two humps counts once this way.
      */
     fun peaks(p: DoubleArray, periodS: Double, minProminence: Double): IntArray {
         val n = p.size
@@ -178,8 +177,8 @@ object RepSignal {
     }
 
     /**
-     * Form einer Wiederholung: alle Kanäle eine Periode um die Spitze, je Kanal
-     * mittelwertfrei, als Einheitsvektor. `null`, wenn das Fenster über den Rand ragt.
+     * Shape of a rep: all channels one period around the peak, each channel
+     * mean-free, as a unit vector. `null` if the window extends past the edge.
      */
     fun shape(channels: Array<DoubleArray>, center: Int, periodS: Double): DoubleArray? {
         val half = (0.5 * periodS * RATE_HZ).toInt()
@@ -208,7 +207,7 @@ object RepSignal {
         return sum
     }
 
-    /** Einheitsvektor des Mittels mehrerer Formen gleicher Länge. */
+    /** Unit vector of the mean of several shapes of equal length. */
     fun template(shapes: List<DoubleArray>): DoubleArray? {
         if (shapes.isEmpty()) return null
         val mean = DoubleArray(shapes[0].size)

@@ -18,9 +18,7 @@ import {
   toggleTemplateDay,
   updatePlannedSet,
   validateTemplate,
-  WEEKDAY_LABELS,
   WEEKDAY_ORDER,
-  WEEKDAY_SHORT,
   type PlannedSetValues,
 } from '../domain/plans';
 import {
@@ -33,13 +31,15 @@ import {
 } from '../domain/strength';
 import { color, Copy } from './components';
 import { ExercisePicker } from './ExercisePicker';
+import { getLanguage, tr } from '../domain/i18n';
+import { exerciseDisplayName } from '../domain/catalog';
 
 /**
- * Plan anlegen und bearbeiten.
+ * Create and edit a plan.
  *
- * Der Plan ist ein Nutzerartefakt: Jede Änderung hier kommt vom Nutzer, nichts
- * verstellt sich von selbst. Offene Punkte stehen als ruhiger Hinweis neben
- * dem Feld und nicht als Fehlermeldung.
+ * The plan is the user's artifact: every change here comes from the user;
+ * nothing shifts on its own. Open points show as a quiet note next to the
+ * field, not as an error message.
  */
 
 const SET_KINDS: SetKind[] = [
@@ -50,29 +50,59 @@ const SET_KINDS: SetKind[] = [
   'timed',
 ];
 
-const setKindLabel: Record<SetKind, string> = {
-  warmup: 'Aufwärmen',
-  normal: 'Arbeitssatz',
-  failure: 'bis Versagen',
-  dropset: 'Dropsatz',
-  timed: 'Zeitsatz',
-};
+// Labels are built per call: the language can change at runtime.
+const setKindLabel = (kind: SetKind): string =>
+  ({
+    warmup: tr('Aufwärmen', 'Warm-up'),
+    normal: tr('Arbeitssatz', 'Working set'),
+    failure: tr('bis Versagen', 'to failure'),
+    dropset: tr('Dropsatz', 'Drop set'),
+    timed: tr('Zeitsatz', 'Timed set'),
+  }[kind]);
 
-const setKindShort: Record<SetKind, string> = {
-  warmup: 'Aufw.',
-  normal: 'Arbeit',
-  failure: 'Vers.',
-  dropset: 'Drop',
-  timed: 'Zeit',
-};
+const setKindShort = (kind: SetKind): string =>
+  ({
+    warmup: tr('Aufw.', 'Warm'),
+    normal: tr('Arbeit', 'Work'),
+    failure: tr('Vers.', 'Fail'),
+    dropset: tr('Drop', 'Drop'),
+    timed: tr('Zeit', 'Time'),
+  }[kind]);
 
-const loadKindLabel: Record<LoadKind, string> = {
-  unknown: 'Lastart unbekannt',
-  kg: 'Zusatzlast in kg',
-  bodyweight: 'Eigengewicht',
-  assisted: 'mit Unterstützung',
-  bodyweight_plus: 'Eigengewicht plus Last',
-};
+const loadKindLabel = (kind: LoadKind): string =>
+  ({
+    unknown: tr('Lastart unbekannt', 'Load type unknown'),
+    kg: tr('Zusatzlast in kg', 'Extra load in kg'),
+    bodyweight: tr('Eigengewicht', 'Bodyweight'),
+    assisted: tr('mit Unterstützung', 'assisted'),
+    bodyweight_plus: tr('Eigengewicht plus Last', 'Bodyweight plus load'),
+  }[kind]);
+
+// Weekday names by `Date#getDay` index (0 = Sunday).
+const weekdayLong = (day: number): string =>
+  (getLanguage() === 'en'
+    ? [
+        'Sunday',
+        'Monday',
+        'Tuesday',
+        'Wednesday',
+        'Thursday',
+        'Friday',
+        'Saturday',
+      ]
+    : [
+        'Sonntag',
+        'Montag',
+        'Dienstag',
+        'Mittwoch',
+        'Donnerstag',
+        'Freitag',
+        'Samstag',
+      ])[day];
+const weekdayShort = (day: number): string =>
+  (getLanguage() === 'en'
+    ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    : ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'])[day];
 
 const LOAD_KINDS: LoadKind[] = [
   'unknown',
@@ -123,20 +153,28 @@ const SetRow = memo(function SetRow({
   return (
     <View style={styles.setRow}>
       <Pressable
-        accessibilityLabel={`Satzart für Satz ${position} von ${exerciseName}, jetzt ${
-          setKindLabel[set.kind]
-        }, weiterschalten`}
+        accessibilityLabel={tr(
+          `Satzart für Satz ${position} von ${exerciseName}, jetzt ${setKindLabel(
+            set.kind,
+          )}, weiterschalten`,
+          `Set type for set ${position} of ${exerciseName}, now ${setKindLabel(
+            set.kind,
+          )}, switch to next`,
+        )}
         accessibilityRole="button"
         onPress={onCycleKind}
         style={({ pressed }) => [styles.kind, pressed && styles.pressed]}
       >
         <Text style={styles.kindNumber}>{position}</Text>
         <Text numberOfLines={1} style={styles.kindLabel}>
-          {setKindShort[set.kind]}
+          {setKindShort(set.kind)}
         </Text>
       </Pressable>
       <TextInput
-        accessibilityLabel={`Gewicht für Satz ${position} von ${exerciseName} in Kilogramm`}
+        accessibilityLabel={tr(
+          `Gewicht für Satz ${position} von ${exerciseName} in Kilogramm`,
+          `Weight for set ${position} of ${exerciseName} in kilograms`,
+        )}
         editable={!bodyweight}
         keyboardType="decimal-pad"
         onBlur={() => onChange({ weightKg: parseNumber(weight) })}
@@ -148,9 +186,14 @@ const SetRow = memo(function SetRow({
         value={bodyweight ? '' : weight}
       />
       <TextInput
-        accessibilityLabel={`${
-          timed ? 'Sekunden' : 'Wiederholungen'
-        } für Satz ${position} von ${exerciseName}`}
+        accessibilityLabel={tr(
+          `${
+            timed ? 'Sekunden' : 'Wiederholungen'
+          } für Satz ${position} von ${exerciseName}`,
+          `${
+            timed ? 'Seconds' : 'Reps'
+          } for set ${position} of ${exerciseName}`,
+        )}
         keyboardType="number-pad"
         onBlur={() =>
           onChange(
@@ -160,14 +203,17 @@ const SetRow = memo(function SetRow({
           )
         }
         onChangeText={setReps}
-        placeholder={timed ? 's' : 'Wdh.'}
+        placeholder={timed ? 's' : tr('Wdh.', 'Reps')}
         placeholderTextColor={color.muted}
         selectTextOnFocus
         style={styles.input}
         value={reps}
       />
       <TextInput
-        accessibilityLabel={`Pause nach Satz ${position} von ${exerciseName} in Sekunden`}
+        accessibilityLabel={tr(
+          `Pause nach Satz ${position} von ${exerciseName} in Sekunden`,
+          `Rest after set ${position} of ${exerciseName} in seconds`,
+        )}
         keyboardType="number-pad"
         onBlur={() => onChange({ restSeconds: parseNumber(rest) })}
         onChangeText={setRest}
@@ -178,7 +224,10 @@ const SetRow = memo(function SetRow({
         value={rest}
       />
       <Pressable
-        accessibilityLabel={`Satz ${position} von ${exerciseName} entfernen`}
+        accessibilityLabel={tr(
+          `Satz ${position} von ${exerciseName} entfernen`,
+          `Remove set ${position} of ${exerciseName}`,
+        )}
         accessibilityRole="button"
         accessibilityState={{ disabled: !removable }}
         disabled={!removable}
@@ -204,7 +253,7 @@ export function PlanEditor({
 }: {
   template: WorkoutTemplate;
   busy?: boolean;
-  /** Pause für neue Sätze; bestehende Sätze behalten ihre Werte. */
+  /** Rest for new sets; existing sets keep their values. */
   defaultRestSeconds?: number;
   onSave: (template: WorkoutTemplate) => void;
   onCancel: () => void;
@@ -231,7 +280,7 @@ export function PlanEditor({
     <View style={styles.screen}>
       <View style={styles.header}>
         <Pressable
-          accessibilityLabel="Bearbeiten abbrechen"
+          accessibilityLabel={tr('Bearbeiten abbrechen', 'Cancel editing')}
           accessibilityRole="button"
           onPress={onCancel}
           style={({ pressed }) => [
@@ -242,10 +291,10 @@ export function PlanEditor({
           <Text style={styles.headerButtonText}>‹</Text>
         </Pressable>
         <Text numberOfLines={1} style={styles.headerTitle}>
-          {draft.name.trim() || 'Neuer Plan'}
+          {draft.name.trim() || tr('Neuer Plan', 'New plan')}
         </Text>
         <Pressable
-          accessibilityLabel="Plan speichern"
+          accessibilityLabel={tr('Plan speichern', 'Save plan')}
           accessibilityRole="button"
           accessibilityState={{ disabled: busy || !validation.ok }}
           disabled={busy || !validation.ok}
@@ -256,7 +305,7 @@ export function PlanEditor({
             pressed && styles.pressed,
           ]}
         >
-          <Text style={styles.saveText}>Speichern</Text>
+          <Text style={styles.saveText}>{tr('Speichern', 'Save')}</Text>
         </Pressable>
       </View>
 
@@ -267,11 +316,14 @@ export function PlanEditor({
         <View style={styles.card}>
           <Text style={styles.label}>Name</Text>
           <TextInput
-            accessibilityLabel="Name des Plans"
+            accessibilityLabel={tr('Name des Plans', 'Plan name')}
             onChangeText={value =>
               change(current => renameTemplate(current, value))
             }
-            placeholder="Zum Beispiel Oberkörper A"
+            placeholder={tr(
+              'Zum Beispiel Oberkörper A',
+              'For example, Upper body A',
+            )}
             placeholderTextColor={color.muted}
             style={styles.nameInput}
             value={draft.name}
@@ -279,18 +331,20 @@ export function PlanEditor({
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.label}>Wochentage</Text>
+          <Text style={styles.label}>{tr('Wochentage', 'Weekdays')}</Text>
           <Copy muted style={styles.hint}>
-            Ohne festen Tag ist der Plan jederzeit startbar. Ein Tag ist ein
-            Vorschlag, keine Verpflichtung.
+            {tr(
+              'Ohne festen Tag ist der Plan jederzeit startbar. Ein Tag ist ein Vorschlag, keine Verpflichtung.',
+              'Without a fixed day, the plan can be started at any time. A day is a suggestion, not a commitment.',
+            )}
           </Copy>
           <View style={styles.days}>
             {WEEKDAY_ORDER.map(day => {
               const active = draft.days.includes(day);
               return (
                 <Pressable
-                  accessibilityLabel={`${WEEKDAY_LABELS[day]}${
-                    active ? ', ausgewählt' : ''
+                  accessibilityLabel={`${weekdayLong(day)}${
+                    active ? tr(', ausgewählt', ', selected') : ''
                   }`}
                   accessibilityRole="button"
                   accessibilityState={{ selected: active }}
@@ -307,19 +361,24 @@ export function PlanEditor({
                   <Text
                     style={[styles.dayText, active && styles.dayTextActive]}
                   >
-                    {WEEKDAY_SHORT[day]}
+                    {weekdayShort(day)}
                   </Text>
                 </Pressable>
               );
             })}
           </View>
           <Pressable
-            accessibilityLabel="Keinen festen Tag festlegen"
+            accessibilityLabel={tr(
+              'Keinen festen Tag festlegen',
+              'Clear fixed day',
+            )}
             accessibilityRole="button"
             onPress={() => change(clearTemplateDays)}
             style={({ pressed }) => [styles.ghost, pressed && styles.pressed]}
           >
-            <Text style={styles.ghostText}>Kein fester Tag</Text>
+            <Text style={styles.ghostText}>
+              {tr('Kein fester Tag', 'No fixed day')}
+            </Text>
           </Pressable>
         </View>
 
@@ -330,10 +389,13 @@ export function PlanEditor({
           >
             <View style={styles.exerciseHead}>
               <Text numberOfLines={2} style={styles.exerciseName}>
-                {exercise.name}
+                {exerciseDisplayName(exercise.exerciseId, exercise.name)}
               </Text>
               <Pressable
-                accessibilityLabel={`${exercise.name} nach oben schieben`}
+                accessibilityLabel={tr(
+                  `${exerciseDisplayName(exercise.exerciseId, exercise.name)} nach oben schieben`,
+                  `Move ${exerciseDisplayName(exercise.exerciseId, exercise.name)} up`,
+                )}
                 accessibilityRole="button"
                 accessibilityState={{ disabled: exerciseIndex === 0 }}
                 disabled={exerciseIndex === 0}
@@ -355,7 +417,10 @@ export function PlanEditor({
                 <Text style={styles.iconText}>↑</Text>
               </Pressable>
               <Pressable
-                accessibilityLabel={`${exercise.name} nach unten schieben`}
+                accessibilityLabel={tr(
+                  `${exerciseDisplayName(exercise.exerciseId, exercise.name)} nach unten schieben`,
+                  `Move ${exerciseDisplayName(exercise.exerciseId, exercise.name)} down`,
+                )}
                 accessibilityRole="button"
                 accessibilityState={{
                   disabled: exerciseIndex === draft.exercises.length - 1,
@@ -380,7 +445,10 @@ export function PlanEditor({
                 <Text style={styles.iconText}>↓</Text>
               </Pressable>
               <Pressable
-                accessibilityLabel={`${exercise.name} aus dem Plan nehmen`}
+                accessibilityLabel={tr(
+                  `${exerciseDisplayName(exercise.exerciseId, exercise.name)} aus dem Plan nehmen`,
+                  `Remove ${exerciseDisplayName(exercise.exerciseId, exercise.name)} from the plan`,
+                )}
                 accessibilityRole="button"
                 onPress={() =>
                   change(current =>
@@ -397,9 +465,14 @@ export function PlanEditor({
             </View>
 
             <Pressable
-              accessibilityLabel={`Lastart für ${exercise.name}, jetzt ${
-                loadKindLabel[exercise.sets[0]?.loadKind || 'kg']
-              }, weiterschalten`}
+              accessibilityLabel={tr(
+                `Lastart für ${exerciseDisplayName(exercise.exerciseId, exercise.name)}, jetzt ${loadKindLabel(
+                  exercise.sets[0]?.loadKind || 'kg',
+                )}, weiterschalten`,
+                `Load type for ${exerciseDisplayName(exercise.exerciseId, exercise.name)}, now ${loadKindLabel(
+                  exercise.sets[0]?.loadKind || 'kg',
+                )}, switch to next`,
+              )}
               accessibilityRole="button"
               onPress={() =>
                 change(current => {
@@ -420,23 +493,27 @@ export function PlanEditor({
               style={({ pressed }) => [styles.chip, pressed && styles.pressed]}
             >
               <Text style={styles.chipText}>
-                {loadKindLabel[exercise.sets[0]?.loadKind || 'kg']}
+                {loadKindLabel(exercise.sets[0]?.loadKind || 'kg')}
               </Text>
             </Pressable>
 
             <View style={styles.columns}>
-              <Text style={[styles.columnLabel, styles.columnKind]}>Satz</Text>
+              <Text style={[styles.columnLabel, styles.columnKind]}>
+                {tr('Satz', 'Set')}
+              </Text>
               <Text style={[styles.columnLabel, styles.columnInput]}>kg</Text>
-              <Text style={[styles.columnLabel, styles.columnInput]}>Wdh.</Text>
               <Text style={[styles.columnLabel, styles.columnInput]}>
-                Pause
+                {tr('Wdh.', 'Reps')}
+              </Text>
+              <Text style={[styles.columnLabel, styles.columnInput]}>
+                {tr('Pause', 'Rest')}
               </Text>
               <View style={styles.columnIcon} />
             </View>
 
             {exercise.sets.map((set, setIndex) => (
               <SetRow
-                exerciseName={exercise.name}
+                exerciseName={exerciseDisplayName(exercise.exerciseId, exercise.name)}
                 key={`${exercise.exerciseId}-${exerciseIndex}-${setIndex}-${set.kind}-${set.loadKind}`}
                 onChange={values => setValues(exerciseIndex, setIndex, values)}
                 onCycleKind={() =>
@@ -456,7 +533,10 @@ export function PlanEditor({
             ))}
 
             <Pressable
-              accessibilityLabel={`Satz zu ${exercise.name} hinzufügen`}
+              accessibilityLabel={tr(
+                `Satz zu ${exercise.name} hinzufügen`,
+                `Add set to ${exercise.name}`,
+              )}
               accessibilityRole="button"
               onPress={() =>
                 change(current =>
@@ -465,18 +545,21 @@ export function PlanEditor({
               }
               style={({ pressed }) => [styles.ghost, pressed && styles.pressed]}
             >
-              <Text style={styles.ghostText}>+ Satz</Text>
+              <Text style={styles.ghostText}>{tr('+ Satz', '+ Set')}</Text>
             </Pressable>
           </View>
         ))}
 
         <Pressable
-          accessibilityLabel="Übung zum Plan hinzufügen"
+          accessibilityLabel={tr(
+            'Übung zum Plan hinzufügen',
+            'Add exercise to plan',
+          )}
           accessibilityRole="button"
           onPress={() => setPickerOpen(true)}
           style={({ pressed }) => [styles.ghost, pressed && styles.pressed]}
         >
-          <Text style={styles.ghostText}>+ Übung</Text>
+          <Text style={styles.ghostText}>{tr('+ Übung', '+ Exercise')}</Text>
         </Pressable>
 
         {validation.problems.length ? (

@@ -8,9 +8,9 @@ const match =
     source,
   );
 if (!match)
-  throw new Error('Gemeinsame Design-Token fehlen in components.tsx.');
+  throw new Error('Shared design tokens are missing from components.tsx.');
 mkdirSync(new URL('./.generated/', import.meta.url), { recursive: true });
 writeFileSync(
   new URL('./.generated/tokens.ts', import.meta.url),
-  '// Erzeugt aus src/ui/components.tsx; dort bearbeiten.\n' + match[1],
+  '// Generated from src/ui/components.tsx; edit it there.\n' + match[1],
 );

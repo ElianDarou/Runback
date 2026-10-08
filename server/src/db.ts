@@ -1,20 +1,20 @@
 import { DatabaseSync } from 'node:sqlite';
 
 /**
- * Speicher des Servers. `objects` ist die Kopie dessen, was das Telefon
- * schickt, Schlüssel für Schlüssel und unverändert. Alles andere wird daraus
- * abgeleitet und darf jederzeit neu entstehen:
+ * The server's storage. `objects` is a copy of what the phone sends, key by key
+ * and unchanged. Everything else is derived from it and may be rebuilt at any
+ * time:
  *
  * - `runs`, `strength_sessions`, `strength_sets`, `wellness`,
- *   `recommendations` sind flache Tabellen für SQL und Export.
- * - `v1_*` sind die zugesagten Sichten. Interne Tabellen dürfen sich mit einer
- *   Migration ändern, die Sichten bleiben stabil, bis es `v2_*` gibt.
+ *   `recommendations` are flat tables for SQL and export.
+ * - `v1_*` are the promised views. Internal tables may change with a migration;
+ *   the views stay stable until there is a `v2_*`.
  *
- * Unbekannte Werte bleiben `NULL`, nie `0`.
+ * Unknown values stay `NULL`, never `0`.
  */
 
 export const SCHEMA_VERSION = 3;
-/** Version der flachen Tabellen; wandert in jede Zeile der Sichten. */
+/** Version of the flat tables; goes into every row of the views. */
 export const DERIVED_VERSION = 'server-rows-v1';
 
 const MIGRATIONS: string[] = [
@@ -174,7 +174,7 @@ const MIGRATIONS: string[] = [
     '${DERIVED_VERSION}' AS row_version FROM objects;`,
 ];
 
-/** Sichten, die die API und die Website als „zugesagt“ anbieten. */
+/** Views that the API and the website offer as promised. */
 export const PUBLIC_VIEWS = [
   'v1_runs',
   'v1_strength_sessions',
@@ -205,7 +205,7 @@ export class Store {
     );
     if (current > MIGRATIONS.length) {
       throw new Error(
-        `Die Datenbank stammt aus einer neueren Serverversion (Schema ${current}).`,
+        `The database comes from a newer server version (schema ${current}).`,
       );
     }
     for (let version = current; version < MIGRATIONS.length; version++) {
@@ -247,7 +247,7 @@ export class Store {
     }
   }
 
-  /** Steigt bei jeder Änderung an `objects`; die Website liest danach neu. */
+  /** Goes up with every change to `objects`; the website re-reads after that. */
   revision(): number {
     return Number(this.meta('revision') ?? '0');
   }

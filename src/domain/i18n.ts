@@ -13,6 +13,24 @@ export type Language = 'de' | 'en';
 export const LANGUAGES: readonly Language[] = ['de', 'en'];
 
 let current: Language = 'de';
+let source: (() => Language | undefined) | null = null;
+
+/** The language in effect for this call. */
+function active(): Language {
+  return source?.() ?? current;
+}
+
+/**
+ * Lets a host decide the language per call instead of globally. The server
+ * uses it with `AsyncLocalStorage`, so concurrent requests in different
+ * languages never see each other's language. Without a source, or when it
+ * returns `undefined`, the language from `setLanguage` applies.
+ */
+export function setLanguageSource(
+  next: (() => Language | undefined) | null,
+): void {
+  source = next;
+}
 
 export function isLanguage(value: unknown): value is Language {
   return value === 'de' || value === 'en';
@@ -23,16 +41,16 @@ export function setLanguage(next: Language): void {
 }
 
 export function getLanguage(): Language {
-  return current;
+  return active();
 }
 
 /** Text for the active language. German first, English second. */
 export function tr(de: string, en: string): string {
-  return current === 'en' ? en : de;
+  return active() === 'en' ? en : de;
 }
 
 /** BCP 47 locale for `Intl`. British English keeps the 24-hour clock and day-month order. */
-export function locale(language: Language = current): string {
+export function locale(language: Language = active()): string {
   return language === 'en' ? 'en-GB' : 'de-DE';
 }
 
@@ -43,7 +61,7 @@ const numberFormats = new Map<string, Intl.NumberFormat>();
 export function dateFormat(
   options: Intl.DateTimeFormatOptions,
 ): Intl.DateTimeFormat {
-  const key = `${current}|${JSON.stringify(options)}`;
+  const key = `${active()}|${JSON.stringify(options)}`;
   let format = dateFormats.get(key);
   if (!format) {
     format = new Intl.DateTimeFormat(locale(), options);
@@ -56,7 +74,7 @@ export function dateFormat(
 export function numberFormat(
   options: Intl.NumberFormatOptions = {},
 ): Intl.NumberFormat {
-  const key = `${current}|${JSON.stringify(options)}`;
+  const key = `${active()}|${JSON.stringify(options)}`;
   let format = numberFormats.get(key);
   if (!format) {
     format = new Intl.NumberFormat(locale(), options);
@@ -68,7 +86,7 @@ export function numberFormat(
 /** `value.toFixed(digits)` with the decimal separator of the active language. */
 export function fixed(value: number, digits = 1): string {
   const text = value.toFixed(digits);
-  return current === 'de' ? text.replace('.', ',') : text;
+  return active() === 'de' ? text.replace('.', ',') : text;
 }
 
 /** Parses a typed decimal; accepts comma and point in both languages. */
@@ -78,5 +96,5 @@ export function parseDecimal(input: string): number {
 
 /** Opening and closing quotation marks of the active language. */
 export function quote(text: string): string {
-  return current === 'en' ? `“${text}”` : `„${text}“`;
+  return active() === 'en' ? `“${text}”` : `„${text}“`;
 }

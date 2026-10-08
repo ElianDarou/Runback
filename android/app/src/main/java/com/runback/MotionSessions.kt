@@ -11,6 +11,7 @@ import com.google.android.gms.wearable.DataItem
 import com.google.android.gms.wearable.DataMapItem
 import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
+import com.runback.core.Lang
 import com.runback.core.MotionExport
 import com.runback.core.MotionFormat
 import com.runback.core.MotionLabels
@@ -28,32 +29,32 @@ import java.util.zip.GZIPInputStream
 import java.util.zip.ZipOutputStream
 
 /**
- * Handyseite der Uhraufzeichnung im Krafttraining (Einstellung
- * `motionCapture`): Puls (`heartRate`, Standard an) und Bewegungen
- * (`enabled`, Standard aus). Startet und stoppt die Uhr mit der Krafteinheit,
- * schreibt mit, wann Sätze abgehakt werden, und nimmt die Rohdatei der Uhr an.
+ * Phone side of the watch recording in strength training (setting
+ * `motionCapture`): heart rate (`heartRate`, default on) and motion
+ * (`enabled`, default off). Starts and stops the watch with the strength
+ * session, records when sets are checked off, and accepts the watch's raw file.
  *
- * Je Einheit ein Dokument `motion_<id>` (Ereignisse, Uhrenabgleich, Status;
- * Teil des Backups) und eine Datei `files/motion/<id>.rbm.gz`. Die Rohdateien
- * sind bewusst nicht im Backup — eine Stunde Bewegungen sind mehrere MB —,
- * sondern gehen mit dem Kraftexport hinaus. Bewegungen fließen in keine
- * Auswertung ein; sie sind Trainingsdaten für spätere Modelle. Der Puls wird
- * nach dem Empfang zu `strength_heart_<id>` zusammengefasst (StrengthHeart);
- * dieses Dokument ist im Backup und bleibt, wenn die Rohdatei gelöscht wird.
+ * One document `motion_<id>` per session (events, watch sync, status; part of
+ * the backup) and one file `files/motion/<id>.rbm.gz`. The raw files are
+ * deliberately not in the backup (an hour of motion is several MB), but they
+ * go out with the strength export. Motion feeds no analysis; it is training
+ * data for later models. The heart rate is summarized after receipt into
+ * `strength_heart_<id>` (StrengthHeart); this document is in the backup and
+ * stays when the raw file is deleted.
  */
 object MotionSessions {
     private val lock = Any()
     private val sender = Executors.newSingleThreadExecutor()
     private const val INDEX = "motion_index"
-    /** Älter als so ist ein Puls von der Uhr keine Live-Anzeige mehr. */
+    /** Older than this, a heart rate from the watch is no longer a live display. */
     private const val LIVE_HEART_MAX_AGE_MS = 15_000L
     private const val MAX_EVENTS = 5_000
     private const val MAX_PINGS = 200
     private val ID = Regex("[A-Za-z0-9_-]{1,100}")
     /**
-     * Letzte Live-Meldung der Uhr je Einheit, nur im Speicher: Sie ist eine
-     * Anzeige während des Trainings, keine Messung. Gespeichert wird der Puls
-     * erst aus der Rohdatei (StrengthHeart).
+     * Last live message from the watch per session, kept in memory only: it is a
+     * display during training, not a measurement. The heart rate is only saved
+     * from the raw file (StrengthHeart).
      */
     private val live = java.util.concurrent.ConcurrentHashMap<String, JSONObject>()
 
@@ -62,8 +63,8 @@ object MotionSessions {
     private fun rawFile(context: Context, id: String) = File(context.filesDir, "motion/$id.rbm.gz")
 
     /**
-     * `autoSets`: Uhr erkennt Sätze selbst; nur mit Bewegungen, fehlt der Wert, ist sie an.
-     * `autoConfirm`: Uhr übernimmt die erkannte Zahl ohne Eingabe; nur, wenn eingeschaltet.
+     * `autoSets`: the watch detects sets itself; only with motion; if the value is missing, it is on.
+     * `autoConfirm`: the watch takes the detected number without input; only if switched on.
      */
     private data class Capture(
         val motion: Boolean, val heartRate: Boolean, val wrist: String, val autoSets: Boolean, val autoConfirm: Boolean,
@@ -77,14 +78,14 @@ object MotionSessions {
         return Capture(motion, config.optBoolean("heartRate", true), wrist, autoSets, autoSets && config.optBoolean("autoConfirm", false))
     }
 
-    /** Start abgelehnt oder keine Uhr verbunden; wie `strengthWatchTransfer` → `missing`. */
+    /** Start rejected or no watch connected; like `strengthWatchTransfer` → `missing`. */
     internal fun neverRecorded(doc: JSONObject) =
         doc.optString("status") != "received" && doc.optJSONObject("watch")?.optString("status") in setOf("error", "disconnected")
 
-    /** Ältere Dokumente kennen nur Bewegungen. */
+    /** Older documents only know motion. */
     private fun hasMotion(doc: JSONObject) = doc.optJSONObject("capture")?.optBoolean("motion", true) ?: true
 
-    /** Nach jedem Speichern der aktiven Krafteinheit. */
+    /** After every save of the active strength session. */
     fun onStrengthSaved(context: Context, store: RunStore, previous: JSONObject?, next: JSONObject, now: Long) {
         val id = next.optString("id").takeIf { it.matches(ID) } ?: return
         val sameSession = previous?.optString("id") == id
@@ -94,7 +95,7 @@ object MotionSessions {
             var doc = store.getDocument(key(id))
             if (doc == null) {
                 val capture = config(store)
-                // Nur zu Beginn einer Einheit; mitten im Training fehlte alles davor.
+                // Only at the start of a session; in the middle of training, everything before was missing.
                 if (!(capture.motion || capture.heartRate) || sameSession || next.optString("status") != "active") return
                 doc = JSONObject()
                     .put("formatVersion", MotionFormat.VERSION)
@@ -122,9 +123,9 @@ object MotionSessions {
     }
 
     /**
-     * Satz, den die Uhr erkannt und der Nutzer bestätigt hat: als Ereignis
-     * `set_detected` neben dem Abhaken, mit der bestätigten Zahl. Die
-     * vollständige Erkennung (Zählung, Korrektur, Merkmale) liegt in der Rohdatei.
+     * Set that the watch detected and the user confirmed: as an event
+     * `set_detected` next to the check-off, with the confirmed number. The full
+     * detection (counting, correction, features) is in the raw file.
      */
     fun onWatchDetection(store: RunStore, command: JSONObject, now: Long) {
         val id = command.optString("sessionId").takeIf { it.matches(ID) } ?: return
@@ -148,12 +149,12 @@ object MotionSessions {
             store.putDocument(key(id), doc)
         }
         live.remove(id)
-        // Erst der Ping, dann der Stopp: der letzte Uhrenabgleich fällt noch in die Aufzeichnung.
+        // First the ping, then the stop: the last watch sync still falls into the recording.
         ping(context, id)
         message(context, id, "stop")
     }
 
-    /** Verworfene Einheit: ohne Sätze sind die Bewegungen wertlos. */
+    /** Discarded session: without sets, the motion is worthless. */
     fun onStrengthDiscarded(context: Context, store: RunStore, previous: JSONObject?) {
         val id = previous?.optString("id")?.takeIf { it.matches(ID) } ?: return
         if (forget(context, store, id)) message(context, id, "discard")
@@ -174,19 +175,19 @@ object MotionSessions {
         existed
     }
 
-    /** Löscht Rohdateien und Ereignisse; die Pulszusammenfassungen der Einheiten bleiben. */
+    /** Deletes raw files and events; the heart rate summaries of the sessions remain. */
     fun deleteAll(context: Context, store: RunStore) = synchronized(lock) {
         ids(store).forEach { store.deleteDocument(key(it)) }
         store.deleteDocument(INDEX)
         File(context.filesDir, "motion").listFiles()?.forEach { it.delete() }
     }
 
-    /** Nach „Alle Daten löschen“: Dokumente sind schon weg, die Dateien noch nicht. */
+    /** After "Delete all data": the documents are already gone, the files are not yet. */
     fun deleteFiles(context: Context) = synchronized(lock) {
         File(context.filesDir, "motion").listFiles()?.forEach { it.delete() }
     }
 
-    /** `pong` mit der Uhrzeit der Uhr, `status` der Aufzeichnung und `live`-Werte. */
+    /** `pong` with the watch's clock time, `status` of the recording and `live` values. */
     fun acceptMessage(context: Context, bytes: ByteArray) {
         val receivedAt = System.currentTimeMillis()
         val payload = runCatching { WearProtocol.decodeMotion(bytes) }.getOrNull() ?: return
@@ -212,8 +213,8 @@ object MotionSessions {
     }
 
     /**
-     * Live-Wert in Handyzeit. Der Puls zählt nur in den Grenzen von
-     * StrengthHeart; sein Zeitpunkt ist Empfang minus Alter auf der Uhr.
+     * Live value in phone time. The heart rate only counts within the limits of
+     * StrengthHeart; its time is receipt minus its age on the watch.
      */
     internal fun liveValue(payload: JSONObject, receivedAt: Long): JSONObject {
         val value = JSONObject().put("receivedAt", receivedAt).put("motion", payload.optBoolean("motion", false))
@@ -226,8 +227,8 @@ object MotionSessions {
     }
 
     /**
-     * Was die Uhr zu einer Einheit misst und übertragen hat, für Training und
-     * Detailseite. `null`, wenn die Uhr nicht beteiligt war.
+     * What the watch measured and transferred for a session, for training and
+     * the detail page. `null` if the watch was not involved.
      */
     fun watchInfo(context: Context, store: RunStore, id: String): JSONObject? {
         if (!id.matches(ID)) return null
@@ -244,15 +245,15 @@ object MotionSessions {
         return result
     }
 
-    /** Rohdatei der Uhr annehmen, prüfen und bestätigen. Erst die Bestätigung löscht sie auf der Uhr. */
+    /** Accept, check and confirm the watch's raw file. Only the confirmation deletes it on the watch. */
     fun receive(context: Context, item: DataItem) {
         val map = DataMapItem.fromDataItem(item).dataMap
         val id = map.getString("sessionId") ?: return
         val expected = map.getString("sha256")?.lowercase() ?: return
-        require(id.matches(ID)) { "Ungültige Einheitskennung" }
-        require(item.uri.path == WearProtocol.MOTION_DATA_PREFIX + id) { "Einheitskennung stimmt nicht überein" }
-        require(expected.matches(Regex("[a-f0-9]{64}"))) { "Ungültige Prüfsumme" }
-        require(map.getInt("formatVersion") in MotionFormat.MIN_READ_VERSION..MotionFormat.VERSION) { "Unbekanntes Format der Bewegungsdaten" }
+        require(id.matches(ID)) { Lang.tr("Ungültige Einheitskennung", "Invalid session ID") }
+        require(item.uri.path == WearProtocol.MOTION_DATA_PREFIX + id) { Lang.tr("Einheitskennung stimmt nicht überein", "Session ID does not match") }
+        require(expected.matches(Regex("[a-f0-9]{64}"))) { Lang.tr("Ungültige Prüfsumme", "Invalid checksum") }
+        require(map.getInt("formatVersion") in MotionFormat.MIN_READ_VERSION..MotionFormat.VERSION) { Lang.tr("Unbekanntes Format der Bewegungsdaten", "Unknown motion data format") }
         val store = RunStore(context)
         val known = synchronized(lock) { store.getDocument(key(id)) }
         if (known != null && known.optJSONObject("file")?.optString("sha256") != expected) {
@@ -270,23 +271,23 @@ object MotionSessions {
                             val count = input.read(buffer)
                             if (count < 0) break
                             total += count
-                            require(total <= 256L * 1024 * 1024) { "Bewegungsdaten größer als 256 MB" }
+                            require(total <= 256L * 1024 * 1024) { Lang.tr("Bewegungsdaten größer als 256 MB", "Motion data is larger than 256 MB") }
                             digest.update(buffer, 0, count)
                             output.write(buffer, 0, count)
                         }
                     } }
                 } finally { response.release() }
-                require(digest.digest().joinToString("") { "%02x".format(it) } == expected) { "Übertragung unvollständig" }
+                require(digest.digest().joinToString("") { "%02x".format(it) } == expected) { Lang.tr("Übertragung unvollständig", "Transfer is incomplete") }
                 val header = GZIPInputStream(temporary.inputStream()).use { MotionFormat.Reader(it).header }
-                require(header.optString("sessionId") == id) { "Die Datei gehört zu einer anderen Einheit" }
-                check(temporary.renameTo(target)) { "Bewegungsdaten konnten nicht gespeichert werden" }
+                require(header.optString("sessionId") == id) { Lang.tr("Die Datei gehört zu einer anderen Einheit", "The file belongs to a different session") }
+                check(temporary.renameTo(target)) { Lang.tr("Bewegungsdaten konnten nicht gespeichert werden", "Motion data could not be saved") }
             } finally { temporary.delete() }
             synchronized(lock) {
                 val doc = store.getDocument(key(id))
                 if (doc == null) {
                     target.delete()
                 } else {
-                    // Die Datei kommt erst nach dem Stopp; kam der Stopp nie an, ist sie trotzdem fertig.
+                    // The file arrives only after the stop; if the stop never arrived, it is complete anyway.
                     doc.put("status", "received").put("file", JSONObject()
                         .put("sha256", expected).put("bytes", target.length()).put("receivedAt", System.currentTimeMillis()))
                     store.putDocument(key(id), doc)
@@ -295,7 +296,7 @@ object MotionSessions {
             }
             runCatching { heart(context, store, id) }
         }
-        // Unbekannte Einheit (z. B. verworfen): bestätigen, damit die Uhr aufräumt.
+        // Unknown session (e.g. discarded): confirm so the watch cleans up.
         val ack = PutDataMapRequest.create(WearProtocol.MOTION_ACK_PREFIX + id)
         ack.dataMap.putString("sessionId", id)
         ack.dataMap.putString("sha256", expected)
@@ -303,7 +304,7 @@ object MotionSessions {
         Tasks.await(Wearable.getDataClient(context).putDataItem(ack.asPutDataRequest().setUrgent()), 30, TimeUnit.SECONDS)
     }
 
-    /** Uhr wieder in Reichweite: verlorene Stopps nachholen. */
+    /** Watch back in range: catch up on lost stops. */
     fun retryPending(context: Context) {
         val store = RunStore(context)
         val activeId = store.getDocument("strength_active")?.optString("id")
@@ -322,7 +323,7 @@ object MotionSessions {
         var received = 0
         var waiting = 0
         var bytes = 0L
-        // Die Zähler gelten den Bewegungsdaten; reine Pulsaufzeichnungen stehen bei der Einheit.
+        // The counters refer to motion data; pure heart rate recordings are listed under the session.
         val sessions = ids(store).filter { id -> store.getDocument(key(id))?.let(::hasMotion) == true }
         val active = ids(store).firstNotNullOfOrNull { id ->
             store.getDocument(key(id))?.takeIf { it.optString("status") == "recording" }
@@ -333,7 +334,7 @@ object MotionSessions {
             when {
                 file.exists() -> { received++; bytes += file.length() }
                 doc.optString("status") == "recording" -> Unit
-                // Die Uhr hat nie aufgezeichnet: Es kommt nichts mehr.
+                // The watch never recorded: nothing more will come.
                 neverRecorded(doc) -> Unit
                 else -> waiting++
             }
@@ -352,13 +353,13 @@ object MotionSessions {
             } ?: JSONObject.NULL)
     }
 
-    /** Hängt die Bewegungsdaten als Ordner an den Kraftexport; ohne Bewegungsdaten bleibt er unverändert. */
+    /** Appends the motion data as a folder to the strength export; without motion data, the export stays unchanged. */
     fun exportInto(context: Context, store: RunStore, zip: ZipOutputStream, directory: String): Int {
         val sessions = ids(store).mapNotNull { id ->
             val doc = store.getDocument(key(id))?.takeIf(::hasMotion) ?: return@mapNotNull null
             val file = rawFile(context, id)
             val raw: (() -> InputStream)? = if (file.exists()) ({ GZIPInputStream(file.inputStream(), 64 * 1024) }) else null
-            // Eine beschädigte Rohdatei darf den Kraftexport nicht verhindern: Sie fehlt, `meta.json` sagt es.
+            // A damaged raw file must not prevent the strength export: it is left out, and `meta.json` says so.
             val readable = raw?.let(MotionExport::readable)
             MotionExport.Session(
                 if (readable == false) JSONObject(doc.toString()).put("rawUnreadable", true) else doc,
@@ -376,9 +377,9 @@ object MotionSessions {
             val nodes = runCatching { Tasks.await(Wearable.getNodeClient(app).connectedNodes, 5, TimeUnit.SECONDS) }
                 .getOrDefault(emptyList())
             if (nodes.isEmpty()) {
-                // Ohne Uhr gibt es keinen Puls; eine reine Pulsaufzeichnung hinterlässt dann nichts.
+                // Without a watch there is no heart rate; a pure heart rate recording then leaves nothing.
                 if (!capture.motion) forget(app, store, id)
-                else watchStatus(app, id, "disconnected", "Keine Uhr verbunden.")
+                else watchStatus(app, id, "disconnected", Lang.tr("Keine Uhr verbunden.", "No watch connected."))
                 return@execute
             }
             val payload = WearProtocol.motion("start", id, JSONObject()
@@ -387,7 +388,7 @@ object MotionSessions {
             nodes.forEach { node ->
                 runCatching { Tasks.await(Wearable.getMessageClient(app).sendMessage(node.id, WearProtocol.MOTION_PATH, payload), 5, TimeUnit.SECONDS) }
             }
-            // Darf die Uhr den Dienst nicht aus dem Hintergrund starten, öffnet das Handy die Uhr-App.
+            // If the watch may not start the service from the background, the phone opens the watch app.
             val deadline = SystemClock.elapsedRealtime() + 3_000L
             while (SystemClock.elapsedRealtime() < deadline && watchState(app, id) != "recording") SystemClock.sleep(100)
             if (watchState(app, id) != "recording") {
@@ -418,7 +419,7 @@ object MotionSessions {
 
     private fun pingNow(context: Context, id: String, nodes: List<String>) {
         nodes.forEach { node ->
-            // t0 direkt vor dem Senden; die Antwort bringt ihn unverändert zurück.
+            // t0 right before sending; the reply brings it back unchanged.
             val payload = WearProtocol.motion("ping", id, JSONObject().put("t0", System.currentTimeMillis()))
             runCatching { Tasks.await(Wearable.getMessageClient(context).sendMessage(node, WearProtocol.MOTION_PATH, payload), 5, TimeUnit.SECONDS) }
         }
@@ -437,26 +438,25 @@ object MotionSessions {
     }
 
     /**
-     * Puls einer Einheit als Zusammenfassung mit Darstellungsreihe, oder
-     * `null`, wenn es keinen gibt. Wird beim ersten Abruf aus der Rohdatei
-     * gerechnet und gespeichert; eine neue Modellversion rechnet neu, solange
-     * die Rohdatei noch da ist (Grundregel 2). Läuft die Einheit noch, wird
-     * nichts gespeichert.
+     * Heart rate of a session as a summary with a display series, or `null` if
+     * there is none. It is computed from the raw file on first request and saved;
+     * a new model version recomputes as long as the raw file is still there
+     * (ground rule 2). While the session is still running, nothing is saved.
      */
     /**
-     * Puls einer Krafteinheit im Fenster bis zum geltenden Ende (Korrektur vor
-     * Aufzeichnung): zuerst von der Uhr, sonst aus importierten Pulswerten.
+     * Heart rate of a strength session in the window up to the effective end
+     * (correction before recording): from the watch first, otherwise from imported heart rate values.
      */
     fun heart(context: Context, store: RunStore, id: String): JSONObject? {
         if (id.isBlank() || id.length > 200) return null
         val window = store.strengthWindow(id)
-        // Importierte Einheiten („strong:…“) haben keine Uhrdatei.
+        // Imported sessions ("strong:…") have no watch file.
         if (id.matches(ID)) watchHeart(context, store, id, window?.end)?.let { return it }
         val end = window?.end ?: return null
         return store.importedHeart(window.start, end)
     }
 
-    /** Für den Editor: Uhr-Puls bis zu einem frei gewählten Ende, ohne Zwischenspeicher. */
+    /** For the editor: watch heart rate up to a freely chosen end, without the cache. */
     fun heartUntil(context: Context, store: RunStore, id: String, end: Long): JSONObject? {
         if (!id.matches(ID)) return null
         return readWatchHeart(context, store, id, end)
@@ -465,13 +465,13 @@ object MotionSessions {
     private fun watchHeart(context: Context, store: RunStore, id: String, end: Long?): JSONObject? {
         val stored = store.getDocument(heartKey(id))
         val file = rawFile(context, id)
-        // Der Zwischenspeicher gilt nur für das Fenster, mit dem er gerechnet wurde.
+        // The cache only applies to the window it was computed for.
         val sameWindow = stored?.optLong("windowEnd", 0L)?.let { it == 0L && store.getDocument("strength_end_$id") == null || it == end } ?: false
         if (stored != null && stored.optString("model_version") == StrengthHeart.VERSION && sameWindow) {
             return stored.takeIf { it.optBoolean("available", true) }
         }
         if (stored != null && !file.exists()) {
-            // Ohne Rohdatei: ein früheres Ende kürzt die gespeicherte Reihe, ein späteres hat keine Werte mehr dazu.
+            // Without a raw file: an earlier end shortens the stored series; a later one has no values for it.
             if (!stored.optBoolean("available", true) || end == null) return null
             val windowEnd = stored.optLong("windowEnd", 0L).takeIf { it > 0 }
                 ?: store.getDocument("strength_session_$id")?.optLong("endTime") ?: return null
@@ -479,7 +479,7 @@ object MotionSessions {
         }
         if (!file.exists()) return null
         val meta = store.getDocument(key(id)) ?: return null
-        // Ohne angeforderten Puls enthält die Datei keinen; große Bewegungsdateien nicht umsonst lesen.
+        // Without a requested heart rate the file has none; do not read large motion files for nothing.
         if (meta.optJSONObject("capture")?.optBoolean("heartRate", false) != true) return null
         val until = end ?: return null
         val summary = readWatchHeart(context, store, id, until)
@@ -487,7 +487,7 @@ object MotionSessions {
             .put("model_version", StrengthHeart.VERSION)
             .put("available", false)).put("windowEnd", until)
         synchronized(lock) {
-            // Inzwischen gelöscht: nichts wiederbeleben.
+            // Deleted in the meantime: do not revive anything.
             if (store.getDocument(key(id)) != null) store.putDocument(heartKey(id), document)
         }
         return summary
@@ -497,7 +497,7 @@ object MotionSessions {
         val file = rawFile(context, id)
         if (!file.exists()) return null
         val meta = store.getDocument(key(id)) ?: return null
-        // Ohne angeforderten Puls enthält die Datei keinen; große Bewegungsdateien nicht umsonst lesen.
+        // Without a requested heart rate the file has none; do not read large motion files for nothing.
         if (meta.optJSONObject("capture")?.optBoolean("heartRate", false) != true) return null
         val session = store.getDocument("strength_session_$id") ?: return null
         val start = session.optLong("startTime").takeIf { it > 0 } ?: return null
@@ -509,7 +509,7 @@ object MotionSessions {
         return StrengthHeart.summarize(samples, start, end, clockAligned = clock != null)
     }
 
-    /** Kurzformen aller Einheiten mit Puls, für die Statistik: `{ <id>: {...} }`. */
+    /** Short forms of all sessions with heart rate, for statistics: `{ <id>: {...} }`. */
     fun heartSummaries(context: Context, store: RunStore): JSONObject {
         val result = JSONObject()
         val ids = (ids(store) + heartIds(store) + sessionIds(store) + store.strengthImportIds()).distinct()
@@ -524,7 +524,7 @@ object MotionSessions {
         return (0 until sessions.length()).mapNotNull { sessions.optJSONObject(it)?.optString("id") }.filter { it.matches(ID) }
     }
 
-    /** Pulsdokumente bleiben auch nach „Bewegungsdaten löschen“; sie hängen an der Einheit. */
+    /** Heart rate documents remain after "Delete motion data"; they belong to the session. */
     private fun heartIds(store: RunStore): List<String> {
         val sessions = store.getDocument("strength_index")?.optJSONArray("sessions") ?: return emptyList()
         return (0 until sessions.length()).mapNotNull { sessions.optJSONObject(it)?.optString("id") }

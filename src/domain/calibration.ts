@@ -17,6 +17,7 @@ import {
   type SorenessReport,
   type TimeConstants,
 } from './freshness';
+import { tr } from './i18n';
 
 export interface CalibrationColumn {
   key: string;
@@ -162,7 +163,7 @@ const provenance = (
 const coefficientKey = (exerciseId: string, region: RegionBase): string =>
   `${exerciseId}|${region}`;
 
-/** Normierte Differenz zweier Exponentialfunktionen für die Matrixzeilen. */
+/** Normalized difference of two exponential functions for the matrix rows. */
 const defaultGrid = (): readonly TimeConstants[] => [
   { fastRiseHours: 0.5, fastDecayHours: 10, slowRiseHours: 12, slowDecayHours: 60, betaFast: 0.4, betaSlow: 0.6 },
   { fastRiseHours: 0.5, fastDecayHours: 10, slowRiseHours: 10, slowDecayHours: 50, betaFast: 0.4, betaSlow: 0.6 },
@@ -199,7 +200,7 @@ const regionIdsForReport = (
   return Array.from(new Set(contributions.map(contribution => contribution.regionId))).sort();
 };
 
-/** Erzeugt die lineare Entwurfsmatrix A und die transformierten Ziele y. */
+/** Builds the linear design matrix A and the transformed targets y. */
 export function buildDesignMatrix(input: CalibrationInput): DesignMatrix {
   const timeConstants = input.timeConstants;
   const contributions = input.sessions.flatMap(session =>
@@ -277,7 +278,7 @@ export function buildDesignMatrix(input: CalibrationInput): DesignMatrix {
   };
 }
 
-/** Huber-Verlust für robuste Abweichungen. */
+/** Huber loss for robust deviations. */
 export function huberLoss(
   residual: number,
   delta: number = MUSCLE_MODEL_CONSTANTS.calibrationHuberDelta,
@@ -309,7 +310,7 @@ const objective = (
       0,
     );
 
-/** Robuste, regularisierte, nichtnegative Lösung per deterministischem Koordinatenabstieg. */
+/** Robust, regularized, non-negative solution by deterministic coordinate descent. */
 export function solveRegularizedNonNegativeLeastSquares(
   matrix: number[][],
   targets: number[],
@@ -400,7 +401,7 @@ export const regularizedNonNegativeLeastSquares =
 const zeroMatrix = (size: number): number[][] =>
   Array.from({ length: size }, () => Array.from({ length: size }, () => 0));
 
-/** Erstellt den rekursiven Filter mit Katalogwerten als Prior. */
+/** Creates the recursive filter with catalog values as the prior. */
 export function createRecursiveCalibrationState(
   columnCount: number,
   priors: number[] = [],
@@ -422,7 +423,7 @@ export function createRecursiveCalibrationState(
   };
 }
 
-/** Eine Kalman-Form-Aktualisierung mit Huber-Dämpfung und Prozessrauschen. */
+/** One Kalman-form update with Huber damping and process noise. */
 export function updateRecursiveCalibration(
   state: RecursiveCalibrationState,
   values: number[],
@@ -450,8 +451,8 @@ export function updateRecursiveCalibration(
   const means = state.means.map((mean, index) =>
     Math.max(0, mean + gain[index] * error),
   );
-  // Joseph-Form: P⁺ = (I − KH) P (I − KH)ᵀ + K R Kᵀ. Bleibt auch bei
-  // Rundungsfehlern symmetrisch und positiv semidefinit.
+  // Joseph form: P⁺ = (I − KH) P (I − KH)ᵀ + K R Kᵀ. Stays symmetric and
+  // positive semidefinite even with rounding errors.
   const identityMinusKH = Array.from({ length: count }, (_, row) =>
     Array.from({ length: count }, (_, column) =>
       (row === column ? 1 : 0) - gain[row] * (values[column] ?? 0),
@@ -495,7 +496,7 @@ export function updateRecursiveCalibration(
   };
 }
 
-/** Findet stark gekoppelte Posterior-Koeffizienten und erklärt die fehlende Beobachtung. */
+/** Finds strongly coupled posterior coefficients and explains the missing observation. */
 export function detectIdentifiability(
   columns: CalibrationColumn[],
   covariance: number[][],
@@ -519,8 +520,14 @@ export function detectIdentifiability(
         first: columns[first],
         second: columns[second],
         correlation,
-        reason: `${columns[first].exerciseId} und ${columns[second].exerciseId} werden bisher nicht getrennt beobachtet.`,
-        separatingObservation: 'Eine einseitige oder isolierte Übung mit unterschiedlicher Regionsverteilung würde die beiden Koeffizienten trennen.',
+        reason: tr(
+          `${columns[first].exerciseId} und ${columns[second].exerciseId} werden bisher nicht getrennt beobachtet.`,
+          `${columns[first].exerciseId} and ${columns[second].exerciseId} have not been observed separately so far.`,
+        ),
+        separatingObservation: tr(
+          'Eine einseitige oder isolierte Übung mit unterschiedlicher Regionsverteilung würde die beiden Koeffizienten trennen.',
+          'A one-sided or isolated exercise with a different region distribution would separate the two coefficients.',
+        ),
       });
     }
   }
@@ -593,10 +600,10 @@ const predictRow = (row: DesignMatrixRow, coefficients: number[]): number => {
 };
 
 /**
- * Wählt Zeitkonstanten aus einem festen Raster mit zeitlich fortlaufendem
- * Fehler: jede Meldung wird mit dem Stand davor vorhergesagt, dann erst
- * eingelernt. Derselbe rekursive Schätzer wie im Endstand, damit die Wahl
- * das Modell bewertet, das später auch rechnet.
+ * Chooses time constants from a fixed grid with a time-ordered error: each
+ * report is predicted from the state before it, and only then learned. The
+ * same recursive estimator as in the final state, so the choice evaluates the
+ * model that is also used later.
  */
 export function selectTimeConstants(input: CalibrationInput): TimeConstantSelection {
   const grid = input.timeConstantGrid ?? TIME_CONSTANT_GRID;
@@ -638,7 +645,7 @@ export function selectTimeConstants(input: CalibrationInput): TimeConstantSelect
   };
 }
 
-/** Erstellt den persönlichen Koeffizientenstand aus Meldungen und Trainingsbuch. */
+/** Builds the personal coefficient state from reports and the training log. */
 export function calibrateModel(input: CalibrationInput): CalibrationState {
   const selection = input.timeConstants
     ? { selected: input.timeConstants, crossValidatedError: 0, errors: [] }
@@ -690,7 +697,7 @@ export function calibrateModel(input: CalibrationInput): CalibrationState {
   };
 }
 
-/** Setzt nur den gelernten Koeffizientenstand zurück; Meldungen bleiben erhalten. */
+/** Resets only the learned coefficient state; reports stay. */
 export function resetCalibration(state: CalibrationState): CalibrationState {
   const priors = state.columns.map(column => state.priors[column.key] ?? 1);
   const recursive = createRecursiveCalibrationState(state.columns.length, priors);
@@ -713,8 +720,8 @@ export function resetCalibration(state: CalibrationState): CalibrationState {
 
 export const resetLearnedCoefficients = resetCalibration;
 
-/** Öffentliche Ähnlichkeitsfunktion für neue oder eigene Übungen. */
+/** Public similarity function for new or custom exercises. */
 export const exerciseSimilarity = cosineShareSimilarity;
 
-/** Öffentliche Partial-Pooling-Funktion für neue Übungen. */
+/** Public partial-pooling function for new exercises. */
 export { partialPoolCoefficient };

@@ -132,7 +132,7 @@ function pressText(
       target = target.parent;
     if (target) return target.props.onPress;
   }
-  // Symbole ohne Text (Zahnrad) tragen ihren Namen als accessibilityLabel.
+  // Icons without text (gear) carry their name as accessibilityLabel.
   const labelled = renderer.root.findAll(
     node =>
       node.props.accessibilityLabel === value &&
@@ -157,17 +157,17 @@ function alertButton(label: string) {
   expect(button).toBeDefined();
   return button;
 }
-/** Daten liegen in den Einstellungen hinter dem Zahnrad im Kopf. */
+/** Data lives in Settings behind the gear in the header. */
 async function openData(renderer: ReactTestRenderer.ReactTestRenderer) {
   await tap(renderer, 'Heute');
   await tap(renderer, 'Einstellungen');
   await tap(renderer, 'Deine Daten');
 }
-/** Krafteinheiten stehen gemeinsam mit den Läufen im Tab „Verlauf“. */
+/** Strength sessions appear together with runs in the “History” tab. */
 async function openHistory(renderer: ReactTestRenderer.ReactTestRenderer) {
   await tap(renderer, 'Verlauf');
 }
-/** Die Muskelkarte gehört zum Rückblick: Verlauf → Statistik. */
+/** The body map belongs to the review: History → Statistics. */
 async function openMuscleMap(renderer: ReactTestRenderer.ReactTestRenderer) {
   await tap(renderer, 'Verlauf');
   await tap(renderer, 'Statistik');
@@ -269,7 +269,7 @@ test('locked muscle map does not invoke model validation and keeps all freshness
   const calibrateSpy = jest.spyOn(calibration, 'calibrateModel');
   const renderer = await renderLoaded();
   await openMuscleMap(renderer);
-  // Die Karte öffnet mit der eigenen Meldung; die Frische bleibt gesperrt.
+  // The card opens with its own report; freshness stays locked.
   expect(renderer.root.findAllByType(BodyMap)[0].props.values.quad_l).toBe(7);
   await tap(renderer, 'Frische');
   const bodyMap = renderer.root.findAllByType(BodyMap)[0];

@@ -21,24 +21,24 @@ class StrengthHeartTest {
 
     @Test fun readsHeartOnWatchClockShiftedToPhoneAndDropsInvalidValues() {
         val bytes = raw {
-            // Uhr geht 250 ms vor.
+            // Watch runs 250 ms ahead.
             anchor(1_000_000_000L, 10_250L)
             heart(2_000_000_000L, 120f, 3)
-            heart(3_000_000_000L, 0f, -1) // kein Hautkontakt
-            heart(4_000_000_000L, 140f, 0) // unzuverlässig
-            heart(5_000_000_000L, 250f, 3) // unplausibel
+            heart(3_000_000_000L, 0f, -1) // no skin contact
+            heart(4_000_000_000L, 140f, 0) // unreliable
+            heart(5_000_000_000L, 250f, 3) // implausible
             sample(MotionFormat.KIND_ACCEL, 5_100_000_000L, 0f, 0f, 9.8f)
             heart(6_000_000_000L, 130f, 1)
         }
         val samples = read(bytes, 250.0)
         assertEquals(listOf(11_000.0 to 120.0, 15_000.0 to 130.0), samples.map { it.atMs to it.bpm })
-        // Ohne Uhrenabgleich bleibt die Uhrzeit der Uhr stehen.
+        // Without clock alignment the watch's time stays as it is.
         assertEquals(11_250.0, read(bytes, null).first().atMs, 1e-9)
     }
 
     @Test fun versionOneFilesStayReadableWithoutHeart() {
         val bytes = raw { anchor(0L, 1_000L) }
-        // Kopf auf Version 1 zurückschreiben: Magie (8) + Version (4).
+        // Rewrite the header to version 1: magic (8) + version (4).
         bytes[11] = 1
         MotionFormat.Reader(ByteArrayInputStream(bytes)).use { reader ->
             assertEquals(1, reader.version)
@@ -51,10 +51,10 @@ class StrengthHeartTest {
         val samples = listOf(
             StrengthHeart.Sample(start + 1_000.0, 100.0),
             StrengthHeart.Sample(start + 3_000.0, 110.0),
-            // Fenster 5–10 s ohne Wert
+            // Window 5–10 s without a value
             StrengthHeart.Sample(start + 12_000.0, 150.0),
-            StrengthHeart.Sample(start - 1_000.0, 90.0), // vor dem Start
-            StrengthHeart.Sample(start + 20_000.0, 90.0), // nach dem Ende
+            StrengthHeart.Sample(start - 1_000.0, 90.0), // before the start
+            StrengthHeart.Sample(start + 20_000.0, 90.0), // after the end
         )
         val summary = StrengthHeart.summarize(samples, start, start + 15_000L, clockAligned = true)!!
         assertEquals(StrengthHeart.VERSION, summary.getString("model_version"))
@@ -105,7 +105,7 @@ class StrengthHeartTest {
     @Test fun storedSeriesIsCutToAnEarlierEndWithoutRawFile() {
         val summary = JSONObject().put("startTime", 0L).put("stepSeconds", 60).put("samples", 99)
             .put("values", org.json.JSONArray(listOf(100.0, JSONObject.NULL, 140.0, 180.0)))
-        // Ende bei 150 s: Das Fenster 120–180 s ist angeschnitten und fällt weg.
+        // End at 150 s: the window 120–180 s is cut and drops out.
         val cut = StrengthHeart.truncate(summary, 150_000L)!!
         assertEquals(2, cut.getJSONArray("values").length())
         assertEquals(100.0, cut.getDouble("averageBpm"), 0.0)

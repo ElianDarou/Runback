@@ -4,8 +4,8 @@ import {
   regionsInView,
 } from '../src/ui/BodyMap';
 
-describe('Muskelkarte', () => {
-  it('hält unbekannt von null und numerischen Werten getrennt', () => {
+describe('Body map', () => {
+  it('keeps unknown separate from zero and numeric values', () => {
     expect(displayValue(null)).toBe('–');
     expect(displayValue(undefined)).toBe('–');
     expect(displayValue(62.4)).toBe('62');
@@ -13,7 +13,7 @@ describe('Muskelkarte', () => {
     expect(regionSpeech('freshness', 'quad_l', 62)).toContain('62 von 100');
   });
 
-  it('liefert für Vorder- und Rückansicht nur die zugehörigen Regionen', () => {
+  it('returns only the matching regions for front and back views', () => {
     expect(regionsInView('front')).toContain('quad_l');
     expect(regionsInView('front')).not.toContain('hamstring_l');
     expect(regionsInView('back')).toContain('hamstring_l');

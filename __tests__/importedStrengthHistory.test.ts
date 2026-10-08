@@ -51,8 +51,8 @@ const workout = (overrides: Partial<StrongWorkout> = {}): StrongWorkout => ({
   ...overrides,
 });
 
-describe('importierte Krafthistorie', () => {
-  it('zählt die gesamte Strong-Historie statt nur der letzten Einheit je Name', () => {
+describe('imported strength history', () => {
+  it('counts the whole Strong history instead of only the last session per name', () => {
     const original = parseStrongCsvPreview(
       readFileSync(join(__dirname, 'fixtures/strong-android.csv'), 'utf8'),
     ).workouts;
@@ -64,7 +64,7 @@ describe('importierte Krafthistorie', () => {
     expect(view.totals.volumeKg).toBeGreaterThan(0);
     expect(view.exercises).toHaveLength(19);
     expect(view.muscles.groups.length).toBeGreaterThan(0);
-    // Für Übungen ohne gespeicherte Muskelzuordnung bleibt die Zuordnung offen.
+    // For exercises without a saved muscle mapping, the mapping stays open.
     expect(view.muscles.unassignedSets).toBe(155);
     expect(view.totals.medianRir).toBeNull();
     expect(view.totals.medianSetGapSeconds).toBeNull();
@@ -75,7 +75,7 @@ describe('importierte Krafthistorie', () => {
     });
   });
 
-  it('liefert Ist-Werte und Bestwerte ohne erfundene Satzzeiten oder RIR', () => {
+  it('returns actual values and personal bests without invented set times or RIR', () => {
     const session = importedStrengthSession(workout());
     expect(sessionDurationSeconds(session)).toBe(3600);
     expect(sessionProgress(session)).toEqual({
@@ -99,7 +99,7 @@ describe('importierte Krafthistorie', () => {
     ).toBe(1);
   });
 
-  it('behält gute Sätze aus unvollständigen Importen und lässt fehlende Werte offen', () => {
+  it('keeps good sets from incomplete imports and leaves missing values open', () => {
     const value = workout({ durationSeconds: null, incomplete: true });
     value.sets[0].weightUnit = 'unknown';
     const session = importedStrengthSession(value);
@@ -127,7 +127,7 @@ describe('importierte Krafthistorie', () => {
     expect(development.strengthHistory.sessions[0].endTime).toBeUndefined();
   });
 
-  it('rechnet Pfund um, zählt Aufwärmen getrennt und erhält unbekannte Übungen', () => {
+  it('converts pounds, counts warm-ups separately and keeps unknown exercises', () => {
     const parsed = parseStrongCsvPreview(
       'Date;Workout Name;Exercise Name;Set Order;Weight (lbs);Reps;Seconds\n2026-03-08 10:00:00;Push;Bench Press (Barbell);W;100;8;\n2026-03-08 10:00:00;Push;Bench Press (Barbell);1;120;8;\n2026-03-08 10:00:00;Push;Eigene Übung;2;;;30',
     );
@@ -146,7 +146,7 @@ describe('importierte Krafthistorie', () => {
     ).toBe(1);
   });
 
-  it('mischt native und importierte Einheiten ohne doppelte IDs und respektiert Zeiträume', () => {
+  it('mixes native and imported sessions without duplicate ids and respects date ranges', () => {
     const imported = importedStrengthSession(workout());
     const local = strengthSession('local', now - 2 * 86400000, [
       [

@@ -69,8 +69,8 @@ const plan = (): WorkoutTemplate => ({
   ],
 });
 
-describe('Pläne anlegen und bearbeiten', () => {
-  it('legt eine leere Vorlage mit deterministischer Kennung an', () => {
+describe('Creating and editing plans', () => {
+  it('creates an empty template with a deterministic id', () => {
     const created = createTemplate(NOW, 'Oberkörper');
     expect(created).toEqual(createTemplate(NOW, 'Oberkörper'));
     expect(created.exercises).toEqual([]);
@@ -78,19 +78,19 @@ describe('Pläne anlegen und bearbeiten', () => {
     expect(created.createdAt).toBe(NOW);
   });
 
-  it('weicht einer bereits vergebenen Kennung aus', () => {
+  it('avoids an id that is already taken', () => {
     const first = createTemplate(NOW, 'A');
     const second = createTemplate(NOW, 'B', [first]);
     expect(second.id).not.toBe(first.id);
   });
 
-  it('benennt um, ohne andere Felder zu berühren', () => {
+  it('renames without touching other fields', () => {
     const renamed = renameTemplate(plan(), 'Beine');
     expect(renamed.name).toBe('Beine');
     expect(renamed.exercises).toEqual(plan().exercises);
   });
 
-  it('lässt die Ausgangsvorlage unverändert', () => {
+  it('leaves the source template unchanged', () => {
     const original = plan();
     const snapshot = JSON.stringify(original);
     renameTemplate(original, 'Anders');
@@ -101,23 +101,23 @@ describe('Pläne anlegen und bearbeiten', () => {
   });
 });
 
-describe('Wochentage', () => {
-  it('sortiert nach Woche ab Montag und entfernt Doppelte', () => {
+describe('Weekdays', () => {
+  it('sorts by week starting Monday and removes duplicates', () => {
     const set = setTemplateDays(plan(), [0, 3, 1, 3]);
     expect(set.days).toEqual([1, 3, 0]);
   });
 
-  it('ignoriert unmögliche Tage', () => {
+  it('ignores impossible days', () => {
     expect(setTemplateDays(plan(), [7, -1, 2.5, 2]).days).toEqual([2]);
   });
 
-  it('schaltet einen Tag an und wieder aus', () => {
+  it('turns a day on and off again', () => {
     const on = toggleTemplateDay(plan(), 6);
     expect(on.days).toContain(6);
     expect(toggleTemplateDay(on, 6).days).not.toContain(6);
   });
 
-  it('kennt den Zustand ohne festen Tag', () => {
+  it('knows the state without a fixed day', () => {
     const free = clearTemplateDays(plan());
     expect(free.days).toEqual([]);
     expect(hasFixedDay(free)).toBe(false);
@@ -125,33 +125,33 @@ describe('Wochentage', () => {
     expect(daysLabel(plan())).toBe('Mo, Do');
   });
 
-  it('findet alle Vorlagen eines Tages, keine ist zulässig', () => {
+  it('finds all templates for a day; none is valid', () => {
     const templates = [plan(), clearTemplateDays(plan())];
     expect(templatesForDay(templates, 1)).toHaveLength(1);
     expect(templatesForDay(templates, 2)).toEqual([]);
   });
 });
 
-describe('Übungen und Sätze', () => {
-  it('fügt eine Katalogübung mit vorbelegten Sätzen an', () => {
+describe('Exercises and sets', () => {
+  it('adds a catalog exercise with prefilled sets', () => {
     const next = addTemplateExercise(plan(), curl, 4);
     expect(next.exercises).toHaveLength(3);
     expect(next.exercises[2].sets).toHaveLength(4);
     expect(next.exercises[2].name).toBe(curl.name);
   });
 
-  it('wählt bei Eigengewichtsübungen die passende Lastart', () => {
+  it('sets the matching load type for bodyweight exercises', () => {
     const pullUp = catalogExercise('pull_up') as Exercise;
     const next = addTemplateExercise(createTemplate(NOW, 'X'), pullUp);
     expect(next.exercises[0].sets[0].loadKind).toBe('bodyweight');
   });
 
-  it('entfernt eine Übung und ignoriert unmögliche Stellen', () => {
+  it('removes an exercise and ignores impossible positions', () => {
     expect(removeTemplateExercise(plan(), 0).exercises).toHaveLength(1);
     expect(removeTemplateExercise(plan(), 9).exercises).toHaveLength(2);
   });
 
-  it('sortiert Übungen um und schneidet Ziele auf den Bereich zu', () => {
+  it('reorders exercises and clamps targets to the range', () => {
     const moved = moveTemplateExercise(plan(), 1, 0);
     expect(moved.exercises.map(e => e.exerciseId)).toEqual([
       'lying_leg_curl',
@@ -163,18 +163,18 @@ describe('Übungen und Sätze', () => {
     expect(moveTemplateExercise(plan(), 0, 0)).toEqual(plan());
   });
 
-  it('hängt einen Satz nach dem Vorbild des letzten an', () => {
+  it('appends a set modeled on the last one', () => {
     const next = addPlannedSet(plan(), 1);
     expect(next.exercises[1].sets).toHaveLength(2);
     expect(next.exercises[1].sets[1]).toEqual(next.exercises[1].sets[0]);
   });
 
-  it('lässt den letzten Satz einer Übung stehen', () => {
+  it('keeps the last set of an exercise', () => {
     expect(removePlannedSet(plan(), 1, 0).exercises[1].sets).toHaveLength(1);
     expect(removePlannedSet(plan(), 0, 0).exercises[0].sets).toHaveLength(1);
   });
 
-  it('ändert einzelne Satzwerte', () => {
+  it('changes single set values', () => {
     const next = updatePlannedSet(plan(), 0, 1, {
       reps: 3,
       weightKg: 110,
@@ -191,19 +191,19 @@ describe('Übungen und Sätze', () => {
     expect(next.exercises[0].sets[0].reps).toBe(5);
   });
 
-  it('nimmt eine geleerte Vorgabe als nicht vorgegeben', () => {
+  it('treats a cleared target as not set', () => {
     const next = updatePlannedSet(plan(), 0, 0, { weightKg: undefined });
     expect(next.exercises[0].sets[0].weightKg).toBeUndefined();
   });
 
-  it('lässt keine negative Pause zu', () => {
+  it('does not allow a negative rest', () => {
     const next = updatePlannedSet(plan(), 0, 0, { restSeconds: -30 });
     expect(next.exercises[0].sets[0].restSeconds).toBe(0);
   });
 });
 
-describe('Vervielfältigen und Löschen', () => {
-  it('legt eine eigenständige Kopie ohne Tageszuordnung an', () => {
+describe('Duplicating and deleting', () => {
+  it('creates an independent copy without a weekday', () => {
     const list = duplicateTemplate([plan()], 'template-1', NOW + 1000);
     expect(list).toHaveLength(2);
     expect(list[1].name).toBe('Unterkörper (Kopie)');
@@ -213,16 +213,16 @@ describe('Vervielfältigen und Löschen', () => {
     expect(list[0].exercises[0].sets[0].reps).toBe(5);
   });
 
-  it('lässt die Liste unberührt, wenn die Kennung fehlt', () => {
+  it('leaves the list untouched when the id is missing', () => {
     expect(duplicateTemplate([plan()], 'weg', NOW)).toHaveLength(1);
   });
 
-  it('löscht genau eine Vorlage', () => {
+  it('deletes exactly one template', () => {
     const other = { ...plan(), id: 'template-2' };
     expect(deleteTemplate([plan(), other], 'template-1')).toEqual([other]);
   });
 
-  it('legt beim Speichern an oder ersetzt', () => {
+  it('adds or replaces on save', () => {
     expect(upsertTemplate([], plan())).toHaveLength(1);
     const changed = renameTemplate(plan(), 'Neu');
     const list = upsertTemplate([plan()], changed);
@@ -231,19 +231,19 @@ describe('Vervielfältigen und Löschen', () => {
   });
 });
 
-describe('Prüfung', () => {
-  it('nimmt eine vollständige Vorlage an', () => {
+describe('Validation', () => {
+  it('accepts a complete template', () => {
     expect(validateTemplate(plan())).toEqual({ ok: true, problems: [] });
   });
 
-  it('meldet fehlenden Namen und fehlende Übung als Daten', () => {
+  it('reports a missing name and a missing exercise as data', () => {
     const result = validateTemplate(createTemplate(NOW, '   '));
     expect(result.ok).toBe(false);
     expect(result.problems.map(p => p.field)).toEqual(['name', 'exercises']);
     expect(result.problems[0].message).toContain('Namen');
   });
 
-  it('nennt eine Übung ohne Satz mit ihrer Stelle', () => {
+  it('names an exercise without a set by its position', () => {
     const empty: WorkoutTemplate = {
       ...plan(),
       exercises: [{ exerciseId: 'x', name: 'Testübung', sets: [] }],
@@ -257,7 +257,7 @@ describe('Prüfung', () => {
     });
   });
 
-  it('wirft bei keiner Eingabe', () => {
+  it('throws on no input', () => {
     expect(() =>
       validateTemplate({
         id: '',
@@ -270,7 +270,7 @@ describe('Prüfung', () => {
   });
 });
 
-describe('Vorlage aus einer gelaufenen Einheit', () => {
+describe('Template from a completed session', () => {
   const finished = (): StrengthSession => {
     let session = startSession(plan(), NOW);
     session = completeSet(session, 0, session.exercises[0].sets[0].id, NOW, {
@@ -284,7 +284,7 @@ describe('Vorlage aus einer gelaufenen Einheit', () => {
     return session;
   };
 
-  it('übernimmt die tatsächlichen Werte der bestätigten Sätze', () => {
+  it('takes the actual values of the confirmed sets', () => {
     const derived = templateFromSession(finished(), NOW + DAY, 'Wie zuletzt');
     expect(derived.name).toBe('Wie zuletzt');
     expect(derived.exercises).toHaveLength(1);
@@ -294,7 +294,7 @@ describe('Vorlage aus einer gelaufenen Einheit', () => {
     ]);
   });
 
-  it('lässt übersprungene und offene Sätze weg und trägt keine Tage ein', () => {
+  it('leaves out skipped and open sets and sets no days', () => {
     let session = finished();
     session = skipSet(session, 0, session.exercises[0].sets[1].id);
     const derived = templateFromSession(session, NOW + DAY);
@@ -302,22 +302,22 @@ describe('Vorlage aus einer gelaufenen Einheit', () => {
     expect(derived.days).toEqual([]);
   });
 
-  it('verändert die zugrunde liegende Einheit nicht', () => {
+  it('does not change the underlying session', () => {
     const session = finished();
     const snapshot = JSON.stringify(session);
     templateFromSession(session, NOW + DAY);
     expect(JSON.stringify(session)).toBe(snapshot);
   });
 
-  it('ergibt eine Vorlage ohne Übungen, wenn nichts bestätigt wurde', () => {
+  it('yields a template without exercises when nothing was confirmed', () => {
     const derived = templateFromSession(startSession(plan(), NOW), NOW);
     expect(derived.exercises).toEqual([]);
     expect(validateTemplate(derived).ok).toBe(false);
   });
 });
 
-describe('Plan und Durchführung nebeneinander', () => {
-  it('erkennt einen Satz genau nach Vorgabe', () => {
+describe('Plan and performance side by side', () => {
+  it('recognizes a set that matches the target exactly', () => {
     let session = startSession(plan(), NOW);
     session = completeSet(session, 0, session.exercises[0].sets[0].id, NOW);
     const result = comparePlan(session, plan());
@@ -326,7 +326,7 @@ describe('Plan und Durchführung nebeneinander', () => {
     expect(result.modelVersion).toBe(PLAN_MODEL_VERSION);
   });
 
-  it('hält eine Abweichung mit Vorzeichen fest, ohne sie zu bewerten', () => {
+  it('records a deviation with its sign without rating it', () => {
     let session = startSession(plan(), NOW);
     session = completeSet(session, 0, session.exercises[0].sets[0].id, NOW, {
       actualReps: 7,
@@ -340,7 +340,7 @@ describe('Plan und Durchführung nebeneinander', () => {
     expect(result.deviated).toBe(1);
   });
 
-  it('unterscheidet übersprungen, offen und ergänzt', () => {
+  it('distinguishes skipped, open and added', () => {
     let session = startSession(plan(), NOW);
     session = skipSet(session, 0, session.exercises[0].sets[0].id);
     const result = comparePlan(session, plan());
@@ -349,7 +349,7 @@ describe('Plan und Durchführung nebeneinander', () => {
     expect(result.matched).toBe(0);
   });
 
-  it('zählt Sätze über die Vorgabe hinaus als ergänzt', () => {
+  it('counts sets beyond the target as added', () => {
     const short: WorkoutTemplate = {
       ...plan(),
       exercises: [{ ...plan().exercises[0], sets: [plan().exercises[0].sets[0]] }],
@@ -361,7 +361,7 @@ describe('Plan und Durchführung nebeneinander', () => {
     expect(result.added).toBe(1);
   });
 
-  it('führt eine geplante, aber nicht trainierte Übung als solche', () => {
+  it('lists a planned but untrained exercise as such', () => {
     const session = startSession(
       { ...plan(), exercises: [plan().exercises[0]] },
       NOW,
@@ -376,7 +376,7 @@ describe('Plan und Durchführung nebeneinander', () => {
     ]);
   });
 
-  it('kennzeichnet eine frei ergänzte Übung', () => {
+  it('marks a freely added exercise', () => {
     const session = startSession(plan(), NOW);
     const withExtra: StrengthSession = {
       ...session,
@@ -390,7 +390,7 @@ describe('Plan und Durchführung nebeneinander', () => {
     expect(result.exercises[0].planned).toBe(true);
   });
 
-  it('kommt ohne Plan aus und nennt das freies Training', () => {
+  it('works without a plan and calls it free training', () => {
     let session = startSession(null, NOW, 'Freies Training');
     session = startSession(plan(), NOW);
     session = completeSet(session, 0, session.exercises[0].sets[0].id, NOW);
@@ -400,7 +400,7 @@ describe('Plan und Durchführung nebeneinander', () => {
     expect(result.summary).toBe('Freies Training, 1 Satz erfasst.');
   });
 
-  it('formuliert die Zusammenfassung ohne jede Wertung', () => {
+  it('phrases the summary without any judgment', () => {
     let session = startSession(plan(), NOW);
     session = completeSet(session, 0, session.exercises[0].sets[0].id, NOW);
     session = completeSet(session, 0, session.exercises[0].sets[1].id, NOW, {
@@ -424,7 +424,7 @@ describe('Plan und Durchführung nebeneinander', () => {
     }
   });
 
-  it('ordnet dieselbe Übung zweimal im Plan der Reihe nach zu', () => {
+  it('matches the same exercise twice in the plan in order', () => {
     const twice: WorkoutTemplate = {
       ...plan(),
       exercises: [plan().exercises[0], plan().exercises[0]],
@@ -435,13 +435,13 @@ describe('Plan und Durchführung nebeneinander', () => {
     expect(result.untrained).toEqual([]);
   });
 
-  it('liefert für dieselbe Eingabe dasselbe Ergebnis', () => {
+  it('returns the same result for the same input', () => {
     const session = startSession(plan(), NOW);
     expect(comparePlan(session, plan())).toEqual(comparePlan(session, plan()));
   });
 });
 
-describe('Vorschläge bleiben Vorschläge', () => {
+describe('Suggestions stay suggestions', () => {
   const proposal = (
     overrides: Partial<PlanProposal> = {},
   ): PlanProposal => ({
@@ -464,7 +464,7 @@ describe('Vorschläge bleiben Vorschläge', () => {
     ...overrides,
   });
 
-  it('ändert den Plan erst, wenn er angewendet wird', () => {
+  it('changes the plan only when it is applied', () => {
     const template = plan();
     const snapshot = JSON.stringify(template);
     const suggestion = proposal();
@@ -474,12 +474,12 @@ describe('Vorschläge bleiben Vorschläge', () => {
     expect(JSON.stringify(template)).toBe(snapshot);
   });
 
-  it('greift nur auf den Plan, für den er gedacht ist', () => {
+  it('applies only to the plan it was made for', () => {
     const other = { ...plan(), id: 'template-9' };
     expect(applyProposal(other, proposal())).toEqual(other);
   });
 
-  it('lässt eine nicht mehr passende Änderung wirkungslos', () => {
+  it('makes a change that no longer fits have no effect', () => {
     const suggestion = proposal({
       changes: [
         { kind: 'setValues', exerciseIndex: 7, setIndex: 0, values: { reps: 3 } },
@@ -488,7 +488,7 @@ describe('Vorschläge bleiben Vorschläge', () => {
     expect(applyProposal(plan(), suggestion)).toEqual(plan());
   });
 
-  it('kann Sätze ergänzen, entfernen und Tage setzen', () => {
+  it('can add and remove sets and set days', () => {
     const suggestion = proposal({
       changes: [
         {
@@ -506,13 +506,13 @@ describe('Vorschläge bleiben Vorschläge', () => {
     expect(applied.days).toEqual([2]);
   });
 
-  it('lässt einen ersten Strukturvorschlag zu', () => {
+  it('allows a first structure suggestion', () => {
     const gate = proposalIsAllowed(proposal(), [], NOW);
     expect(gate.allowed).toBe(true);
     expect(gate.reason).toBeTruthy();
   });
 
-  it('hält Strukturvorschläge auf Abstand und begründet das', () => {
+  it('keeps structure suggestions apart and gives the reason', () => {
     const records: ProposalRecord[] = [
       recordDecision(proposal(), 'accepted', NOW),
     ];
@@ -531,13 +531,13 @@ describe('Vorschläge bleiben Vorschläge', () => {
     expect(later.allowed).toBe(true);
   });
 
-  it('lässt Last- und Wiederholungsvorschläge häufiger zu', () => {
+  it('allows load and rep suggestions more often', () => {
     const load = proposal({ id: 'proposal-3', scope: 'load' });
     const records = [recordDecision(proposal(), 'accepted', NOW)];
     expect(proposalIsAllowed(load, records, NOW + DAY).allowed).toBe(true);
   });
 
-  it('bringt einen abgelehnten Vorschlag nicht unverändert zurück', () => {
+  it('does not bring back a rejected suggestion unchanged', () => {
     const declined = proposal();
     const records = [recordDecision(declined, 'declined', NOW)];
     const again = proposalIsAllowed(declined, records, NOW + 7 * DAY);
@@ -552,7 +552,7 @@ describe('Vorschläge bleiben Vorschläge', () => {
     ).toBe(true);
   });
 
-  it('erkennt gleiche Änderungen an ihrem Erkennungswert', () => {
+  it('recognizes identical changes by their fingerprint', () => {
     expect(proposalFingerprint(proposal())).toBe(
       proposalFingerprint(proposal({ id: 'anders', createdAt: NOW + DAY })),
     );
@@ -561,14 +561,14 @@ describe('Vorschläge bleiben Vorschläge', () => {
     );
   });
 
-  it('hält auch die Ablehnung als gültiges Ergebnis fest', () => {
+  it('records rejection as a valid result too', () => {
     const record = recordDecision(proposal(), 'declined', NOW);
     expect(record.decision).toBe('declined');
     expect(record.templateId).toBe('template-1');
     expect(record.decidedAt).toBe(NOW);
   });
 
-  it('nennt in jedem Vorschlag Anlass, Stellen, Wirkung und Prüfkriterium', () => {
+  it('names the trigger, places, effect and check in every suggestion', () => {
     const suggestion = proposal();
     expect(suggestion.reason.length).toBeGreaterThan(0);
     expect(suggestion.slots.length).toBeGreaterThan(0);

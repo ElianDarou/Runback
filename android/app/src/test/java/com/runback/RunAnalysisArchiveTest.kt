@@ -10,12 +10,12 @@ class RunAnalysisArchiveTest {
         val file = Files.createTempFile("runback-test", ".zip").toFile()
         try {
             val archive = RunAnalysisArchive(file)
-            archive.append(linkedMapOf("bericht.md" to "Läufe ✓", "analysis.json" to "{\"version\":1}", "timeseries.csv" to "time,value\n5,3\n"))
-            archive.append(linkedMapOf("bericht.md" to "Zweiter Lauf", "analysis.json" to "{}"))
+            archive.append(linkedMapOf("report.md" to "Übersicht ✓", "analysis.json" to "{\"version\":1}", "timeseries.csv" to "time,value\n5,3\n"))
+            archive.append(linkedMapOf("report.md" to "Second run", "analysis.json" to "{}"))
             ZipFile(archive.finish()).use { zip ->
                 assertEquals(5, zip.size())
-                assertEquals("Läufe ✓", zip.getInputStream(zip.getEntry("0001/bericht.md")).reader(Charsets.UTF_8).readText())
-                assertEquals("Zweiter Lauf", zip.getInputStream(zip.getEntry("0002/bericht.md")).reader().readText())
+                assertEquals("Übersicht ✓", zip.getInputStream(zip.getEntry("0001/report.md")).reader(Charsets.UTF_8).readText())
+                assertEquals("Second run", zip.getInputStream(zip.getEntry("0002/report.md")).reader().readText())
                 assertNull(zip.getEntry("0002/timeseries.csv"))
             }
         } finally { file.delete() }

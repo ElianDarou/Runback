@@ -10,10 +10,10 @@ import { createApp } from '../src/app';
 import { createPairingCode, ensurePassword } from '../src/auth';
 import { Store } from '../src/db';
 
-// Montag, 5. Oktober 2026, 18 Uhr lokale Zeit.
+// Monday, 5 October 2026, 18:00 local time.
 export const NOW = new Date(2026, 9, 5, 18).getTime();
 export const DAY = 86_400_000;
-export const PASSWORD = 'richtig-langes-passwort';
+export const PASSWORD = 'correct-long-password';
 
 export function tempStore(): { store: Store; dispose: () => void } {
   const dir = mkdtempSync(join(tmpdir(), 'runback-test-'));
@@ -30,7 +30,7 @@ export function tempStore(): { store: Store; dispose: () => void } {
 export const hash = (body: unknown) =>
   createHash('sha256').update(JSON.stringify(body)).digest('hex');
 
-/** Ein Lauf, wie ihn `RunStore.listRuns()` über die Brücke liefert. */
+/** A run as `RunStore.listRuns()` delivers it over the bridge. */
 export function bridgeRun(
   id: string,
   startTime: number,
@@ -181,7 +181,7 @@ export async function startApp(store: Store) {
   };
 }
 
-/** Koppelt ein Telefon und gibt sein Token zurück. */
+/** Pairs a phone and returns its token. */
 export async function pair(base: string, store: Store): Promise<string> {
   const { code } = createPairingCode(store, NOW);
   const response = await fetch(`${base}/api/v1/pair`, {
@@ -214,7 +214,7 @@ export async function post(
   return { status: response.status, body: (await response.json()) as any };
 }
 
-/** Kompletter Abgleich wie das Telefon: plan → objects → commit. */
+/** Full sync as the phone does it: plan → objects → commit. */
 export async function syncAll(
   base: string,
   token: string,
@@ -251,22 +251,22 @@ export async function syncAll(
   return { need: [...need], commit: committed };
 }
 
-/** Meldet sich an und liefert Cookie und CSRF-Feld für Formulare. */
+/** Signs in and returns the cookie and the CSRF field for forms. */
 export async function login(
   base: string,
 ): Promise<{ cookie: string; csrf: string }> {
-  const response = await fetch(`${base}/anmelden`, {
+  const response = await fetch(`${base}/sign-in`, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       password: PASSWORD,
-      next: '/daten',
+      next: '/data',
     }).toString(),
     redirect: 'manual',
   });
   const cookie = (response.headers.get('set-cookie') ?? '').split(';')[0];
   const page = await (
-    await fetch(`${base}/daten`, { headers: { cookie } })
+    await fetch(`${base}/data`, { headers: { cookie } })
   ).text();
   const csrf = /name="csrf" value="([^"]+)"/.exec(page)?.[1] ?? '';
   return { cookie, csrf };

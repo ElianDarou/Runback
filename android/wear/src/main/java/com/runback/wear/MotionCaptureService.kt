@@ -23,6 +23,7 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
+import com.runback.core.Lang
 import com.runback.core.MotionFormat
 import com.runback.core.RepProfiles
 import com.runback.core.SetDetector
@@ -34,13 +35,12 @@ import java.io.File
 import java.io.FileOutputStream
 
 /**
- * Zeichnet während einer Krafteinheit am Handgelenk auf, was das Handy
- * anfordert: den Puls (für die Auswertung der Einheit) und/oder
- * Beschleunigung und Gyroskop (Rohdaten für Satz- und spätere
- * Übungserkennung). Das Handy startet und stoppt. Ist `autoSets` an, erkennt
- * die Uhr Sätze der gewählten Übung selbst (AutoSets) und schreibt Erkennung
- * und Bestätigung in dieselbe Datei. Rohsamples bleiben in Kotlin und gehen
- * nur als Datei ans Handy (MotionSync).
+ * Records during a strength session at the wrist whatever the phone asks for:
+ * heart rate (for the analysis of the session) and/or acceleration and gyroscope
+ * (raw data for set and later exercise detection). The phone starts and stops it.
+ * If `autoSets` is on, the watch detects sets of the chosen exercise itself
+ * (AutoSets) and writes the detection and confirmation to the same file. Raw
+ * samples stay in Kotlin and only go to the phone as a file (MotionSync).
  */
 class MotionCaptureService : Service(), SensorEventListener {
     private lateinit var sensors: SensorManager
@@ -59,7 +59,7 @@ class MotionCaptureService : Service(), SensorEventListener {
     private var heartMax = 0.0
     private var motionSince = false
     private var autoSets: AutoSets? = null
-    /** Sekündlich: Welche Übung ist am Handy dran? Danach richtet sich die Satzerkennung. */
+    /** Every second: which exercise is the phone on? The set detection follows that. */
     private val followTick = object : Runnable {
         override fun run() {
             val sets = autoSets ?: return
@@ -67,7 +67,7 @@ class MotionCaptureService : Service(), SensorEventListener {
             worker.postDelayed(this, FOLLOW_INTERVAL_MS)
         }
     }
-    /** Meldet dem Handy alle paar Sekunden Puls und ob Bewegungen ankommen. */
+    /** Tells the phone every few seconds the heart rate and whether motion arrives. */
     private val liveTick = object : Runnable {
         override fun run() {
             val id = sessionId ?: return
@@ -87,7 +87,7 @@ class MotionCaptureService : Service(), SensorEventListener {
         worker = Handler(thread.looper)
         registerReceiver(shutdownReceiver, IntentFilter(Intent.ACTION_SHUTDOWN))
         getSystemService(NotificationManager::class.java).createNotificationChannel(
-            NotificationChannel(CHANNEL, "Bewegungen im Krafttraining", NotificationManager.IMPORTANCE_LOW).apply {
+            NotificationChannel(CHANNEL, Lang.tr("Bewegungen im Krafttraining", "Motion in strength training"), NotificationManager.IMPORTANCE_LOW).apply {
                 setShowBadge(false)
             },
         )
@@ -116,7 +116,7 @@ class MotionCaptureService : Service(), SensorEventListener {
             return START_NOT_STICKY
         }
         if (action != START || requested == null) {
-            // Vom System neu gestartet: Die angefangene Datei bleibt, wird aber nicht fortgesetzt.
+            // Restarted by the system: the started file stays, but is not continued.
             worker.post { finish(null, discard = false) }
             return START_NOT_STICKY
         }
@@ -126,12 +126,12 @@ class MotionCaptureService : Service(), SensorEventListener {
             else startForeground(NOTIFICATION_ID, notification)
         } catch (error: RuntimeException) {
             Log.e(TAG, "Motion capture could not start", error)
-            MotionSync.reportStatus(this, requested, "error", "Uhr konnte die Aufzeichnung nicht starten.")
+            MotionSync.reportStatus(this, requested, "error", Lang.tr("Uhr konnte die Aufzeichnung nicht starten.", "Watch could not start recording."))
             stopSelf(startId)
             return START_NOT_STICKY
         }
         val wrist = intent.getStringExtra(EXTRA_WRIST) ?: "unknown"
-        // Ältere Handy-Versionen kennen nur Bewegungen.
+        // Older phone versions only know motion.
         val motion = intent.getBooleanExtra(EXTRA_MOTION, true)
         val heart = intent.getBooleanExtra(EXTRA_HEART, false)
         val sets = intent.getBooleanExtra(EXTRA_AUTO_SETS, false)
@@ -142,12 +142,12 @@ class MotionCaptureService : Service(), SensorEventListener {
 
     private fun begin(id: String, wrist: String, motion: Boolean, heartRequested: Boolean, setsRequested: Boolean, autoConfirm: Boolean) {
         if (sessionId == id) return
-        // Neue Einheit, bevor die alte gestoppt wurde: alte Datei abschließen, Dienst weiterlaufen lassen.
+        // New session before the old one was stopped: close the old file, keep the service running.
         if (sessionId != null) finish(sessionId, discard = false, stopService = false)
         val file = MotionSync.rawFile(this, id)
         if (MotionSync.isClosed(this, id) || file.exists()) {
-            // Stopp kam vor dem Start an, oder eine frühere Aufzeichnung dieser Einheit wurde
-            // unterbrochen. Sie wird nicht überschrieben, sondern so übertragen, wie sie ist.
+            // The stop arrived before the start, or an earlier recording of this session was interrupted.
+            // It is not overwritten; it is sent as it is.
             MotionSync.close(this, id)
             stopSelf()
             return
@@ -158,9 +158,9 @@ class MotionCaptureService : Service(), SensorEventListener {
         val heart = if (heartPermitted) sensors.getDefaultSensor(Sensor.TYPE_HEART_RATE) else null
         if (accel == null && heart == null) {
             val reason = when {
-                motion -> "Die Uhr hat keinen Beschleunigungssensor."
-                !heartPermitted -> "Erlaube Runback auf der Uhr den Pulssensor."
-                else -> "Die Uhr hat keinen Pulssensor."
+                motion -> Lang.tr("Die Uhr hat keinen Beschleunigungssensor.", "The watch has no accelerometer.")
+                !heartPermitted -> Lang.tr("Erlaube Runback auf der Uhr den Pulssensor.", "Allow Runback to use the heart rate sensor on the watch.")
+                else -> Lang.tr("Die Uhr hat keinen Pulssensor.", "The watch has no heart rate sensor.")
             }
             MotionSync.reportStatus(this, id, "error", reason)
             stopSelf()
@@ -212,14 +212,14 @@ class MotionCaptureService : Service(), SensorEventListener {
         }
         MotionSync.markRecording(this, id)
         val message = when {
-            heart != null && accel != null && gyro == null -> "Uhr misst Puls und Bewegungen, ohne Gyroskop."
-            heart != null && accel != null -> "Uhr misst Puls und Bewegungen."
-            heart != null && motion -> "Uhr misst nur den Puls; kein Beschleunigungssensor."
-            heart != null -> "Uhr misst den Puls."
-            heartRequested && gyro == null -> "Uhr zeichnet Bewegungen ohne Puls und ohne Gyroskop auf."
-            heartRequested -> "Uhr zeichnet Bewegungen ohne Puls auf."
-            gyro == null -> "Uhr zeichnet ohne Gyroskop auf."
-            else -> "Uhr zeichnet auf."
+            heart != null && accel != null && gyro == null -> Lang.tr("Uhr misst Puls und Bewegungen, ohne Gyroskop.", "Watch measures heart rate and motion, without gyroscope.")
+            heart != null && accel != null -> Lang.tr("Uhr misst Puls und Bewegungen.", "Watch measures heart rate and motion.")
+            heart != null && motion -> Lang.tr("Uhr misst nur den Puls; kein Beschleunigungssensor.", "Watch measures only heart rate; no accelerometer.")
+            heart != null -> Lang.tr("Uhr misst den Puls.", "Watch measures heart rate.")
+            heartRequested && gyro == null -> Lang.tr("Uhr zeichnet Bewegungen ohne Puls und ohne Gyroskop auf.", "Watch records motion without heart rate and without gyroscope.")
+            heartRequested -> Lang.tr("Uhr zeichnet Bewegungen ohne Puls auf.", "Watch records motion without heart rate.")
+            gyro == null -> Lang.tr("Uhr zeichnet ohne Gyroskop auf.", "Watch records without gyroscope.")
+            else -> Lang.tr("Uhr zeichnet auf.", "Watch is recording.")
         }
         MotionSync.reportStatus(this, id, "recording", message)
         worker.postDelayed({ if (sessionId == id) finish(id, discard = false) }, MAX_DURATION_MS)
@@ -244,10 +244,10 @@ class MotionCaptureService : Service(), SensorEventListener {
                     output.sample(MotionFormat.KIND_GYRO, event.timestamp, event.values[0], event.values[1], event.values[2])
                     autoSets?.gyro(event.timestamp, event.values[0], event.values[1], event.values[2])
                 }
-                // Ungefiltert gespeichert; Kontakt und Genauigkeit prüft erst die Auswertung (StrengthHeart).
+                // Stored unfiltered; contact and accuracy are only checked by the analysis (StrengthHeart).
                 Sensor.TYPE_HEART_RATE -> {
                     output.heart(event.timestamp, event.values[0], event.accuracy)
-                    // Live und im Uhrverlauf nur, was auch die Auswertung gelten ließe.
+                    // Live and in the watch history only what the analysis would also accept.
                     val bpm = event.values[0].toDouble()
                     if (event.accuracy >= StrengthHeart.MIN_ACCURACY && bpm.isFinite() && bpm >= StrengthHeart.MIN_BPM && bpm <= StrengthHeart.MAX_BPM) {
                         liveBpm = Math.round(bpm).toInt()
@@ -260,11 +260,11 @@ class MotionCaptureService : Service(), SensorEventListener {
             val now = SystemClock.elapsedRealtimeNanos()
             if (now - lastAnchorNanos >= ANCHOR_INTERVAL_NS) writeAnchor(now)
             if (now - lastFlushNanos >= FLUSH_INTERVAL_NS) { output.flush(); lastFlushNanos = now }
-            // flush() erreicht nur den Kernel; erst sync() übersteht ein plötzliches Abschalten.
+            // flush() only reaches the kernel; only sync() survives a sudden power-off.
             if (now - lastSyncNanos >= SYNC_INTERVAL_NS) { output.flush(); this.output?.fd?.sync(); lastSyncNanos = now }
         } catch (error: Exception) {
             Log.e(TAG, "Motion sample could not be written", error)
-            sessionId?.let { MotionSync.reportStatus(this, it, "error", "Speicher der Uhr ist voll.") }
+            sessionId?.let { MotionSync.reportStatus(this, it, "error", Lang.tr("Speicher der Uhr ist voll.", "Watch storage is full.")) }
             finish(sessionId, discard = false)
         }
     }
@@ -276,7 +276,7 @@ class MotionCaptureService : Service(), SensorEventListener {
         return checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
     }
 
-    /** Anker verbindet die Sensorzeit mit der Wanduhr; Wanduhr kann sich während der Einheit verstellen. */
+    /** The anchor links sensor time to wall-clock time; the wall clock can be changed during a session. */
     private fun writeAnchor(elapsedNanos: Long) {
         writer?.anchor(elapsedNanos, System.currentTimeMillis())
         lastAnchorNanos = elapsedNanos
@@ -311,7 +311,7 @@ class MotionCaptureService : Service(), SensorEventListener {
         stopSelf()
     }
 
-    /** Uhr fährt herunter: Datei sauber abschließen; nach dem Start geht sie ans Handy. */
+    /** Watch shuts down: close the file cleanly; after the restart it goes to the phone. */
     private val shutdownReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             val pending = goAsync()
@@ -323,7 +323,7 @@ class MotionCaptureService : Service(), SensorEventListener {
 
     override fun onDestroy() {
         runCatching { unregisterReceiver(shutdownReceiver) }
-        // Abschluss auf dem Arbeitsthread: dort schreiben Sensoren und Satzerkennung in dieselbe Datei.
+        // Finish on the worker thread: sensors and set detection write to the same file there.
         worker.post { if (sessionId != null) finish(sessionId, discard = false, stopService = false) }
         thread.quitSafely()
         super.onDestroy()
@@ -335,8 +335,8 @@ class MotionCaptureService : Service(), SensorEventListener {
         )
         return Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_runback)
-            .setContentTitle("Krafttraining")
-            .setContentText("Aufzeichnung läuft")
+            .setContentTitle(Lang.tr("Krafttraining", "Strength training"))
+            .setContentText(Lang.tr("Aufzeichnung läuft", "Recording"))
             .setContentIntent(open)
             .setOngoing(true)
             .build()
@@ -352,7 +352,7 @@ class MotionCaptureService : Service(), SensorEventListener {
         const val EXTRA_HEART = "heartRate"
         const val EXTRA_AUTO_SETS = "autoSets"
         const val EXTRA_AUTO_CONFIRM = "autoConfirm"
-        /** Entscheidung zu einem erkannten Satz aus Uhr-App oder Benachrichtigung. */
+        /** Decision on a detected set, from the watch app or the notification. */
         const val REVIEW = "com.runback.motion.REVIEW"
         const val EXTRA_DECISION = "decision"
         const val EXTRA_DELTA = "delta"
@@ -365,39 +365,39 @@ class MotionCaptureService : Service(), SensorEventListener {
             Intent(context, MotionCaptureService::class.java).setAction(REVIEW)
                 .putExtra(EXTRA_DECISION, decision).putExtra(EXTRA_DELTA, delta)
 
-        /** Aus der Uhr-App; der Dienst läuft während der Einheit ohnehin im Vordergrund. */
+        /** From the watch app; the service runs in the foreground during a session anyway. */
         fun review(context: Context, decision: String, delta: Int = 0) {
             runCatching { context.startService(reviewIntent(context, decision, delta)) }
         }
-        /** Einheit, deren Datei gerade beschrieben wird; sie wird noch nicht übertragen. */
+        /** Session whose file is being written; it is not sent yet. */
         @Volatile var activeSession: String? = null
             private set
-        /** Was die laufende Aufzeichnung misst; für den Hinweis auf der Startseite der Uhr. */
+        /** What the running recording measures; for the hint on the watch's home screen. */
         @Volatile var recordsHeart = false
             private set
         @Volatile var recordsMotion = false
             private set
-        /** Letzter gültiger Puls und wann er kam (`elapsedRealtime`); 0 = keiner. */
+        /** Last valid heart rate and when it came (`elapsedRealtime`); 0 = none. */
         @Volatile var liveBpm = 0
             private set
         @Volatile var liveBpmAt = 0L
             private set
         private const val LIVE_INTERVAL_MS = 5_000L
 
-        /** Puls für die Anzeige auf der Uhr, solange er frisch ist; sonst `null`. */
+        /** Heart rate for the watch display while it is fresh; otherwise `null`. */
         fun currentBpm(): Int? = liveBpm.takeIf {
             it > 0 && SystemClock.elapsedRealtime() - liveBpmAt in 0..LIVE_INTERVAL_MS * 3
         }
         private const val TAG = "RunbackMotion"
         private const val CHANNEL = "runback_motion"
         private const val NOTIFICATION_ID = 4310
-        /** 50 Hz reicht für Wiederholungen im Kraftraum (RecoFit, MM-Fit) und schont den Akku. */
+        /** 50 Hz is enough for repetitions in the gym (RecoFit, MM-Fit) and spares the battery. */
         const val RATE_HZ = 50
         private const val BATCH_LATENCY_US = 1_000_000
         private const val ANCHOR_INTERVAL_NS = 10_000_000_000L
         private const val FLUSH_INTERVAL_NS = 2_000_000_000L
         private const val SYNC_INTERVAL_NS = 10_000_000_000L
-        /** Vergisst das Handy den Stopp, endet die Aufzeichnung spätestens nach drei Stunden. */
+        /** If the phone forgets the stop, the recording ends after three hours at the latest. */
         private const val MAX_DURATION_MS = 3L * 60L * 60L * 1000L
 
         fun send(

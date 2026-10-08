@@ -2,21 +2,20 @@ package com.runback.core
 
 import org.json.JSONArray
 import org.json.JSONObject
-import java.util.Locale
 
 /**
- * Laufende Krafteinheit außerhalb der App: Benachrichtigung am Handy und Uhr.
+ * Running strength session outside the app: notification on the phone and watch.
  *
- * Dieselben Regeln wie `src/domain/strength.ts` (`completeSet`, `pauseRest`,
- * `resumeRest`, `clearRest`, `selectExercise`, `referenceSet`), weil die App
- * im Hintergrund nicht laufen muss. Ein abgehakter Satz übernimmt, was die App
- * im Eingabefeld vorbelegen würde: eigener Wert, dann Vorgabe, dann der Satz
- * aus der letzten vergleichbaren Einheit. Fehlt alles, bleibt der Wert leer.
+ * The same rules as `src/domain/strength.ts` (`completeSet`, `pauseRest`,
+ * `resumeRest`, `clearRest`, `selectExercise`, `referenceSet`), because the app
+ * does not have to run in the background. A checked-off set takes what the app
+ * would prefill in the input field: own value, then the plan, then the set
+ * from the last comparable session. If everything is missing, the value stays empty.
  *
- * Jeder Befehl nennt Einheit und Satz. Passt beides nicht mehr (schon
- * abgehakt, andere Einheit), ändert sich nichts — doppelt Tippen schadet nicht.
- * Bringt `complete_set` eine Zahl `reps` mit (von der Uhr erkannt, vom Nutzer
- * bestätigt), gilt sie statt der Vorbelegung.
+ * Every command names the session and the set. If neither matches anymore
+ * (already checked off, another session), nothing changes — tapping twice does no harm.
+ * If `complete_set` carries a number `reps` (detected by the watch, confirmed by the
+ * user), it applies instead of the prefill.
  */
 object StrengthLive {
     const val VERSION = "strength-live-v1"
@@ -25,16 +24,17 @@ object StrengthLive {
     const val RESUME_REST = "resume_rest"
     const val SKIP_REST = "skip_rest"
     const val SELECT_EXERCISE = "select_exercise"
-    /** Start von der Uhr; nennt die neue Einheit und optional die Vorlage. */
+    /** Start from the watch; names the new session and optionally the template. */
     const val START_SESSION = "start_session"
     val ACTIONS = setOf(COMPLETE_SET, PAUSE_REST, RESUME_REST, SKIP_REST, SELECT_EXERCISE, START_SESSION)
-    /** Gleich wie `STRENGTH_MODEL_VERSION` und `CATALOG_VERSION` in `src/domain/strength.ts`. */
+    /** Same as `STRENGTH_MODEL_VERSION` and `CATALOG_VERSION` in `src/domain/strength.ts`. */
     const val STRENGTH_MODEL_VERSION = "strength-v1"
     const val CATALOG_VERSION = "catalog-v2"
+    /** Stored as the session's name, so it stays German for saved data; the UI shows it as is. */
     const val FREE_SESSION_NAME = "Freies Training"
-    /** So viele Vorlagen bekommt die Uhr zur Auswahl. */
+    /** This many templates the watch gets to choose from. */
     const val MAX_MIRRORED_TEMPLATES = 20
-    /** Mehr Übungen schickt die Uhr-Ansicht nicht mit; die Liste bleibt klein. */
+    /** The watch view does not get more exercises; the list stays small. */
     const val MAX_MIRRORED_EXERCISES = 40
 
     data class Prefill(val weightKg: Double?, val reps: Int?, val seconds: Int?)
@@ -59,7 +59,7 @@ object StrengthLive {
         return (0 until array.length()).mapNotNull { array.optJSONObject(it) }
     }
 
-    /** Erster offener Satz einer Übung, wie `exerciseProgress().activeSetId`. */
+    /** First open set of an exercise, like `exerciseProgress().activeSetId`. */
     fun activeSet(exercise: JSONObject?): JSONObject? = sets(exercise).firstOrNull(::isOpen)
 
     data class Progress(val completed: Int, val total: Int) {
@@ -71,7 +71,7 @@ object StrengthLive {
         return Progress(relevant.count(::isCompleted), relevant.size)
     }
 
-    /** Wie `restRemaining`: ganze Sekunden, angehalten bleibt die Restzeit stehen. */
+    /** Like `restRemaining`: whole seconds; when paused, the remaining time stands still. */
     fun restRemaining(session: JSONObject, now: Long): Long? {
         val started = session.number("restStartedAt")?.toLong() ?: return null
         val seconds = session.number("restSeconds")?.takeIf { it > 0 } ?: return null
@@ -81,7 +81,7 @@ object StrengthLive {
         return remaining.takeIf { it > 0 }
     }
 
-    /** Wie `restEndsAt`: Ende der laufenden Pause, angehalten oder ohne Pause `null`. */
+    /** Like `restEndsAt`: end of the running rest; `null` when paused or without a rest. */
     fun restEndsAt(session: JSONObject): Long? {
         if (session.number("restPausedAt") != null) return null
         val started = session.number("restStartedAt")?.toLong() ?: return null
@@ -92,9 +92,9 @@ object StrengthLive {
     fun restPaused(session: JSONObject) = session.number("restPausedAt") != null
 
     /**
-     * Wie `referenceSet`: der abgehakte Satz an derselben Stelle in der
-     * jüngsten früheren Einheit mit dieser Übung, der überhaupt Werte trägt.
-     * `history` ist neueste Einheit zuerst.
+     * Like `referenceSet`: the checked-off set at the same position in the most
+     * recent earlier session with this exercise that carries any values at all.
+     * `history` lists the newest session first.
      */
     fun referenceSet(history: List<JSONObject>, exerciseId: String, position: Int): JSONObject? {
         for (session in history) {
@@ -106,7 +106,7 @@ object StrengthLive {
         return null
     }
 
-    /** Was die App für diesen Satz ins Eingabefeld schreiben würde. */
+    /** What the app would write into the input field for this set. */
     fun prefill(history: List<JSONObject>, exercise: JSONObject, set: JSONObject): Prefill {
         val position = sets(exercise).indexOfFirst { it.optString("id") == set.optString("id") }
         val planned = set.optJSONObject("planned") ?: JSONObject()
@@ -122,8 +122,8 @@ object StrengthLive {
     }
 
     /**
-     * Wie `startSession`: neue Einheit aus einer Vorlage oder frei. Satzkennungen
-     * entstehen wie in der App aus Übung, Startzeit und Position.
+     * Like `startSession`: new session from a template or free. Set IDs are built,
+     * as in the app, from exercise, start time and position.
      */
     fun startSession(template: JSONObject?, now: Long, sessionId: String): JSONObject {
         val seed = java.lang.Long.toString(now, 36)
@@ -154,9 +154,9 @@ object StrengthLive {
     }
 
     /**
-     * Kleine Vorlagenliste für die Uhr: Name, Wochentage (0 = Sonntag, wie
-     * `Date.getDay`), Zahl der Übungen und Sätze. Die Sätze selbst bleiben auf
-     * dem Handy; gestartet wird dort.
+     * Small template list for the watch: name, weekdays (0 = Sunday, like
+     * `Date.getDay`), number of exercises and sets. The sets themselves stay on
+     * the phone; starting happens there.
      */
     fun templateList(templates: JSONArray, now: Long): JSONObject {
         val list = JSONArray()
@@ -169,7 +169,7 @@ object StrengthLive {
             for (position in 0 until exercises.length()) sets += exercises.optJSONObject(position)?.optJSONArray("sets")?.length() ?: 0
             list.put(JSONObject()
                 .put("id", id)
-                .put("name", template.optString("name").ifBlank { "Vorlage" })
+                .put("name", template.optString("name").ifBlank { Lang.tr("Vorlage", "Template") })
                 .put("days", template.optJSONArray("days") ?: JSONArray())
                 .put("exercises", exercises.length())
                 .put("sets", sets))
@@ -182,14 +182,14 @@ object StrengthLive {
     }
 
     /**
-     * Wendet einen Befehl auf eine Kopie der Einheit an. `null` heißt: nichts zu
-     * tun, etwa weil der Satz schon abgehakt oder die Pause schon vorbei ist.
+     * Applies a command to a copy of the session. `null` means: nothing to do,
+     * e.g. because the set is already checked off or the rest is already over.
      */
     fun apply(session: JSONObject, command: JSONObject, now: Long, history: List<JSONObject>): JSONObject? {
         if (session.optString("status") != "active") return null
         if (command.optString("sessionId") != session.optString("id")) return null
         val next = JSONObject(session.toString())
-        // Pausenbefehle gelten der Pause, die der Absender gesehen hat, nicht einer neueren.
+        // Rest commands apply to the rest the sender saw, not a newer one.
         if (command.optString("action") in setOf(PAUSE_REST, RESUME_REST, SKIP_REST) && command.has("restStartedAt") &&
             command.optLong("restStartedAt") != next.number("restStartedAt")?.toLong()) return null
         return when (command.optString("action")) {
@@ -221,7 +221,7 @@ object StrengthLive {
         if (set == null || !isOpen(set)) return null
         val values = prefill(history, exercise, set)
         values.weightKg?.let { set.put("actualWeightKg", it) }
-        // Von der Uhr erkannt und vom Nutzer bestätigt oder korrigiert: diese Zahl gilt.
+        // Detected by the watch and confirmed or corrected by the user: this number applies.
         val counted = if (command.has("reps")) command.optInt("reps", -1).takeIf { it in 0..WearProtocol.MAX_REPS } else null
         (counted ?: values.reps)?.let { set.put("actualReps", it) }
         values.seconds?.let { set.put("actualSeconds", it) }
@@ -232,29 +232,29 @@ object StrengthLive {
         return session
     }
 
-    /** „82,5“ wie `formatWeight`: höchstens zwei Nachkommastellen, Komma. */
+    /** “82,5” (German) or “82.5” (English), like `formatWeight`: at most two decimals. */
     fun formatWeight(value: Double): String {
         val rounded = Math.round(value * 100) / 100.0
         return if (rounded == Math.floor(rounded)) rounded.toLong().toString()
-        else String.format(Locale.ROOT, "%.2f", rounded).trimEnd('0').replace('.', ',')
+        else String.format(Lang.locale(), "%.2f", rounded).trimEnd('0')
     }
 
-    /** „80 kg × 8“, „Eigengewicht × 12“, „45 s“ oder „frei“, wenn nichts bekannt ist. */
+    /** “80 kg × 8”, “Bodyweight × 12”, “45 s” or “free” when nothing is known. */
     fun label(set: JSONObject, values: Prefill): String {
         val planned = set.optJSONObject("planned") ?: JSONObject()
-        if (planned.optString("kind") == "timed") return values.seconds?.let { "$it s" } ?: "frei"
+        if (planned.optString("kind") == "timed") return values.seconds?.let { "$it s" } ?: Lang.tr("frei", "free")
         val weight = when {
-            planned.optString("loadKind") == "bodyweight" -> "Eigengewicht"
+            planned.optString("loadKind") == "bodyweight" -> Lang.tr("Eigengewicht", "Bodyweight")
             values.weightKg != null && values.weightKg > 0 -> "${formatWeight(values.weightKg)} kg"
             else -> null
         }
-        val reps = values.reps?.let { "$it Wdh." }
-        return listOfNotNull(weight, reps).joinToString(" × ").ifBlank { "frei" }
+        val reps = values.reps?.let { Lang.tr("$it Wdh.", "$it reps") }
+        return listOfNotNull(weight, reps).joinToString(" × ").ifBlank { Lang.tr("frei", "free") }
     }
 
     /**
-     * Kleiner Stand für Uhr und Benachrichtigung: aktuelle Übung, nächster
-     * Satz mit seinen Werten, Pause. Rohwerte der Einheit bleiben auf dem Handy.
+     * Small status for the watch and notification: current exercise, next set
+     * with its values, rest. The session's raw values stay on the phone.
      */
     fun mirror(session: JSONObject, history: List<JSONObject>, now: Long, restTimer: Boolean): JSONObject {
         val list = exercises(session)
@@ -312,7 +312,7 @@ object StrengthLive {
         return result
     }
 
-    /** Ende der Einheit oder keine Einheit: die Uhr räumt auf. */
+    /** End of the session or no session: the watch clears up. */
     fun ended(sessionId: String?, now: Long): JSONObject = JSONObject()
         .put("version", VERSION).put("active", false).put("sessionId", sessionId ?: JSONObject.NULL).put("updatedAt", now)
 }

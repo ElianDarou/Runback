@@ -1,9 +1,12 @@
 package com.runback.core
 
 import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Test
 
 class RunTargetGuidanceTest {
+    @Before fun setUp() { Lang.set("de") }
+
     private fun pace(mode: String = "range") = RunTargetGuidance.pace(330.0, mode)
 
     @Test fun outputSelectionRemainsExplicit() {
@@ -15,8 +18,8 @@ class RunTargetGuidanceTest {
     @Test fun paceNeedsAStableQualifiedExcursion() {
         val guidance = pace()
         var cue: TargetCue? = null
-        // Rund 4:38 /km: klar schneller als 5:30, aber erst nach Fenster,
-        // Einlaufphase und 30 Sekunden stabiler Abweichung folgt ein Hinweis.
+        // About 4:38 /km: clearly faster than 5:30, but a cue only follows after the window,
+        // the warm-up phase and 30 seconds of steady deviation.
         for (second in 0..150) {
             cue = guidance.onLocation(
                 time = second * 1_000L + 1,
@@ -33,8 +36,8 @@ class RunTargetGuidanceTest {
     @Test fun changedPaceAppliesLiveAndForgetsTheOldExcursion() {
         val guidance = pace()
         var cue: TargetCue? = null
-        // Rund 4:10 /km gegen 5:30 läuft auf „langsamer“ zu; wer das Ziel
-        // unterwegs auf sein Tempo stellt, hört danach keinen Hinweis mehr.
+        // About 4:10 /km against 5:30 heads toward “slower”; whoever sets the target
+        // to their own pace mid-run hears no cue afterwards.
         for (second in 0..240) {
             if (second == 60) guidance.changePace(250.0)
             cue = guidance.onLocation(
@@ -59,8 +62,8 @@ class RunTargetGuidanceTest {
     @Test fun ceilingNeverPushesAnEasyRunFaster() {
         val guidance = pace("ceiling")
         var cue: TargetCue? = null
-        // Rund 9:15 /km ist langsamer als das Ziel, aber eine Obergrenze
-        // fordert absichtlich kein höheres Tempo.
+        // About 9:15 /km is slower than the target, but a ceiling deliberately
+        // asks for no higher pace.
         for (second in 0..240) {
             cue = guidance.onLocation(
                 time = second * 1_000L + 1,
@@ -113,7 +116,7 @@ class RunTargetGuidanceTest {
         val cues = ArrayList<Pair<Int, TargetCue>>()
         var latitude = 52.0
         for (second in 0..210) {
-            // 6:20/km ist eine feine Korrektur, danach Gehen und Stillstand.
+            // 6:20/km is a fine correction, then walking and standing still.
             val speed = when { second < 90 -> 2.65; second < 150 -> 1.3; else -> 0.0 }
             latitude += speed / 111195.0
             guidance.onLocation(second * 1000L + 1, latitude, 13.0, 5.0, second * 1000L)

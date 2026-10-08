@@ -6,14 +6,14 @@ import { ensurePassword } from './auth';
 import { Store } from './db';
 
 /**
- * Einstieg des Containers. Einstellungen kommen aus der Umgebung:
+ * Container entry point. Settings come from the environment:
  *
- * - `RUNBACK_DATA_DIR` (Standard `/data`): hier liegt `runback.sqlite`.
- * - `RUNBACK_PORT` (Standard `8080`).
- * - `RUNBACK_PASSWORD`: Passwort der Website. Ohne Angabe entsteht beim
- *   ersten Start eins und steht einmal im Log.
- * - `RUNBACK_TRUST_PROXY=1`: hinter einem Reverse Proxy, der HTTPS beendet.
- * - `TZ`: Zeitzone für Wochen und Uhrzeiten (Standard im Image Europe/Berlin).
+ * - `RUNBACK_DATA_DIR` (default `/data`): `runback.sqlite` lives here.
+ * - `RUNBACK_PORT` (default `8080`).
+ * - `RUNBACK_PASSWORD`: password of the website. If not given, one is generated
+ *   on first start and written to the log once.
+ * - `RUNBACK_TRUST_PROXY=1`: behind a reverse proxy that terminates HTTPS.
+ * - `TZ`: time zone for weeks and clock times (the image defaults to Europe/Berlin).
  */
 
 declare const __RUNBACK_SERVER_VERSION__: string;
@@ -33,10 +33,10 @@ const generated = ensurePassword(
 );
 if (generated) {
   console.log('');
-  console.log('  Runback-Server: erstes Passwort für die Website');
+  console.log('  Runback server: first password for the website');
   console.log(`  ${generated}`);
   console.log(
-    '  Ändere es nach der Anmeldung unter „Daten“ oder setze RUNBACK_PASSWORD.',
+    '  Change it after signing in under “Data”, or set RUNBACK_PASSWORD.',
   );
   console.log('');
 }
@@ -49,7 +49,7 @@ const server = createServer(
 );
 server.requestTimeout = 5 * 60_000;
 server.listen(port, () =>
-  console.log(`Runback-Server ${version} hört auf Port ${port}.`),
+  console.log(`Runback server ${version} listening on port ${port}.`),
 );
 
 const stop = () => {

@@ -1,14 +1,14 @@
-"""Runback-Bewegungsdaten laden und für ein Modell aufbereiten.
+"""Load Runback motion data and prepare it for a model.
 
-Liest den Krafttraining-Export aus der App (Ordner `bewegungsdaten/`; ältere
-Bewegungsexporte ohne Ordner gehen auch) und liefert
-pro Krafteinheit Beschleunigung, Gyroskop, Sätze und Ereignisse als
-pandas-DataFrames. Anleitung und Format: docs/motion-data.md.
+Reads the strength training export from the app (folder `bewegungsdaten/`; older
+motion exports without a folder also work) and provides, per strength session,
+acceleration, gyroscope, sets, and events as pandas DataFrames. Instructions and
+format: docs/motion-data.md.
 
     python tools/motion/runback_motion.py runback-krafttraining.zip
-    python tools/motion/runback_motion.py export.zip --windows fenster.npz
+    python tools/motion/runback_motion.py export.zip --windows windows.npz
 
-Abhängigkeiten: numpy, pandas.
+Dependencies: numpy, pandas.
 """
 from __future__ import annotations
 
@@ -23,10 +23,10 @@ import numpy as np
 import pandas as pd
 
 EXPORT_FORMAT = "runback-motion-export"
-# Im Krafttraining-Export liegen die Bewegungsdaten in diesem Ordner; ältere Exporte hatten keinen.
+# In the strength training export, the motion data lives in this folder; older exports had none.
 STRENGTH_EXPORT_DIRECTORY = "bewegungsdaten/"
 SUPPORTED_VERSIONS = {1, 2, 3}
-# Wie MotionLabels.BATCH_WINDOW_MS: dichter liegen zwei echte Sätze derselben Übung nie.
+# Same as MotionLabels.BATCH_WINDOW_MS: two real sets of the same exercise are never this close.
 BATCH_WINDOW_MS = 15_000
 CHANNELS = ["ax", "ay", "az", "gx", "gy", "gz"]
 
@@ -35,11 +35,11 @@ CHANNELS = ["ax", "ay", "az", "gx", "gy", "gz"]
 class Session:
     id: str
     meta: dict
-    accel: pd.DataFrame  # t_ms, x, y, z  (m/s², mit Schwerkraft)
+    accel: pd.DataFrame  # t_ms, x, y, z  (m/s², including gravity)
     gyro: pd.DataFrame  # t_ms, x, y, z  (rad/s)
-    sets: pd.DataFrame  # ein Satz je Zeile, Endstand aus der App
+    sets: pd.DataFrame  # one set per row, final state from the app
     events: pd.DataFrame  # t_ms, event, …
-    # Ab Export 3: Erkennungen der Uhr mit erkannter und bestätigter Zahl, je Wiederholung eine Zeile.
+    # From export 3: watch detections with detected and confirmed count, one row per repetition.
     detections: pd.DataFrame = None
     detected_reps: pd.DataFrame = None
 
@@ -57,17 +57,17 @@ class Session:
 
 
 def load_export(path: str | Path) -> list[Session]:
-    """Alle Einheiten eines Exports. Fehlende Werte sind NaN, nie 0."""
+    """All sessions of an export. Missing values are NaN, never 0."""
     with zipfile.ZipFile(path) as archive:
         names = set(archive.namelist())
         root = STRENGTH_EXPORT_DIRECTORY if f"{STRENGTH_EXPORT_DIRECTORY}manifest.json" in names else ""
         if f"{root}manifest.json" not in names:
-            raise ValueError("Kein Runback-Bewegungsexport")
+            raise ValueError("Not a Runback motion export")
         manifest = json.loads(archive.read(f"{root}manifest.json"))
         if manifest.get("format") != EXPORT_FORMAT:
-            raise ValueError("Kein Runback-Bewegungsexport")
+            raise ValueError("Not a Runback motion export")
         if manifest.get("formatVersion") not in SUPPORTED_VERSIONS:
-            raise ValueError(f"Exportversion {manifest.get('formatVersion')} wird nicht unterstützt")
+            raise ValueError(f"Export version {manifest.get('formatVersion')} is not supported")
         summary = pd.read_csv(io.BytesIO(archive.read(f"{root}sessions.csv")), dtype={"session_id": str})
 
         def table(name: str, columns: list[str]) -> pd.DataFrame:
@@ -97,11 +97,11 @@ def load_export(path: str | Path) -> list[Session]:
 
 
 def _add_labels(session: Session) -> None:
-    """Spalte `label` in `sets`: `detected`, `single`, `batch` oder leer (nicht abgehakt).
+    """Column `label` in `sets`: `detected`, `single`, `batch`, or empty (not ticked off).
 
-    Ältere Exporte haben sie nicht; dann gilt dieselbe Regel wie in der App
-    (MotionLabels.completionLabels): Sätze derselben Übung, die binnen
-    `BATCH_WINDOW_MS` abgehakt wurden, sind Nachträge — nur schwache Labels.
+    Older exports do not have it; then the same rule as in the app applies
+    (MotionLabels.completionLabels): sets of the same exercise ticked off within
+    `BATCH_WINDOW_MS` are entered afterward — weak labels only.
     """
     sets = session.sets
     if sets.empty or "label" in sets.columns:
@@ -118,9 +118,9 @@ def _add_labels(session: Session) -> None:
 
 
 def resample(session: Session, rate_hz: float = 50.0) -> pd.DataFrame:
-    """Beschleunigung und Gyroskop auf ein gemeinsames, gleichmäßiges Zeitraster.
+    """Put acceleration and gyroscope on a common, even time grid.
 
-    Lineare Interpolation; Lücken über 200 ms bleiben NaN statt überbrückt.
+    Linear interpolation; gaps longer than 200 ms stay NaN instead of being bridged.
     """
     if not session.has_motion:
         return pd.DataFrame(columns=["t_ms", *CHANNELS])
@@ -149,7 +149,7 @@ def _gap_mask(grid: np.ndarray, times: np.ndarray, max_gap_ms: float) -> np.ndar
 
 
 def activity(frame: pd.DataFrame, rate_hz: float = 50.0, window_s: float = 1.0) -> np.ndarray:
-    """Bewegungsstärke: gleitende Standardabweichung des Gyroskop-Betrags (rad/s)."""
+    """Movement intensity: rolling standard deviation of the gyroscope magnitude (rad/s)."""
     magnitude = np.sqrt(frame["gx"] ** 2 + frame["gy"] ** 2 + frame["gz"] ** 2)
     window = max(1, int(rate_hz * window_s))
     return magnitude.rolling(window, center=True, min_periods=window // 2).std().to_numpy()
@@ -162,17 +162,17 @@ def estimate_set_bounds(
     threshold: float | None = None,
     min_set_s: float = 5.0,
 ) -> pd.DataFrame:
-    """Schätzt Anfang und Ende jedes abgehakten Satzes.
+    """Estimate start and end of each ticked-off set.
 
-    Das Abhaken liegt meist einige Sekunden nach dem letzten Wiederholungs-
-    schritt; der Satzanfang ist gar nicht markiert. Gesucht wird deshalb vor
-    jedem Abhaken der letzte zusammenhängende Abschnitt mit Bewegung, frühestens
-    ab dem vorigen Abhaken. Ergebnis ist eine Schätzung (`estimated = True`),
-    keine Messung — vor dem Training stichprobenartig im Plot prüfen.
+    Ticking off usually happens a few seconds after the last repetition step;
+    the start of the set is not marked at all. So before each tick, the search
+    looks for the last continuous stretch of movement, starting no earlier than
+    the previous tick. The result is an estimate (`estimated = True`), not a
+    measurement — spot-check it in a plot before training on it.
 
-    Hat die Uhr den Satz erkannt und der Nutzer die Zahl bestätigt, gelten
-    ihre Grenzen (`estimated = False`). `weak = True` markiert nachgetragene
-    Sätze (`label = batch`): Ihr Abhaken liegt nicht am Satzende.
+    If the watch detected the set and the user confirmed the count, its
+    boundaries apply (`estimated = False`). `weak = True` marks sets entered
+    afterward (`label = batch`): their tick is not at the end of the set.
     """
     frame = resample(session, rate_hz) if frame is None else frame
     done = session.sets.dropna(subset=["completed_ms"]).sort_values("completed_ms")
@@ -183,14 +183,14 @@ def estimate_set_bounds(
         accepted = session.detections[(session.detections["kind"] == "detected")
                                       & session.detections["decision"].isin(["confirmed", "corrected"])]
         if "detection_id" in session.sets:
-            # sets.csv nennt die Erkennung, mit der der Satz zuletzt abgehakt wurde; nur die gilt.
+            # sets.csv names the detection the set was last ticked off with; only that one counts.
             current = session.sets.dropna(subset=["detection_id"]).set_index("detection_id")["set_id"]
             accepted = accepted[accepted["detection_id"].isin(current.index)]
         detected = {row["set_id"]: row for _, row in accepted.iterrows()}
     weak = set(session.sets.loc[session.sets["label"] == "batch", "set_id"]) if "label" in session.sets else set()
     level = activity(frame, rate_hz)
     if threshold is None:
-        # Zwischen Ruhe (unteres Quartil) und Satz (oberes Dezil).
+        # Between rest (lower quartile) and a set (upper decile).
         quiet, busy = np.nanpercentile(level, 25), np.nanpercentile(level, 90)
         threshold = quiet + 0.3 * (busy - quiet)
     active = np.nan_to_num(level) > threshold
@@ -209,7 +209,7 @@ def estimate_set_bounds(
         previous = tick
         if idx.size == 0:
             continue
-        # Letzter zusammenhängender Block vor dem Abhaken; kurze Pausen (< 2 s) gehören dazu.
+        # Last continuous block before the tick; short pauses (< 2 s) belong to it.
         end_i = idx[-1]
         start_i = end_i
         gap_limit = int(2.0 * rate_hz)
@@ -225,10 +225,10 @@ def estimate_set_bounds(
 
 
 def count_reps_autocorr(signal: np.ndarray, rate_hz: float = 50.0, min_period_s: float = 1.0, max_period_s: float = 8.0) -> float | None:
-    """Einfache Wiederholungszählung über die Autokorrelation (Grundlinie, kein Modell).
+    """Simple repetition count via autocorrelation (baseline, no model).
 
-    `signal` ist ein Abschnitt eines Satzes, z. B. die Hauptkomponente des
-    Gyroskops. Gibt `None` zurück, wenn keine klare Periode da ist.
+    `signal` is a section of a set, e.g. the main component of the gyroscope.
+    Returns `None` if there is no clear period.
     """
     x = np.asarray(signal, float)
     x = x[~np.isnan(x)]
@@ -249,7 +249,7 @@ def count_reps_autocorr(signal: np.ndarray, rate_hz: float = 50.0, min_period_s:
 
 
 def principal_axis(frame: pd.DataFrame, prefix: str = "g") -> np.ndarray:
-    """Projektion auf die Achse mit der meisten Bewegung; macht Zählen unabhängig vom Handgelenk."""
+    """Projection onto the axis with the most movement; makes counting independent of the wrist."""
     data = frame[[prefix + a for a in "xyz"]].to_numpy(float)
     data = data[~np.isnan(data).any(axis=1)]
     if len(data) < 3:
@@ -266,13 +266,13 @@ def windows(
     hop_s: float = 1.0,
     mirror_left: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Feste Fenster für ein Übungsmodell.
+    """Fixed windows for an exercise model.
 
-    Gibt `X` (Fenster × Zeit × 6 Kanäle), `y` (exercise_id oder „pause“) und
-    `groups` (session_id, für Validierung je Einheit) zurück. Fenster mit
-    Lücken fallen weg. Mit `mirror_left` wird die linke Hand an der x-Achse
-    gespiegelt, damit ein Modell beide Seiten lernt. Welche Achse passt, hängt
-    davon ab, wie die Uhr getragen wird — vorher an einem Satz je Seite prüfen.
+    Returns `X` (windows × time × 6 channels), `y` (exercise_id or "pause"), and
+    `groups` (session_id, for validation per session). Windows with gaps are
+    dropped. With `mirror_left`, the left hand is mirrored across the x-axis so
+    that one model learns both sides. Which axis fits depends on how the watch
+    is worn — check on one set per side first.
     """
     xs, ys, groups = [], [], []
     size, hop = int(window_s * rate_hz), int(hop_s * rate_hz)
@@ -288,7 +288,7 @@ def windows(
             labels[(t >= b["start_ms"]) & (t <= b["end_ms"])] = exercise.get(b["set_id"], "unknown")
         data = frame[CHANNELS].to_numpy(float)
         if mirror_left and session.wrist == "left":
-            data[:, [0, 4, 5]] *= -1  # Spiegelung an x: ax kippt, Drehung um y und z auch
+            data[:, [0, 4, 5]] *= -1  # Mirror across x: ax flips, rotation about y and z does too
         for start in range(0, len(frame) - size + 1, hop):
             chunk = data[start : start + size]
             if np.isnan(chunk).any():
@@ -304,8 +304,8 @@ def windows(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("export", help="ZIP aus der App")
-    parser.add_argument("--windows", help="Fenster als .npz speichern (X, y, groups)")
+    parser.add_argument("export", help="ZIP exported from the app")
+    parser.add_argument("--windows", help="save windows as .npz (X, y, groups)")
     args = parser.parse_args()
     sessions = load_export(args.export)
     for s in sessions:
@@ -313,15 +313,15 @@ def main() -> None:
         minutes = (s.accel["t_ms"].iloc[-1] - s.accel["t_ms"].iloc[0]) / 60000 if s.has_motion else float("nan")
         bounds = estimate_set_bounds(s) if s.has_motion else pd.DataFrame()
         print(
-            f"{s.id}: {len(done)} Sätze abgehakt · "
-            + (f"{minutes:.1f} min Bewegung · {len(bounds)} Sätze im Signal gefunden" if s.has_motion else "keine Bewegungsdaten")
-            + ("" if s.clock_aligned else " · Uhrzeit nicht abgeglichen")
-            + f" · Handgelenk {s.wrist}"
+            f"{s.id}: {len(done)} sets ticked off · "
+            + (f"{minutes:.1f} min of motion · {len(bounds)} sets found in the signal" if s.has_motion else "no motion data")
+            + ("" if s.clock_aligned else " · clock not aligned")
+            + f" · wrist {s.wrist}"
         )
     if args.windows:
         x, y, groups = windows(sessions)
         np.savez_compressed(args.windows, X=x, y=y, groups=groups)
-        print(f"{len(x)} Fenster gespeichert in {args.windows}")
+        print(f"{len(x)} windows saved to {args.windows}")
 
 
 if __name__ == "__main__":

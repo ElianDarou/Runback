@@ -1,13 +1,13 @@
 import type { RunPurpose } from './types';
 import type { WorkoutTemplate } from './strength';
+import { tr } from './i18n';
 
 /**
- * Kalenderplanung ist absichtlich eine kleine, lokale Datenebene.
+ * Calendar planning is deliberately a small, local data layer.
  *
- * Ein Termin beschreibt eine Absicht (geplant/übersprungen), nie das Ergebnis
- * eines Trainings. Tatsächliche Läufe und Kraft-Einheiten bleiben in ihren
- * jeweiligen Historien. `activityId` ist nur eine optionale Verbindung zu
- * einem solchen Datensatz.
+ * A session describes an intent (planned/skipped), never the result of a
+ * workout. Actual runs and strength sessions stay in their own histories.
+ * `activityId` is only an optional link to such a record.
  */
 export const SCHEDULE_VERSION = 1 as const;
 export const SCHEDULE_MODEL_VERSION = 'schedule-v1';
@@ -22,7 +22,7 @@ export type ScheduleSessionOrigin =
   | 'fixed'
   | 'suggestion';
 
-/** Wochentage 0 (Montag) bis 6 (Sonntag). */
+/** Weekdays 0 (Monday) to 6 (Sunday). */
 export interface ScheduleRoutine {
   days: number[];
   minutes: number;
@@ -33,9 +33,9 @@ export interface ScheduleGoal {
   startDate: ScheduleDate;
   targetDate?: ScheduleDate;
   phase?: string;
-  /** Zielstrecke in km; ohne Angabe liest `raceGoal` sie aus dem Namen. */
+  /** Goal distance in km; without it, `raceGoal` reads it from the name. */
   distanceKm?: number;
-  /** Zielzeit in Sekunden, freiwillig. */
+  /** Goal time in seconds, optional. */
   targetSeconds?: number;
 }
 
@@ -148,7 +148,7 @@ const localDateFromKey = (value: string): Date | null => {
 
 const dateKeyFromDate = (value: Date): string => {
   if (Number.isNaN(value.getTime())) {
-    throw new RangeError('Ungültiges Datum.');
+    throw new RangeError('Invalid date.');
   }
   const year = String(value.getFullYear()).padStart(4, '0');
   const month = String(value.getMonth() + 1).padStart(2, '0');
@@ -166,13 +166,13 @@ const inputToDate = (value: LocalDateInput): Date => {
   if (DATE_KEY.test(value)) {
     const parsed = localDateFromKey(value);
     if (!parsed) {
-      throw new RangeError(`Ungültiges Kalenderdatum: ${value}`);
+      throw new RangeError(`Invalid calendar date: ${value}`);
     }
     return parsed;
   }
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
-    throw new RangeError(`Ungültiges Datum: ${value}`);
+    throw new RangeError(`Invalid date: ${value}`);
   }
   return parsed;
 };
@@ -214,7 +214,7 @@ export function addCalendarDays(
   days: number,
 ): ScheduleDate {
   if (!Number.isInteger(days)) {
-    throw new RangeError('Kalendertage müssen ganze Zahlen sein.');
+    throw new RangeError('Calendar days must be whole numbers.');
   }
   const date = inputToDate(value);
   date.setHours(12, 0, 0, 0);
@@ -239,8 +239,38 @@ const normalizeDuration = (value: unknown, fallback = 30): number => {
   return Math.min(1440, Math.max(1, number));
 };
 
+// Stored as the session title when none is given, so the German values stay
+// as persisted data (ground rule 4). Show them through `scheduleTitle`.
 const defaultTitle = (kind: ScheduleKind): string =>
   kind === 'strength' ? 'Krafttraining' : 'Lauf';
+
+/**
+ * Visible title of a schedule entry. A stored German default shows the
+ * localized default; a title the user typed is shown as it is.
+ */
+export function scheduleTitle(entry: { title: string }): string {
+  switch (entry.title) {
+    case 'Krafttraining':
+      return tr('Krafttraining', 'Strength training');
+    case 'Lauf':
+      return tr('Lauf', 'Run');
+    default:
+      return entry.title;
+  }
+}
+
+/**
+ * Inverse of `scheduleTitle` for a title typed in the editor: a localized
+ * default maps back to the stored German value, so opening and saving an
+ * entry does not persist the English text.
+ */
+export function storedScheduleTitle(title: string): string {
+  return (
+    ['Krafttraining', 'Lauf'].find(
+      german => scheduleTitle({ title: german }) === title,
+    ) ?? title
+  );
+}
 
 const normalizeKind = (value: unknown): ScheduleKind =>
   value === 'strength' ? 'strength' : 'run';
@@ -445,8 +475,8 @@ const usableAvailability = (
     return false;
   }
   const explicit = Object.prototype.hasOwnProperty.call(state.availability, date);
-  // Ein langer Lauf aus dem Aufbau darf das übliche Tagesbudget überschreiten;
-  // eine ausdrücklich für den Tag eingetragene Zeit bleibt eine Grenze.
+  // A long run from the build-up may exceed the usual daily budget; time
+  // entered explicitly for the day stays a hard limit.
   const budget = explicit
     ? state.availability[date]
     : stretch
@@ -625,7 +655,7 @@ const alternativesFor = (
     }
     alternatives.push({
       date,
-      message: `Passt voraussichtlich am ${date}.`,
+      message: tr(`Passt voraussichtlich am ${date}.`, `Likely fits on ${date}.`),
     });
   }
   return alternatives;
@@ -644,7 +674,7 @@ export function proposeMove(
   let target: ScheduleDate;
   try {
     if (targetDate === undefined) {
-      throw new RangeError('Kein Zieldatum.');
+      throw new RangeError('No target date.');
     }
     target = localDateKey(targetDate);
   } catch {
@@ -653,10 +683,13 @@ export function proposeMove(
   const session = state.sessions.find(candidate => candidate.id === sessionId);
   const noPreview = cloneState(state);
   if (!session) {
-    const invalidTarget = target || 'ungültiges Datum';
+    const invalidTarget = target || 'invalid date';
     const missing = conflict(
       'not_found',
-      `Einheit ${sessionId} wurde nicht gefunden.`,
+      tr(
+        `Einheit ${sessionId} wurde nicht gefunden.`,
+        `Session ${sessionId} was not found.`,
+      ),
       target || undefined,
       [],
     );
@@ -674,7 +707,10 @@ export function proposeMove(
   if (!target || !localDateFromKey(target)) {
     const invalid = conflict(
       'invalid_date',
-      'Das Zieldatum ist kein gültiges lokales Kalenderdatum.',
+      tr(
+        'Das Zieldatum ist kein gültiges lokales Kalenderdatum.',
+        'The target date is not a valid local calendar date.',
+      ),
       target || undefined,
       [session.id],
     );
@@ -697,7 +733,10 @@ export function proposeMove(
     conflicts.push(
       conflict(
         'past_immutable',
-        'Vergangene Einheiten bleiben unverändert.',
+        tr(
+          'Vergangene Einheiten bleiben unverändert.',
+          'Past sessions stay unchanged.',
+        ),
         session.date,
         [session.id],
       ),
@@ -707,7 +746,10 @@ export function proposeMove(
     conflicts.push(
       conflict(
         'past_target',
-        'Eine Einheit kann nicht in die Vergangenheit verschoben werden.',
+        tr(
+          'Eine Einheit kann nicht in die Vergangenheit verschoben werden.',
+          'A session cannot be moved into the past.',
+        ),
         target,
         [session.id],
       ),
@@ -717,7 +759,10 @@ export function proposeMove(
     conflicts.push(
       conflict(
         'locked_source',
-        'Diese feste Einheit bleibt an ihrem Tag.',
+        tr(
+          'Diese feste Einheit bleibt an ihrem Tag.',
+          'This fixed session stays on its day.',
+        ),
         session.date,
         [session.id],
       ),
@@ -731,8 +776,14 @@ export function proposeMove(
         conflict(
           locked.length ? 'locked_session' : 'date_taken',
           locked.length
-            ? 'Der Zieltag enthält eine feste Einheit.'
-            : 'Am Zieltag ist bereits eine Einheit geplant.',
+            ? tr(
+                'Der Zieltag enthält eine feste Einheit.',
+                'The target day has a fixed session.',
+              )
+            : tr(
+                'Am Zieltag ist bereits eine Einheit geplant.',
+                'A session is already planned for the target day.',
+              ),
           target,
           sameDay.map(candidate => candidate.id),
         ),
@@ -742,7 +793,10 @@ export function proposeMove(
       conflicts.push(
         conflict(
           'unavailable',
-          `Für den Zieltag sind weniger als ${session.minutes} Minuten verfügbar.`,
+          tr(
+            `Für den Zieltag sind weniger als ${session.minutes} Minuten verfügbar.`,
+            `Less than ${session.minutes} minutes are available on the target day.`,
+          ),
           target,
           [session.id],
         ),
@@ -753,7 +807,10 @@ export function proposeMove(
       conflicts.push(
         conflict(
           'adjacent_hard',
-          'Harte Einheiten an benachbarten Tagen liegen zu dicht beieinander.',
+          tr(
+            'Harte Einheiten an benachbarten Tagen liegen zu dicht beieinander.',
+            'Hard sessions on neighboring days are too close together.',
+          ),
           target,
           neighbors.map(candidate => candidate.id),
         ),
@@ -1005,8 +1062,8 @@ export function setRoutine(
 }
 
 /**
- * Ein geplanter Lauf-Slot je Routinetag, z. B. aus dem Aufbau zum Wettkampf.
- * Ersetzt die gleichförmige Routine, behält aber deren Tage und IDs.
+ * One planned run slot per routine day, e.g. from the build-up to a race.
+ * Replaces the uniform routine but keeps its days and IDs.
  */
 export interface RunSlotPlan {
   routineDay: number;
@@ -1014,15 +1071,15 @@ export interface RunSlotPlan {
   purpose: RunPurpose;
   title: string;
   effort: ScheduleEffort;
-  /** Geplante Strecke; nur informativ, der Termin trägt Minuten. */
+  /** Planned distance; informational only, the session carries the minutes. */
   distanceKm?: number;
-  /** Darf das übliche Tagesbudget überschreiten (langer Lauf, Wettkampf). */
+  /** May exceed the usual daily budget (long run, race). */
   stretch?: boolean;
 }
 
 export interface SuggestWeekOptions {
   kind?: ScheduleKind;
-  /** Lauf-Slots je Routinetag; ohne Angabe gilt die gleichförmige Routine. */
+  /** Run slots per routine day; without them the uniform routine applies. */
   runSlots?: RunSlotPlan[];
   title?: string;
   purpose?: RunPurpose;
@@ -1475,13 +1532,26 @@ export function suggestWeek(
         conflicts.push(
           conflict(
             code,
-            `${current.date}: Keine passende freie Zeit für „${current.title}“ gefunden.`,
+            tr(
+              `${current.date}: Keine passende freie Zeit für „${current.title}“ gefunden.`,
+              `${current.date}: No suitable free time found for “${scheduleTitle(current)}”.`,
+            ),
             current.date,
             [current.id],
           ),
         );
-        warnings.push(`${current.date}: „${current.title}“ bleibt trotz der Verfügbarkeit unverändert.`);
-        rationale.push(`${current.date}: Geschützte oder unpassende Einheit bleibt bestehen.`);
+        warnings.push(
+          tr(
+            `${current.date}: „${current.title}“ bleibt trotz der Verfügbarkeit unverändert.`,
+            `${current.date}: “${scheduleTitle(current)}” stays unchanged despite the availability.`,
+          ),
+        );
+        rationale.push(
+          tr(
+            `${current.date}: Geschützte oder unpassende Einheit bleibt bestehen.`,
+            `${current.date}: Protected or unsuitable session stays in place.`,
+          ),
+        );
         continue;
       }
       const nextSession = { ...current, date: selectedDate };
@@ -1497,11 +1567,19 @@ export function suggestWeek(
         toDate: selectedDate,
         session: nextSession,
         reason: 'availability',
-        message: `${current.date} passt nicht; Vorschlag auf ${selectedDate} verschieben.`,
+        message: tr(
+          `${current.date} passt nicht; Vorschlag auf ${selectedDate} verschieben.`,
+          `${current.date} doesn't fit; move the suggestion to ${selectedDate}.`,
+        ),
       };
       moves.push(move);
       suggestions.push({ date: selectedDate, message: move.message });
-      rationale.push(`${current.date}: Auf ${selectedDate} verschoben, damit die Woche passt.`);
+      rationale.push(
+        tr(
+          `${current.date}: Auf ${selectedDate} verschoben, damit die Woche passt.`,
+          `${current.date}: Moved to ${selectedDate} so the week fits.`,
+        ),
+      );
     }
   }
 
@@ -1509,24 +1587,49 @@ export function suggestWeek(
     const routineSession = findRoutineSession(state, existingSessions, request, weekStart);
     if (routineSession) {
       if (routineSession.status === 'skipped') {
-        rationale.push(`${routineSession.date}: Übersprungene Einheit bleibt übersprungen.`);
+        rationale.push(
+          tr(
+            `${routineSession.date}: Übersprungene Einheit bleibt übersprungen.`,
+            `${routineSession.date}: Skipped session stays skipped.`,
+          ),
+        );
       } else {
-        rationale.push(`${routineSession.date}: Vorhandene Einheit bleibt bestehen.`);
+        rationale.push(
+          tr(
+            `${routineSession.date}: Vorhandene Einheit bleibt bestehen.`,
+            `${routineSession.date}: Existing session stays in place.`,
+          ),
+        );
       }
       continue;
     }
     if (isBefore(request.baseDate, today)) {
-      rationale.push(`${request.baseDate}: Vergangene Routineeinheit wird nicht nachträglich angelegt.`);
+      rationale.push(
+        tr(
+          `${request.baseDate}: Vergangene Routineeinheit wird nicht nachträglich angelegt.`,
+          `${request.baseDate}: Past routine session is not added after the fact.`,
+        ),
+      );
       continue;
     }
     // A skipped exception suppresses only its own group; an existing run does
     // not suppress a strength template on the same day and vice versa.
     if (hasSkippedGroupOn(existingSessions, request.baseDate, request.kind)) {
-      rationale.push(`${request.baseDate}: Übersprungene Ausnahme bleibt übersprungen.`);
+      rationale.push(
+        tr(
+          `${request.baseDate}: Übersprungene Ausnahme bleibt übersprungen.`,
+          `${request.baseDate}: Skipped exception stays skipped.`,
+        ),
+      );
       continue;
     }
     if (hasPlannedGroupOn(workingState.sessions, request.baseDate, request.kind)) {
-      rationale.push(`${request.baseDate}: Vorhandene Einheit bleibt bestehen.`);
+      rationale.push(
+        tr(
+          `${request.baseDate}: Vorhandene Einheit bleibt bestehen.`,
+          `${request.baseDate}: Existing session stays in place.`,
+        ),
+      );
       continue;
     }
     const proposed = sessionFromRoutine(request);
@@ -1578,9 +1681,17 @@ export function suggestWeek(
         ...workingState,
         sessions: [...workingState.sessions, moved],
       };
-      const message = `${request.baseDate} passt nicht; Vorschlag auf ${selectedDate} verschieben.`;
+      const message = tr(
+        `${request.baseDate} passt nicht; Vorschlag auf ${selectedDate} verschieben.`,
+        `${request.baseDate} doesn't fit; move the suggestion to ${selectedDate}.`,
+      );
       suggestions.push({ date: selectedDate, message });
-      rationale.push(`${request.baseDate}: Auf ${selectedDate} verschoben, damit die Woche passt.`);
+      rationale.push(
+        tr(
+          `${request.baseDate}: Auf ${selectedDate} verschoben, damit die Woche passt.`,
+          `${request.baseDate}: Moved to ${selectedDate} so the week fits.`,
+        ),
+      );
     } else {
       const sessionIds = existingSessions
         .filter(session => session.date === request.baseDate)
@@ -1589,16 +1700,35 @@ export function suggestWeek(
         conflict(
           baseCode === 'locked_session' ? 'locked_session' : baseCode,
           baseCode === 'unavailable'
-            ? `Für ${request.baseDate} sind weniger als ${request.minutes} Minuten verfügbar.`
+            ? tr(
+                `Für ${request.baseDate} sind weniger als ${request.minutes} Minuten verfügbar.`,
+                `Less than ${request.minutes} minutes are available on ${request.baseDate}.`,
+              )
             : baseCode === 'adjacent_hard'
-              ? 'Die Einheit läge direkt neben einer harten Einheit.'
-              : 'Am vorgeschlagenen Tag ist bereits eine Einheit geplant.',
+              ? tr(
+                  'Die Einheit läge direkt neben einer harten Einheit.',
+                  'The session would sit right next to a hard session.',
+                )
+              : tr(
+                  'Am vorgeschlagenen Tag ist bereits eine Einheit geplant.',
+                  'A session is already planned for the suggested day.',
+                ),
           request.baseDate,
           sessionIds,
         ),
       );
-      warnings.push(`${request.baseDate}: Keine passende freie Zeit für diese Einheit gefunden.`);
-      rationale.push(`${request.baseDate}: Keine automatische Nachhol-Einheit angelegt.`);
+      warnings.push(
+        tr(
+          `${request.baseDate}: Keine passende freie Zeit für diese Einheit gefunden.`,
+          `${request.baseDate}: No suitable free time found for this session.`,
+        ),
+      );
+      rationale.push(
+        tr(
+          `${request.baseDate}: Keine automatische Nachhol-Einheit angelegt.`,
+          `${request.baseDate}: No automatic catch-up session added.`,
+        ),
+      );
     }
   }
 

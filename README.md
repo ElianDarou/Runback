@@ -1,102 +1,98 @@
 # Runback
 
-Lokale Android-Trainings-App für Laufen und Krafttraining, mit eigenständiger
-Wear-OS-App. Alles bleibt auf dem Gerät: kein Konto, keine Cloud, keine Pflicht
-zur Einrichtung.
+Local Android training app for running and strength training, with a standalone
+Wear OS app. Everything stays on the device: no account, no cloud, no required
+setup.
 
 Website: [runback-training.vercel.app](https://runback-training.vercel.app)
 
-Runback zeichnet Einheiten auf, importiert deine Historie und leitet daraus
-**höchstens eine** begründete Empfehlung fürs Laufen und eine fürs Krafttraining
-ab — und prüft später ehrlich, ob sie geholfen hat. „Noch nicht klar“ ist ein
-normales Ergebnis.
+Runback records workouts, imports your history, and derives from it
+**at most one** justified recommendation for running and one for strength training —
+and later checks honestly whether it helped. “Not clear yet” is a normal result.
 
-## Was du in der App siehst
+## Language
 
-**Heute** und **Verlauf** sind feste Tabs. Bis zu zwei weitere aktive
-Funktionen lassen sich in die Leiste heften: Plan, Coach, Statistik, Routen,
-Vorlagen oder Muskelkater. Alles andere liegt unter **Alle Funktionen**.
+The app is available in German and English. Switch it under **Settings → Language**.
+The default is the device language.
 
-- **Heute** — Was mache ich jetzt? Wochenleiste, die heutige Einheit als
-  Karte mit einem Start-Button (Sportart, Zweck, Vorlage und Tempo-/Pulsziel
-  im Start-Sheet), die laufende Empfehlung kompakt, Muskelkater melden, die
-  letzten Einheiten.
-- **Verlauf** — Was habe ich gemacht? Einheiten nach Wochen gruppiert mit
-  Summe. Detailansicht mit Karte, Kennzahlen, nächstem Schritt, Gefühl,
-  Abschnitten.
-- **Plan** — Was mache ich diese Woche? Wochenkalender, Einheit hinzufügen,
-  Woche vorschlagen lassen, Monat als Sprungmarke.
-- **Coach** (optional) — Woran arbeite ich? Die Empfehlung je Bereich mit
-  Zustand und Fortschritt, frühere Empfehlungen, Wie Runback rechnet.
-  **Ziele & Fokus** bleiben auch ohne Coach erreichbar.
-- **Einstellungen** (Zahnrad im Kopf) — Funktionen und Navigation, Alle
-  Funktionen, Geräte & Verbindungen (Uhr, BLE, Health Connect, Wetter),
-  Eigener Server, Deine Daten (Import, Export, Backup, Löschen),
-  KI-Formulierung & Trainingschat, Einrichtung.
+## What you see in the app
 
-Unter **Funktionen** wählst du, was Runback zeigt und wann es fragt: Bereiche
-(Laufen, Krafttraining, Radfahren), Muskelkater und die Häufigkeit der Abfrage
-(standardmäßig nach Krafttraining), die Blöcke auf Heute, Empfehlungen
-(vorschlagen, nur im Coach, aus), Anzeige während der Aufzeichnung,
-Pausentimer und mehr. Unter **Navigation** wählst du die Tabs. Abgeschaltetes
-verschwindet aus der App; Daten bleiben erhalten.
+**Today** and **History** are fixed tabs. Up to two more active features
+can be pinned to the bar: Plan, Coach, Statistics, Routes,
+Templates, or Soreness. Everything else is under **All features**.
 
-Nach einem Lauf zeigt Runback drei Dinge: wie der Lauf zu seinem Zweck passt,
-wo die aktuelle Empfehlung steht und was du als Nächstes tun kannst — auch
-„so weitermachen“. Details, Datenbasis und Unsicherheit liegen unter „Details“.
+- **Today** — What do I do now? A week strip, today’s workout as a card with a start
+  button (sport, purpose, template, and pace/heart rate target in the start sheet), the
+  running recommendation in compact form, reporting soreness, and the latest workouts.
+- **History** — What have I done? Workouts grouped by week with totals. Detail view with
+  map, metrics, next step, feeling, and splits.
+- **Plan** — What do I do this week? Week calendar, add a workout, have a week suggested,
+  month as a jump marker.
+- **Coach** (optional) — What am I working on? The recommendation per area with its state
+  and progress, earlier recommendations, How Runback calculates.
+  **Goal & focus** remain reachable even without the Coach.
+- **Settings** (gear icon in the header) — Features and navigation, All features,
+  Devices & connections (watch, BLE, Health Connect, weather), Own server, Your data
+  (import, export, backup, delete), AI phrasing & training chat, setup. Language is here too.
 
-## Ziel, Fokus, Empfehlung
+Under **Features** you choose what Runback shows and when it asks: areas
+(running, strength training, cycling), soreness and how often it is asked (by default after
+strength training), the blocks on Today, recommendations (suggest, Coach only, off),
+display during recording, the rest timer, and more. Under **Navigation** you choose the tabs.
+What is switched off disappears from the app; data is kept.
 
-Laufen und Krafttraining sind getrennte Bereiche. Jeder hat sein eigenes Ziel,
-seinen eigenen Fokus und seine eigene Empfehlung; wer nur eins macht, sieht vom
-anderen nichts.
+After a run, Runback shows three things: how the run fits its purpose, where the current
+recommendation stands, and what you can do next — including “keep going as you are”.
+Details, data basis, and uncertainty are under “Details”.
 
-- Ein **Ziel** ist optional und darf ein Datum haben.
-- Ein **Fokus** (Ausdauer, schneller werden, verletzungsfrei bleiben,
-  Gewohnheit, Fitness) ist ein dauerhaftes Thema. Er wird nie bewertet.
-- Eine **Empfehlung** ist die eine konkrete Sache je Bereich, die du
-  ausprobierst. Du nimmst sie an, sie läuft, und Runback sagt danach, ob es
-  geholfen hat, ob nicht, oder ob es noch nicht klar ist. Berührt eine
-  Empfehlung beides („weniger Beinbelastung vor dem langen Lauf“), gibt es
-  solange keine zweite.
+## Goal, focus, recommendation
 
-## Daten
+Running and strength training are separate areas. Each has its own goal, its own focus,
+and its own recommendation; if you only do one, you see nothing of the other.
 
-- **Import** aus Garmin, Strava, Fitbit, Google Fit, Apple Health, Samsung
-  Health, Mi Fitness, Polar, Strong u. a. — siehe [Importe](docs/imports.md).
-- **Backup** als ZIP mit allem, was Runback kennt; Wiederherstellung auf einer
-  frischen Installation.
-- **Export** eines Laufs als GPX, Laufberichte und Krafttraining als ZIP.
-- **Health Connect** lesen und (je Lauf, ausdrücklich) schreiben.
-- **BLE-Sensoren** für Puls und Laufkadenz.
-- **Wetter** nur nach Aktivierung, per Open-Meteo.
-- **OpenRouter** optional mit eigenem Schlüssel für Formulierung und
-  Trainingschat. Der Chat liest, er schreibt nichts und entscheidet nichts.
-- **Eigener Server** optional, selbst gehostet, mit einer lesenden Kopie
-  freigegebener Daten — siehe [server/README.md](server/README.md).
+- A **goal** is optional and may have a date.
+- A **focus** (endurance, getting faster, staying injury-free, habit, fitness) is an
+  ongoing theme. It is never evaluated.
+- A **recommendation** is the one concrete thing per area that you try. You accept it, it runs,
+  and afterward Runback says whether it helped, whether it did not, or whether it is not clear
+  yet. If a recommendation touches both areas (“less leg load before the long run”), there is
+  no second one in the meantime.
+
+## Data
+
+- **Import** from Garmin, Strava, Fitbit, Google Fit, Apple Health, Samsung Health,
+  Mi Fitness, Polar, Strong, and others — see [Imports](docs/imports.md).
+- **Backup** as a ZIP with everything Runback knows; restore onto a fresh installation.
+- **Export** of a run as GPX, run reports, and strength training as ZIP.
+- **Health Connect** read and (per run, explicitly) write.
+- **BLE sensors** for heart rate and running cadence.
+- **Weather** only once enabled, via Open-Meteo.
+- **OpenRouter** optional with your own key, for phrasing and the training chat. The chat
+  reads, it writes nothing and decides nothing.
+- **Own server** optional, self-hosted, with a read-only copy of shared data — see
+  [server/README.md](server/README.md).
 
 ## Installation
 
-[Test-Releases](https://github.com/GhostCodeByte/Runback/releases) enthalten je
-eine Telefon- und eine Wear-APK, signiert mit einem festen öffentlichen
-Debug-Schlüssel. Kein Entwicklungsserver nötig.
+[Test releases](https://github.com/GhostCodeByte/Runback/releases) each contain a phone
+and a Wear APK, signed with a fixed public debug key. No development server needed.
 
 ```sh
 adb -s PHONE_SERIAL install -r runback-phone-*.apk
 adb -s WATCH_SERIAL install -r runback-wear-*.apk
 ```
 
-Für die Uhr: Entwickleroptionen und drahtloses Debugging aktivieren, dann
-`adb pair` und `adb connect`. `adb install -r` erhält bestehende Daten.
-Prüfsummen: `sha256sum --check SHA256SUMS`.
+For the watch: enable developer options and wireless debugging, then `adb pair` and
+`adb connect`. `adb install -r` keeps existing data.
+Checksums: `sha256sum --check SHA256SUMS`.
 
-Das ist Testsoftware. Reale GPS-/Sensorgenauigkeit, Akkuverbrauch und lange
-Hintergrundaufzeichnung sind auf echten Geräten nicht vollständig nachgewiesen;
-persönliche Prognosemodelle bleiben bis zur Validierung gesperrt.
+This is test software. Real-world GPS/sensor accuracy, battery use, and long background
+recording have not been fully verified on real devices; personal forecast models remain
+locked until validated.
 
-## Entwicklung
+## Development
 
-Node 20.19+ oder 22, JDK 17/21, Android SDK 36, NDK 27.1.12297006.
+Node 20.19+ or 22, JDK 17/21, Android SDK 36, NDK 27.1.12297006.
 
 ```sh
 npm ci
@@ -105,15 +101,15 @@ npm test -- --runInBand
 cd android && ./gradlew :core:testDebugUnitTest :app:lintRelease :wear:lintRelease :app:assembleRelease :wear:assembleRelease
 ```
 
-Windows: `gradlew.bat`. CI baut bei jedem Push auf `main` ein Prerelease
+Windows: `gradlew.bat`. CI builds a prerelease on every push to `main`
 (`.github/workflows/android.yml`).
 
-## Dokumentation
+## Documentation
 
-- [Spec](docs/spec.md) — Ziel, Mentalität, Grundregeln.
-- [Design Language](docs/design-language.md) — wie Oberflächen aussehen und sprechen.
-- [Glossar](docs/glossary.md) — Alltagswort → Codename.
-- [Importe](docs/imports.md) — welche Exporte woher kommen und was daraus wird.
-- [Bewegungsdaten](docs/motion-data.md) — Bewegungen im Krafttraining exportieren und für ein Modell nutzen.
+- [Spec](docs/spec.md) — goal, mindset, ground rules.
+- [Design language](docs/design-language.md) — how surfaces look and speak.
+- [Glossary](docs/glossary.md) — German and English UI terms → code names.
+- [Imports](docs/imports.md) — which exports come from where and what becomes of them.
+- [Motion data](docs/motion-data.md) — export strength-training movements and use them for a model.
 
-Das Repository ist öffentlich; die Lizenz ist noch nicht festgelegt.
+The repository is public; the license has not been decided yet.

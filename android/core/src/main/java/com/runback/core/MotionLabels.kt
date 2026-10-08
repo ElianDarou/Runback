@@ -4,13 +4,13 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Was der Nutzer während einer Krafteinheit in der App tut, als Zeitmarken für
- * die Bewegungsdaten. Abgeleitet aus zwei aufeinanderfolgenden Ständen der
- * aktiven Einheit (`strength_active`), damit kein Bildschirm daran denken muss.
+ * What the user does in the app during a strength session, as time marks for
+ * the motion data. Derived from two consecutive states of the active session
+ * (`strength_active`), so no screen has to think about it.
  *
- * Ein abgehakter Satz trägt seinen eigenen Zeitpunkt (`completedAt`, Handyuhr).
- * Alles andere — Zurücknehmen, Überspringen, Übungswechsel — bekommt den
- * Zeitpunkt, zu dem das Handy die Änderung gespeichert hat.
+ * A checked-off set carries its own time (`completedAt`, phone clock).
+ * Everything else — undoing, skipping, switching exercises — gets the time at
+ * which the phone saved the change.
  */
 object MotionLabels {
     const val VERSION = "motion-labels-v1"
@@ -62,10 +62,10 @@ object MotionLabels {
     }
 
     /**
-     * Versatz Uhr − Handy aus Ping-Antworten (`t0` gesendet, `tw` Uhrzeit beim
-     * Empfang, `t1` Antwort auf dem Handy). Der Ping mit der kürzesten Laufzeit
-     * gewinnt; seine halbe Laufzeit ist die ehrliche Unsicherheit. Ohne gültige
-     * Antwort bleibt der Versatz unbekannt.
+     * Clock offset watch − phone from ping replies (`t0` sent, `tw` watch time on
+     * receipt, `t1` reply on the phone). The ping with the shortest round trip
+     * wins; half its round trip is the honest uncertainty. Without a valid
+     * reply the offset stays unknown.
      */
     fun clockOffset(pings: JSONArray?): ClockOffset? {
         if (pings == null) return null
@@ -88,17 +88,16 @@ object MotionLabels {
 
     data class ClockOffset(val offsetMs: Double, val uncertaintyMs: Double, val samples: Int)
 
-    /** Regeln von `completionLabels`. */
+    /** Rules of `completionLabels`. */
     const val COMPLETION_LABELS_VERSION = "completion-labels-v1"
-    /** Zwei echte Sätze derselben Übung liegen nie so dicht beieinander (Satz plus Pause). */
+    /** Two real sets of the same exercise are never this close together (set plus rest). */
     const val BATCH_WINDOW_MS = 15_000L
 
     /**
-     * Wie gut taugt das Abhaken eines Satzes als Satzende? Je Satz zählt das
-     * letzte Abhaken, das nicht zurückgenommen wurde. Mehrere Sätze derselben
-     * Übung, die innerhalb von `BATCH_WINDOW_MS` abgehakt wurden, sind
-     * Nachträge (`batch`): Die Sätze lagen davor, aber nicht an diesen
-     * Zeitpunkten — nur ein schwaches Label. Alle anderen sind `single`.
+     * How good is checking off a set as the set's end? For each set, the last
+     * check-off that was not undone counts. Several sets of the same exercise
+     * checked off within `BATCH_WINDOW_MS` are late entries (`batch`): the sets
+     * happened earlier, but not at these times — only a weak label. All others are `single`.
      */
     fun completionLabels(events: JSONArray): Map<String, String> {
         val last = linkedMapOf<String, JSONObject>()
@@ -142,7 +141,7 @@ object MotionLabels {
         return result
     }
 
-    /** Übungen haben keine eigene ID; die ID ihres ersten Satzes ist stabil genug. */
+    /** Exercises have no ID of their own; the ID of their first set is stable enough. */
     private fun exerciseKey(exercise: JSONObject): String =
         exercise.optString("exerciseId") + "|" + (exercise.optJSONArray("sets")?.optJSONObject(0)?.optString("id") ?: "")
 

@@ -5,6 +5,7 @@ import android.os.SystemClock
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import com.runback.core.Lang
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -40,10 +41,10 @@ class OpenRouterProse(context: Context) {
 
     /** No app-level daily budget. Provider quotas still apply. */
     fun configure(enabled: Boolean, model: String, apiKey: String? = null): JSONObject = synchronized(lock) {
-        require(model.length in 1..120 && model.matches(Regex("[A-Za-z0-9._:/-]+"))) { "Ungültige Modellkennung." }
+        require(model.length in 1..120 && model.matches(Regex("[A-Za-z0-9._:/-]+"))) { Lang.tr("Ungültige Modellkennung.", "Invalid model ID.") }
         val edit = prefs.edit()
         if (apiKey != null && apiKey.isNotBlank()) {
-            require(apiKey.length in 8..512 && apiKey.all { it.code in 33..126 }) { "Ungültiger API-Key." }
+            require(apiKey.length in 8..512 && apiKey.all { it.code in 33..126 }) { Lang.tr("Ungültiger API-Key.", "Invalid API key.") }
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.ENCRYPT_MODE, secretKey())
             edit.putString("key_ciphertext", Base64.encodeToString(cipher.doFinal(apiKey.toByteArray(Charsets.UTF_8)), Base64.NO_WRAP))
@@ -176,8 +177,8 @@ class OpenRouterProse(context: Context) {
     /** A single completion, on the dedicated AI worker. Never log request bodies or keys. */
     fun complete(messages: JSONArray, tools: JSONArray?, finalAnswer: Boolean = false): JSONObject {
         val snapshot = synchronized(lock) {
-            check(prefs.getBoolean("enabled", false)) { "Aktiviere OpenRouter unter Auswertung & Modelle." }
-            val key = decryptKey() ?: error("Bitte hinterlege deinen OpenRouter API-Schlüssel.")
+            check(prefs.getBoolean("enabled", false)) { Lang.tr("Aktiviere OpenRouter unter Einstellungen → KI-Formulierung & Trainingschat.", "Turn on OpenRouter under Settings → AI wording & training chat.") }
+            val key = decryptKey() ?: error(Lang.tr("Bitte hinterlege deinen OpenRouter API-Schlüssel.", "Add your OpenRouter API key."))
             Snapshot(key, prefs.getString("model", DEFAULT_MODEL) ?: DEFAULT_MODEL, 4096, revision)
         }
         val body = JSONObject().put("model", snapshot.model).put("messages", messages)
@@ -196,10 +197,10 @@ class OpenRouterProse(context: Context) {
             val code = connection.responseCode
             check(code == 200) {
                 when(code) {
-                    401, 403 -> "OpenRouter hat den Zugriff abgelehnt. Schlüssel und Berechtigungen prüfen."
-                    402 -> "Das OpenRouter-Guthaben reicht für dieses Modell nicht aus."
-                    429 -> "OpenRouter begrenzt gerade Anfragen. Bitte später erneut versuchen."
-                    else -> "OpenRouter ist nicht verfügbar (HTTP $code). Modell und Anbieter-Einstellungen prüfen."
+                    401, 403 -> Lang.tr("OpenRouter hat den Zugriff abgelehnt. Schlüssel und Berechtigungen prüfen.", "OpenRouter refused access. Check the key and its permissions.")
+                    402 -> Lang.tr("Das OpenRouter-Guthaben reicht für dieses Modell nicht aus.", "Your OpenRouter balance is not enough for this model.")
+                    429 -> Lang.tr("OpenRouter begrenzt gerade Anfragen. Bitte später erneut versuchen.", "OpenRouter is limiting requests right now. Try again later.")
+                    else -> Lang.tr("OpenRouter ist nicht verfügbar (HTTP $code). Modell und Anbieter-Einstellungen prüfen.", "OpenRouter is not available (HTTP $code). Check the model and provider settings.")
                 }
             }
             val output = java.io.ByteArrayOutputStream()
@@ -207,27 +208,27 @@ class OpenRouterProse(context: Context) {
             connection.inputStream.use { stream ->
                 val buffer = ByteArray(4096)
                 while (true) {
-                    check(SystemClock.elapsedRealtime() < deadline) { "OpenRouter antwortet zu langsam. Bitte erneut versuchen." }
+                    check(SystemClock.elapsedRealtime() < deadline) { Lang.tr("OpenRouter antwortet zu langsam. Bitte erneut versuchen.", "OpenRouter is responding too slowly. Try again.") }
                     val count = stream.read(buffer)
                     if (count < 0) break
-                    check(output.size() + count <= 262144) { "Die Modellantwort ist zu groß." }
+                    check(output.size() + count <= 262144) { Lang.tr("Die Modellantwort ist zu groß.", "The model response is too large.") }
                     output.write(buffer, 0, count)
                 }
             }
             val response = JSONObject(output.toString("UTF-8"))
             val choice = response.optJSONArray("choices")?.optJSONObject(0)
-                ?: error("OpenRouter hat keine Antwort geliefert.")
+                ?: error(Lang.tr("OpenRouter hat keine Antwort geliefert.", "OpenRouter sent no answer."))
             check(choice.optString("finish_reason") !in listOf("length", "error", "content_filter")) {
-                "Das Modell hat keine vollständige Antwort geliefert. Bitte die Frage eingrenzen."
+                Lang.tr("Das Modell hat keine vollständige Antwort geliefert. Bitte die Frage eingrenzen.", "The model gave no complete answer. Narrow the question.")
             }
-            synchronized(lock) { check(revision == snapshot.revision) { "KI-Einstellungen wurden geändert. Bitte erneut senden." } }
+            synchronized(lock) { check(revision == snapshot.revision) { Lang.tr("KI-Einstellungen wurden geändert. Bitte erneut senden.", "The AI settings changed. Send again.") } }
             return choice.getJSONObject("message")
         } finally { connection.disconnect() }
     }
 
     private fun render(engine: JSONObject, hash: String, variant: String, source: String, reason: String?): JSONObject {
         val fields = if (variant == "action_first") listOf("nextAction", "classification", "focus") else listOf("classification", "focus", "nextAction")
-        val labels = mapOf("classification" to "Einordnung", "focus" to "Stand der Empfehlung", "nextAction" to "Nächster Schritt")
+        val labels = mapOf("classification" to Lang.tr("Einordnung", "Classification"), "focus" to Lang.tr("Stand der Empfehlung", "Status of the recommendation"), "nextAction" to Lang.tr("Nächster Schritt", "Next step"))
         return JSONObject().put("inputHash", hash).put("modelVersion", engine.optString("model_version"))
             .put("formulationVersion", FORMULATION_VERSION).put("source", source).put("variant", variant)
             .put("classification", engine.optString("classification")).put("focus", engine.optString("focus"))

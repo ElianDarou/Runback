@@ -1,104 +1,102 @@
-# Importe
+# Imports
 
-Runback liest Exporte anderer Apps ein. Der Import ist optional: Aufzeichnen,
-Historie und Auswertung funktionieren auch ohne. Prinzip: **dort exportieren,
-hier importieren** — keine Cloud-Verbindung, kein Konto.
+Runback reads exports from other apps. Importing is optional: recording,
+history, and analysis also work without it. Principle: **export there,
+import here** — no cloud connection, no account.
 
-In der App: **Zahnrad → Deine Daten → Aus anderen Apps**, dann Quelle wählen
-und Datei(en) auswählen. ZIP-Archive können direkt eingelesen werden.
+In the app: **Gear icon → Your data → From other apps**, then choose the source
+and select the file(s). ZIP archives can be read directly.
 
-Runback liest die Dateien zuerst nur und zeigt unter **Import prüfen**, was
-neu wäre: Läufe, Krafteinheiten (auch einzeln), Kontextwerte je Art und ob
-Kraftvorlagen vorgeschlagen werden sollen. Gespeichert wird erst nach
-„übernehmen“.
+Runback first only reads the files and shows under **Review import** what would
+be new: runs, strength sessions (also individually), context values per type, and
+whether strength templates should be suggested. Nothing is saved until you tap
+“Accept”.
 
-Unter **Deine Daten → Deine Importe** steht jeder Import und lässt sich als
-Ganzes löschen — ohne Sperre, die Dateien lassen sich danach neu importieren.
-Was ein anderer Import ebenfalls geliefert hat, bleibt. Übernommene Vorlagen,
-eigene Aufzeichnungen und Health-Connect-Läufe gehören keinem Import und
-bleiben immer. Importe aus der Zeit vor dieser Liste erscheinen je Quelle als
-„früherer Import“.
+Under **Your data → Your imports** every import is listed and can be deleted as a
+whole — without a lock, so the files can be imported again afterward. What another
+import also delivered stays. Adopted templates, your own recordings, and Health Connect
+runs belong to no import and always stay. Imports from before this list appear per
+source as “earlier import”.
 
-## Dateiformate
+## File formats
 
-| Format | Inhalt | Was Runback daraus macht |
+| Format | Content | What Runback makes of it |
 |---|---|---|
-| **FIT** | Garmin-Format mit Spur, Puls, Kadenz, Sportart | Voller Lauf, wie eine eigene Aufzeichnung |
-| **GPX** | XML mit Spur (`<trkpt>`), optional Puls/Kadenz in `<extensions>`, Name in `<trk><name>`, Sportart in `<type>` | Voller Lauf |
-| **TCX** | XML mit Spur und Sensordaten, Sportart im `Sport`-Attribut | Voller Lauf |
-| **CSV / JSON** (Zusammenfassungen) | Eine Zeile bzw. ein Objekt je Aktivität ohne Spur | Zusammenfassungs-Lauf: nur Zeit und Distanz, keine Karte |
-| **CSV** (Wellness) | Ruhepuls, HRV, Schlaf, Gewicht, Schritte je Zeitpunkt | Anzeige-Kontext |
-| **CSV** (Kraft, Strong-Aufbau) | Eine Zeile je Satz: Datum, Übung, Gewicht, Wiederholungen | Krafteinheiten mit Sätzen |
-| **ZIP** | Beliebige Kombination der obigen Dateien, bis Verschachtelungstiefe 2 | Alles Enthaltene; Spuren werden vor Zusammenfassungen gelesen |
+| **FIT** | Garmin format with track, heart rate, cadence, sport | Full run, like one of your own recordings |
+| **GPX** | XML with track (`<trkpt>`), optionally heart rate/cadence in `<extensions>`, name in `<trk><name>`, sport in `<type>` | Full run |
+| **TCX** | XML with track and sensor data, sport in the `Sport` attribute | Full run |
+| **CSV / JSON** (summaries) | One row or one object per activity without a track | Summary-only run: time and distance only, no map |
+| **CSV** (wellness) | Resting heart rate, HRV, sleep, weight, steps per timestamp | Display context |
+| **CSV** (strength, Strong layout) | One row per set: date, exercise, weight, reps | Strength sessions with sets |
+| **ZIP** | Any combination of the files above, nested up to depth 2 | Everything contained; tracks are read before summaries |
 
-Passwortgeschützte ZIPs werden nicht unterstützt — vorher entpacken.
+Password-protected ZIPs are not supported — extract them first.
 
-## Woher die Daten kommen
+## Where the data comes from
 
-| App | Export | Dateien |
+| App | Export | Files |
 |---|---|---|
-| **Garmin Connect** | Aktivität → Zahnrad → „Original“ (FIT) / TCX / GPX; alles: Konto → Daten exportieren | Einzeldateien, Bulk-ZIP mit `DI_CONNECT`, `summarizedActivities.json` |
-| **Strava** | Einstellungen → Meine Daten herunterladen | ZIP mit `activities.csv` + Tracks |
-| **Fitbit / Google Health** | takeout.google.com → nur „Fitbit“; GPS-Läufe einzeln als TCX | Takeout-ZIP, TCX |
-| **Google Fit** | takeout.google.com → nur „Fit“ | Takeout-ZIP (JSON), optional TCX/GPX |
-| **Apple Health** | iPhone Health → Profil → Alle Gesundheitsdaten exportieren | `export.zip` mit `export.xml` und `workout-routes/*.gpx` |
-| **Samsung Health** | Menü → Einstellungen → Persönliche Daten herunterladen | ZIP mit `com.samsung.*.csv`, einzelne GPX je Lauf |
-| **Mi Fitness / Zepp Life** | Einzeltraining → Route exportieren; Archiv über user.huami.com/privacy | GPX/TCX/FIT, `SPORT*.csv`, `HEARTRATE_AUTO*.csv` |
-| **Polar Flow** | Training → TCX/GPX exportieren | TCX/GPX |
-| **Huawei Health** | Ich → Einstellungen → Daten exportieren | CSV/JSON, TCX/GPX |
-| **Strong** (auch Hevy, FitNotes) | Profil → Einstellungen → Daten exportieren | `strong.csv` |
-| Andere (Coros, Suunto, Adidas, Withings …) | „Export“ / „Daten herunterladen“ suchen | FIT/TCX/GPX bevorzugt, sonst CSV/JSON |
+| **Garmin Connect** | Activity → gear icon → “Original” (FIT) / TCX / GPX; everything: Account → Export data | Single files, bulk ZIP with `DI_CONNECT`, `summarizedActivities.json` |
+| **Strava** | Settings → Download my data | ZIP with `activities.csv` + tracks |
+| **Fitbit / Google Health** | takeout.google.com → “Fitbit” only; GPS runs individually as TCX | Takeout ZIP, TCX |
+| **Google Fit** | takeout.google.com → “Fit” only | Takeout ZIP (JSON), optionally TCX/GPX |
+| **Apple Health** | iPhone Health → Profile → Export All Health Data | `export.zip` with `export.xml` and `workout-routes/*.gpx` |
+| **Samsung Health** | Menu → Settings → Download personal data | ZIP with `com.samsung.*.csv`, one GPX per run |
+| **Mi Fitness / Zepp Life** | Single workout → export route; archive via user.huami.com/privacy | GPX/TCX/FIT, `SPORT*.csv`, `HEARTRATE_AUTO*.csv` |
+| **Polar Flow** | Training → export TCX/GPX | TCX/GPX |
+| **Huawei Health** | Me → Settings → Export data | CSV/JSON, TCX/GPX |
+| **Strong** (also Hevy, FitNotes) | Profile → Settings → Export data | `strong.csv` |
+| Others (Coros, Suunto, Adidas, Withings …) | Look for “Export” / “Download data” | FIT/TCX/GPX preferred, otherwise CSV/JSON |
 
-## Was übernommen wird
+## What is imported
 
-- **Läufe mit Spur** werden voll ausgewertet, mit denselben Regeln wie eigene
-  Aufzeichnungen. Der Streckenname aus der Datei wird zum Lauftitel, wenn er
-  sprechend ist; technische Namen (`activity_1234.fit`) werden verworfen.
-- **Läufe ohne Spur** bleiben Zusammenfassungen: Zeit und Distanz für einfache
-  Tempoaussagen, keine Karte, keine erfundenen Samples.
-- **Ruhepuls, HRV, Schlaf, Gewicht, Schritte, VO2max** sind reiner
-  Anzeige-Kontext. Sie begründen keine Empfehlung, keinen Score und keine
-  Planänderung.
-- **Krafttraining** (Sätze, Gewicht, Wiederholungen, RPE) erscheint als
-  Krafteinheiten. Strong exportiert keine Einheit; Runback nimmt **kg** an.
-  Strong speichert keine Satzzeiten, nur Start und „Workout beenden“. Passt
-  die Dauer zu keiner Satzzahl (mehr als 30 Minuten plus 6 Minuten je Satz),
-  wurde die Einheit vermutlich zu spät beendet: Ihr Ende bleibt unbekannt,
-  außer du übernimmst die Dauer in der Vorschau.
-- **Pulsverlauf** (Fitbit-Takeout `heart_rate-*.json`, Google-Fit-Takeout
-  `…heart_rate.bpm….json`, Mi Fitness) wird je Minute gemittelt gespeichert.
-  Jede Krafteinheit sucht sich beim Öffnen den Puls aus ihrem Zeitraum —
-  egal, ob Strong vor oder nach Fitbit importiert wurde. Quellen werden nicht
-  gemischt; es zählt die mit den meisten Werten. Aus Minutenmitteln entstehen
-  kein Puls am Satzende und keine Erholungswerte. Wird der Puls-Import
-  gelöscht, verschwindet der Puls an den Einheiten mit.
-- **Gewicht aus generischem JSON** nur, wenn es ausdrücklich so heißt:
+- **Runs with a track** are fully analyzed, under the same rules as your own
+  recordings. The route name from the file becomes the run title if it is
+  meaningful; technical names (`activity_1234.fit`) are discarded.
+- **Runs without a track** remain summaries: time and distance for simple pace
+  statements, no map, no invented samples.
+- **Resting heart rate, HRV, sleep, weight, steps, VO2max** are pure display
+  context. They do not justify a recommendation, a score, or a plan change.
+- **Strength training** (sets, weight, reps, RPE) appears as strength sessions.
+  Strong does not export a session; Runback assumes **kg**.
+  Strong stores no set times, only the start and “Finish workout”. If the duration
+  matches no set count (more than 30 minutes plus 6 minutes per set), the session was
+  probably ended too late: its end stays unknown unless you accept the duration in the
+  preview.
+- **Heart rate trace** (Fitbit Takeout `heart_rate-*.json`, Google Fit Takeout
+  `…heart_rate.bpm….json`, Mi Fitness) is stored averaged per minute. Each strength
+  session looks up the heart rate for its time window when opened — regardless of
+  whether Strong was imported before or after Fitbit. Sources are not mixed; the one with
+  the most values counts. Minute averages produce no heart rate at set end and no recovery
+  values. If the heart rate import is deleted, the heart rate on the sessions disappears
+  with it.
+- **Weight from generic JSON** only if it is explicitly labeled as such:
   `[{"kind":"weight","date":"2024-11-02","value":70,"unit":"kg"}]`.
 
-## Was aussortiert wird
+## What is filtered out
 
-- **Keine Läufe:** Spaziergänge, Radfahrten und andere Sportarten werden nicht
-  als Lauf angelegt. Entscheidend ist zuerst die Sportart in der Datei; fehlt
-  sie, das Tempo (zwischen 1,5 und 6,5 m/s gilt als Laufen).
-- **Duplikate:** derselbe Lauf aus mehreren Quellen (gleiche Startzeit und
-  Dauer) wird nur einmal angelegt und zählt nur einmal als Beleg.
-- **Zu große Dateien:** 64 MB je Aktivität, 512 MB je Archiv entpackt,
-  150.000 Samples je Aktivität. Darüber wird gezählt und übersprungen — Archiv
-  teilen und erneut importieren.
+- **Not runs:** walks, bike rides, and other sports are not created as runs. The sport
+  in the file decides first; if it is missing, the pace decides (between 1.5 and 6.5 m/s
+  counts as running).
+- **Duplicates:** the same run from several sources (same start time and duration) is
+  created only once and counts as evidence only once.
+- **Files that are too large:** 64 MB per activity, 512 MB per archive unpacked,
+  150,000 samples per activity. Anything above that is counted and skipped — split the
+  archive and import again.
 
-Der Importbericht zeigt importierte, doppelte, übersprungene und fehlgeschlagene
-Dateien je Quelle. Ein wiederholter Import erzeugt keine Duplikate.
+The import report shows imported, duplicate, skipped, and failed files per source. A
+repeated import creates no duplicates.
 
-## Privatsphäre
+## Privacy
 
-Alles bleibt auf dem Gerät. Exporte von Apple, Google und Samsung enthalten
-Jahre an Gesundheits- und Standortdaten — nur importieren, was als Kontext
-dienen soll, und Backups bewusst ablegen.
+Everything stays on the device. Exports from Apple, Google, and Samsung contain years
+of health and location data — only import what should serve as context, and store
+backups deliberately.
 
-## Häufige Fragen
+## Frequently asked questions
 
-- **„Nur Zusammenfassung, keine Karte“** — der Export enthielt keine Spur.
-  Einzeldatei (GPX/TCX/FIT) des Laufs nachliefern.
-- **„Datei übersprungen“** — unbekanntes Format oder unbekannte Spalten.
-- **Samsung-Zeiten wirken verschoben** — Samsung exportiert mit Zeitzonen-
-  Offset; Runback zeigt Start und Ende in Ortszeit.
+- **“Summary only, no map”** — the export contained no track. Supply the individual file
+  (GPX/TCX/FIT) of the run.
+- **“File skipped”** — unknown format or unknown columns.
+- **Samsung times look shifted** — Samsung exports with a time zone offset; Runback shows
+  start and end in local time.

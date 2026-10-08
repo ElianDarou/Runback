@@ -17,6 +17,7 @@ import {
   type MuscleReport,
   type SorenessReport,
 } from './freshness';
+import { tr } from './i18n';
 import {
   calibrateModel,
   type CalibrationInput,
@@ -38,17 +39,17 @@ export interface ModelValidationInput {
 }
 
 /**
- * Vorab festgelegte Prüfschwellen (Setzungen). Drei Meldungen aus einem
- * Erholungsverlauf sind keine drei unabhängigen Erfahrungen; deshalb zählen
- * Beobachtungen und Belastungsblöcke getrennt, und ein Gewinn gegenüber der
- * besten naiven Vorhersage muss praktisch spürbar sein.
+ * Validation thresholds set in advance (editorial choices). Three reports from
+ * one recovery course are not three independent experiences; so observations
+ * and load blocks count separately, and a gain over the best naive prediction
+ * must be practically noticeable.
  */
 export const VALIDATION_THRESHOLDS = Object.freeze({
   minimumHoldouts: 8,
   minimumBlocks: 3,
-  /** Relativer MAE-Gewinn gegenüber der besten naiven Vorhersage. */
+  /** Relative MAE gain over the best naive prediction. */
   minimumRelativeGain: 0.1,
-  /** Absoluter MAE-Gewinn in Skalenpunkten (0–10). */
+  /** Absolute MAE gain in scale points (0–10). */
   minimumAbsoluteGainPoints: 1,
 } as const);
 
@@ -67,22 +68,22 @@ export interface HoldoutObservation {
   repeatLast: number | null;
   alwaysZero: number;
   trainingReportCount: number;
-  /** Letzte Einheit vor der Meldung; Meldungen desselben Blocks sind verwandt. */
+  /** Last session before the report; reports from the same block are related. */
   blockId: string | null;
 }
 
 export interface HoldoutCheck {
   count: number;
-  /** Anzahl verschiedener Belastungsblöcke unter den Beobachtungen. */
+  /** Number of distinct load blocks among the observations. */
   blocks: number;
   modelMae: number | null;
   personalMedianMae: number | null;
   repeatLastMae: number | null;
   alwaysZeroMae: number | null;
-  /** MAE der besten naiven Vorhersage. */
+  /** MAE of the best naive prediction. */
   bestBaselineMae: number | null;
   beatsAllBaselines: boolean;
-  /** Gewinn erreicht die vorab festgelegten Mindestwerte. */
+  /** Gain reaches the minimum values set in advance. */
   gainIsRelevant: boolean;
   passes: boolean;
 }
@@ -171,9 +172,9 @@ const sortedReports = (reports: MuscleReport[]): MuscleReport[] =>
     .map(item => item.report);
 
 /**
- * Die Kalibrierung lernt nur Kraftbeiträge. Läufe wären in der Prognose
- * unkalibrierte Zusatzlast; sie bleiben deshalb aus der Prüfung draußen,
- * bis sie mitkalibriert werden.
+ * Calibration only learns strength contributions. In the forecast, runs would
+ * be uncalibrated extra load; they therefore stay out of the check until they
+ * are calibrated too.
  */
 const commonFreshnessInput = (
   input: ModelValidationInput,
@@ -196,9 +197,9 @@ const commonFreshnessInput = (
 });
 
 /**
- * Immer neu aus den Meldungen vor dem Prüfzeitpunkt. Eine von außen
- * übergebene Kalibrierung könnte spätere Meldungen enthalten und die
- * Prüfung mit Zukunftswissen bestehen; sie wird hier bewusst nicht benutzt.
+ * Always rebuilt from the reports before the check time. A calibration passed
+ * in from outside could contain later reports and pass the check with
+ * knowledge of the future; it is deliberately not used here.
  */
 const calibrationFor = (
   input: ModelValidationInput,
@@ -257,7 +258,9 @@ const reportsBefore = (
 ): MuscleReport[] => {
   const sorted = sortedReports(reports);
   const targetIndex = sorted.findIndex(report => report === target);
-  return targetIndex < 0 ? sorted.filter(report => report.at < target.at) : sorted.slice(0, targetIndex);
+  return targetIndex < 0
+    ? sorted.filter(report => report.at < target.at)
+    : sorted.slice(0, targetIndex);
 };
 
 const blockFor = (input: ModelValidationInput, at: number): string | null => {
@@ -409,8 +412,14 @@ const calibrationCheck = (observations: HoldoutObservation[]): CalibrationCheck 
       meanAbsoluteGap !== null &&
       meanAbsoluteGap <= MUSCLE_MODEL_CONSTANTS.calibrationMeanGapPoints,
     reason: usable.length
-      ? 'Kalibrierung wurde über Vorhersageklassen geprüft.'
-      : 'Für eine Kalibrierung fehlen Vorhersagen.',
+      ? tr(
+          'Kalibrierung wurde über Vorhersageklassen geprüft.',
+          'Calibration was checked across prediction classes.',
+        )
+      : tr(
+          'Für eine Kalibrierung fehlen Vorhersagen.',
+          'Calibration is missing predictions.',
+        ),
   };
 };
 
@@ -477,8 +486,14 @@ const timeBehaviourCheck = (
     toleranceHours: tolerance,
     passes: observed !== null && Math.abs(observed - expected) <= tolerance,
     reason: observed !== null
-      ? 'Der zeitliche Anstieg liegt innerhalb der festgelegten Toleranz.'
-      : 'Für das Zeitverhalten fehlen wiederholte Meldungen nach einem Beitrag.',
+      ? tr(
+          'Der zeitliche Anstieg liegt innerhalb der festgelegten Toleranz.',
+          'The rise over time is within the tolerance set in advance.',
+        )
+      : tr(
+          'Für das Zeitverhalten fehlen wiederholte Meldungen nach einem Beitrag.',
+          'Time behaviour needs repeated reports after a contribution.',
+        ),
   };
 };
 
@@ -498,7 +513,10 @@ const stabilityCheck = (input: ModelValidationInput): StabilityCheck => {
       limitPoints: MUSCLE_MODEL_CONSTANTS.stabilityMaxShiftPoints,
       observations: 0,
       passes: false,
-      reason: 'Für die Stabilitätsprüfung fehlen Meldungen.',
+      reason: tr(
+        'Für die Stabilitätsprüfung fehlen Meldungen.',
+        'The stability check needs reports.',
+      ),
     };
   }
   const fullState = stateForReports(input, input.reports);
@@ -526,8 +544,14 @@ const stabilityCheck = (input: ModelValidationInput): StabilityCheck => {
     observations: count,
     passes: count > 0 && maximum <= MUSCLE_MODEL_CONSTANTS.stabilityMaxShiftPoints,
     reason: count
-      ? 'Einzelne zusätzliche Meldungen verschieben die Schätzung nur begrenzt.'
-      : 'Für die Stabilitätsprüfung ließ sich keine Vergleichsschätzung bilden.',
+      ? tr(
+          'Einzelne zusätzliche Meldungen verschieben die Schätzung nur begrenzt.',
+          'Single additional reports shift the estimate only within limits.',
+        )
+      : tr(
+          'Für die Stabilitätsprüfung ließ sich keine Vergleichsschätzung bilden.',
+          'The stability check could not form a comparison estimate.',
+        ),
   };
 };
 
@@ -541,7 +565,7 @@ const failureChecks = (input: ModelValidationInput): FailureCheck => {
   const unknownSession: StrengthSession = {
     id: 'validation-unknown-exercise',
     kind: 'strength',
-    name: 'Prüfung',
+    name: 'Validation',
     startTime: 1,
     endTime: 2,
     status: 'finished',
@@ -550,7 +574,7 @@ const failureChecks = (input: ModelValidationInput): FailureCheck => {
     catalogVersion: CATALOG_VERSION,
     exercises: [{
       exerciseId: 'unknown-exercise',
-      name: 'Unbekannt',
+      name: 'Unknown',
       sets: [{
         id: 'unknown-set',
         planned: { kind: 'normal', loadKind: 'kg', reps: 8, weightKg: 40, restSeconds: 60 },
@@ -604,12 +628,18 @@ const failureChecks = (input: ModelValidationInput): FailureCheck => {
     contradictoryReportsDoNotThrow,
     passes,
     reason: passes
-      ? 'Ausfallfälle liefern unbekannte Ergebnisse oder bleiben stabil.'
-      : 'Mindestens ein Ausfallfall lieferte eine unzulässige Zahl oder einen Fehler.',
+      ? tr(
+          'Ausfallfälle liefern unbekannte Ergebnisse oder bleiben stabil.',
+          'Failure cases return unknown results or stay stable.',
+        )
+      : tr(
+          'Mindestens ein Ausfallfall lieferte eine unzulässige Zahl oder einen Fehler.',
+          'At least one failure case returned an invalid number or an error.',
+        ),
   };
 };
 
-/** Führt die vollständige Prüfung vor einer Freischaltung des Modells aus. */
+/** Runs the full check before the model is unlocked. */
 export function validateModel(
   input: ModelValidationInput,
   options: ValidationOptions = {},
@@ -642,7 +672,7 @@ export function validateModel(
   };
 }
 
-/** Ein einzelnes, begründetes Ja/Nein-Ergebnis für die Modellfreischaltung. */
+/** A single, reasoned yes/no result for unlocking the model. */
 export function modelIsUnlocked(
   input: ModelValidationInput,
   options: ValidationOptions = {},
@@ -656,24 +686,36 @@ export function modelIsUnlocked(
   if (checks.holdout.count < minimumHoldouts) {
     reasons.push({
       code: 'not_enough_holdouts',
-      reason: `Es gibt noch nicht genügend spätere Meldungen für die Prüfung (${checks.holdout.count} von ${minimumHoldouts}).`,
+      reason: tr(
+        `Es gibt noch nicht genügend spätere Meldungen für die Prüfung (${checks.holdout.count} von ${minimumHoldouts}).`,
+        `There are not yet enough later reports for the check (${checks.holdout.count} of ${minimumHoldouts}).`,
+      ),
     });
   }
   if (checks.holdout.blocks < minimumBlocks) {
     reasons.push({
       code: 'not_enough_blocks',
-      reason: `Die Meldungen stammen aus zu wenigen Belastungsblöcken (${checks.holdout.blocks} von ${minimumBlocks}); verwandte Meldungen zählen nicht als unabhängige Erfahrung.`,
+      reason: tr(
+        `Die Meldungen stammen aus zu wenigen Belastungsblöcken (${checks.holdout.blocks} von ${minimumBlocks}); verwandte Meldungen zählen nicht als unabhängige Erfahrung.`,
+        `The reports come from too few load blocks (${checks.holdout.blocks} of ${minimumBlocks}); related reports do not count as independent experience.`,
+      ),
     });
   }
   if (!checks.holdout.beatsAllBaselines) {
     reasons.push({
       code: 'naive_baseline_not_beaten',
-      reason: 'Der mittlere absolute Fehler schlägt nicht alle drei einfachen Vergleichswerte.',
+      reason: tr(
+        'Der mittlere absolute Fehler schlägt nicht alle drei einfachen Vergleichswerte.',
+        'The mean absolute error does not beat all three simple baselines.',
+      ),
     });
   } else if (!checks.holdout.gainIsRelevant) {
     reasons.push({
       code: 'gain_too_small',
-      reason: `Der Gewinn gegenüber der besten einfachen Vorhersage ist kleiner als vorab festgelegt (mindestens ${VALIDATION_THRESHOLDS.minimumAbsoluteGainPoints} Punkt und ${Math.round(VALIDATION_THRESHOLDS.minimumRelativeGain * 100)} %).`,
+      reason: tr(
+        `Der Gewinn gegenüber der besten einfachen Vorhersage ist kleiner als vorab festgelegt (mindestens ${VALIDATION_THRESHOLDS.minimumAbsoluteGainPoints} Punkt und ${Math.round(VALIDATION_THRESHOLDS.minimumRelativeGain * 100)} %).`,
+        `The gain over the best simple prediction is smaller than set in advance (at least ${VALIDATION_THRESHOLDS.minimumAbsoluteGainPoints} point and ${Math.round(VALIDATION_THRESHOLDS.minimumRelativeGain * 100)} %).`,
+      ),
     });
   }
   if (!checks.calibration.passes) {

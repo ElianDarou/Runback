@@ -11,30 +11,31 @@ import {
   type StrengthSession,
 } from './strength';
 import type { StrengthHeartSummary } from './strengthHeart';
+import { tr } from './i18n';
 
 /**
- * Tiefere Auswertung einer Krafteinheit für ihre Detailseite — das
- * Gegenstück zu `insights.ts` für Läufe. Beobachtung, keine Empfehlung.
+ * Deeper analysis of a strength session for its detail page — the counterpart
+ * to `insights.ts` for runs. An observation, not a recommendation.
  *
- * Gezählt wird nur, was abgehakt wurde; Planwerte erscheinen nie als
- * Ist-Werte. Ohne Grundlage gibt es `undefined` statt einer Zahl.
+ * Only what was ticked off is counted; planned values never appear as actual
+ * values. Without a basis there is `undefined` instead of a number.
  */
 export const STRENGTH_SESSION_VERSION = 'strength-session-v2';
 const DAY = 24 * 60 * 60 * 1000;
-/** Vergleichsfenster für „deine letzten Einheiten“. */
+/** Comparison window for "your recent sessions". */
 export const SESSION_COMPARISON_DAYS = 120;
 export const SESSION_COMPARISON_MAX = 8;
 export const SESSION_COMPARISON_MIN = 3;
-/** Je Übung: frühere Einheiten mit Arbeitssatz, höchstens so viele, so alt. */
+/** Per exercise: earlier sessions with a working set, at most this many, at most this old. */
 export const EXERCISE_COMPARISON_DAYS = 180;
 export const EXERCISE_COMPARISON_MAX = 5;
-/** Längere Abstände zwischen zwei Sätzen sind eher Unterbrechung als Pause. */
+/** Longer gaps between two sets are more likely an interruption than a rest. */
 export const MAX_SET_GAP_SECONDS = 15 * 60;
 
 const done = (set: LoggedSet) =>
   isSetCompleted(set) && !set.skipped;
 
-/** Dauer von Start bis Ende; ohne Ende unbekannt, nicht 0. */
+/** Duration from start to end; without an end it is unknown, not 0. */
 export function sessionDurationSeconds(
   session: StrengthSession,
 ): number | undefined {
@@ -50,11 +51,11 @@ export interface BestSet {
   weightKg?: number;
   reps?: number;
   seconds?: number;
-  /** Geschätztes Maximum (Epley); nur für Arbeitssätze mit Last bis 12 Wdh. */
+  /** Estimated max (Epley); only for working sets with load up to 12 reps. */
   e1rm?: number;
 }
 
-/** „80 kg × 8“, „12 Wdh.“, „45 s“ — oder leer, wenn nichts angegeben ist. */
+/** "80 kg × 8", "12 reps", "45 s" — or empty if nothing is given. */
 export function setLabel(set: {
   weightKg?: number;
   reps?: number;
@@ -64,7 +65,7 @@ export function setLabel(set: {
     return `${formatWeight(set.weightKg)} kg × ${set.reps}`;
   }
   if (finite(set.reps) && set.reps > 0) {
-    return `${set.reps} Wdh.`;
+    return tr(`${set.reps} Wdh.`, `${set.reps} ${set.reps === 1 ? 'rep' : 'reps'}`);
   }
   if (finite(set.seconds) && set.seconds > 0) {
     return `${Math.round(set.seconds)} s`;
@@ -76,7 +77,7 @@ export interface ExerciseBreakdown {
   exerciseIndex: number;
   exerciseId: string;
   name: string;
-  /** Abgehakt, ohne Aufwärmen. */
+  /** Ticked off, without warm-up. */
   workingSets: number;
   warmupSets: number;
   skippedSets: number;
@@ -84,7 +85,7 @@ export interface ExerciseBreakdown {
   totalReps: number;
   topWeightKg?: number;
   bestSet?: BestSet;
-  /** Median der angegebenen Wiederholungen im Tank; nur mit Angabe. */
+  /** Median of the stated reps in reserve; only with a value given. */
   medianRir?: number;
 }
 
@@ -161,7 +162,7 @@ export function exerciseBreakdown(
           topWeightKg = Math.max(topWeightKg ?? 0, set.actualWeightKg);
         }
       }
-      // Wie `sessionProgress`: Volumen aus allen abgehakten Sätzen mit Last.
+      // Like `sessionProgress`: volume from all ticked sets with load.
       if (set.actualWeightKg && set.actualReps) {
         volumeKg += set.actualWeightKg * set.actualReps;
       }
@@ -186,17 +187,17 @@ export function exerciseBreakdown(
 }
 
 export interface SetGaps {
-  /** Sekunden zwischen zwei abgehakten Sätzen derselben Übung. */
+  /** Seconds between two ticked-off sets of the same exercise. */
   gaps: number[];
   medianSeconds?: number;
-  /** Median der geplanten Pausen dieser Abstände; nur mit Planwert. */
+  /** Median of the planned rests for these gaps; only with a planned value. */
   plannedMedianSeconds?: number;
 }
 
 /**
- * Satzabstand: vom Abhaken eines Satzes bis zum Abhaken des nächsten
- * derselben Übung. Er enthält Pause und Satz; eine reine Pausenzeit kennt
- * Runback nicht, weil Satzanfänge nicht erfasst werden.
+ * Set interval: from ticking off one set to ticking off the next one of the
+ * same exercise. It includes rest and the set itself; Runback does not know
+ * pure rest time, because set starts are not recorded.
  */
 export function setGaps(session: StrengthSession): SetGaps {
   const gaps: number[] = [];
@@ -230,9 +231,9 @@ export function setGaps(session: StrengthSession): SetGaps {
 const normalizedName = (name: string) => name.trim().toLowerCase();
 
 /**
- * Frühere vergleichbare Einheiten: abgeschlossen, davor, innerhalb von 120
- * Tagen, aus derselben Vorlage — ohne Vorlage mit demselben Namen. Ein
- * Beintag gegen einen Brusttag wäre kein Vergleich.
+ * Earlier comparable sessions: finished, before this one, within 120 days,
+ * from the same template — without a template, with the same name. A leg day
+ * compared to a chest day would not be a comparison.
  */
 export function comparableSessions(
   session: StrengthSession,
@@ -257,7 +258,7 @@ export function comparableSessions(
 export interface ComparedValue {
   value: number;
   median: number;
-  /** Abweichung vom Median in Prozent. */
+  /** Deviation from the median in percent. */
   deltaPercent: number;
 }
 
@@ -289,7 +290,7 @@ function compared(
   };
 }
 
-/** Gegen den Median der letzten vergleichbaren Einheiten, ab drei. */
+/** Against the median of the last comparable sessions, from three. */
 export function sessionComparison(
   session: StrengthSession,
   history: StrengthSession[],
@@ -326,9 +327,9 @@ export function sessionComparison(
 
 export interface ExerciseComparison {
   exerciseId: string;
-  /** Bester Arbeitssatz beim letzten Mal; ein Fakt, keine Bewertung. */
+  /** Best working set last time; a fact, not a judgment. */
   last?: { sessionId: string; at: number; label: string; e1rm: number };
-  /** Gegen den Median der letzten bis zu fünf Einheiten, ab drei. */
+  /** Against the median of the last up to five sessions, from three. */
   median?: number;
   count: number;
   deltaPercent?: number;
@@ -336,8 +337,8 @@ export interface ExerciseComparison {
 }
 
 /**
- * Höher ist besser; unterhalb der Relevanzschwelle des Kraftverlaufs (4 %)
- * ist es „wie zuletzt“ — kleinere Unterschiede liegen in der Tagesform.
+ * Higher is better; below the strength progression's relevance threshold (4 %)
+ * it is "same as recently" — smaller differences lie within day-to-day form.
  */
 export function rateE1RM(deltaPercent: number): Rating {
   const threshold = MINIMUM_RELEVANT_CHANGE_PERCENT;

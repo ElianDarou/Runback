@@ -16,7 +16,7 @@ import {
   tempStore,
 } from './helpers';
 
-describe('Website und API', () => {
+describe('Website and API', () => {
   const { store, dispose } = tempStore();
   let app: Awaited<ReturnType<typeof startApp>>;
   let session: { cookie: string; csrf: string };
@@ -49,59 +49,59 @@ describe('Website und API', () => {
       redirect: 'manual',
     });
 
-  it('schickt ohne Anmeldung zur Anmeldung und lehnt falsche Passwörter ab', async () => {
-    const response = await fetch(`${app.base}/statistik`, {
+  it('redirects to sign-in without a session and rejects wrong passwords', async () => {
+    const response = await fetch(`${app.base}/statistics`, {
       redirect: 'manual',
     });
     assert.equal(response.status, 303);
     assert.equal(
       response.headers.get('location'),
-      '/anmelden?weiter=%2Fstatistik',
+      '/sign-in?next=%2Fstatistics',
     );
-    const wrong = await fetch(`${app.base}/anmelden`, {
+    const wrong = await fetch(`${app.base}/sign-in`, {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: 'password=falsch',
+      body: 'password=wrong',
       redirect: 'manual',
     });
     assert.equal(wrong.status, 401);
   });
 
-  it('zeigt Verlauf, Einheiten, Statistik und Coach mit den Daten des Telefons', async () => {
-    const verlauf = await (await page('/verlauf')).text();
-    assert.match(verlauf, /<h1 class="title">Verlauf<\/h1>/);
-    assert.match(verlauf, /href="\/lauf\/r1"/);
-    assert.match(verlauf, /href="\/kraft\/s1"/);
-    assert.match(verlauf, /5,02 km/);
+  it('shows history, workouts, statistics and coach from the phone data', async () => {
+    const history = await (await page('/history')).text();
+    assert.match(history, /<h1 class="title">Verlauf<\/h1>/);
+    assert.match(history, /href="\/run\/r1"/);
+    assert.match(history, /href="\/strength\/s1"/);
+    assert.match(history, /5,02 km/);
 
-    const lauf = await (await page('/lauf/r1')).text();
-    assert.match(lauf, /Beine 8 · Atmung 9/);
-    assert.match(lauf, /<svg\s+class="chart"/);
-    assert.match(lauf, /Kilometer/);
+    const run = await (await page('/run/r1')).text();
+    assert.match(run, /Beine 8 · Atmung 9/);
+    assert.match(run, /<svg\s+class="chart"/);
+    assert.match(run, /Kilometer/);
 
-    const kraft = await (await page('/kraft/s1')).text();
-    assert.match(kraft, /Bankdrücken/);
-    assert.match(kraft, /60 kg × 8/);
-    assert.match(kraft, /Aufwärmen/);
+    const strength = await (await page('/strength/s1')).text();
+    assert.match(strength, /Bankdrücken/);
+    assert.match(strength, /60 kg × 8/);
+    assert.match(strength, /Aufwärmen/);
 
-    const statistik = await (
-      await page('/statistik?bereich=kraft&zeitraum=4w')
+    const statistics = await (
+      await page('/statistics?bereich=kraft&zeitraum=4w')
     ).text();
-    assert.match(statistik, /Wochen mit Krafttraining/);
-    const laufStatistik = await (
-      await page('/statistik?zeitraum=4w&kennzahl=pace')
+    assert.match(statistics, /Wochen mit Krafttraining/);
+    const runStatistics = await (
+      await page('/statistics?zeitraum=4w&kennzahl=pace')
     ).text();
-    assert.match(laufStatistik, /Wochen mit Lauf/);
+    assert.match(runStatistics, /Wochen mit Lauf/);
 
     const coach = await (await page('/coach')).text();
     assert.match(coach, /Starte die ersten 2 km ruhiger\./);
     assert.match(coach, /5 km unter 22 Minuten · bis 01\.12\.2026/);
     assert.match(coach, /Schneller werden/);
 
-    assert.equal((await page('/lauf/gibt-es-nicht')).status, 404);
+    assert.equal((await page('/run/gibt-es-nicht')).status, 404);
   });
 
-  it('zeigt nur gespeicherte Pläne und Vorlagen und liest sie per API', async () => {
+  it('shows only saved plans and templates and reads them via the API', async () => {
     const { objects } = await import('./helpers');
     const schedule = {
       version: 1,
@@ -109,7 +109,7 @@ describe('Website und API', () => {
         {
           id: 'p1',
           date: '2026-10-08',
-          title: 'Oberkörper',
+          title: 'Upper body',
           kind: 'strength',
           minutes: 45,
           status: 'planned',
@@ -128,8 +128,10 @@ describe('Website und API', () => {
       body: {
         templates: [
           {
-            name: 'Oberkörper',
-            exercises: [{ exerciseId: 'barbell_bench_press', sets: [{ reps: 8 }] }],
+            name: 'Upper body',
+            exercises: [
+              { exerciseId: 'barbell_bench_press', sets: [{ reps: 8 }] },
+            ],
           },
         ],
       },
@@ -144,7 +146,7 @@ describe('Website und API', () => {
     await syncAll(app.base, phone);
   });
 
-  it('maskiert Text aus den Daten', async () => {
+  it('escapes text from the data', async () => {
     const { syncAll: again, objects } = await import('./helpers');
     const list = objects().map(entry =>
       entry.key === 'strength/s1'
@@ -158,20 +160,20 @@ describe('Website und API', () => {
         : entry,
     );
     await again(app.base, phone, list);
-    const verlauf = await (await page('/verlauf')).text();
-    assert.ok(!verlauf.includes('<script>alert(1)</script>'));
-    assert.match(verlauf, /&lt;script&gt;/);
+    const history = await (await page('/history')).text();
+    assert.ok(!history.includes('<script>alert(1)</script>'));
+    assert.match(history, /&lt;script&gt;/);
     await again(app.base, phone);
   });
 
-  it('verlangt das CSRF-Feld für jede Aktion', async () => {
-    const response = await submit('/daten/token', { name: 'x' }, 'falsch');
+  it('requires the CSRF field for every action', async () => {
+    const response = await submit('/data/token', { name: 'x' }, 'wrong');
     assert.equal(response.status, 403);
   });
 
-  it('erstellt Lese-Tokens, die lesen, aber nicht übertragen dürfen', async () => {
+  it('creates read tokens that may read but not upload', async () => {
     const created = await (
-      await submit('/daten/token', { name: 'Grafana' })
+      await submit('/data/token', { name: 'Grafana' })
     ).text();
     const token = /class="secret">(rbr_[^<]+)</.exec(created)?.[1];
     assert.ok(token);
@@ -209,8 +211,8 @@ describe('Website und API', () => {
     assert.equal((await fetch(`${app.base}/api/v1/runs`)).status, 401);
   });
 
-  it('führt lesende SQL-Abfragen aus und sperrt alles andere', async () => {
-    const token = createReadToken(store, 'Skript', NOW);
+  it('runs read-only SQL queries and blocks everything else', async () => {
+    const token = createReadToken(store, 'Script', NOW);
     const ok = await post(app.base, '/api/v1/sql', token, {
       sql: 'SELECT id, distance_m FROM v1_runs ORDER BY start_utc',
     });
@@ -252,18 +254,18 @@ describe('Website und API', () => {
     assert.equal(regions.status, 200);
     assert.deepEqual(regions.body.rows, [[1], [2]]);
 
-    const form = await submit('/daten/sql', {
+    const form = await submit('/data/sql', {
       sql: 'SELECT count(*) AS n FROM v1_strength_sets',
     });
     assert.match(await form.text(), /1 Zeile/);
-    const csv = await submit('/daten/sql', {
+    const csv = await submit('/data/sql', {
       sql: 'SELECT id FROM v1_runs ORDER BY id',
       format: 'csv',
     });
     assert.equal(await csv.text(), 'id\nr1\nr2\n');
   });
 
-  it('exportiert Sichten und die Datenbank ohne Zugangsdaten', async () => {
+  it('exports views and the database without credentials', async () => {
     const csv = await (await page('/api/v1/export/v1_runs.csv')).text();
     assert.match(csv, /^id,sport,purpose/);
     const jsonl = (
@@ -307,7 +309,7 @@ describe('Website und API', () => {
     }
   });
 
-  it('beschreibt sich selbst', async () => {
+  it('describes itself', async () => {
     const hello = (await (
       await fetch(`${app.base}/api/v1/hello`)
     ).json()) as any;
@@ -325,8 +327,8 @@ describe('Website und API', () => {
   });
 });
 
-describe('SQL-Prüfung', () => {
-  it('lässt genau eine lesende Anweisung zu', () => {
+describe('SQL check', () => {
+  it('allows exactly one read-only statement', () => {
     assert.equal(checkSql('SELECT 1'), null);
     assert.equal(checkSql('with x as (select 1) select * from x;'), null);
     assert.equal(checkSql("SELECT ';' AS semikolon"), null);
@@ -336,7 +338,7 @@ describe('SQL-Prüfung', () => {
     assert.ok(checkSql(''));
   });
 
-  it('bricht endlose Abfragen ab', async () => {
+  it('stops endless queries', async () => {
     const { store, dispose } = tempStore();
     try {
       await assert.rejects(
@@ -347,7 +349,7 @@ describe('SQL-Prüfung', () => {
             timeoutMs: 300,
           },
         ),
-        /länger als/,
+        /took longer than/,
       );
     } finally {
       dispose();

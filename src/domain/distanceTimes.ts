@@ -23,16 +23,16 @@ export interface DistanceTime {
   distanceKm: number;
   estimatedSeconds?: number;
   sourceRunIds: string[];
-  /** Tatsächliche Aufzeichnungszeiten von Läufen innerhalb von 2 % der Strecke. */
+  /** Actual recorded times of runs within 2 % of the distance. */
   history: Run[];
 }
 
-/** Neutrale Hochrechnung, keine neue Trainingsempfehlung; Originalzeiten bleiben sichtbar.
+/** Neutral projection, not a new training recommendation; original times stay visible.
  * Riegel (1981): https://pubmed.ncbi.nlm.nih.gov/7235349/
- * Gewichteter Median: die neuesten drei Läufe zählen 3, 2 und 1,5; danach
- * halbiert sich das Gewicht (1/2, 1/4, …). Alte Läufe überstimmen sie nicht.
- * Die letzte tatsächlich gelaufene passende Strecke begrenzt die Schätzung
- * nach oben, ohne daraus eine Garantie oder eine dauerhafte Bestzeit zu machen.
+ * Weighted median: the newest three runs count 3, 2 and 1.5; after that the
+ * weight halves (1/2, 1/4, …). Old runs do not outvote them.
+ * The last actually run matching distance caps the estimate from above,
+ * without turning it into a guarantee or a lasting personal best.
  */
 export function distanceTime(
   runs: Run[],
@@ -89,8 +89,8 @@ export function distanceTime(
       cumulativeWeight += item.weight;
       return cumulativeWeight >= halfWeight;
     });
-  // Nur eine aktuelle Beobachtung derselben Strecke begrenzt den Richtwert;
-  // eine Hochrechnung aus einer anderen Strecke ist kein erreichter Wert.
+  // Only a recent observation of the same distance caps the estimate;
+  // a projection from another distance is not a reached value.
   const latestActual = projections.find(item => history.includes(item.run));
   const seconds = middle
     ? Math.min(middle.seconds, latestActual?.seconds ?? middle.seconds)

@@ -38,7 +38,7 @@ describe('strength end correction', () => {
       originalEndTime: START + 8 * 60 * MINUTE,
       setAt: 5,
     });
-    // Ungültige Korrekturen ändern nichts.
+    // Invalid corrections change nothing.
     expect(applyStrengthEndCorrection(session, { endTime: START - 1 })).toBe(
       session,
     );
@@ -112,7 +112,7 @@ describe('strength end correction', () => {
       START + 50 * MINUTE,
       START + 55 * MINUTE,
     ]);
-    // Der Vorschlag kennt auch die ausgeblendeten Sätze und hilft zurück.
+    // The suggestion also knows the hidden sets and helps you go back.
     expect(strengthEndSuggestion(corrected, START + 120 * MINUTE)?.time).toBe(
       START + 55 * MINUTE,
     );
@@ -172,7 +172,7 @@ describe('run end suggestion', () => {
       reason: 'last_movement',
       version: END_SUGGESTION_VERSION,
     });
-    // Kaum Leerlauf: kein Vorschlag.
+    // Hardly any idle time: no suggestion.
     expect(runEndSuggestion(START, series, START + 120_000)).toBeUndefined();
     expect(runEndSuggestion(START, null, START + 600_000)).toBeUndefined();
   });

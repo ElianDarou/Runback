@@ -1,9 +1,13 @@
 import {
+  driftVerdictLabel,
   endRecovery,
   environmentCost,
+  evennessLabel,
   fatiguePattern,
+  formatSignedNumber,
   formatSignedPercent,
   formatSignedSeconds,
+  heartRateZoneLabel,
   gradeAdjustedPace,
   heartRateDrift,
   heartRatePaceCurve,
@@ -22,13 +26,14 @@ import {
   weatherInsight,
 } from '../src/domain/insights';
 import { pacingFor } from '../src/domain/analysis';
+import { setLanguage } from '../src/domain/i18n';
 import type { RunSeries, SeriesRow } from '../src/domain/runSeries';
 import type { RunSummary, SegmentAggregate } from '../src/domain/types';
 
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = 1_700_000_000_000;
 
-/** Ein Lauf aus gleichmäßigen Kilometern; `paces` in s/km, `hrs` in bpm. */
+/** A run of even kilometers; `paces` in s/km, `hrs` in bpm. */
 function runWith(
   id: string,
   paces: number[],
@@ -96,8 +101,8 @@ const rowsFrom = (
   }));
 const seriesOf = (rows: SeriesRow[]): RunSeries => ({ stepSeconds: 5, rows });
 
-describe('Bewegung', () => {
-  it('teilt das Zeitbudget in Laufen, Gehen und Stehen', () => {
+describe('Movement', () => {
+  it('splits the time budget into running, walking and standing', () => {
     const run = runWith('a', [300, 300], [], {
       time: {
         model_version: 't',
@@ -121,7 +126,7 @@ describe('Bewegung', () => {
     expect(timeBudgetShares({ ...run, time: undefined })).toBeUndefined();
   });
 
-  it('nimmt längsten Abschnitt und Wechsel aus den Phasenkennzahlen', () => {
+  it('takes the longest stretch and the changes from the phase figures', () => {
     const run = runWith('a', [300], [], {
       phaseMetrics: {
         model_version: 'p',
@@ -145,7 +150,7 @@ describe('Bewegung', () => {
   });
 });
 
-describe('Puls-Erholung', () => {
+describe('Heart rate recovery', () => {
   const phases = [
     {
       state: 'RUN' as const,
@@ -172,7 +177,7 @@ describe('Puls-Erholung', () => {
       distanceMeters: 0,
     },
   ];
-  // Puls: 160 beim Laufen, fällt in der Gehpause linear auf 130, nach dem Ende auf 120.
+  // Heart rate: 160 while running, falls linearly to 130 in the walking break, to 120 after the end.
   const rows = rowsFrom(160, i => {
     const t = (i + 1) * 5;
     const heartRate =
@@ -186,19 +191,19 @@ describe('Puls-Erholung', () => {
     return { heartRate, moving: t <= 720 };
   });
 
-  it('misst den Abfall in der ersten Minute einer Gehpause', () => {
+  it('measures the drop in the first minute of a walking break', () => {
     const result = walkRecovery(
       runWith('a', [300, 300], [160, 160], { phases }),
       seriesOf(rows),
     );
     expect(result?.pauses).toBe(1);
-    // ±5 s Mittelung an der Phasengrenze glättet die Kante etwas.
+    // ±5 s averaging at the phase boundary smooths the edge a little.
     expect(result?.dropFirstMinute).toBeGreaterThan(27);
     expect(result?.dropFirstMinute).toBeLessThanOrEqual(30);
     expect(result?.lowestHeartRate).toBe(130);
   });
 
-  it('misst die Erholung nach dem letzten Laufabschnitt', () => {
+  it('measures recovery after the last running stretch', () => {
     const result = endRecovery(
       runWith('a', [300, 300], [160, 160], { phases }),
       seriesOf(rows),
@@ -208,7 +213,7 @@ describe('Puls-Erholung', () => {
     expect(result?.dropFirstMinute).toBeLessThanOrEqual(30);
   });
 
-  it('bleibt ohne Reihe, Phasen oder Nachlauf leer', () => {
+  it('stays empty without a series, phases or cool-down', () => {
     expect(walkRecovery(runWith('a', [300]), null)).toBeUndefined();
     const short = phases.slice(0, 3);
     expect(
@@ -221,27 +226,27 @@ describe('Puls-Erholung', () => {
 });
 
 describe('Pacing', () => {
-  it('erkennt Negativ-Split, Gleichmäßigkeit und schnellsten Kilometer', () => {
+  it('detects negative split, evenness and the fastest kilometer', () => {
     const run = runWith('a', [320, 318, 315, 300, 298, 296]);
     const verdict = pacingVerdict(pacingFor(run), run)!;
     expect(verdict.split).toBe('negative');
     expect(verdict.sentence).toMatch(/Negativ-Split/);
-    expect(verdict.evenness).toBe('sehr gleichmäßig');
+    expect(verdict.evenness).toBe('veryEven');
     expect(verdict.fastestSegmentIndex).toBe(5);
     expect(verdict.slowestSegmentIndex).toBe(0);
     expect(verdict.fastestSecondsPerKm).toBe(296);
   });
 
-  it('nennt einen deutlichen Abfall und wechselhaftes Tempo', () => {
+  it('names a clear drop and uneven pace', () => {
     const run = runWith('a', [280, 330, 290, 340, 320, 360]);
     const verdict = pacingVerdict(pacingFor(run), run)!;
     expect(verdict.split).toBe('positive');
-    expect(verdict.evenness).toBe('wechselhaft');
+    expect(verdict.evenness).toBe('uneven');
     expect(pacingVerdict(undefined, run)).toBeUndefined();
   });
 
-  it('berechnet die Puls-Drift ohne den ersten Kilometer', () => {
-    // Gleiches Tempo, Puls steigt in der zweiten Hälfte um 8 %.
+  it('computes heart rate drift without the first kilometer', () => {
+    // Same pace, heart rate rises 8 % in the second half.
     const run = runWith(
       'a',
       [300, 300, 300, 300, 300, 300, 300],
@@ -249,21 +254,21 @@ describe('Pacing', () => {
     );
     const drift = heartRateDrift(run)!;
     expect(drift.percent).toBeCloseTo(8, 0);
-    expect(drift.verdict).toBe('leichte Drift');
+    expect(drift.verdict).toBe('slightDrift');
     expect(drift.segmentCount).toBe(6);
     expect(
       heartRateDrift(runWith('b', [300, 300, 300], [150, 150, 150])),
     ).toBeUndefined();
   });
 
-  it('rechnet Meter je Herzschlag', () => {
+  it('computes meters per beat', () => {
     const run = runWith('a', [300, 300], [150, 150]);
     // 2000 m / (150 bpm × 10 min)
     expect(metersPerBeat(run)).toBeCloseTo(1.333, 2);
     expect(metersPerBeat(runWith('b', [300, 300]))).toBeUndefined();
   });
 
-  it('schätzt ein Flach-Äquivalent aus der Nettosteigung', () => {
+  it('estimates a flat equivalent from the net gradient', () => {
     expect(minettiCost(0)).toBeCloseTo(3.6, 5);
     expect(minettiCost(0.05)).toBeGreaterThan(minettiCost(0));
     expect(minettiCost(-0.05)).toBeLessThan(minettiCost(0));
@@ -281,7 +286,7 @@ describe('Pacing', () => {
     expect(gap.coveredMeters).toBe(4000);
   });
 
-  it('gibt kein Flach-Äquivalent, wenn die Steigung meist fehlt', () => {
+  it('gives no flat equivalent when the gradient is mostly missing', () => {
     const run = runWith('a', [300, 300, 300, 300], [], {}, [
       { gradePercent: 3 },
     ]);
@@ -289,7 +294,7 @@ describe('Pacing', () => {
   });
 });
 
-describe('Pulszonen', () => {
+describe('Heart rate zones', () => {
   const history = [
     runWith('h1', [300], [150], { avgHeartRateMax: 181 }),
     runWith('h2', [300], [150], { avgHeartRateMax: 189 }),
@@ -297,7 +302,7 @@ describe('Pulszonen', () => {
     runWith('h4', [300], [150], { avgHeartRateMax: 186 }),
   ];
 
-  it('nimmt die Einstellung, sonst den zweithöchsten Spitzenwert', () => {
+  it('uses the setting, otherwise the second-highest peak', () => {
     expect(maxHeartRate(192, history)).toEqual({
       value: 192,
       source: 'setting',
@@ -311,8 +316,8 @@ describe('Pulszonen', () => {
     expect(maxHeartRate(50, history)?.source).toBe('estimate');
   });
 
-  it('verteilt die Zeit auf fünf Zonen', () => {
-    // 100 Zeilen à 5 s: je 20 in Z1..Z5 bei Maxpuls 200.
+  it('spreads the time across five zones', () => {
+    // 100 rows of 5 s each: 20 each in Z1..Z5 at max heart rate 200.
     const rows = rowsFrom(100, i => ({
       heartRate: [110, 130, 150, 170, 190][Math.floor(i / 20)],
     }));
@@ -333,36 +338,36 @@ describe('Pulszonen', () => {
   });
 });
 
-describe('Ermüdung', () => {
+describe('Fatigue', () => {
   const base = runWith('a', [300, 300, 300, 300]);
 
-  it('erkennt müde Beine an Kadenz und Schrittlänge bei ruhigem Puls', () => {
+  it('detects tired legs from cadence and stride length at a calm heart rate', () => {
     const rows = rowsFrom(120, i => ({
       speedMps: i < 80 ? 3.3 : 3.1,
       cadence: i < 80 ? 176 : 166,
       heartRate: 152,
     }));
     const result = fatiguePattern(base, seriesOf(rows))!;
-    expect(result.verdict).toBe('muskulär');
+    expect(result.verdict).toBe('muscular');
     expect(result.cadenceChangePercent).toBeCloseTo(-5.7, 0);
   });
 
-  it('erkennt Kreislauf oder Wärme am steigenden Puls bei gleichem Tempo', () => {
+  it('detects circulation or heat from a rising heart rate at the same pace', () => {
     const rows = rowsFrom(120, i => ({
       speedMps: 3.3,
       cadence: 176,
       heartRate: i < 80 ? 150 : 162,
     }));
-    expect(fatiguePattern(base, seriesOf(rows))!.verdict).toBe('kreislauf');
+    expect(fatiguePattern(base, seriesOf(rows))!.verdict).toBe('circulation');
   });
 
-  it('nennt stabile Läufe stabil und lässt kurze Läufe aus', () => {
+  it('calls steady runs steady and leaves out short runs', () => {
     const rows = rowsFrom(120, () => ({
       speedMps: 3.3,
       cadence: 176,
       heartRate: 150,
     }));
-    expect(fatiguePattern(base, seriesOf(rows))!.verdict).toBe('stabil');
+    expect(fatiguePattern(base, seriesOf(rows))!.verdict).toBe('stable');
     expect(
       fatiguePattern(runWith('b', [300, 300]), seriesOf(rows)),
     ).toBeUndefined();
@@ -370,8 +375,8 @@ describe('Ermüdung', () => {
   });
 });
 
-describe('Bedingungen', () => {
-  it('sammelt Temperatur, Wind und Gegenwind-Kilometer', () => {
+describe('Conditions', () => {
+  it('collects temperature, wind and headwind kilometers', () => {
     const run = runWith('a', [300, 300, 300], [], {
       context: { temperatureC: 14, windMps: 4 },
     });
@@ -391,7 +396,7 @@ describe('Bedingungen', () => {
     expect(weatherInsight(runWith('b', [300]), null)).toBeUndefined();
   });
 
-  it('schätzt Wind- und Wärmekosten mit Vorzeichen', () => {
+  it('estimates wind and heat costs with their sign', () => {
     const headwind = rowsFrom(200, () => ({ speedMps: 3.3, headwindMps: 4 }));
     const tailwind = rowsFrom(200, () => ({ speedMps: 3.3, headwindMps: -4 }));
     const warm = runWith('a', [300, 300, 300], [], {
@@ -403,7 +408,7 @@ describe('Bedingungen', () => {
     expect(costHead.windSecondsPerKm).toBeLessThan(30);
     expect(costTail.windSecondsPerKm).toBeLessThan(-2);
     expect(costHead.windCoverage).toBe(1);
-    // 10 °C über der Schwelle: 3 % von 300 s/km ≈ 9 s
+    // 10 °C above the threshold: 3 % of 300 s/km ≈ 9 s
     expect(costHead.heatSecondsPerKm).toBeCloseTo(8.7, 0);
     expect(environmentCost(runWith('b', [300, 300]), null)).toBeUndefined();
     expect(
@@ -415,7 +420,7 @@ describe('Bedingungen', () => {
   });
 });
 
-describe('Vergleich mit dir', () => {
+describe('Comparison with yourself', () => {
   const current = runWith(
     'now',
     [290, 290, 290, 290, 290],
@@ -447,7 +452,7 @@ describe('Vergleich mit dir', () => {
     }),
   ];
 
-  it('nimmt nur Läufe davor, im Fenster, derselben Art und bevorzugt denselben Zweck', () => {
+  it('takes only earlier runs in the window, of the same kind, preferring the same purpose', () => {
     expect(recentRuns(current, history).map(run => run.id)).toEqual([
       'p1',
       'p2',
@@ -462,7 +467,7 @@ describe('Vergleich mit dir', () => {
     ]);
   });
 
-  it('bewertet gegen den Median in Farbe und Richtung', () => {
+  it('rates against the median in color and direction', () => {
     expect(rateDelta('pace', -4)).toBe('better');
     expect(rateDelta('pace', 1)).toBe('same');
     expect(rateDelta('pace', 4)).toBe('slightly_worse');
@@ -471,7 +476,7 @@ describe('Vergleich mit dir', () => {
     expect(rateDelta('cadence', -5)).toBe('worse');
   });
 
-  it('vergleicht Tempo, Puls, Effizienz und Kadenz mit den letzten Läufen', () => {
+  it('compares pace, heart rate, efficiency and cadence with the last runs', () => {
     const result = recentComparison(current, history, pacingFor(current))!;
     expect(result.count).toBe(3);
     expect(result.samePurpose).toBe(true);
@@ -491,11 +496,11 @@ describe('Vergleich mit dir', () => {
     expect(result.metrics.find(m => m.metric === 'fade')!.rating).toBe('same');
   });
 
-  it('braucht mindestens drei Vergleichsläufe', () => {
+  it('needs at least three comparison runs', () => {
     expect(recentComparison(current, history.slice(0, 2))).toBeUndefined();
   });
 
-  it('vergleicht Läufe auf derselben Strecke', () => {
+  it('compares runs on the same route', () => {
     const route = { routeId: 'r' };
     const run = runWith('now', [300, 300], [], { context: route });
     const before = [
@@ -516,8 +521,8 @@ describe('Vergleich mit dir', () => {
     expect(sameRouteComparison(runWith('x', [300]), before)).toBeUndefined();
   });
 
-  it('legt eine Puls-Tempo-Gerade aus den letzten Läufen und misst den Abstand', () => {
-    // Historie: Puls = 100 + 15 × Geschwindigkeit; heutiger Lauf 6 bpm darunter.
+  it('fits a heart rate-pace line through the last runs and measures the distance', () => {
+    // History: heart rate = 100 + 15 × speed; today's run 6 bpm below.
     const hist = [3.0, 3.2, 3.4, 3.6].map((speed, i) =>
       runWith(
         `h${i}`,
@@ -536,18 +541,53 @@ describe('Vergleich mit dir', () => {
     expect(curve.line?.slope).toBeCloseTo(15, 3);
     expect(curve.line?.runs).toBe(4);
     expect(curve.residualBpm).toBeCloseTo(-6, 3);
-    expect(curve.verdict).toBe('effizienter');
+    expect(curve.verdict).toBe('efficient');
     expect(heartRatePaceCurve(today, hist.slice(0, 1))!.line).toBeUndefined();
     expect(heartRatePaceCurve(runWith('n', [300, 300]), hist)).toBeUndefined();
   });
 });
 
-describe('Formatierung', () => {
-  it('schreibt Sekunden und Prozent mit Vorzeichen und Komma', () => {
+describe('Formatting', () => {
+  it('writes seconds and percent with sign and decimal comma', () => {
     expect(formatSignedSeconds(-8)).toBe('−8 s');
     expect(formatSignedSeconds(65)).toBe('+1:05');
     expect(formatSignedSeconds(0)).toBe('±0 s');
     expect(formatSignedPercent(4.26, 1)).toBe('+4,3 %');
     expect(formatSignedPercent(-2)).toBe('−2 %');
+  });
+
+  it('keeps the sign and digits apart from the unit', () => {
+    expect(formatSignedNumber(4.26, 1)).toBe('+4,3');
+    expect(formatSignedNumber(-2.5, 1)).toBe('−2,5');
+    expect(formatSignedNumber(0, 1)).toBe('±0,0');
+  });
+
+  it('writes percent and decimal point in English', () => {
+    setLanguage('en');
+    expect(formatSignedPercent(4.26, 1)).toBe('+4.3%');
+    expect(formatSignedPercent(-2)).toBe('−2%');
+    expect(formatSignedNumber(-2.5, 1)).toBe('−2.5');
+  });
+});
+
+describe('Labels', () => {
+  afterEach(() => setLanguage('de'));
+
+  it('shows verdict keys as German text by default', () => {
+    expect(evennessLabel('veryEven')).toBe('sehr gleichmäßig');
+    expect(evennessLabel('uneven')).toBe('wechselhaft');
+    expect(driftVerdictLabel('slightDrift')).toBe('leichte Drift');
+    expect(heartRateZoneLabel(2)).toBe('locker');
+  });
+
+  it('shows verdict keys as English text', () => {
+    setLanguage('en');
+    expect(evennessLabel('veryEven')).toBe('very even');
+    expect(evennessLabel('even')).toBe('even');
+    expect(evennessLabel('uneven')).toBe('uneven');
+    expect(driftVerdictLabel('solidAerobic')).toBe('aerobically solid');
+    expect(driftVerdictLabel('clearDrift')).toBe('clear drift');
+    expect(heartRateZoneLabel(1)).toBe('very easy');
+    expect(heartRateZoneLabel(5)).toBe('maximum');
   });
 });

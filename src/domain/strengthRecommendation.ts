@@ -1,8 +1,9 @@
 import { couplingGate, isStrengthRecommendation } from './areas';
-import { catalogExercise } from './catalog';
+import { catalogExercise, exerciseDisplayName } from './catalog';
 import { focusTypesFor, type TrainingFocus } from './focus';
 import { relevance, RELEVANCE_VERSION } from './prioritization';
 import { median, signTest } from './inference';
+import { locale, tr } from './i18n';
 import {
   assessExerciseProgression,
   bestWorkingSet,
@@ -19,22 +20,22 @@ import type {
 } from './types';
 
 /**
- * Empfehlungen im Bereich Krafttraining. Eine freigeschaltete Handlungsklasse:
- * die Last einer Übung (`strength_load`), abgeleitet aus dem e1RM-Verlauf in
- * progression.ts. Aufbau, Annahme und Prüfung folgen denselben Regeln wie beim
- * Laufen: vorher festlegen, Umsetzung und Ergebnis trennen, keine Ursache
- * behaupten.
+ * Recommendations in the strength training area. One unlocked action class:
+ * the load of an exercise (`strength_load`), derived from the e1RM trend in
+ * progression.ts. Setup, acceptance and review follow the same rules as for
+ * running: set them beforehand, keep follow-through and result apart, and
+ * claim no cause.
  */
 export const STRENGTH_RECOMMENDATION_VERSION = 'strength-load-v2';
 const DAY = 86400000;
-/** Vorab festgelegt: Erst ab sechs Einheiten kann der Vorzeichentest 5 % erreichen. */
+/** Fixed in advance: only from six sessions can the sign test reach 5 %. */
 const MINIMUM_OUTCOME_SESSIONS = 6;
 const SIGN_TEST_ALPHA = 0.05;
-/** Anteil, ab dem eine Region als Hauptregion der Übung zählt. */
+/** Share from which a region counts as a main region of the exercise. */
 const MAIN_REGION_SHARE = 0.15;
 
 const kg = (value: number) =>
-  value.toLocaleString('de-DE', { maximumFractionDigits: 1 });
+  value.toLocaleString(locale(), { maximumFractionDigits: 1 });
 
 export function exerciseRegions(exerciseId: string): string[] {
   const shares = catalogExercise(exerciseId)?.shares ?? {};
@@ -44,7 +45,7 @@ export function exerciseRegions(exerciseId: string): string[] {
     .sort();
 }
 
-/** Baut aus dem Verlauf einer Übung höchstens eine Empfehlung. */
+/** Builds at most one recommendation from an exercise's trend. */
 export function strengthRecommendationFor(
   sessions: StrengthSession[],
   exerciseId: string,
@@ -61,12 +62,13 @@ export function strengthRecommendationFor(
   if (suggestion.verdict === 'keep_going') {
     return { reason: assessment.reason };
   }
-  const name =
+  const storedName =
     finished
       .flatMap(session => session.exercises)
       .find(exercise => exercise.exerciseId === exerciseId)?.name ??
     catalogExercise(exerciseId)?.name ??
     exerciseId;
+  const name = exerciseDisplayName(exerciseId, storedName);
   const range = suggestion.targetRange;
   const last = assessment.series[assessment.series.length - 1];
   const baseline = assessment.series.slice(-3);
@@ -74,10 +76,16 @@ export function strengthRecommendationFor(
   const direction = suggestion.verdict;
   const action =
     direction === 'increase'
-      ? `Geh bei ${name} auf ${target}.`
+      ? tr(`Geh bei ${name} auf ${target}.`, `Go to ${target} for ${name}.`)
       : direction === 'reduce'
-      ? `Nimm bei ${name} etwas raus: ${target}.`
-      : `Probiere bei ${name} drei Einheiten ${target}.`;
+      ? tr(
+          `Nimm bei ${name} etwas raus: ${target}.`,
+          `Take a little weight off ${name}: ${target}.`,
+        )
+      : tr(
+          `Probiere bei ${name} drei Einheiten ${target}.`,
+          `Try ${name} at ${target} for three sessions.`,
+        );
   return {
     recommendation: {
       model_version: STRENGTH_RECOMMENDATION_VERSION,
@@ -86,10 +94,13 @@ export function strengthRecommendationFor(
       id: `strength_load:${exerciseId}:${last.sessionId}:${direction}`,
       kind: 'strength_load',
       area: 'strength',
-      title: 'Last anpassen',
+      title: tr('Last anpassen', 'Adjust the load'),
       action,
       reason: suggestion.reason,
-      goal: `In den umgesetzten Einheiten liegt dein bestes Arbeits-e1RM bei ${name} häufiger als zufällig mindestens ${suggestion.checkCriterion.minimumRelevantChangePercent} % über dem Median der Vergleichseinheiten.`,
+      goal: tr(
+        `In den umgesetzten Einheiten liegt dein bestes Arbeits-e1RM bei ${name} häufiger als zufällig mindestens ${suggestion.checkCriterion.minimumRelevantChangePercent} % über dem Median der Vergleichseinheiten.`,
+        `In the followed sessions, your best working e1RM for ${name} is at least ${suggestion.checkCriterion.minimumRelevantChangePercent} % above the median of the comparison sessions more often than chance.`,
+      ),
       exerciseId,
       exerciseName: name,
       direction,
@@ -110,11 +121,20 @@ export function strengthRecommendationFor(
         reviewAfterSessions: suggestion.checkCriterion.reviewAfterSessions,
         maxDays: 42,
         exclusions: [
-          'Aufwärm-, Drop- und Zeitsätze zählen nicht.',
-          'Einheiten ohne abgeschlossenen Arbeitssatz dieser Übung zählen nicht.',
+          tr(
+            'Aufwärm-, Drop- und Zeitsätze zählen nicht.',
+            'Warm-up, drop and timed sets do not count.',
+          ),
+          tr(
+            'Einheiten ohne abgeschlossenen Arbeitssatz dieser Übung zählen nicht.',
+            'Sessions without a completed working set for this exercise do not count.',
+          ),
         ],
         stopConditions: [
-          'Schmerzen oder starker gemeldeter Muskelkater in den beteiligten Regionen: Empfehlung pausieren.',
+          tr(
+            'Schmerzen oder starker gemeldeter Muskelkater in den beteiligten Regionen: Empfehlung pausieren.',
+            'Pain or strong reported soreness in the involved regions: pause the recommendation.',
+          ),
         ],
       },
     },
@@ -129,7 +149,7 @@ export interface ConsideredStrengthRecommendation {
   reason: string;
 }
 
-/** Gleiche Übung, gleiche Richtung: dieselbe Empfehlung. */
+/** Same exercise, same direction: the same recommendation. */
 export function sameStrengthRecommendation(
   a: StrengthRecommendation,
   b: StrengthRecommendation,
@@ -137,12 +157,12 @@ export function sameStrengthRecommendation(
   return a.exerciseId === b.exerciseId && a.direction === b.direction;
 }
 
-/** Read-only Auswahl je Übung; höchstens eine Empfehlung kommt heraus. */
+/** Read-only selection per exercise; at most one recommendation comes out. */
 export function selectStrengthRecommendation(
   sessions: StrengthSession[],
   options: {
     active?: Experiment;
-    /** Aktive Empfehlungen anderer Bereiche für die Kopplungssperre. */
+    /** Active recommendations of other areas for the coupling lock. */
     otherActive?: Experiment[];
     experiments?: Experiment[];
     dismissed?: string[];
@@ -171,7 +191,7 @@ export function selectStrengthRecommendation(
     quality: number;
   }[] = [];
   for (const [exerciseId, exerciseName] of [...names.entries()].sort()) {
-    // Daten nach der Annahme dürfen eine Vorschau tragen, nicht die alten.
+    // Data after acceptance may carry a preview, not the old data.
     const usable = options.active
       ? finished.filter(
           session =>
@@ -205,12 +225,15 @@ export function selectStrengthRecommendation(
       )
     ) {
       reject(
-        'Diese Einheiten wurden bereits für eine angenommene Empfehlung verwendet.',
+        tr(
+          'Diese Einheiten wurden bereits für eine angenommene Empfehlung verwendet.',
+          'These sessions were already used for an accepted recommendation.',
+        ),
       );
       continue;
     }
     if (options.dismissed?.includes(recommendation.id)) {
-      reject('Diesen Vorschlag hast du abgelehnt.');
+      reject(tr('Diesen Vorschlag hast du abgelehnt.', 'You declined this suggestion.'));
       continue;
     }
     if (
@@ -218,7 +241,7 @@ export function selectStrengthRecommendation(
       isStrengthRecommendation(options.active.recommendation) &&
       sameStrengthRecommendation(recommendation, options.active.recommendation)
     ) {
-      reject('Das ist bereits deine laufende Empfehlung.');
+      reject(tr('Das ist bereits deine laufende Empfehlung.', 'This is already your active recommendation.'));
       continue;
     }
     const priority = relevance(
@@ -237,7 +260,7 @@ export function selectStrengthRecommendation(
       continue;
     }
     if (options.postponedUntil && options.postponedUntil > options.now) {
-      reject('Du hast die Entscheidung auf später verschoben.');
+      reject(tr('Du hast die Entscheidung auf später verschoben.', 'You postponed the decision.'));
       continue;
     }
     eligible.push({
@@ -248,14 +271,14 @@ export function selectStrengthRecommendation(
           focusLabel:
             focusTypesFor('strength').find(
               item => item.value === options.focus?.kind,
-            )?.label || 'Kein Fokus',
+            )?.label || tr('Kein Fokus', 'No focus'),
           weight: priority.weight,
         },
       },
       quality: recommendation.inputSources.length,
     });
   }
-  // Mehr Einheiten im Verlauf heißt tragfähigere Grundlage. Danach feste ID.
+  // More sessions in the trend means a sturdier basis. Then the fixed ID decides.
   eligible.sort(
     (a, b) =>
       b.recommendation.priority!.weight - a.recommendation.priority!.weight ||
@@ -270,8 +293,14 @@ export function selectStrengthRecommendation(
       recommendation: item.recommendation,
       reason:
         item.quality < eligible[0].quality
-          ? 'Für den gewählten Vorschlag liegen mehr Einheiten im Verlauf vor.'
-          : 'Gleich gut geeignet. Bei Gleichstand entscheidet eine feste Reihenfolge.',
+          ? tr(
+              'Für den gewählten Vorschlag liegen mehr Einheiten im Verlauf vor.',
+              'The chosen suggestion has more sessions in its trend.',
+            )
+          : tr(
+              'Gleich gut geeignet. Bei Gleichstand entscheidet eine feste Reihenfolge.',
+              'Equally suitable. A fixed order decides a tie.',
+            ),
     });
   }
   return { selected, alternatives };
@@ -285,7 +314,7 @@ function activeAt(experiment: Experiment, time: number): boolean {
   return status === 'active';
 }
 
-/** Prüft eine angenommene Lastempfehlung an späteren Einheiten. */
+/** Checks an accepted load recommendation against later sessions. */
 export function evaluateStrengthExperiment(
   experiment: Experiment<StrengthRecommendation>,
   sessions: StrengthSession[],
@@ -297,8 +326,10 @@ export function evaluateStrengthExperiment(
     inputSources: [],
     segmentIds: [],
     verdict: 'insufficient_evidence',
-    summary:
+    summary: tr(
       'Noch keine geeigneten Folgeeinheiten. Die Umsetzung und das Ergebnis werden getrennt geprüft.',
+      'No suitable follow-up sessions yet. Follow-through and result are checked separately.',
+    ),
     eligibleRunIds: [],
     excluded: [],
     adherence: [],
@@ -311,7 +342,10 @@ export function evaluateStrengthExperiment(
     return {
       ...result,
       summary:
-        'Der gespeicherte Modellstand ist hier nicht verfügbar. Die vor dem Start festgelegten Regeln bleiben erhalten.',
+        tr(
+          'Der gespeicherte Modellstand ist hier nicht verfügbar. Die vor dem Start festgelegten Regeln bleiben erhalten.',
+          'The saved model version is not available here. The rules set before the start still apply.',
+        ),
     };
   }
   const outcomes: { sessionId: string; e1rm: number }[] = [];
@@ -328,20 +362,20 @@ export function evaluateStrengthExperiment(
     const exclude = (reason: string) =>
       result.excluded.push({ runId: session.id, reason });
     if (session.status !== 'finished') {
-      exclude('Einheit nicht abgeschlossen.');
+      exclude(tr('Einheit nicht abgeschlossen.', 'Session not finished.'));
       continue;
     }
     if (!activeAt(experiment, session.startTime)) {
-      exclude('Empfehlung war bei Beginn der Einheit nicht aktiv.');
+      exclude(tr('Empfehlung war bei Beginn der Einheit nicht aktiv.', 'Recommendation was not active when the session started.'));
       continue;
     }
     if (session.startTime > experiment.acceptedAt + c.maxDays * DAY) {
-      exclude('Vorab festgelegter Beobachtungszeitraum abgelaufen.');
+      exclude(tr('Vorab festgelegter Beobachtungszeitraum abgelaufen.', 'Observation period set in advance has ended.'));
       continue;
     }
     const best = bestWorkingSet(session, c.exerciseId);
     if (!best) {
-      exclude('Kein abgeschlossener Arbeitssatz dieser Übung.');
+      exclude(tr('Kein abgeschlossener Arbeitssatz dieser Übung.', 'No completed working set for this exercise.'));
       continue;
     }
     result.eligibleRunIds.push(session.id);
@@ -374,8 +408,10 @@ export function evaluateStrengthExperiment(
     return {
       ...result,
       verdict: 'not_implemented',
-      summary:
+      summary: tr(
         'Du hast die neue Last bisher nicht probiert. Ob sie hilft, bleibt noch offen.',
+        'You have not tried the new load yet. Whether it helps is still open.',
+      ),
     };
   }
   if (!outcomes.length) return result;
@@ -386,35 +422,50 @@ export function evaluateStrengthExperiment(
     changes.reduce((a, b) => a + b, 0) / changes.length;
   result.observedRange = [Math.min(...changes), Math.max(...changes)];
   if (outcomes.length < c.minimumObservations) {
-    result.summary = `${outcomes.length} umgesetzte, geeignete Einheiten; Prüfung ab ${c.minimumObservations} Einheiten. Der beobachtete Unterschied beweist keine Ursache.`;
+    result.summary = tr(
+      `${outcomes.length} umgesetzte, geeignete Einheiten; Prüfung ab ${c.minimumObservations} Einheiten. Der beobachtete Unterschied beweist keine Ursache.`,
+      `${outcomes.length} suitable ${outcomes.length === 1 ? 'session' : 'sessions'} followed; the check starts at ${c.minimumObservations} sessions. The observed difference proves no cause.`,
+    );
     return result;
   }
-  const causal = ' Beobachtung, kein Ursachennachweis.';
+  const causal = tr(' Beobachtung, kein Ursachennachweis.', ' An observation, not proof of a cause.');
   const test = signTest(changes, c.minimumRelevantChangePercent);
   result.signTest = { ...test, alpha: c.signTestAlpha };
   if (test.pValue <= c.signTestAlpha && test.positives > test.negatives) {
     return {
       ...result,
       verdict: 'improved',
-      summary: `Dein bestes Arbeits-e1RM lag in ${test.positives} von ${outcomes.length} umgesetzten Einheiten mindestens ${c.minimumRelevantChangePercent} % über den Vergleichseinheiten; das ist häufiger als zufällig.${causal}`,
+      summary: tr(
+        `Dein bestes Arbeits-e1RM lag in ${test.positives} von ${outcomes.length} umgesetzten Einheiten mindestens ${c.minimumRelevantChangePercent} % über den Vergleichseinheiten; das ist häufiger als zufällig.${causal}`,
+        `Your best working e1RM was at least ${c.minimumRelevantChangePercent} % above the comparison sessions in ${test.positives} of ${outcomes.length} followed sessions; that is more often than chance.${causal}`,
+      ),
     };
   }
   if (test.pValue <= c.signTestAlpha && test.negatives > test.positives) {
     return {
       ...result,
       verdict: 'worsened',
-      summary: `Dein bestes Arbeits-e1RM lag in ${test.negatives} von ${outcomes.length} umgesetzten Einheiten mindestens ${c.minimumRelevantChangePercent} % unter den Vergleichseinheiten; das ist häufiger als zufällig.${causal}`,
+      summary: tr(
+        `Dein bestes Arbeits-e1RM lag in ${test.negatives} von ${outcomes.length} umgesetzten Einheiten mindestens ${c.minimumRelevantChangePercent} % unter den Vergleichseinheiten; das ist häufiger als zufällig.${causal}`,
+        `Your best working e1RM was at least ${c.minimumRelevantChangePercent} % below the comparison sessions in ${test.negatives} of ${outcomes.length} followed sessions; that is more often than chance.${causal}`,
+      ),
     };
   }
   if (test.ties === changes.length) {
     return {
       ...result,
       verdict: 'no_relevant_effect',
-      summary: `Alle ${outcomes.length} umgesetzten Einheiten lagen innerhalb von ±${c.minimumRelevantChangePercent} % der Vergleichseinheiten.${causal}`,
+      summary: tr(
+        `Alle ${outcomes.length} umgesetzten Einheiten lagen innerhalb von ±${c.minimumRelevantChangePercent} % der Vergleichseinheiten.${causal}`,
+        `All ${outcomes.length} followed sessions were within ±${c.minimumRelevantChangePercent} % of the comparison sessions.${causal}`,
+      ),
     };
   }
   return {
     ...result,
-    summary: `Noch nicht klar. ${test.positives} Einheiten besser, ${test.negatives} schlechter, ${test.ties} unverändert; das kann Zufall sein.${causal}`,
+    summary: tr(
+      `Noch nicht klar. ${test.positives} Einheiten besser, ${test.negatives} schlechter, ${test.ties} unverändert; das kann Zufall sein.${causal}`,
+      `Not clear yet. ${test.positives} ${test.positives === 1 ? 'session' : 'sessions'} better, ${test.negatives} worse, ${test.ties} unchanged; this may be chance.${causal}`,
+    ),
   };
 }

@@ -6,8 +6,8 @@ import {
 } from '../src/domain/bridgeRecords';
 import { strengthSession } from './fixtures/strengthSessions';
 
-describe('Datensätze für App und Website', () => {
-  it('liest native Namen und erhält Herkunft sowie Modellversion', () => {
+describe('Records for app and website', () => {
+  it('reads native names and keeps origin and model version', () => {
     const run = normalizeRun({
       id: 'r1',
       startedAt: 1000,
@@ -24,13 +24,13 @@ describe('Datensätze für App und Website', () => {
     expect(run.sport).toBe('cycling');
     expect(run.rpe?.legs).toBe(3);
   });
-  it('liest leere Kraftdaten ohne Einheiten zu erfinden', () =>
+  it('reads empty strength data without inventing units', () =>
     expect(normalizeStrength(null)).toEqual({
       templates: [],
       active: null,
       history: [],
     }));
-  it('erhält eigene Einheiten und getrennte Endkorrekturen', () => {
+  it('keeps own sessions and separate end corrections', () => {
     const session = strengthSession('s1', 1000000, [], { endTime: 1060000 });
     const corrected = strengthSessionFromBridge({
       ...session,

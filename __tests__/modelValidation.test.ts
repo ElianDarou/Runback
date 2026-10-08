@@ -47,8 +47,8 @@ const input: ModelValidationInput = {
   ],
 };
 
-describe('Modellprüfung', () => {
-  it('liefert die drei Vergleichswerte und Kalibrierungsklassen', () => {
+describe('Model validation', () => {
+  it('returns the three comparison values and calibration classes', () => {
     const result = validateModel(input);
     expect(result.holdout.count).toBeGreaterThan(0);
     expect(result.holdout.alwaysZeroMae).not.toBeNull();
@@ -58,7 +58,7 @@ describe('Modellprüfung', () => {
     expect(result.model_version).toBe('muscle-model-v3');
   });
 
-  it('bleibt bei fehlender Datengrundlage gesperrt und nennt Gründe', () => {
+  it('stays locked without a data basis and names the reasons', () => {
     const verdict = modelIsUnlocked({ sessions: [], reports: [] });
     expect(verdict.unlocked).toBe(false);
     expect(verdict.reasons.length).toBeGreaterThan(0);
@@ -67,9 +67,9 @@ describe('Modellprüfung', () => {
     expect(verdict.catalog_version).toBe('catalog-v2');
   });
 
-  it('zählt Meldungen eines Erholungsverlaufs als einen Block und verlangt einen spürbaren Gewinn', () => {
+  it('counts reports of a recovery course as one block and requires a noticeable gain', () => {
     const result = validateModel(input);
-    // Vier Meldungen nach derselben Einheit: ein Block, keine unabhängige Erfahrung.
+    // Four reports after the same session: one block, not an independent experience.
     expect(result.holdout.blocks).toBe(1);
     expect(result.holdout.passes).toBe(false);
     const verdict = modelIsUnlocked(input);
@@ -79,7 +79,7 @@ describe('Modellprüfung', () => {
     expect(verdict.unlocked).toBe(false);
   });
 
-  it('ignoriert eine von außen übergebene Kalibrierung, damit kein Zukunftswissen einfließt', () => {
+  it('ignores a calibration passed in from outside so no future knowledge flows in', () => {
     const plain = validateModel(input);
     const leaked = validateModel({
       ...input,
@@ -92,7 +92,7 @@ describe('Modellprüfung', () => {
     );
   });
 
-  it('behandelt widersprüchliche Meldungen ohne Absturz', () => {
+  it('handles contradictory reports without crashing', () => {
     expect(() => validateModel({
       sessions: [session],
       reports: [

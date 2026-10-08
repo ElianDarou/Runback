@@ -18,8 +18,8 @@ import {
 
 const HOUR = 3600 * 1000;
 const DAY = 24 * HOUR;
-// Ein Mittwoch, 12:00 Ortszeit — so liegen „heute“, „diese Woche“ und
-// Wochentage fest, ohne von der Uhr der Testmaschine abzuhängen.
+// A Wednesday, 12:00 local time — so that “today”, “this week” and
+// weekdays are fixed, without depending on the test machine's clock.
 const NOW = new Date(2026, 8, 16, 12, 0, 0).getTime();
 const finished = (endedAgoMs: number) => ({
   status: 'finished' as const,
@@ -28,7 +28,7 @@ const finished = (endedAgoMs: number) => ({
 });
 
 describe('normalizeFeatures', () => {
-  it('vibriert am Pausenende standardmäßig, spielt aber keinen Ton', () => {
+  it('vibrates at the end of a rest by default but plays no sound', () => {
     expect(normalizeFeatures(undefined).strength).toMatchObject({
       restVibration: true,
       restSound: false,
@@ -43,7 +43,7 @@ describe('normalizeFeatures', () => {
     ).toBe(false);
   });
 
-  it('liefert den Standard für fehlende oder kaputte Eingaben', () => {
+  it('returns the default for missing or broken input', () => {
     expect(normalizeFeatures(undefined)).toEqual(DEFAULT_FEATURES);
     expect(normalizeFeatures('unsinn')).toEqual(DEFAULT_FEATURES);
     expect(normalizeFeatures({ soreness: { prompt: 'jedeStunde' } })).toEqual(
@@ -55,7 +55,7 @@ describe('normalizeFeatures', () => {
     ).toBe(120);
   });
 
-  it('übernimmt gültige Werte und wirft unbekannte Listeneinträge weg', () => {
+  it('takes over valid values and drops unknown list entries', () => {
     const next = normalizeFeatures({
       soreness: { enabled: false, prompt: 'weekly' },
       home: { sections: ['recent', 'unbekannt', 'week'] },
@@ -69,7 +69,7 @@ describe('normalizeFeatures', () => {
     expect(next.strength.defaultRestSeconds).toBe(90);
   });
 
-  it('lässt nicht beide Bereiche aus', () => {
+  it('does not leave out both areas', () => {
     expect(
       normalizeFeatures({ areas: { running: false, strength: false } }).areas,
     ).toEqual({ running: true, strength: true });
@@ -83,7 +83,7 @@ describe('normalizeFeatures', () => {
     });
   });
 
-  it('übernimmt den alten Herzfrequenz-Schalter nur ohne gespeicherte Funktionen', () => {
+  it('takes over the old heart rate switch only without saved features', () => {
     expect(
       normalizeFeatures(undefined, { showHeartRate: true }).recording.metrics,
     ).toContain('heartRate');
@@ -98,8 +98,8 @@ describe('normalizeFeatures', () => {
   });
 });
 
-describe('Ableitungen', () => {
-  it('nimmt abgeschalteten Funktionen ihre Blöcke und Tabs', () => {
+describe('Derivations', () => {
+  it('removes the blocks and tabs of switched-off features', () => {
     const f = normalizeFeatures({
       areas: { running: true, strength: false },
       planning: { enabled: false },
@@ -111,7 +111,7 @@ describe('Ableitungen', () => {
     expect(visibleHomeSections(f)).toEqual(availableHomeSections(f));
     expect(recommendationsShown(f, 'running')).toBe(false);
     expect(recommendationsShown(f, 'strength')).toBe(false);
-    // Die Zielnähe gehört zum Laufen: ohne den Bereich verschwindet der Block.
+    // Goal progress belongs to running: without the area the block disappears.
     expect(
       availableHomeSections(
         normalizeFeatures({ areas: { running: false, strength: true } }),
@@ -119,7 +119,7 @@ describe('Ableitungen', () => {
     ).not.toContain('goal');
   });
 
-  it('unterscheidet Vorschlagen von Nur auf Nachfrage', () => {
+  it('distinguishes suggesting from on request only', () => {
     const f = normalizeFeatures({
       recommendations: { running: 'on_request' },
     });
@@ -132,12 +132,12 @@ describe('Ableitungen', () => {
     expect(visibleHomeSections(quiet)).not.toContain('recommendation');
   });
 
-  it('achtet die Auswahl der Heute-Blöcke', () => {
+  it('respects the selection of the Today blocks', () => {
     const f = normalizeFeatures({ home: { sections: ['recent'] } });
     expect(visibleHomeSections(f)).toEqual(['recent']);
   });
 
-  it('nennt nur eingeschaltete Sportarten', () => {
+  it('names only switched-on sports', () => {
     expect(enabledSports(DEFAULT_FEATURES)).toEqual(['running', 'cycling']);
     expect(
       enabledSports(normalizeFeatures({ sports: { cycling: false } })),
@@ -154,7 +154,7 @@ describe('shouldPromptSoreness', () => {
   const withPrompt = (prompt: string, enabled = true) =>
     normalizeFeatures({ soreness: { prompt, enabled } });
 
-  it('fragt nie, wenn Muskelkater aus ist oder „nie“ gewählt wurde', () => {
+  it('never asks when soreness is off or “never” was chosen', () => {
     expect(
       shouldPromptSoreness(withPrompt('daily', false), [], [], [], NOW),
     ).toBe(false);
@@ -163,7 +163,7 @@ describe('shouldPromptSoreness', () => {
     );
   });
 
-  it('täglich: nur ohne Meldung von heute', () => {
+  it('daily: only without a report from today', () => {
     expect(shouldPromptSoreness(withPrompt('daily'), [], [], [], NOW)).toBe(
       true,
     );
@@ -187,7 +187,7 @@ describe('shouldPromptSoreness', () => {
     ).toBe(true);
   });
 
-  it('nach Krafttraining: 8 bis 72 Stunden nach einer Einheit, einmal je Einheit', () => {
+  it('after strength training: 8 to 72 hours after a session, once per session', () => {
     const f = withPrompt('after_strength');
     expect(shouldPromptSoreness(f, [], [], [], NOW)).toBe(false);
     expect(shouldPromptSoreness(f, [], [finished(2 * HOUR)], [], NOW)).toBe(
@@ -199,7 +199,7 @@ describe('shouldPromptSoreness', () => {
     expect(shouldPromptSoreness(f, [], [finished(80 * HOUR)], [], NOW)).toBe(
       false,
     );
-    // Schon gemeldet nach dieser Einheit → Ruhe.
+    // Already reported after this session → quiet.
     expect(
       shouldPromptSoreness(
         f,
@@ -209,7 +209,7 @@ describe('shouldPromptSoreness', () => {
         NOW,
       ),
     ).toBe(false);
-    // Laufende Einheit zählt nicht.
+    // A session in progress does not count.
     expect(
       shouldPromptSoreness(
         f,
@@ -221,7 +221,7 @@ describe('shouldPromptSoreness', () => {
     ).toBe(false);
   });
 
-  it('an Trainingstagen: nur wenn heute einer ist', () => {
+  it('on training days: only when today is one', () => {
     const f = withPrompt('training_days');
     const today = new Date(NOW).getDay();
     expect(shouldPromptSoreness(f, [], [], [today], NOW)).toBe(true);
@@ -231,22 +231,22 @@ describe('shouldPromptSoreness', () => {
     ).toBe(false);
   });
 
-  it('wöchentlich: einmal je Kalenderwoche ab Montag', () => {
+  it('weekly: once per calendar week starting Monday', () => {
     const f = withPrompt('weekly');
     expect(shouldPromptSoreness(f, [], [], [], NOW)).toBe(true);
-    // Montag dieser Woche liegt zwei Tage zurück; eine Meldung von Dienstag reicht.
+    // Monday of this week is two days back; a report from Tuesday is enough.
     expect(shouldPromptSoreness(f, [{ at: NOW - DAY }], [], [], NOW)).toBe(
       false,
     );
-    // Eine Meldung vom Sonntag davor zählt nicht mehr.
+    // A report from the Sunday before no longer counts.
     expect(shouldPromptSoreness(f, [{ at: NOW - 3 * DAY }], [], [], NOW)).toBe(
       true,
     );
   });
 });
 
-describe('Funktionen und Navigation v2', () => {
-  it('migriert alte Einstellungen ohne abgeschaltete Funktionen wieder einzuschalten', () => {
+describe('Features and navigation v2', () => {
+  it('migrates old settings without switching features back on', () => {
     const f = normalizeFeatures({
       version: 1,
       planning: { enabled: false },
@@ -260,7 +260,7 @@ describe('Funktionen und Navigation v2', () => {
     expect(f.recommendations.running).toBe('off');
     expect(visibleTabs(f)).toEqual(['today', 'coach', 'history']);
   });
-  it('normalisiert Plätze ohne ihre Reihenfolge zu verlieren', () => {
+  it('normalizes slots without losing their order', () => {
     const f = normalizeFeatures({
       navigation: {
         tabs: ['Routen', 'Statistik', 'Routen', 'Heute', 'Coach', 'garbage'],
@@ -272,7 +272,7 @@ describe('Funktionen und Navigation v2', () => {
       normalizeFeatures({ navigation: { tabs: [] } }).navigation.tabs,
     ).toEqual([]);
   });
-  it('trennt aktive Funktionen von ihren Plätzen und lässt leere Plätze frei', () => {
+  it('separates active features from their slots and leaves empty slots free', () => {
     const f = withFeature(
       withFeature(normalizeFeatures(undefined), 'coach', false),
       'planning',
@@ -291,7 +291,7 @@ describe('Funktionen und Navigation v2', () => {
     ]);
     expect(withNavigation(pinned, []).statistics.enabled).toBe(true);
   });
-  it('behält Ziele, Fokusmodi und gespeicherte Anzeigeoptionen ohne Coach', () => {
+  it('keeps goals, focus modes and saved display options without Coach', () => {
     const f = withFeature(normalizeFeatures(undefined), 'coach', false);
     expect(recommendationsShown(f, 'running')).toBe(false);
     expect(recommendationsShown(f, 'strength')).toBe(false);
@@ -303,7 +303,7 @@ describe('Funktionen und Navigation v2', () => {
       'suggest',
     );
   });
-  it('lässt Vorlagen ohne Planung und Statistik ohne Coach nutzen', () => {
+  it('lets templates be used without planning and statistics without Coach', () => {
     const f = normalizeFeatures({
       planning: { enabled: false },
       coach: { enabled: false },
@@ -316,7 +316,7 @@ describe('Funktionen und Navigation v2', () => {
     ]);
     expect(featureEnabled(f, 'templates')).toBe(true);
   });
-  it('verhindert inaktive, doppelte und zusätzliche Tab-Ziele', () => {
+  it('prevents inactive, duplicate and extra tab targets', () => {
     const f = normalizeFeatures({
       areas: { running: false, strength: true },
       statistics: { enabled: false },
@@ -335,7 +335,7 @@ describe('Funktionen und Navigation v2', () => {
     ).toEqual(['templates', 'coach']);
     expect(featureEnabled(f, 'routes')).toBe(false);
   });
-  it('blendet Zielnähe nur über den unabhängigen Zielschalter aus', () => {
+  it('hides goal progress only via its independent goal switch', () => {
     const f = withFeature(normalizeFeatures(undefined), 'goals', false);
     expect(availableHomeSections(f)).not.toContain('goal');
     expect(recommendationsShown(f, 'running')).toBe(true);

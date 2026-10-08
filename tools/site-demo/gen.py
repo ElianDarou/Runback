@@ -1,10 +1,10 @@
-"""Beispieldaten für die Screenshots der Website (site/shots).
+"""Sample data for the website screenshots (site/shots).
 
-Erzeugt acht Wochen Läufe als GPX (Spur, Puls, Kadenz) auf echten Wegen in
-Hamburg und Krafteinheiten im Strong-CSV-Format, gepackt als runback-demo.zip.
-Die ZIP wird in der App unter Einstellungen › Deine Daten › Aus anderen Apps ›
-Strong importiert. Die Wege kommen einmalig vom OSRM-Fußgänger-Routing
-(OpenStreetMap-Daten). Die Werte sind erfunden und nur für Screenshots gedacht.
+Generates eight weeks of runs as GPX (track, heart rate, cadence) on real routes in
+Hamburg and strength sessions in Strong CSV format, packed as runback-demo.zip.
+In the app, the ZIP is imported under Settings › Your data › From other apps ›
+Strong. The routes come once from OSRM foot routing (OpenStreetMap data). The values
+are invented and only meant for screenshots.
 
     python3 tools/site-demo/gen.py [ausgabeordner]
 """
@@ -63,7 +63,7 @@ def ele(route, d):
     return 12 + 4*math.sin(d/700) + 2*math.sin(d/230 + (1 if route == 'alster' else 0))
 
 def run_gpx(route, title, start, pace, hr0, hr1, cad, fade=0.0):
-    """pace in s/km; fade: Anteil, um den die zweite Hälfte langsamer wird."""
+    """pace in s/km; fade: share by which the second half gets slower."""
     total = ROUTES[route][1][-1]
     t, d = 0.0, 0.0
     hr = hr0 - 25

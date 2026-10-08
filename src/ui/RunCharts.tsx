@@ -34,6 +34,7 @@ import {
   type SeriesAxis,
   type SeriesMetric,
 } from '../domain/runSeries';
+import { tr } from '../domain/i18n';
 import {
   ChipGroup,
   Copy,
@@ -45,11 +46,11 @@ import {
 } from './components';
 
 /**
- * Verlauf eines Laufs: ein Graph, eine Achse, eine Metrik je Reiter. Das
- * Höhenprofil liegt wahlweise als graues Relief dahinter — mit eigener Skala,
- * aber ohne zweite Achse, damit keine zwei willkürlich skalierten Achsen
- * einen Zusammenhang erfinden. Wischen wählt einen Moment; die Ablese-Zeile
- * steht fest über dem Graph, damit der Finger sie nicht verdeckt.
+ * A run's history: one graph, one axis, one metric per tab. The elevation
+ * profile can sit behind it as a gray relief — with its own scale but no
+ * second axis, so two arbitrarily scaled axes don't invent a relation. Swiping
+ * picks a moment; the readout line stays fixed above the graph so the finger
+ * doesn't cover it.
  */
 const HEIGHT = 168;
 const MARGIN = { top: 10, bottom: 20, left: 40 };
@@ -75,10 +76,10 @@ export function RunSeriesPanel({
 }: {
   run: RunSummary;
   series: RunSeries | null;
-  /** Zeilenindex des aktiven Moments; null ohne Auswahl. */
+  /** Row index of the active moment; null without a selection. */
   selected: number | null;
   onSelect: (index: number | null) => void;
-  /** Markierter Zeilenbereich (z. B. ein Kilometer). */
+  /** Highlighted row range (e.g. one kilometer). */
   range: [number, number] | null;
 }) {
   const metrics = useMemo(() => availableMetrics(series), [series]);
@@ -97,13 +98,15 @@ export function RunSeriesPanel({
   if (!series || metrics.length === 0) {
     return (
       <Copy muted>
-        Für diesen Lauf gibt es keinen Verlauf — nur Aufzeichnungen mit GPS oder
-        Sensoren haben einen.
+        {tr(
+          'Für diesen Lauf gibt es keinen Verlauf — nur Aufzeichnungen mit GPS oder Sensoren haben einen.',
+          'There is no history for this run — only recordings with GPS or sensors have one.',
+        )}
       </Copy>
     );
   }
 
-  // ---- Skalen ----
+  // ---- Scales ----
   const right = showRelief ? 40 : 10;
   const plotWidth = Math.max(1, width - MARGIN.left - right);
   const plotHeight = HEIGHT - MARGIN.top - MARGIN.bottom;
@@ -131,7 +134,7 @@ export function RunSeriesPanel({
     return MARGIN.top + (invert ? share : 1 - share) * plotHeight;
   };
 
-  // ---- Pfade ----
+  // ---- Paths ----
   let linePath = '';
   let pen = false;
   values.forEach((value, index) => {
@@ -203,7 +206,7 @@ export function RunSeriesPanel({
     metric === 'elevation' ? areaPath(row => row.elevationM, yOf) : '';
   const mean = metric === 'pace' ? averagePace(run) : undefined;
 
-  // ---- Achsenbeschriftung ----
+  // ---- Axis labels ----
   const yTicks = [low, (low + high) / 2, high];
   const xStep =
     axis === 'distance'
@@ -216,8 +219,8 @@ export function RunSeriesPanel({
       ? `${formatKm(value, value % 1000 ? 1 : 0)} km`
       : `${Math.round(value / 60)} min`;
 
-  // Lücken ohne Tempo in Bewegung (GPS-Ausfall) werden schraffiert, damit dort
-  // niemand einen Wert erwartet.
+  // Gaps without pace while moving (GPS dropout) are hatched so nobody
+  // expects a value there.
   const gapBands: [number, number][] = [];
   if (metric === 'pace') {
     let from: number | null = null;
@@ -232,7 +235,7 @@ export function RunSeriesPanel({
     if (from !== null) gapBands.push([from, rows.length - 1]);
   }
 
-  // ---- Geste ----
+  // ---- Gesture ----
   const pick = (event: GestureResponderEvent) => {
     const x = event.nativeEvent.locationX;
     const share = Math.min(1, Math.max(0, (x - MARGIN.left) / plotWidth));
@@ -247,7 +250,7 @@ export function RunSeriesPanel({
         <Text style={styles.readoutPosition}>
           {selectedRow ? (
             <>
-              bei{' '}
+              {tr('bei', 'at')}{' '}
               <Text style={styles.readoutStrong}>
                 km {formatKm(selectedRow.distanceMeters)}
               </Text>
@@ -256,17 +259,17 @@ export function RunSeriesPanel({
                 {formatElapsed(selectedRow.elapsedSeconds)}
               </Text>
               {' min'}
-              {!selectedRow.moving ? ' · Pause' : ''}
+              {!selectedRow.moving ? tr(' · Pause', ' · Paused') : ''}
               {selectedRow.gradePercent !== undefined &&
               selectedRow.gradePercent > 3
-                ? ' · Anstieg'
+                ? tr(' · Anstieg', ' · Uphill')
                 : selectedRow.gradePercent !== undefined &&
                   selectedRow.gradePercent < -3
-                ? ' · Gefälle'
+                ? tr(' · Gefälle', ' · Downhill')
                 : ''}
             </>
           ) : (
-            'Gesamt'
+            tr('Gesamt', 'Total')
           )}
         </Text>
         <View style={styles.readoutTiles}>
@@ -287,7 +290,7 @@ export function RunSeriesPanel({
         </View>
       </View>
       <ChipGroup
-        label="Metrik im Verlauf"
+        label={tr('Metrik im Verlauf', 'Metric over time')}
         options={metrics.map(item => ({
           value: item,
           label: metricLabel(item),
@@ -297,9 +300,14 @@ export function RunSeriesPanel({
       />
       <View
         accessibilityRole="adjustable"
-        accessibilityLabel={`${metricLabel(metric)} im Verlauf, ${
-          present.length
-        } Werte. Wischen wählt einen Moment.`}
+        accessibilityLabel={tr(
+          `${metricLabel(metric)} im Verlauf, ${
+            present.length
+          } Werte. Wischen wählt einen Moment.`,
+          `${metricLabel(metric)} over time, ${
+            present.length
+          } values. Swipe to pick a moment.`,
+        )}
         onLayout={event => setWidth(event.nativeEvent.layout.width)}
         onStartShouldSetResponder={() => true}
         onMoveShouldSetResponder={() => true}
@@ -428,7 +436,7 @@ export function RunSeriesPanel({
                 fill={color.text}
                 fontSize={10}
               >
-                Gegenwind
+                {tr('Gegenwind', 'Headwind')}
               </SvgText>
               <SvgText
                 x={MARGIN.left + 4}
@@ -436,7 +444,7 @@ export function RunSeriesPanel({
                 fill={color.text}
                 fontSize={10}
               >
-                Rückenwind
+                {tr('Rückenwind', 'Tailwind')}
               </SvgText>
             </>
           ) : (
@@ -504,10 +512,14 @@ export function RunSeriesPanel({
       <View style={styles.legend}>
         {metric === 'wind' ? (
           <>
-            <LegendItem swatch={color.series.headwind} label="Gegenwind" area />
+            <LegendItem
+              swatch={color.series.headwind}
+              label={tr('Gegenwind', 'Headwind')}
+              area
+            />
             <LegendItem
               swatch={color.series.tailwind}
-              label="Rückenwind"
+              label={tr('Rückenwind', 'Tailwind')}
               area
             />
           </>
@@ -515,32 +527,37 @@ export function RunSeriesPanel({
           <LegendItem
             swatch={LINE_COLOR[metric]}
             label={`${metricLabel(metric)} in ${metricUnit(metric)}${
-              metric === 'pace' ? ' (oben = schneller)' : ''
+              metric === 'pace' ? tr(' (oben = schneller)', ' (top = faster)') : ''
             }`}
           />
         )}
         {showRelief ? (
-          <LegendItem swatch={color.muted} label="Höhe" area />
+          <LegendItem swatch={color.muted} label={tr('Höhe', 'Elevation')} area />
         ) : null}
       </View>
       <View style={styles.controls}>
         {hasElevation && metric !== 'elevation' ? (
           <View style={styles.switchRow}>
             <Switch
-              accessibilityLabel="Höhenprofil hinterlegen"
+              accessibilityLabel={tr(
+                'Höhenprofil hinterlegen',
+                'Show elevation profile behind',
+              )}
               value={relief}
               onValueChange={setRelief}
               trackColor={{ false: color.line, true: color.greenSoft }}
               thumbColor={relief ? color.green : color.muted}
             />
-            <Text style={styles.switchLabel}>Höhenprofil hinterlegen</Text>
+            <Text style={styles.switchLabel}>
+              {tr('Höhenprofil hinterlegen', 'Show elevation profile behind')}
+            </Text>
           </View>
         ) : (
           <View />
         )}
         <View style={styles.axis}>
           <Segmented
-            label="Achse"
+            label={tr('Achse', 'Axis')}
             options={[
               { value: 'distance', label: 'km' },
               { value: 'time', label: 'min' },
@@ -578,9 +595,9 @@ function LegendItem({
 }
 
 /**
- * Kilometer als Balken: Länge ist das Tempo (ab null, damit die Balken
- * vergleichbar sind), daneben Puls und Höhenmeter. Antippen markiert den
- * Kilometer in Graph und Karte.
+ * Kilometers as bars: length is the pace (starting at zero so the bars compare),
+ * with heart rate and elevation gain beside them. Tapping marks the kilometer
+ * in the graph and on the map.
  */
 export function KilometerTable({
   splits,
@@ -601,16 +618,20 @@ export function KilometerTable({
     <View accessibilityRole="list" style={styles.table}>
       <View style={styles.tableHead}>
         <Text style={[styles.tableLabel, styles.colKm]}>km</Text>
-        <Text style={[styles.tableLabel, styles.colBar]}>Tempo /km</Text>
+        <Text style={[styles.tableLabel, styles.colBar]}>
+          {tr('Tempo /km', 'Pace /km')}
+        </Text>
         <Text style={[styles.tableLabel, styles.colHr]}>Ø bpm</Text>
-        <Text style={[styles.tableLabel, styles.colElev]}>Höhe</Text>
+        <Text style={[styles.tableLabel, styles.colElev]}>
+          {tr('Höhe', 'Elevation')}
+        </Text>
       </View>
       {splits.map(split => {
         const isSelected = selected === split.index;
         const share =
           split.secondsPerKm !== undefined ? split.secondsPerKm / slowest : 0;
-        // Steigung vor den Höhenmetern: sie erklärt ein langsames Tempo
-        // schneller als „↗ 12“. Unter ±1 % ist der Kilometer flach.
+        // Grade before climb: it explains a slow pace better than "↗ 12".
+        // Under ±1 % the kilometer counts as flat.
         const grade =
           split.gradePercent !== undefined && Math.abs(split.gradePercent) >= 1
             ? `${split.gradePercent > 0 ? '+' : '−'}${Math.round(
@@ -633,10 +654,16 @@ export function KilometerTable({
             key={split.index}
             accessibilityRole="button"
             accessibilityState={{ selected: isSelected }}
-            accessibilityLabel={`Kilometer ${split.label}: ${formatMetric(
-              'pace',
-              split.secondsPerKm,
-            )} pro Kilometer${split.uncertain ? ', Tempo unsicher' : ''}`}
+            accessibilityLabel={tr(
+              `Kilometer ${split.label}: ${formatMetric(
+                'pace',
+                split.secondsPerKm,
+              )} pro Kilometer${split.uncertain ? ', Tempo unsicher' : ''}`,
+              `Kilometer ${split.label}: ${formatMetric(
+                'pace',
+                split.secondsPerKm,
+              )} per kilometer${split.uncertain ? ', pace uncertain' : ''}`,
+            )}
             onPress={() => onSelect(isSelected ? null : split.index)}
             style={({ pressed }) => [
               styles.tableRow,

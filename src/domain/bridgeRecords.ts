@@ -8,9 +8,9 @@ import { importedStrengthSession } from './strengthImports';
 import type { StrongWorkout } from './vendorImports';
 
 /**
- * Liest die Datensätze, die Kotlin über die Brücke liefert. Der eigene Server
- * bekommt dieselben Datensätze und liest sie mit denselben Funktionen, damit
- * App und Website dieselben Zahlen zeigen.
+ * Reads the records Kotlin delivers over the bridge. Your own server gets the
+ * same records and reads them with the same functions, so the app and the
+ * website show the same numbers.
  */
 
 export function normalizeRun(raw: any): Run {
@@ -39,7 +39,7 @@ export function normalizeRun(raw: any): Run {
   };
 }
 
-/** Fehlende Felder ergeben einen leeren, benutzbaren Zustand statt eines Fehlers. */
+/** Missing fields give an empty, usable state instead of an error. */
 export function normalizeStrength(raw: any): StrengthState {
   return {
     templates: Array.isArray(raw?.templates) ? raw.templates : [],
@@ -49,7 +49,7 @@ export function normalizeStrength(raw: any): StrengthState {
   };
 }
 
-/** Eine Einheit aus Runback oder ein Import, jeweils mit korrigiertem Ende. */
+/** A session from Runback or an import, each with its corrected end. */
 export function strengthSessionFromBridge(raw: any): StrengthSession {
   return raw?.kind === 'strength'
     ? applyStrengthEndCorrection(raw, raw.endCorrection)
@@ -57,8 +57,8 @@ export function strengthSessionFromBridge(raw: any): StrengthSession {
 }
 
 /**
- * Eigene Einheiten und Importe als eine Liste, neueste zuerst. Gibt es eine
- * Einheit doppelt, gilt die in Runback aufgezeichnete.
+ * Own sessions and imports as one list, newest first. If a session exists
+ * twice, the one recorded in Runback counts.
  */
 export function mergeStrengthSessions(
   sessions: unknown[],

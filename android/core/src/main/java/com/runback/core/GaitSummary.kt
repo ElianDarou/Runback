@@ -3,15 +3,15 @@ package com.runback.core
 import org.json.JSONObject
 
 /**
- * Laufstil eines ganzen Laufs aus den 10-s-Fenstern von [Gait], getrennt nach
- * Gerät (Handy, Uhr). Es zählen nur Fenster, in denen gelaufen wurde; ein Wert
- * braucht mindestens drei Fenster, der Vergleich erstes gegen letztes Drittel
- * mindestens zwölf (zwei Minuten).
+ * Running form of a whole run from the 10-s windows of [Gait], split by
+ * device (phone, watch). Only windows in which the user was running count; a
+ * value needs at least three windows, and the first-versus-last-third comparison
+ * needs at least twelve (two minutes).
  */
 object GaitSummary {
     private const val MIN_VALUES = 3
     private const val MIN_WINDOWS_FOR_THIRDS = 12
-    /** Ohne Phasen gilt ein Fenster ab dieser Kadenz als gelaufen. */
+    /** Without phases, a window counts as running from this cadence on. */
     private const val RUNNING_CADENCE = 140.0
     private val VALUE_KEYS = listOf(
         "cadence", "regularity", "armSwingDeg", "crossShare", "oscillationCm", "contactMs", "impactG", "brakingMps", "leanDeg",
@@ -19,8 +19,8 @@ object GaitSummary {
     private val THIRD_KEYS = listOf("cadence", "regularity", "armSwingDeg", "oscillationCm", "contactMs")
 
     /**
-     * @param running `true`/`false`, ob zwischen Start und Ende eines Fensters
-     * überwiegend gelaufen wurde; `null`, wenn die Phasen das nicht wissen.
+     * @param running `true`/`false` for whether the user mostly ran between the
+     * start and end of a window; `null` when the phases don't know.
      */
     fun build(samples: List<RawSample>, running: (Long, Long) -> Boolean?): JSONObject? {
         val windows = samples.filter { it.kind == "gait" }

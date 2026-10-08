@@ -3,7 +3,7 @@ export const RUN_ANNOUNCEMENTS_VERSION = 1 as const;
 export interface RunAnnouncements {
   version: typeof RUN_ANNOUNCEMENTS_VERSION;
   trigger: 'off' | 'distance' | 'time';
-  /** Kilometer bei Strecke, Minuten bei Zeit. */
+  /** Kilometers when triggered by distance, minutes when triggered by time. */
   interval: number;
   kilometer: boolean;
   distance: boolean;

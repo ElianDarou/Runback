@@ -4,7 +4,7 @@ import type {
   StrengthSession,
 } from '../../src/domain/strength';
 
-/** Baut Krafteinheiten für Tests: kompakt, mit sinnvollen Vorgaben. */
+/** Builds strength sessions for tests: compact, with sensible defaults. */
 export const MINUTE = 60 * 1000;
 export const DAY = 24 * 60 * MINUTE;
 
@@ -13,7 +13,7 @@ export interface SetSpec {
   reps?: number;
   seconds?: number;
   rir?: number;
-  /** Minuten nach Start der Einheit; ohne Angabe nicht abgehakt. */
+  /** Minutes after the session start; without it the set is not ticked off. */
   at?: number;
   warmup?: boolean;
   skipped?: boolean;

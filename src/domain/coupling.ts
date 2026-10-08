@@ -1,12 +1,13 @@
 import { pacingFor } from './analysis';
 import type { RunPurpose, RunSummary } from './types';
+import { tr } from './i18n';
 
 export const COUPLING_MODEL_VERSION = 'run-strength-coupling-v1';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MIN_PLAN_SPACING_MS = 12 * 60 * 60 * 1000;
 const NO_CAUSAL_CLAIM = false as const;
 
-/** Die Frische kommt aus der aufrufenden Schicht, nicht aus diesem Modul. */
+/** Freshness comes from the calling layer, not from this module. */
 export type FreshnessLookup = (regionBase: string, at: number) => number | null;
 
 export interface CoupledRun {
@@ -44,9 +45,9 @@ export interface CouplingRegression {
   temperatureCoefficient?: number;
   temperatureReferenceC?: number;
   covariates: ('100_minus_leg_freshness' | 'temperatureC')[];
-  /** Standardfehler je Koeffizient in Reihenfolge Achsenabschnitt, Frische, Temperatur. */
+  /** Standard error per coefficient, in the order intercept, freshness, temperature. */
   standardErrors: number[];
-  /** 95-%-Intervall des bereinigten Tempoabfalls (t-Verteilung, n − p Freiheitsgrade). */
+  /** 95 % interval of the adjusted pace fade (t distribution, n − p degrees of freedom). */
   adjustedFadeInterval: [number, number];
   residualDegreesOfFreedom: number;
 }
@@ -57,7 +58,7 @@ export type CouplingAssessment =
       couplingEnabled: false;
       mode: 'separate';
       assessment: 'insufficient_evidence';
-      label: 'Verzahnung abgeschaltet';
+      label: string;
       summary: string;
       causalClaim: false;
       inputSources: { runId: string; source: string; version: string }[];
@@ -72,7 +73,7 @@ export type CouplingAssessment =
       couplingEnabled: true;
       mode: 'coupled';
       assessment: 'observation';
-      label: 'Beobachtung';
+      label: string;
       summary: string;
       causalClaim: false;
       inputSources: { runId: string; source: string; version: string }[];
@@ -87,7 +88,7 @@ export type CouplingAssessment =
       couplingEnabled: true;
       mode: 'coupled';
       assessment: 'insufficient_evidence';
-      label: 'Nicht ausreichend beurteilbar';
+      label: string;
       summary: string;
       causalClaim: false;
       inputSources: { runId: string; source: string; version: string }[];
@@ -225,7 +226,7 @@ function insufficient(
     couplingEnabled: true,
     mode: 'coupled',
     assessment: 'insufficient_evidence',
-    label: 'Nicht ausreichend beurteilbar',
+    label: tr('Nicht ausreichend beurteilbar', 'Not assessable yet'),
     summary,
     causalClaim: NO_CAUSAL_CLAIM,
     inputSources,
@@ -284,7 +285,7 @@ function inputSourcesFor(
   }));
 }
 
-/** t-Quantil (zweiseitig 95 %) für kleine Freiheitsgrade; ab 30 ≈ 1,96. */
+/** t quantile (two-sided 95 %) for small degrees of freedom; from 30 on ≈ 1.96. */
 function tQuantile95(df: number): number {
   const table: [number, number][] = [
     [1, 12.706],
@@ -343,7 +344,7 @@ function regressionFor(
   if (!coefficients) {
     return null;
   }
-  // Standardfehler aus σ²·(XᵀX)⁻¹; ohne sie wäre der Wert eine nackte Zahl.
+  // Standard errors from σ²·(XᵀX)⁻¹; without them the value would be a bare number.
   const parameters = coefficients.length;
   const residualDegreesOfFreedom = rows.length - parameters;
   if (residualDegreesOfFreedom < 1) {
@@ -415,8 +416,8 @@ function caliperFor(rows: ComparableRun[]): CaliperPair[] {
 }
 
 /**
- * Bewertet den Zusammenhang nur als Vergleich. Die Zahl ist eine Beobachtung,
- * niemals ein Ursachennachweis.
+ * Assesses the connection only as a comparison. The number is an observation,
+ * never proof of cause.
  */
 export function evaluateCoupling(input: CouplingInput): CouplingAssessment {
   if (!input.enabled) {
@@ -425,9 +426,11 @@ export function evaluateCoupling(input: CouplingInput): CouplingAssessment {
       couplingEnabled: false,
       mode: 'separate',
       assessment: 'insufficient_evidence',
-      label: 'Verzahnung abgeschaltet',
-      summary:
+      label: tr('Verzahnung abgeschaltet', 'Coupling off'),
+      summary: tr(
         'Die Verzahnung ist abgeschaltet. Laufen und Krafttraining bleiben getrennt bewertet; es wird keine Kopplungszahl erzeugt.',
+        'Coupling is off. Running and strength training stay assessed separately; no coupling number is produced.',
+      ),
       causalClaim: NO_CAUSAL_CLAIM,
       inputSources: [],
       comparableRunIds: [],
@@ -438,7 +441,10 @@ export function evaluateCoupling(input: CouplingInput): CouplingAssessment {
   const lookup = lookupFrom(input);
   if (!lookup) {
     return insufficient(
-      'Noch nicht ausreichend beurteilbar: Eine Frischequelle wurde nicht injiziert.',
+      tr(
+        'Noch nicht ausreichend beurteilbar: Eine Frischequelle wurde nicht injiziert.',
+        'Not assessable yet: no freshness source was provided.',
+      ),
       [],
       'none',
     );
@@ -449,7 +455,10 @@ export function evaluateCoupling(input: CouplingInput): CouplingAssessment {
     const fit = regressionFor(rows);
     if (!fit) {
       return insufficient(
-        'Noch nicht ausreichend beurteilbar: Die Frischewerte tragen keine eigenständige kleine Regression.',
+        tr(
+          'Noch nicht ausreichend beurteilbar: Die Frischewerte tragen keine eigenständige kleine Regression.',
+          'Not assessable yet: the freshness values do not support a separate small regression.',
+        ),
         comparableRunIds,
         'covariate_regression',
         inputSourcesFor(rows),
@@ -460,9 +469,11 @@ export function evaluateCoupling(input: CouplingInput): CouplingAssessment {
       couplingEnabled: true,
       mode: 'coupled',
       assessment: 'observation',
-      label: 'Beobachtung',
-      summary:
+      label: tr('Beobachtung', 'Observation'),
+      summary: tr(
         'Beobachtung aus einer kleinen Regression des Lauf-Nachlassens auf 100 minus Beinfrische und höchstens einer weiteren Kovariate; kein Ursachennachweis.',
+        'Observation from a small regression of the running fade on 100 minus leg freshness and at most one more covariate; not proof of cause.',
+      ),
       causalClaim: NO_CAUSAL_CLAIM,
       inputSources: inputSourcesFor(rows),
       comparableRunIds,
@@ -474,7 +485,10 @@ export function evaluateCoupling(input: CouplingInput): CouplingAssessment {
   const matchedPairs = caliperFor(rows);
   if (!matchedPairs.length) {
     return insufficient(
-      'Noch nicht ausreichend beurteilbar: Unter zehn vergleichbaren Läufen gibt es kein Frischepaar im Caliper von höchstens 10 Punkten.',
+      tr(
+        'Noch nicht ausreichend beurteilbar: Unter zehn vergleichbaren Läufen gibt es kein Frischepaar im Caliper von höchstens 10 Punkten.',
+        'Not assessable yet: with fewer than ten comparable runs, there is no freshness pair within a caliper of 10 points.',
+      ),
       comparableRunIds,
       'caliper_matching',
       inputSourcesFor(rows),
@@ -488,9 +502,11 @@ export function evaluateCoupling(input: CouplingInput): CouplingAssessment {
     couplingEnabled: true,
     mode: 'coupled',
     assessment: 'observation',
-    label: 'Beobachtung',
-    summary:
+    label: tr('Beobachtung', 'Observation'),
+    summary: tr(
       'Beobachtung aus Caliper-Vergleichen mit höchstens 10 Punkten Frischeunterschied; der Unterschied ist kein Ursachennachweis.',
+      'Observation from caliper comparisons with at most 10 points of freshness difference; the difference is not proof of cause.',
+    ),
     causalClaim: NO_CAUSAL_CLAIM,
     inputSources: inputSourcesFor(rows),
     comparableRunIds,
@@ -520,7 +536,7 @@ export interface PlannedFreshness {
   assessment: 'observation' | 'insufficient_evidence';
 }
 
-/** Bewertet geplante Termine, ohne eine Frischeformel zu duplizieren. */
+/** Assesses planned sessions without duplicating a freshness formula. */
 export function simulatePlannedFreshness(
   sessions: PlannedSession[],
   lookup: FreshnessLookup,
@@ -633,14 +649,17 @@ function insufficientPlan(
   };
 }
 
-/** Vollständige, deterministische Suche über wenige Wochentagszuweisungen. */
+/** Complete, deterministic search over a few weekday assignments. */
 export function searchMonthlyPlan(
   input: MonthlyPlanInput,
 ): MonthlyPlanSearchResult {
   if (!input.enabled) {
     return insufficientPlan(
       false,
-      'Die Verzahnung ist abgeschaltet; beide Trainingsarten bleiben getrennt und es wird kein gekoppelter Plan vorgeschlagen.',
+      tr(
+        'Die Verzahnung ist abgeschaltet; beide Trainingsarten bleiben getrennt und es wird kein gekoppelter Plan vorgeschlagen.',
+        'Coupling is off; both training types stay separate and no coupled plan is suggested.',
+      ),
     );
   }
   const lookup = lookupFrom(input);
@@ -648,7 +667,10 @@ export function searchMonthlyPlan(
   if (!lookup) {
     return insufficientPlan(
       true,
-      'Noch nicht ausreichend beurteilbar: Eine Frischequelle wurde nicht injiziert.',
+      tr(
+        'Noch nicht ausreichend beurteilbar: Eine Frischequelle wurde nicht injiziert.',
+        'Not assessable yet: no freshness source was provided.',
+      ),
     );
   }
   if (
@@ -672,13 +694,19 @@ export function searchMonthlyPlan(
   ) {
     return insufficientPlan(
       true,
-      'Noch nicht ausreichend beurteilbar: Der monatliche Suchraum ist leer, zu groß oder enthält einen ungültigen Fixtermin.',
+      tr(
+        'Noch nicht ausreichend beurteilbar: Der monatliche Suchraum ist leer, zu groß oder enthält einen ungültigen Fixtermin.',
+        'Not assessable yet: the monthly search space is empty, too large, or contains an invalid fixed appointment.',
+      ),
     );
   }
   if (!input.sessions.some(session => session.important)) {
     return insufficientPlan(
       true,
-      'Noch nicht ausreichend beurteilbar: Es ist keine wichtige Einheit markiert.',
+      tr(
+        'Noch nicht ausreichend beurteilbar: Es ist keine wichtige Einheit markiert.',
+        'Not assessable yet: no important session is marked.',
+      ),
     );
   }
   const sessions = [...input.sessions].sort((a, b) => a.id.localeCompare(b.id));
@@ -788,7 +816,10 @@ export function searchMonthlyPlan(
   if (!best) {
     return insufficientPlan(
       true,
-      'Noch nicht ausreichend beurteilbar: Für keine vollständige Tageszuordnung ist die wichtige Frische vollständig bekannt.',
+      tr(
+        'Noch nicht ausreichend beurteilbar: Für keine vollständige Tageszuordnung ist die wichtige Frische vollständig bekannt.',
+        'Not assessable yet: the freshness of important sessions is not fully known for any complete weekday assignment.',
+      ),
     );
   }
   const existing = sessions.map(session => ({
@@ -811,23 +842,36 @@ export function searchMonthlyPlan(
     selected: best,
     suggestion: changed
       ? {
-          reason:
+          reason: tr(
             'Diese Verteilung hält die geschätzte Muskel-Frische vor wichtigen Einheiten möglichst hoch. Bei gleich guten Möglichkeiten bleibt möglichst viel am Plan gleich.',
+            'This distribution keeps the estimated muscle freshness as high as possible before important sessions. With equally good options, as much of the plan as possible stays the same.',
+          ),
           targetRange: { assignments: best.assignments },
           expectedEffort: {
-            text: 'Probiere die empfohlene Verteilung der Einheiten aus; Laufart und Umfang bleiben erhalten.',
+            text: tr(
+              'Probiere die empfohlene Verteilung der Einheiten aus; Laufart und Umfang bleiben erhalten.',
+              'Try the recommended distribution of sessions; run type and volume stay the same.',
+            ),
           },
           checkCriterion: {
             method: 'monthly-freshness-v1',
             reviewAfterWeeks: weeks,
-            check:
+            check: tr(
               'Nach dem Planzeitraum prüfen, ob wichtige Einheiten wie geplant stattfanden und die vorhergesagte Frische nicht durch fehlende Daten ersetzt werden musste.',
+              'After the planning period, check whether important sessions happened as planned and whether the predicted freshness had to be replaced by missing data.',
+            ),
           },
         }
       : null,
     reason: changed
-      ? 'Die Empfehlung lässt sich überprüfen. Ob sie eine Verbesserung verursacht, ist noch offen.'
-      : 'Behalte deinen Plan bei. Keine der geprüften Verteilungen passt nach den aktuellen Schätzungen besser.',
+      ? tr(
+          'Die Empfehlung lässt sich überprüfen. Ob sie eine Verbesserung verursacht, ist noch offen.',
+          'The recommendation can be checked. Whether it causes an improvement is still open.',
+        )
+      : tr(
+          'Behalte deinen Plan bei. Keine der geprüften Verteilungen passt nach den aktuellen Schätzungen besser.',
+          'Keep your plan. None of the checked distributions fits better based on the current estimates.',
+        ),
     causalClaim: NO_CAUSAL_CLAIM,
   };
 }

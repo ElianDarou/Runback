@@ -5,14 +5,14 @@ import {
   parseSoreness,
 } from '../src/domain/sorenessInput';
 
-describe('Muskelkater-Eingabe', () => {
-  it('normalisiert deutsche Umlaute deterministisch', () => {
+describe('Soreness input', () => {
+  it('normalizes German umlauts deterministically', () => {
     expect(normalizeText('Äußere Schulter, Übung!')).toBe(
       'aussere schulter ubung',
     );
   });
 
-  it('erkennt Seite, Region und Intensität gemeinsam', () => {
+  it('recognizes side, region and intensity together', () => {
     const result = parseSoreness('links starke Wade');
     expect(result.questions).toEqual([]);
     expect(result.proposals).toEqual([
@@ -20,7 +20,7 @@ describe('Muskelkater-Eingabe', () => {
     ]);
   });
 
-  it('verteilt beide Seiten auf zwei konkrete Regionen', () => {
+  it('spreads both sides across two concrete regions', () => {
     const result = parseSoreness('beide Waden 5');
     expect(result.proposals).toEqual([
       { regionId: 'calf_gastroc_l', value: 5 },
@@ -28,7 +28,7 @@ describe('Muskelkater-Eingabe', () => {
     ]);
   });
 
-  it('fragt bei fehlender Seite und mehrdeutiger Region nach', () => {
+  it('asks when the side is missing and the region is ambiguous', () => {
     expect(parseSoreness('Wade').questions[0]).toMatchObject({
       kind: 'side',
       candidates: ['calf_gastroc_l', 'calf_gastroc_r'],
@@ -40,7 +40,7 @@ describe('Muskelkater-Eingabe', () => {
     });
   });
 
-  it('behandelt „heute nichts“ als bestätigte Antwort', () => {
+  it('treats “nothing today” as a confirmed answer', () => {
     expect(parseSoreness('Heute nichts')).toMatchObject({
       nothingToday: true,
       proposals: [],
@@ -48,7 +48,7 @@ describe('Muskelkater-Eingabe', () => {
     });
   });
 
-  it('verwirft unbekannte strukturierte Regionen statt sie zu erfinden', () => {
+  it('discards unknown structured regions instead of inventing them', () => {
     const result = fromStructured([
       { region: 'quad_l', value: 4 },
       { region: 'mysteriöser Muskel', value: 9 },
@@ -57,7 +57,7 @@ describe('Muskelkater-Eingabe', () => {
     expect(result.questions[0].kind).toBe('unknown');
   });
 
-  it('filtert beim Speichern ungültige Regionen und begrenzt Werte', () => {
+  it('filters invalid regions when saving and limits values', () => {
     const report = buildReport(
       { quad_l: 12, calf_gastroc_r: 4, unknown: 10 } as never,
       1_700_000_000_000,
@@ -99,7 +99,7 @@ describe('Soreness capture parsing', () => {
 
   it('does not accept an unknown structured region', () => {
     const result = fromStructured([
-      { region: 'shoulder', side: 'l', value: 4 },
+      { region: 'mysterious muscle', side: 'l', value: 4 },
     ]);
     expect(result.proposals).toEqual([]);
     expect(result.questions[0]).toMatchObject({

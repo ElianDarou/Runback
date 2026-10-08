@@ -8,6 +8,7 @@ import com.garmin.fit.Decode
 import com.garmin.fit.MesgBroadcaster
 import com.garmin.fit.RecordMesgListener
 import com.garmin.fit.SessionMesgListener
+import com.runback.core.Lang
 import com.runback.core.RunMath
 import com.runback.core.RunStore
 import org.json.JSONArray
@@ -59,14 +60,14 @@ class ActivityImporter(private val context: Context, private val store: RunStore
     fun cancel() { cancelled.set(true) }
     fun status(): JSONObject = synchronized(lock) { JSONObject(progress.toString()) }
     private fun update(block: (JSONObject) -> Unit) = synchronized(lock) { block(progress) }
-    private fun checkCancelled() { if (cancelled.get()) throw CancellationException("Import abgebrochen") }
+    private fun checkCancelled() { if (cancelled.get()) throw CancellationException(Lang.tr("Import abgebrochen", "Import cancelled")) }
 
     /**
-     * Erster Schritt: Dateien privat ablegen und nur lesen. Nichts wird gespeichert; die
-     * Vorschau zeigt, was neu wäre, damit der Nutzer vor dem Speichern wählt.
+     * Step one: store the files privately and only read them. Nothing is saved; the
+     * preview shows what would be new, so the user chooses before saving.
      */
     fun prepare(uris: List<Uri>): JSONObject {
-        check(running.compareAndSet(false, true)) { "Ein Import läuft bereits" }
+        check(running.compareAndSet(false, true)) { Lang.tr("Ein Import läuft bereits", "An import is already running") }
         cancelled.set(false)
         expandedBytes = 0
         stagingRoot().deleteRecursively()
@@ -77,15 +78,15 @@ class ActivityImporter(private val context: Context, private val store: RunStore
         val files = ArrayList<Pair<File, String>>()
         val collector = Preview()
         try {
-            require(uris.size <= MAX_ENTRIES) { "Zu viele Dateien (maximal $MAX_ENTRIES)" }
-            check(dir.mkdirs()) { "Importordner kann nicht angelegt werden" }
+            require(uris.size <= MAX_ENTRIES) { Lang.tr("Zu viele Dateien (maximal $MAX_ENTRIES)", "Too many files (maximum $MAX_ENTRIES)") }
+            check(dir.mkdirs()) { Lang.tr("Importordner kann nicht angelegt werden", "The import folder could not be created") }
             uris.forEachIndexed { index, uri ->
                 checkCancelled()
                 val name = displayName(uri)
                 try {
                     val file = File(dir, "file-$index.tmp")
                     context.contentResolver.openInputStream(uri)?.use { copyBounded(it, file, MAX_ARCHIVE_BYTES, false) }
-                        ?: error("Datei kann nicht geöffnet werden")
+                        ?: error(Lang.tr("Datei kann nicht geöffnet werden", "The file could not be opened"))
                     files.add(file to name)
                 } catch (e: CancellationException) { throw e }
                 catch (e: Exception) { recordError(name, e) }
@@ -101,11 +102,11 @@ class ActivityImporter(private val context: Context, private val store: RunStore
         return status()
     }
 
-    /** Zweiter Schritt: dieselben Dateien mit den Wahlen des Nutzers speichern, als ein Import. */
+    /** Step two: save the same files with the user's choices, as one import. */
     fun commit(token: String, choice: JSONObject): JSONObject {
-        check(running.compareAndSet(false, true)) { "Ein Import läuft bereits" }
+        check(running.compareAndSet(false, true)) { Lang.tr("Ein Import läuft bereits", "An import is already running") }
         val current = staged
-        if (current == null || current.token != token) { running.set(false); error("Die Vorschau ist abgelaufen. Wähle die Dateien erneut.") }
+        if (current == null || current.token != token) { running.set(false); error(Lang.tr("Die Vorschau ist abgelaufen. Wähle die Dateien erneut.", "The preview has expired. Choose the files again.")) }
         cancelled.set(false)
         expandedBytes = 0
         resetProgress("running", current.files.size)
@@ -132,7 +133,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
     }
 
     fun discard(token: String): JSONObject {
-        check(!running.get()) { "Ein Import läuft bereits" }
+        check(!running.get()) { Lang.tr("Ein Import läuft bereits", "An import is already running") }
         staged?.takeIf { it.token == token }?.let { it.dir.deleteRecursively(); staged = null }
         update { progress = JSONObject().put("state", "idle") }
         return status()
@@ -157,7 +158,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
         }
     }
 
-    // ---- Schreiben nur über diese Stellen: Vorschau zählt, Übernahme filtert nach Wahl. ----
+    // ---- Write only through these places: the preview counts, the save filters by the choice. ----
 
     private fun saveRun(summary: JSONObject, samples: JSONArray, hash: String): JSONObject {
         preview?.let { return it.noteRun(summary, hash, store) }
@@ -174,7 +175,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
     private fun saveWellness(rows: List<com.runback.core.WellnessRow>): Int {
         preview?.let { return it.noteWellness(rows, store) }
         val kinds = options?.wellnessKinds
-        // Ein Batch fasst höchstens 50.000 Werte; Pulsverläufe über Jahre sind länger.
+        // A batch holds at most 50,000 values; heart rate traces spanning years are longer.
         return (if (kinds == null) rows else rows.filter { it.kind in kinds }).chunked(50_000)
             .sumOf { chunk -> checkCancelled(); store.addWellnessBatch(chunk, batchId) }
     }
@@ -183,7 +184,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
         val extra = JSONObject(workout.extra)
         val suspect = extra.optJSONObject("durationCheck")?.optBoolean("suspect") == true
         preview?.let { collector ->
-            // Zweimal in diesem Import: zählt einmal, wie bei der Übernahme.
+            // Twice in this import: counts once, as the save does.
             if (!collector.firstStrength(workout.id)) return JSONObject().put("status", "duplicate")
             if (store.strengthWorkoutExists(workout.id)) { collector.strengthDuplicates++; return JSONObject().put("status", "duplicate") }
             collector.addStrength(JSONObject().put("id", workout.id).put("time", workout.time).put("name", workout.name)
@@ -201,7 +202,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
 
     private class Staged(val token: String, val dir: File, val files: List<Pair<File, String>>)
 
-    /** Was der Nutzer in der Vorschau gewählt hat; fehlende Felder bedeuten „alles“. */
+    /** What the user chose in the preview; missing fields mean "everything". */
     private class ImportOptions(
         val runs: Boolean,
         val strength: Boolean,
@@ -220,9 +221,9 @@ class ActivityImporter(private val context: Context, private val store: RunStore
     }
 
     /**
-     * Zählt wie die spätere Übernahme: Was schon gespeichert ist, ist „schon da“; was
-     * dieser Import mehrfach enthält, zählt einmal. Läufe innerhalb des Imports gelten
-     * als gleich, wenn Quelle oder Startsekunde übereinstimmen.
+     * Counts the same way as the later save: what is already stored is "already there";
+     * what this import contains more than once counts once. Runs within the import count
+     * as equal when their source or start second matches.
      */
     private class Preview {
         var runsNew = 0
@@ -231,7 +232,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
         var strengthDuplicates = 0
         var strengthOmitted = 0
         val wellness = java.util.TreeMap<String, Int>()
-        /** Kontextarten, deren Werte schon gespeichert sind; der Import teilt sie, wenn gewählt. */
+        /** Context types whose values are already stored; the import shares them if chosen. */
         val wellnessKnown = java.util.TreeMap<String, Int>()
         private val strength = ArrayList<JSONObject>()
         private val seenStrength = HashSet<String>()
@@ -272,8 +273,8 @@ class ActivityImporter(private val context: Context, private val store: RunStore
     private fun displayName(uri: Uri): String = try {
         context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
             if (it.moveToFirst()) it.getString(0) else null
-        } ?: uri.lastPathSegment ?: "Aktivität"
-    } catch (_: Exception) { uri.lastPathSegment ?: "Aktivität" }
+        } ?: uri.lastPathSegment ?: Lang.tr("Aktivität", "Activity")
+    } catch (_: Exception) { uri.lastPathSegment ?: Lang.tr("Aktivität", "Activity") }
 
     private fun isZip(file: File): Boolean = file.inputStream().use {
         val header = ByteArray(4)
@@ -324,7 +325,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
         checkCancelled()
         update { it.put("currentFile", name.take(200)) }
         if (!supported(name)) { increment("skipped"); return }
-        require(original.length() <= MAX_FILE_BYTES) { "Aktivität ist größer als 64 MB" }
+        require(original.length() <= MAX_FILE_BYTES) { Lang.tr("Aktivität ist größer als 64 MB", "Activity is larger than 64 MB") }
         var expanded: File? = null
         try {
             val file = if (name.lowercase(Locale.ROOT).endsWith(".gz")) {
@@ -349,8 +350,8 @@ class ActivityImporter(private val context: Context, private val store: RunStore
         else file.inputStream().buffered().use { parseXml(it, builder) }
         checkCancelled()
         val summary = builder.summary()
-        // Spaziergaenge und Radfahrten werden nicht als Lauf gespeichert: sie
-        // verzerren sonst jede Tempoauswertung und die Wochenstatistik.
+        // Walks and bike rides are not saved as runs: otherwise they
+        // distort every pace analysis and the weekly statistics.
         if (!VendorImports.acceptAsRun(builder.activityType,
                 summary.optDouble("distanceMeters", 0.0), summary.optDouble("durationSeconds", 0.0))) {
             increment("nonRunning")
@@ -421,7 +422,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
             "duplicate" -> { increment("duplicates"); noteVendor(vendor, 0, 1, 0, 0) }
             "deleted" -> increment("deleted")
             "excluded" -> increment("excluded")
-            else -> error("Unbekanntes Importergebnis")
+            else -> error(Lang.tr("Unbekanntes Importergebnis", "Unknown import result"))
         }
     }
 
@@ -679,7 +680,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
         return true
     }
 
-    /** Gibt true zurueck, wenn der Entwurf als Lauf gespeichert werden darf. */
+    /** Returns true if the draft may be saved as a run. */
     private fun acceptDraft(draft: VendorImports.RunDraft, activityType: String? = null): Boolean {
         if (VendorImports.acceptAsRun(activityType, draft.distanceMeters, draft.durationSeconds)) return true
         increment("nonRunning")
@@ -740,7 +741,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
                     if (distM <= 0 && duration <= 0) continue
                     val end = start + (duration * 1000).toLong().coerceIn(0, 24 * 3600 * 1000L)
                     val draft = VendorImports.RunDraft(start, if (end > start) end else start, duration, distM,
-                        "Mi Fitness Lauf", "mi_fitness",
+                        Lang.tr("Mi Fitness Lauf", "Mi Fitness run"), "mi_fitness",
                         VendorImports.parseDoubleFlexible(get(cHr))?.takeIf { it in 30.0..240.0 },
                         VendorImports.parseDoubleFlexible(get(cCal)))
                     if (!acceptDraft(draft, type)) continue
@@ -814,7 +815,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
                 endTime = if (end > start) end else start,
                 durationSeconds = duration,
                 distanceMeters = distance,
-                name = if (VendorImports.isRunningActivityType(type) == true) "Lauf" else type.ifBlank { "Mi Fitness Aktivität" }.take(120),
+                name = if (VendorImports.isRunningActivityType(type) == true) Lang.tr("Lauf", "Run") else type.ifBlank { Lang.tr("Mi Fitness Aktivität", "Mi Fitness activity") }.take(120),
                 source = "mi_fitness",
                 avgHeartRate = hr,
                 calories = cal?.takeIf { it in 0.0..20000.0 },
@@ -1068,7 +1069,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
                 val distance = VendorImports.parseDoubleFlexible(get(cDist)) ?: 0.0
                 if (distance <= 0 && duration <= 0) continue
                 val draft = VendorImports.RunDraft(start, if (end > start) end else start, duration, distance,
-                    "Samsung Health Lauf", "samsung_health", null,
+                    Lang.tr("Samsung Health Lauf", "Samsung Health run"), "samsung_health", null,
                     VendorImports.parseDoubleFlexible(get(cCal)))
                 if (!acceptDraft(draft)) continue
                 recordImported(saveSummaryRun(summaryFromDraft(draft),
@@ -1212,7 +1213,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
             var count: Int = 0,
         )
         val buckets = linkedMapOf<Long, Bucket>()
-        // Neben dem Tagesmittel bleibt der Verlauf je Minute, damit Krafteinheiten ihren Puls finden.
+        // Alongside the daily average, the per-minute trace stays so strength sessions can find their heart rate.
         val minutes = if (kind == "heart_rate") VendorImports.HeartMinutes("fitbit") else null
         try {
             val trimmed = text.trim()
@@ -1383,7 +1384,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
         }
     }
 
-    /** Pulsverlauf aus Google Fit, gestreamt und je Minute gemittelt. */
+    /** Heart rate trace from Google Fit, streamed and averaged per minute. */
     private fun importGoogleFitHeart(file: File): Boolean {
         val minutes = VendorImports.HeartMinutes("google_fit")
         var points = 0
@@ -1422,7 +1423,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
                         if (end > start) (end - start) / 1000.0 else 0.0)
                     if (distance <= 0 && duration <= 0) continue
                     val draft = VendorImports.RunDraft(start, end, duration, distance,
-                        obj.optString("name", "Google Fit Lauf").take(120), "google_fit")
+                        obj.optString("name", Lang.tr("Google Fit Lauf", "Google Fit run")).take(120), "google_fit")
                     if (!acceptDraft(draft, type)) continue
                     when (saveSummaryRun(summaryFromDraft(draft), "vendor:google_fit:$start").optString("status")) {
                         "imported" -> runs++
@@ -1464,7 +1465,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
                     val distance = obj.optDouble("distance", 0.0)
                     val duration = obj.optDouble("duration", obj.optDouble("elapsedDuration", 0.0))
                     val draft = VendorImports.RunDraft(start, start + (duration * 1000).toLong(), duration, distance,
-                        obj.optString("name", "Garmin Lauf").take(120), "garmin",
+                        obj.optString("name", Lang.tr("Garmin Lauf", "Garmin run")).take(120), "garmin",
                         obj.optDouble("avgHr", Double.NaN).takeIf { it in 30.0..240.0 },
                         obj.optDouble("calories", Double.NaN).takeIf { it in 0.0..20000.0 })
                     if (!acceptDraft(draft, type)) continue
@@ -1523,7 +1524,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
                 checkCancelled()
                 when (parser.eventType) {
                     org.xmlpull.v1.XmlPullParser.START_TAG -> {
-                        require(++depth <= 16) { "XML ist zu tief verschachtelt" }
+                        require(++depth <= 16) { Lang.tr("XML ist zu tief verschachtelt", "XML is nested too deeply") }
                         when (parser.name) {
                             "Workout" -> {
                                 val type = parser.getAttributeValue(null, "workoutActivityType") ?: ""
@@ -1543,7 +1544,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
                                     if ((distance > 0 || duration > 0) &&
                                         VendorImports.plausibleRunSpeed(distance, duration)) {
                                         val draft = VendorImports.RunDraft(start, end, duration, distance,
-                                            "Apple Health Lauf", "apple_health")
+                                            Lang.tr("Apple Health Lauf", "Apple Health run"), "apple_health")
                                         when (saveSummaryRun(summaryFromDraft(draft),
                                             "vendor:apple:$start").optString("status")) {
                                             "imported" -> runs++
@@ -1621,9 +1622,9 @@ class ActivityImporter(private val context: Context, private val store: RunStore
         val errors = it.getJSONArray("errors")
         if (errors.length() < 50) {
             val message = if (error is ZipException) {
-                "Passwortgeschütztes oder beschädigtes ZIP. Entpacke es zuerst mit dem Passwort."
+                Lang.tr("Passwortgeschütztes oder beschädigtes ZIP. Entpacke es zuerst mit dem Passwort.", "Password-protected or damaged ZIP. Extract it with the password first.")
             } else {
-                error.message ?: "Datei konnte nicht importiert werden"
+                error.message ?: Lang.tr("Datei konnte nicht importiert werden", "The file could not be imported")
             }
             errors.put(JSONObject().put("file", name.take(200)).put("message", message.take(300)))
         }
@@ -1638,7 +1639,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
                 val n = input.read(buffer)
                 if (n < 0) break
                 count += n
-                require(count <= limit) { "Datei überschreitet das Größenlimit" }
+                require(count <= limit) { Lang.tr("Datei überschreitet das Größenlimit", "The file exceeds the size limit") }
                 if (account) accountBytes(n)
                 out.write(buffer, 0, n)
             }
@@ -1667,7 +1668,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
     }
     private fun accountBytes(n: Int) {
         expandedBytes += n
-        require(expandedBytes <= MAX_ARCHIVE_BYTES) { "Entpackte Dateien überschreiten 512 MB" }
+        require(expandedBytes <= MAX_ARCHIVE_BYTES) { Lang.tr("Entpackte Dateien überschreiten 512 MB", "Extracted files exceed 512 MB") }
     }
     private fun sha256(file: File): String {
         val digest = MessageDigest.getInstance("SHA-256")
@@ -1686,15 +1687,15 @@ class ActivityImporter(private val context: Context, private val store: RunStore
         var leaf = ""
         val text = StringBuilder()
         var depth = 0
-        // Nur <name>/<type> innerhalb von <trk> beschreiben die Aktivität. In
-        // <metadata> oder <Creator> steht der Dateiautor bzw. das Uhrenmodell.
+        // Only <name>/<type> inside <trk> describe the activity. <metadata> or
+        // <Creator> hold the file author or the watch model.
         var inTrack = false
         while (parser.eventType != XmlPullParser.END_DOCUMENT) {
             checkCancelled()
             when (parser.eventType) {
-                XmlPullParser.DOCDECL -> error("XML-Dokumenttypen werden nicht unterstützt")
+                XmlPullParser.DOCDECL -> error(Lang.tr("XML-Dokumenttypen werden nicht unterstützt", "XML document types are not supported"))
                 XmlPullParser.START_TAG -> {
-                    require(++depth <= 64) { "XML ist zu tief verschachtelt" }
+                    require(++depth <= 64) { Lang.tr("XML ist zu tief verschachtelt", "XML is nested too deeply") }
                     leaf = parser.name.lowercase(Locale.ROOT)
                     text.setLength(0)
                     if (leaf == "trk") inTrack = true
@@ -1708,7 +1709,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
                     }
                 }
                 XmlPullParser.TEXT -> {
-                    require(text.length + parser.text.length <= 16384) { "XML-Text ist zu lang" }
+                    require(text.length + parser.text.length <= 16384) { Lang.tr("XML-Text ist zu lang", "The XML text is too long") }
                     text.append(parser.text)
                 }
                 XmlPullParser.END_TAG -> {
@@ -1760,18 +1761,18 @@ class ActivityImporter(private val context: Context, private val store: RunStore
             session.totalDistance?.toDouble()?.let { builder.reportedDistance = maxOf(builder.reportedDistance, it) }
             session.totalTimerTime?.toDouble()?.let { builder.reportedDuration = it }
         })
-        file.inputStream().buffered().use { require(decode.read(it, broadcaster, broadcaster)) { "FIT-Datei ist beschädigt" } }
+        file.inputStream().buffered().use { require(decode.read(it, broadcaster, broadcaster)) { Lang.tr("FIT-Datei ist beschädigt", "The FIT file is damaged") } }
     }
 
     /** Writes an exchange copy from the immutable store data; this is never a backup. */
     fun exportRun(id: String, extension: String, output: OutputStream) {
         val run = store.detail(id)
-        // JSON ist die Datensicherung mit allen Originalen; GPX/FIT enden am geltenden Ende.
+        // JSON is the backup with all originals; GPX/FIT end at the effective end.
         when (extension.lowercase(Locale.ROOT)) {
             "json" -> output.writer(StandardCharsets.UTF_8).apply { write(JSONObject().put("run", run).put("samples", store.rawSamples(id)).toString(2)); flush() }
             "gpx" -> writeGpx(run, store.rawSamples(id, corrected = true), output)
             "fit" -> writeFit(run, store.rawSamples(id, corrected = true), output)
-            else -> error("Unterstützt: GPX, JSON, FIT")
+            else -> error(Lang.tr("Unterstützt: GPX, JSON, FIT", "Supported: GPX, JSON, FIT"))
         }
     }
 
@@ -1848,9 +1849,9 @@ class ActivityImporter(private val context: Context, private val store: RunStore
         val samples = JSONArray()
         var reportedDistance = 0.0
         var reportedDuration: Double? = null
-        /** Sportart aus der Datei (FIT-Session, TCX-Activity, GPX-<type>). */
+        /** Sport from the file (FIT session, TCX activity, GPX type). */
         var activityType: String? = null
-        /** Streckenname aus der Datei; besser als der Dateiname. */
+        /** Route name from the file; better than the file name. */
         var trackName: String? = null
         private var start = Long.MAX_VALUE
         private var end = 0L
@@ -1863,7 +1864,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
         private var cadenceTotal = 0.0
         private var cadenceCount = 0
         fun point(time: Long, lat: Double?, lon: Double?, altitude: Double?, speed: Double?, hr: Double?, cadence: Double?) {
-            require(samples.length() < MAX_SAMPLES - 3) { "Aktivität enthält zu viele Messwerte" }
+            require(samples.length() < MAX_SAMPLES - 3) { Lang.tr("Aktivität enthält zu viele Messwerte", "The activity contains too many readings") }
             start = minOf(start, time); end = maxOf(end, time)
             if (lat != null && lon != null && lat.isFinite() && lon.isFinite() && lat in -90.0..90.0 && lon in -180.0..180.0) {
                 val values = JSONObject().put("latitude", lat).put("longitude", lon)
@@ -1890,9 +1891,8 @@ class ActivityImporter(private val context: Context, private val store: RunStore
             samples.put(JSONObject().put("time", time).put("kind", kind).put("values", values))
         }
         fun summary(): JSONObject {
-            require(samples.length() > 0 && start != Long.MAX_VALUE) { "Keine zeitgestempelten Aktivitätsdaten gefunden" }
-            // Der Streckenname der Datei schlaegt den Dateinamen; die Oberflaeche
-            // verwirft technische Namen anschliessend ueber runTitle().
+            require(samples.length() > 0 && start != Long.MAX_VALUE) { Lang.tr("Keine zeitgestempelten Aktivitätsdaten gefunden", "No timestamped activity data found") }
+            // The route name in the file beats the file name; the UI then discards technical names via runTitle().
             val title = trackName?.takeIf { it.isNotBlank() }
                 ?: name.removeSuffix(".gz").substringBeforeLast('.')
             return JSONObject().put("name", title.take(120))

@@ -45,7 +45,7 @@ function run(
     purpose: 'easy',
     source: 'phone',
     status: 'completed',
-    // 3 m/s bei 180 spm → 1 m Schrittlänge.
+    // 3 m/s at 180 spm → 1 m stride length.
     phaseMetrics: {
       model_version: 'p',
       runWalkTransitions: 0,
@@ -70,14 +70,14 @@ const handAndWatch = (phoneSwing: number, watchSwing: number) => ({
   }),
 });
 
-describe('Laufstil', () => {
-  it('liest den Trageort nur aus der festen Liste', () => {
+describe('Running form', () => {
+  it('reads the carry position only from the fixed list', () => {
     expect(normalizePlacement('waist')).toBe('waist');
     expect(normalizePlacement('wrist')).toBe('unknown');
     expect(normalizePlacement(undefined)).toBe('unknown');
   });
 
-  it('verwirft zu kurze und unpassende Aufzeichnungen', () => {
+  it('discards recordings that are too short or do not fit', () => {
     expect(usableDevice(device('hand', { usable: 5 }))).toBeUndefined();
     expect(
       usableDevice(device('waist', { checked: 20, mismatch: 11 })),
@@ -87,7 +87,7 @@ describe('Laufstil', () => {
     ).toBeDefined();
   });
 
-  it('rechnet Auf und Ab gegen die Schrittlänge', () => {
+  it('relates bounce to stride length', () => {
     const current = run('r', {
       model_version: 'gait-1',
       phone: device('waist', { cadence: 180, oscillationCm: 8 }),
@@ -101,7 +101,7 @@ describe('Laufstil', () => {
     ).toBeUndefined();
   });
 
-  it('nennt den Unterschied zwischen Handy-Arm und Uhr-Arm zuerst', () => {
+  it('names the difference between phone arm and watch arm first', () => {
     const insight = gaitInsight(run('r', handAndWatch(56, 84)), [])!;
     expect(insight.headline).toBe(
       'Der Arm mit dem Handy schwingt 33 % weniger als der mit der Uhr.',
@@ -122,7 +122,7 @@ describe('Laufstil', () => {
     );
   });
 
-  it('zeigt am Gürtel Auf und Ab, Bodenkontakt, Aufkommen und Abbremsen', () => {
+  it('shows bounce, ground contact, impact and braking at the belt', () => {
     const insight = gaitInsight(
       run('r', {
         model_version: 'gait-1',
@@ -151,7 +151,7 @@ describe('Laufstil', () => {
     );
   });
 
-  it('sagt ehrlich, wenn das Signal nicht zum Trageort passt', () => {
+  it('honestly says when the signal does not fit the carry position', () => {
     const insight = gaitInsight(
       run('r', {
         model_version: 'gait-1',
@@ -165,7 +165,7 @@ describe('Laufstil', () => {
     expect(insight.lines).toEqual([]);
   });
 
-  it('vergleicht nur mit Läufen, bei denen das Gerät am selben Ort saß', () => {
+  it('compares only with runs where the device sat in the same place', () => {
     const past = (
       id: string,
       days: number,
@@ -200,7 +200,7 @@ describe('Laufstil', () => {
     ).toBeUndefined();
   });
 
-  it('bewertet den Armschwung nicht, sondern nennt nur den Unterschied', () => {
+  it('does not rate the arm swing, it only names the difference', () => {
     const past = (id: string, days: number) =>
       run(id, handAndWatch(60, 80), { startTime: NOW - days * DAY });
     const comparison = compareGait(
@@ -213,14 +213,14 @@ describe('Laufstil', () => {
     expect(comparison.delta).toBe('15 % mehr als sonst');
   });
 
-  it('zeigt ohne Laufstil nichts und bei Radfahrten nichts', () => {
+  it('shows nothing without running form and nothing for rides', () => {
     expect(gaitInsight(run('r', undefined), [])).toBeUndefined();
     expect(
       gaitInsight(run('r', handAndWatch(56, 84), { sport: 'cycling' }), []),
     ).toBeUndefined();
   });
 
-  it('bekommt einen eigenen Abschnitt auf der Detailseite', () => {
+  it('gets its own section on the detail page', () => {
     let tree!: TestRenderer.ReactTestRenderer;
     act(() => {
       tree = TestRenderer.create(
@@ -247,7 +247,7 @@ describe('Laufstil', () => {
     expect(all).toContain('Letztes gegen erstes Drittel');
   });
 
-  it('bietet den Armschwung im Verlauf an, sobald es Werte gibt', () => {
+  it('offers arm swing in the history as soon as there are values', () => {
     const series: RunSeries = {
       stepSeconds: 5,
       rows: [1, 2, 3].map(i => ({

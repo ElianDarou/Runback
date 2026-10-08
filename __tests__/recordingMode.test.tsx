@@ -165,11 +165,11 @@ afterEach(async () => {
   }
 });
 
-describe('Freie Aufzeichnung auf Heute', () => {
+describe('Free recording on Today', () => {
   it('keeps the start card to one button and asks sport and purpose in the sheet', async () => {
     await mount();
     const home = screenText();
-    // Die Startseite verlangt keine Entscheidung: kein Chip, kein Plan.
+    // The start page asks for no decision: no chip, no plan.
     expect(home).not.toContain('Sportart');
     expect(home).not.toContain('Zweck');
     expect(findPressable('Lauf starten')).toBeTruthy();
@@ -223,7 +223,7 @@ describe('Freie Aufzeichnung auf Heute', () => {
       'running',
       '{"kind":"none","version":2}',
     );
-    // Eine freie Aufzeichnung verknüpft sich nicht mit dem Termin.
+    // A free recording is not linked to the appointment.
     expect(stored.settings.schedule?.sessions[0].activityId).toBeUndefined();
   });
 
@@ -248,7 +248,7 @@ describe('Freie Aufzeichnung auf Heute', () => {
       mode: 'range',
     });
 
-    // Zurück auf Heute steht das Sheet wieder offen, wo man es verlassen hat.
+    // Back on Today, the sheet is open again where it was left.
     expect(findPressable('Aufzeichnung starten')).toBeTruthy();
     await tap('Aufzeichnung starten');
     expect(nativeCall).toHaveBeenCalledWith(
@@ -260,7 +260,7 @@ describe('Freie Aufzeichnung auf Heute', () => {
   });
 });
 
-describe('Radfahrten in Einheiten und Detail', () => {
+describe('Rides in sessions and detail', () => {
   beforeEach(() => {
     stored.runs = [
       finished({ id: 'ride', sport: 'cycling', distanceMeters: 30000 }),
@@ -279,7 +279,7 @@ describe('Radfahrten in Einheiten und Detail', () => {
     expect(text).toContain('Radfahrt');
     expect(text).toContain('30,0 km/h');
     expect(text).toContain('1 Lauf · 1 Radfahrt');
-    // Der Wochenkopf zählt nur Laufkilometer: 10, nicht 10 + 30.
+    // The week header counts only running kilometers: 10, not 10 + 30.
     expect(text).toContain('Diese Woche');
     expect(text).toContain('10,0 km');
     expect(text).not.toContain('40,0');
@@ -311,7 +311,7 @@ describe('Radfahrten in Einheiten und Detail', () => {
     expect(text).toContain('Fahrgefühl');
     expect(text).not.toContain('Nächster Schritt');
     expect(text).not.toContain('Tempoindex');
-    // Sport- und Laufart ändern ist eine Ausnahme und liegt eingeklappt unten.
+    // Changing sport and run type is an exception and sits collapsed at the bottom.
     expect(findPressable('Laufen')).toBeUndefined();
 
     await tap('Bearbeiten & verwalten');
@@ -321,7 +321,7 @@ describe('Radfahrten in Einheiten und Detail', () => {
   });
 });
 
-describe('Funktionen der Aufzeichnung', () => {
+describe('Recording features', () => {
   const live = (): Run => ({
     id: 'live',
     startTime: Date.now() - 600_000,
@@ -334,7 +334,7 @@ describe('Funktionen der Aufzeichnung', () => {
     source: 'phone',
   });
 
-  it('versteckt Radfahren, Krafttraining und „Laufen nach“, wenn sie abgewählt sind', async () => {
+  it('hides cycling, strength training and “Run after” when they are deselected', async () => {
     stored.settings.features = {
       areas: { running: true, strength: false },
       sports: { cycling: false },
@@ -350,7 +350,7 @@ describe('Funktionen der Aufzeichnung', () => {
     expect(sheet).toContain('Wie willst du laufen?');
   });
 
-  it('zeigt während der Aufzeichnung nur gewählte Kennzahlen', async () => {
+  it('shows only the chosen metrics during recording', async () => {
     stored.settings.features = {
       recording: { metrics: ['heartRate'], primary: 'distance' },
     } as any;
@@ -362,7 +362,7 @@ describe('Funktionen der Aufzeichnung', () => {
     expect(text).not.toContain('Ø min / km');
   });
 
-  it('zeigt, ob die Uhr den Lauf mitschreibt', async () => {
+  it('shows whether the watch is recording the run', async () => {
     stored.recording = live();
     let wear: unknown = {
       status: 'connected',
@@ -389,7 +389,7 @@ describe('Funktionen der Aufzeichnung', () => {
     expect(screenText()).toContain('Das Telefon zeichnet allein auf.');
   });
 
-  it('verstellt das Zieltempo im Lauf in 5-Sekunden-Schritten', async () => {
+  it('adjusts the target pace during the run in 5-second steps', async () => {
     stored.recording = {
       ...live(),
       target: {
@@ -424,11 +424,11 @@ describe('Funktionen der Aufzeichnung', () => {
     await tap('Zieltempo 5 Sekunden schneller');
     expect(nativeCall).toHaveBeenLastCalledWith('setRunTargetPace', 325);
     expect(screenText()).toContain('5:25 /km');
-    // Die Vorgabe für den nächsten Lauf bleibt unverändert.
+    // The target for the next run stays unchanged.
     expect(native.saveSettings).not.toHaveBeenCalled();
   });
 
-  it('kehrt nach dem Beenden direkt zu Heute zurück, wenn gewünscht', async () => {
+  it('returns straight to Today after finishing, if wanted', async () => {
     stored.settings.features = { recording: { afterRun: 'home' } } as any;
     stored.recording = live();
     (nativeCall as jest.Mock).mockImplementation(async (method: string) => {
@@ -486,7 +486,7 @@ it('previews a next-run pace and a race goal without changing persisted settings
   expect(stored.settings.runTarget).toBeUndefined();
 });
 
-describe('Laufart nach dem Lauf', () => {
+describe('Run type after the run', () => {
   const openRun = async () => {
     await tap('Verlauf');
     const row = pressables().find(node =>
@@ -498,7 +498,7 @@ describe('Laufart nach dem Lauf', () => {
     });
   };
 
-  it('schlägt die Laufart vor und speichert sie erst nach „Stimmt“', async () => {
+  it('suggests the run type and saves it only after “That’s right”', async () => {
     stored.settings = { ...stored.settings, maxHeartRate: 190 };
     stored.runs = [
       finished({
@@ -528,7 +528,7 @@ describe('Laufart nach dem Lauf', () => {
     });
   });
 
-  it('löscht bei eigener Wahl die Spur eines Vorschlags und zeigt sie sonst unter Herkunft', async () => {
+  it('clears the trace of a suggestion when the user chooses their own and otherwise shows it under origin', async () => {
     stored.runs = [
       normalizeRun({
         ...finished({ id: 'hinted' }),
@@ -560,15 +560,15 @@ describe('Laufart nach dem Lauf', () => {
     });
   });
 
-  it('liest Tempowechsel älterer Uhr-Versionen richtig', () => {
+  it('reads pace changes from older watch versions correctly', () => {
     expect(normalizeRun({ ...finished({}), purpose: 'quality' }).purpose).toBe(
       'intervals',
     );
     expect(normalizeRun(finished({})).purposeConfirmed).toBe(false);
   });
 
-  it('fragt nicht mehr, wenn „Einfach laufen“ ausdrücklich gewählt wurde', async () => {
-    // So kommt der Lauf über normalizeRun aus dem nativen Speicher.
+  it('stops asking once “Just run” was explicitly chosen', async () => {
+    // This is how the run comes from native storage via normalizeRun.
     stored.runs = [
       normalizeRun({
         ...finished({ id: 'free-run', purpose: 'unknown' }),

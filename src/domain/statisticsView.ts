@@ -3,16 +3,17 @@ import type { RunPurpose } from './types';
 import { medianOrNull } from './inference';
 import { normalizePurpose, purposeLabel } from './runTitle';
 import { average, mondayStart, validRun } from './statistics';
+import { dateFormat, fixed, tr } from './i18n';
 
 /**
- * Vertiefte Auswertung für die Statistikseite.
+ * In-depth analysis for the statistics page.
  *
- * `aggregateStatistics` beantwortet eine feste Frage („Wie sahen die letzten
- * acht Wochen aus?“). `buildStatisticsView` beantwortet dieselbe Frage für
- * einen wählbaren Zeitraum und liefert zusätzlich Vergleich, Verteilung,
- * Bestwerte und Konsistenz — jeweils nur, wenn die Daten sie hergeben.
+ * `aggregateStatistics` answers a fixed question ("What did the last eight
+ * weeks look like?"). `buildStatisticsView` answers the same question for a
+ * selectable range and also adds comparison, distribution, personal bests and
+ * consistency, each only when the data supports it.
  *
- * Reine Funktionen. Die einzige Zeitquelle ist der Parameter `now`.
+ * Pure functions. The only time source is the `now` parameter.
  */
 
 export type StatsRange = '4w' | '12w' | '1y' | 'all';
@@ -21,11 +22,11 @@ export type BucketUnit = 'week' | 'month' | 'year';
 
 export interface StatsBucket {
   startTime: number;
-  /** Exklusiv. */
+  /** Exclusive. */
   endTime: number;
-  /** Kurze Achsenbeschriftung. */
+  /** Short axis label. */
   label: string;
-  /** Ausgeschriebener Zeitraum für Vorlesetext und Detailzeile. */
+  /** Full period for read-aloud text and the detail line. */
   fullLabel: string;
   runCount: number;
   distanceKm: number;
@@ -38,7 +39,7 @@ export interface StatsBucket {
 export interface StatsDelta {
   current: number | null;
   previous: number | null;
-  /** Relative Veränderung: 0,12 bedeutet plus zwölf Prozent. */
+  /** Relative change: 0.12 means plus twelve percent. */
   changeRatio: number | null;
   direction: 'up' | 'down' | 'flat' | 'unknown';
 }
@@ -48,7 +49,7 @@ export interface PurposeShare {
   label: string;
   runCount: number;
   distanceKm: number;
-  /** Anteil an der Gesamtstrecke des Zeitraums, 0 bis 1. */
+  /** Share of the period's total distance, 0 to 1. */
   share: number;
 }
 
@@ -58,7 +59,7 @@ export interface StatsRecord {
   value: string;
   detail: string | null;
   runId: string | null;
-  /** Genau die Läufe, die den Bestwert tragen; bereits gefiltert und dedupliziert. */
+  /** Exactly the runs that carry the record; already filtered and deduplicated. */
   runIds: string[];
 }
 
@@ -88,17 +89,17 @@ export interface RunStatisticsView {
   range: StatsRange;
   bucketUnit: BucketUnit;
   windowStart: number;
-  /** Exklusiv. */
+  /** Exclusive. */
   windowEnd: number;
   buckets: StatsBucket[];
   totals: StatsTotals;
   deltas: Record<'distance' | 'duration' | 'count' | 'pace', StatsDelta>;
-  /** Benennt den Vergleichszeitraum. `null`, wenn es keinen gibt. */
+  /** Names the comparison period. `null` when there is none. */
   comparisonLabel: string | null;
   purposes: PurposeShare[];
   records: StatsRecord[];
   consistency: StatsConsistency;
-  /** Steuert, welche Kennzahlen überhaupt angeboten werden. */
+  /** Controls which metrics are offered at all. */
   available: { pace: boolean; effort: boolean; heartRate: boolean };
   runs: Run[];
 }
@@ -109,35 +110,30 @@ export const RANGE_WEEKS: Record<Exclude<StatsRange, 'all'>, number> = {
   '1y': 52,
 };
 
+// Labels are getters so they follow the active language at read time.
 export const STATS_RANGES: { value: StatsRange; label: string }[] = [
-  { value: '4w', label: '4 Wochen' },
-  { value: '12w', label: '12 Wochen' },
-  { value: '1y', label: '1 Jahr' },
-  { value: 'all', label: 'Alles' },
+  { value: '4w', get label() { return tr('4 Wochen', '4 weeks'); } },
+  { value: '12w', get label() { return tr('12 Wochen', '12 weeks'); } },
+  { value: '1y', get label() { return tr('1 Jahr', '1 year'); } },
+  { value: 'all', get label() { return tr('Alles', 'All'); } },
 ];
 
 export const RANGE_COMPARISONS: Record<StatsRange, string> = {
-  '4w': 'die 4 Wochen davor',
-  '12w': 'die 12 Wochen davor',
-  '1y': 'das Jahr davor',
-  all: 'den Zeitraum davor',
+  get '4w'() { return tr('die 4 Wochen davor', 'the 4 weeks before'); },
+  get '12w'() { return tr('die 12 Wochen davor', 'the 12 weeks before'); },
+  get '1y'() { return tr('das Jahr davor', 'the year before'); },
+  get all() { return tr('den Zeitraum davor', 'the period before'); },
 };
 
-
-const dayFormat = new Intl.DateTimeFormat('de-DE', {
-  day: '2-digit',
-  month: '2-digit',
-});
-export const dayLongFormat = new Intl.DateTimeFormat('de-DE', {
-  day: '2-digit',
-  month: '2-digit',
-  year: 'numeric',
-});
-const monthShortFormat = new Intl.DateTimeFormat('de-DE', { month: 'short' });
-const monthLongFormat = new Intl.DateTimeFormat('de-DE', {
-  month: 'long',
-  year: 'numeric',
-});
+const formatDayMonth = (date: Date) =>
+  dateFormat({ day: '2-digit', month: '2-digit' }).format(date);
+/** Formats a day with its year; used by the statistics detail lines. */
+export const dayLongFormat = {
+  format: (date: Date) =>
+    dateFormat({ day: '2-digit', month: '2-digit', year: 'numeric' }).format(
+      date,
+    ),
+};
 
 function dedupe(runs: Run[], now: number): Run[] {
   const unique = new Map<string, Run>();
@@ -165,7 +161,7 @@ function yearStart(timestamp: number) {
   return new Date(new Date(timestamp).getFullYear(), 0, 1).getTime();
 }
 
-// Kalendarisches Weiterzählen, damit Sommerzeit die Grenzen nicht verschiebt.
+// Calendar stepping, so daylight saving time doesn't shift the boundaries.
 export function addWeeks(timestamp: number, weeks: number) {
   const date = new Date(timestamp);
   date.setDate(date.getDate() + weeks * 7);
@@ -195,22 +191,25 @@ export function bucketLabels(startTime: number, unit: BucketUnit) {
   if (unit === 'week') {
     const end = new Date(addWeeks(startTime, 1) - 1);
     return {
-      label: dayFormat.format(start),
-      fullLabel: `Woche ${dayLongFormat.format(start)} bis ${dayLongFormat.format(end)}`,
+      label: formatDayMonth(start),
+      fullLabel: tr(
+        `Woche ${dayLongFormat.format(start)} bis ${dayLongFormat.format(end)}`,
+        `Week ${dayLongFormat.format(start)} to ${dayLongFormat.format(end)}`,
+      ),
     };
   }
   if (unit === 'month') {
     return {
-      label: monthShortFormat.format(start).replace('.', ''),
-      fullLabel: monthLongFormat.format(start),
+      label: dateFormat({ month: 'short' }).format(start).replace('.', ''),
+      fullLabel: dateFormat({ month: 'long', year: 'numeric' }).format(start),
     };
   }
   const year = String(start.getFullYear());
-  return { label: year, fullLabel: `Jahr ${year}` };
+  return { label: year, fullLabel: tr(`Jahr ${year}`, `Year ${year}`) };
 }
 
-/** Nach Strecke gewichtet wie in der Übersicht, ab 500 m — damit ein
- *  abgebrochener Lauf das Tempo nicht verzerrt. */
+/** Weighted by distance like the overview, from 500 m, so an aborted run
+ *  doesn't skew the pace. */
 function weightedPace(runs: Run[]): number | null {
   const usable = runs.filter(
     run => run.distanceMeters >= 500 && run.durationSeconds > 0,
@@ -232,9 +231,9 @@ function rated(runs: Run[], key: 'legs' | 'breathing'): number[] {
     );
 }
 
-/** Ein Wert für „wie hart hat es sich angefühlt“: Mittel aus Beinen und
- *  Atmung, nur wenn beide bewertet wurden. Sonst würde derselbe Kennwert je
- *  Lauf etwas anderes bedeuten. */
+/** One value for "how hard did it feel": the mean of legs and breathing,
+ *  only when both were rated. Otherwise the same number would mean something
+ *  different for each run. */
 function runEffort(run: Run): number | null {
   const legs = rated([run], 'legs');
   const breathing = rated([run], 'breathing');
@@ -280,13 +279,13 @@ export function makeDelta(current: number | null, previous: number | null): Stat
     current,
     previous,
     changeRatio,
-    // Anzeigeregel, kein Messrauschen: unter einem Prozent steht „± 0 %“.
+    // A display rule, not measurement noise: under one percent counts as flat.
     direction:
       Math.abs(changeRatio) < 0.01 ? 'flat' : changeRatio > 0 ? 'up' : 'down',
   };
 }
 
-/** Geteilt mit der Kraftstatistik: zählt Einträge mit Startzeit. */
+/** Shared with the strength statistics: counts entries by start time. */
 type Dated = { startTime: number };
 
 export function distinctDays(runs: Dated[]): number {
@@ -314,8 +313,8 @@ export function buildConsistency(
     running = active.has(start) ? running + 1 : 0;
     longest = Math.max(longest, running);
   });
-  // Die laufende Serie zählt rückwärts. Eine gerade erst begonnene Woche ohne
-  // Lauf beendet sie noch nicht.
+  // The current streak counts backwards. A week that has only just started
+  // without a run doesn't end it yet.
   let current = 0;
   for (let index = weeks.length - 1; index >= 0; index -= 1) {
     if (active.has(weeks[index])) {
@@ -334,7 +333,7 @@ export function buildConsistency(
 }
 
 function formatKm(value: number) {
-  return `${value.toFixed(1).replace('.', ',')} km`;
+  return `${fixed(value, 1)} km`;
 }
 
 function formatPaceValue(seconds: number) {
@@ -358,7 +357,7 @@ function buildRecords(runs: Run[], weekBuckets: StatsBucket[]): StatsRecord[] {
   if (longest && longest.distanceMeters > 0) {
     result.push({
       id: 'longest-distance',
-      label: 'Längster Lauf',
+      label: tr('Längster Lauf', 'Longest run'),
       value: formatKm(longest.distanceMeters / 1000),
       detail: dayLongFormat.format(new Date(longest.startTime)),
       runId: longest.id || null,
@@ -372,15 +371,15 @@ function buildRecords(runs: Run[], weekBuckets: StatsBucket[]): StatsRecord[] {
   if (longestTime && longestTime.durationSeconds > 0) {
     result.push({
       id: 'longest-duration',
-      label: 'Längste Dauer',
+      label: tr('Längste Dauer', 'Longest duration'),
       value: formatDurationValue(longestTime.durationSeconds),
       detail: dayLongFormat.format(new Date(longestTime.startTime)),
       runId: longestTime.id || null,
       runIds: longestTime.id ? [longestTime.id] : [],
     });
   }
-  // Bestes Tempo nur über Läufe ab 5 km. Kürzere Strecken sind nicht
-  // vergleichbar und würden den Rekord dauerhaft an einen Sprint vergeben.
+  // Best pace only over runs of 5 km or more. Shorter distances aren't
+  // comparable and would hand the record to a sprint for good.
   const paceOf = (run: Run) => run.durationSeconds / (run.distanceMeters / 1000);
   const fastest = runs
     .filter(run => run.distanceMeters >= 5000 && run.durationSeconds > 0)
@@ -391,7 +390,7 @@ function buildRecords(runs: Run[], weekBuckets: StatsBucket[]): StatsRecord[] {
   if (fastest) {
     result.push({
       id: 'fastest-pace',
-      label: 'Schnellster Lauf ab 5 km',
+      label: tr('Schnellster Lauf ab 5 km', 'Fastest run from 5 km'),
       value: formatPaceValue(paceOf(fastest)),
       detail: `${formatKm(fastest.distanceMeters / 1000)} · ${dayLongFormat.format(
         new Date(fastest.startTime),
@@ -407,7 +406,7 @@ function buildRecords(runs: Run[], weekBuckets: StatsBucket[]): StatsRecord[] {
   if (bestWeek && bestWeek.distanceKm > 0) {
     result.push({
       id: 'best-week',
-      label: 'Stärkste Woche',
+      label: tr('Stärkste Woche', 'Biggest week'),
       value: formatKm(bestWeek.distanceKm),
       detail: bestWeek.fullLabel,
       runId: null,
@@ -499,7 +498,7 @@ function totalsFor(runs: Run[], weeks: number): StatsTotals {
     distanceKm,
     durationSeconds: runs.reduce((sum, run) => sum + run.durationSeconds, 0),
     paceSecondsPerKm: weightedPace(runs),
-    // RPE ist ordinal: Median statt Mittelwert.
+    // RPE is ordinal, so use the median instead of the mean.
     medianLegsRpe: medianOrNull(rated(runs, 'legs')),
     medianBreathingRpe: medianOrNull(rated(runs, 'breathing')),
     averageHeartRate: average(positive(runs.map(run => run.avgHeartRate))),
@@ -511,9 +510,9 @@ function totalsFor(runs: Run[], weeks: number): StatsTotals {
 }
 
 /**
- * Der Zeitraum endet mit dem Ende der laufenden Woche, damit die aktuelle
- * Woche sichtbar ist statt erst am Montag darauf zu erscheinen. „Alles“
- * beginnt mit der Woche des ersten Eintrags.
+ * The period ends with the end of the current week, so the current week is
+ * visible instead of only appearing the following Monday. "All" starts with
+ * the week of the first entry.
  */
 export function statsWindow(
   range: StatsRange,
@@ -529,8 +528,8 @@ export function statsWindow(
 }
 
 /**
- * Vollständige Sicht für die Statistikseite: ein wählbarer Zeitraum, in dem
- * alles konsistent gerechnet ist.
+ * Full view for the statistics page: a selectable period in which everything
+ * is calculated consistently.
  */
 export function buildStatisticsView(
   runs: Run[],
@@ -594,8 +593,8 @@ export function buildStatisticsView(
   };
 }
 
-/** Der Wert einer Kennzahl in einem Balken — die einzige Stelle, an der die
- *  Zuordnung Kennzahl → Zahl getroffen wird. */
+/** A metric's value in one bar — the only place where a metric is mapped to
+ *  its number. */
 export function bucketValue(
   bucket: StatsBucket,
   metric: StatsMetric,

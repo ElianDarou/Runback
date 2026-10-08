@@ -1,16 +1,47 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { daysLabel, WEEKDAY_LABELS } from '../domain/plans';
 import type { WorkoutTemplate } from '../domain/strength';
+import { getLanguage, tr } from '../domain/i18n';
 import { Button, color, Copy } from './components';
 
 /**
- * Übersicht der Trainingspläne.
+ * Overview of training plans.
  *
- * Ein Plan ist ein Vorschlag. Deshalb steht neben jedem Plan „Starten“, aber
- * nirgends eine Quote, ein Rückstand oder eine Mahnung. Löschen fragt einmal
- * nach, weil es sich nicht rückgängig machen lässt.
+ * A plan is a suggestion. That's why each plan has "Start" next to it, but
+ * nowhere a quota, a backlog, or a reminder. Delete asks once, because it
+ * can't be undone.
  */
+
+// Labels are built per call: the language can change at runtime.
+const weekdayLong = (day: number): string =>
+  (getLanguage() === 'en'
+    ? [
+        'Sunday',
+        'Monday',
+        'Tuesday',
+        'Wednesday',
+        'Thursday',
+        'Friday',
+        'Saturday',
+      ]
+    : [
+        'Sonntag',
+        'Montag',
+        'Dienstag',
+        'Mittwoch',
+        'Donnerstag',
+        'Freitag',
+        'Samstag',
+      ])[day];
+const weekdayShort = (day: number): string =>
+  (getLanguage() === 'en'
+    ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    : ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'])[day];
+
+const daysText = (template: WorkoutTemplate) =>
+  template.days.length
+    ? template.days.map(weekdayShort).join(', ')
+    : tr('Kein fester Tag', 'No fixed day');
 
 const summary = (template: WorkoutTemplate) => {
   const exercises = template.exercises.length;
@@ -19,11 +50,16 @@ const summary = (template: WorkoutTemplate) => {
     0,
   );
   if (!exercises) {
-    return 'Noch keine Übung hinterlegt';
+    return tr('Noch keine Übung hinterlegt', 'No exercises added yet');
   }
-  return `${exercises} ${exercises === 1 ? 'Übung' : 'Übungen'} · ${sets} ${
-    sets === 1 ? 'Satz' : 'Sätze'
-  }`;
+  return tr(
+    `${exercises} ${exercises === 1 ? 'Übung' : 'Übungen'} · ${sets} ${
+      sets === 1 ? 'Satz' : 'Sätze'
+    }`,
+    `${exercises} ${exercises === 1 ? 'exercise' : 'exercises'} · ${sets} ${
+      sets === 1 ? 'set' : 'sets'
+    }`,
+  );
 };
 
 export function PlanList({
@@ -37,7 +73,7 @@ export function PlanList({
   onDelete,
 }: {
   templates: WorkoutTemplate[];
-  /** Wochentag 0 (Sonntag) bis 6, wie `Date.getDay`. */
+  /** Weekday from 0 (Sunday) to 6, as in `Date.getDay`. */
   today: number;
   busy?: boolean;
   onCreate: () => void;
@@ -56,21 +92,34 @@ export function PlanList({
           const confirmingThis = confirming === template.id;
           return (
             <View key={template.id} style={styles.card}>
-              <Text style={styles.name}>{template.name || 'Ohne Namen'}</Text>
+              <Text style={styles.name}>
+                {template.name || tr('Ohne Namen', 'Unnamed')}
+              </Text>
               <Text style={styles.meta}>
-                {daysLabel(template)} · {summary(template)}
-                {onToday ? ` · heute ${WEEKDAY_LABELS[today]}` : ''}
+                {daysText(template)} · {summary(template)}
+                {onToday
+                  ? ` · ${tr('heute', 'today')} ${weekdayLong(today)}`
+                  : ''}
               </Text>
 
               {confirmingThis ? (
                 <>
                   <Copy muted>
-                    {template.name || 'Diesen Plan'} endgültig löschen? Bereits
-                    erfasste Einheiten bleiben erhalten.
+                    {tr(
+                      `${
+                        template.name || 'Diesen Plan'
+                      } endgültig löschen? Bereits erfasste Einheiten bleiben erhalten.`,
+                      `Delete ${
+                        template.name || 'this plan'
+                      } for good? Workouts already logged are kept.`,
+                    )}
                   </Copy>
                   <View style={styles.actions}>
                     <Pressable
-                      accessibilityLabel={`Löschen von ${template.name} bestätigen`}
+                      accessibilityLabel={tr(
+                        `Löschen von ${template.name} bestätigen`,
+                        `Confirm deleting ${template.name}`,
+                      )}
                       accessibilityRole="button"
                       onPress={() => {
                         setConfirming(null);
@@ -81,10 +130,15 @@ export function PlanList({
                         pressed && styles.pressed,
                       ]}
                     >
-                      <Text style={styles.actionText}>Endgültig löschen</Text>
+                      <Text style={styles.actionText}>
+                        {tr('Endgültig löschen', 'Delete for good')}
+                      </Text>
                     </Pressable>
                     <Pressable
-                      accessibilityLabel="Löschen abbrechen"
+                      accessibilityLabel={tr(
+                        'Löschen abbrechen',
+                        'Cancel delete',
+                      )}
                       accessibilityRole="button"
                       onPress={() => setConfirming(null)}
                       style={({ pressed }) => [
@@ -92,7 +146,9 @@ export function PlanList({
                         pressed && styles.pressed,
                       ]}
                     >
-                      <Text style={styles.actionText}>Behalten</Text>
+                      <Text style={styles.actionText}>
+                        {tr('Behalten', 'Keep')}
+                      </Text>
                     </Pressable>
                   </View>
                 </>
@@ -100,14 +156,23 @@ export function PlanList({
                 <>
                   <Button
                     disabled={busy || !template.exercises.length}
-                    label={`${template.name || 'Plan ohne Namen'} starten`}
+                    label={tr(
+                      `${template.name || 'Plan ohne Namen'} starten`,
+                      `Start ${template.name || 'plan without name'}`,
+                    )}
                     small
-                    title={`${template.name || 'Plan'} starten`}
+                    title={tr(
+                      `${template.name || 'Plan'} starten`,
+                      `Start ${template.name || 'plan'}`,
+                    )}
                     onPress={() => onStart(template)}
                   />
                   <View style={styles.actions}>
                     <Pressable
-                      accessibilityLabel={`${template.name} bearbeiten`}
+                      accessibilityLabel={tr(
+                        `${template.name} bearbeiten`,
+                        `Edit ${template.name}`,
+                      )}
                       accessibilityRole="button"
                       onPress={() => onEdit(template)}
                       style={({ pressed }) => [
@@ -115,10 +180,15 @@ export function PlanList({
                         pressed && styles.pressed,
                       ]}
                     >
-                      <Text style={styles.actionText}>Bearbeiten</Text>
+                      <Text style={styles.actionText}>
+                        {tr('Bearbeiten', 'Edit')}
+                      </Text>
                     </Pressable>
                     <Pressable
-                      accessibilityLabel={`${template.name} duplizieren`}
+                      accessibilityLabel={tr(
+                        `${template.name} duplizieren`,
+                        `Duplicate ${template.name}`,
+                      )}
                       accessibilityRole="button"
                       onPress={() => onDuplicate(template.id)}
                       style={({ pressed }) => [
@@ -126,10 +196,15 @@ export function PlanList({
                         pressed && styles.pressed,
                       ]}
                     >
-                      <Text style={styles.actionText}>Duplizieren</Text>
+                      <Text style={styles.actionText}>
+                        {tr('Duplizieren', 'Duplicate')}
+                      </Text>
                     </Pressable>
                     <Pressable
-                      accessibilityLabel={`${template.name} löschen`}
+                      accessibilityLabel={tr(
+                        `${template.name} löschen`,
+                        `Delete ${template.name}`,
+                      )}
                       accessibilityRole="button"
                       onPress={() => setConfirming(template.id)}
                       style={({ pressed }) => [
@@ -137,7 +212,9 @@ export function PlanList({
                         pressed && styles.pressed,
                       ]}
                     >
-                      <Text style={styles.actionText}>Löschen</Text>
+                      <Text style={styles.actionText}>
+                        {tr('Löschen', 'Delete')}
+                      </Text>
                     </Pressable>
                   </View>
                 </>
@@ -147,17 +224,19 @@ export function PlanList({
         })
       ) : (
         <View style={styles.card}>
-          <Text style={styles.name}>Noch kein Plan</Text>
+          <Text style={styles.name}>{tr('Noch kein Plan', 'No plan yet')}</Text>
           <Copy muted>
-            Du kannst jederzeit frei trainieren. Eine Vorlage hält
-            wiederkehrende Einheiten fest.
+            {tr(
+              'Du kannst jederzeit frei trainieren. Eine Vorlage hält wiederkehrende Einheiten fest.',
+              'You can always train freely. A template keeps recurring workouts.',
+            )}
           </Copy>
         </View>
       )}
 
       <Button
-        label="Neuen Trainingsplan anlegen"
-        title="Neuen Plan anlegen"
+        label={tr('Neuen Trainingsplan anlegen', 'Create a new training plan')}
+        title={tr('Neuen Plan anlegen', 'Create new plan')}
         onPress={onCreate}
       />
     </View>

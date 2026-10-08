@@ -9,10 +9,10 @@ object WearControlOutbox {
     private const val MAX_ITEMS = 64
 
     fun enqueue(store: DocumentStore, command: JSONObject) {
-        require(command.optString("runId").isNotBlank()) { "Steuerbefehl ohne Laufkennung" }
-        require(command.optString("action").isNotBlank()) { "Steuerbefehl ohne Aktion" }
-        require(command.optString("commandId").isNotBlank()) { "Steuerbefehl ohne Befehlskennung" }
-        require(command.optLong("sequence", 0L) > 0L) { "Steuerbefehl ohne Sequenz" }
+        require(command.optString("runId").isNotBlank()) { "Control command without run ID" }
+        require(command.optString("action").isNotBlank()) { "Control command without action" }
+        require(command.optString("commandId").isNotBlank()) { "Control command without command ID" }
+        require(command.optLong("sequence", 0L) > 0L) { "Control command without sequence" }
         synchronized(this) {
             val items = read(store)
             val kept = JSONArray()
@@ -26,7 +26,7 @@ object WearControlOutbox {
                 } else kept.put(existing)
             }
             if (!replaced) {
-                check(kept.length() < MAX_ITEMS) { "Steuerwarteschlange ist voll. Uhr zuerst verbinden." }
+                check(kept.length() < MAX_ITEMS) { Lang.tr("Steuerwarteschlange ist voll. Uhr zuerst verbinden.", "Control queue is full. Connect the watch first.") }
                 kept.put(JSONObject(command.toString()))
             }
             store.putDocument(KEY, JSONObject().put("items", kept))

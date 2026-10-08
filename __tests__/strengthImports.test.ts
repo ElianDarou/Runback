@@ -32,8 +32,8 @@ const fixture = fs.readFileSync(
 const parsed = parseStrongCsvPreview(fixture);
 const candidates = importedTemplateCandidates(parsed.workouts);
 
-describe('Strong-Export und Vorlagen', () => {
-  it('liest das vollständige Android-Format mit Einheiten und trennt Pausen von Sätzen', () => {
+describe('Strong export and templates', () => {
+  it('reads the full Android format with sessions and separates rests from sets', () => {
     expect(parsed.rows).toBe(1645);
     expect(parsed.workouts).toHaveLength(53);
     expect(parsed.workouts.flatMap(workout => workout.sets)).toHaveLength(896);
@@ -54,12 +54,12 @@ describe('Strong-Export und Vorlagen', () => {
       ).size,
     ).toBe(19);
   });
-  it('deckt jeden Übungsnamen des Exports eindeutig ab', () => {
+  it('maps every exercise name in the export unambiguously', () => {
     for (const set of parsed.workouts.flatMap(workout => workout.sets)) {
       expect(resolveCatalogExercise(set.exercise)).toBeDefined();
     }
   });
-  it('übernimmt genau die letzte Einheit je Name samt Satzfolge und Herkunft', () => {
+  it('takes exactly the last session per name, including set order and origin', () => {
     for (const candidate of candidates) {
       const latest = Math.max(
         ...parsed.workouts
@@ -87,7 +87,7 @@ describe('Strong-Export und Vorlagen', () => {
       ).toBe(8);
     }
   });
-  it('lässt Änderungen, Umbenennungen, feste Tage und ursprüngliche Versionen bestehen', () => {
+  it('keeps changes, renames, fixed days and original versions', () => {
     const template = {
       ...candidates[0].template,
       name: 'Mein Plan',
@@ -106,7 +106,7 @@ describe('Strong-Export und Vorlagen', () => {
     importedTemplateCandidates(parsed.workouts);
     expect(parsed.workouts).toEqual(original);
   });
-  it('behält unbekannte Einheiten, fehlende Pausen, Notizen und RPE ohne RIR-Schätzung', () => {
+  it('keeps unknown sessions, missing rests, notes and RPE without an RIR estimate', () => {
     const csv =
       'Date;Workout Name;Exercise Name;Set Order;Weight;Reps;RPE;Notes\n2024-01-01 18:00:00;A;Mystery;1;80;8;9;"Mit Pause; und \'Zitat\'"';
     const result = parseStrongCsvPreview(csv);
@@ -121,7 +121,7 @@ describe('Strong-Export und Vorlagen', () => {
     });
     expect(candidate.warnings.length).toBeGreaterThan(0);
   });
-  it('hält gelöschte Vorschläge nach erneutem Import verborgen, ohne Originale oder andere Vorlagen zu ändern', () => {
+  it('keeps deleted suggestions hidden after a new import without changing originals or other templates', () => {
     const removed = candidates[0];
     const dismissed = [removed.template.id];
     const originals = JSON.stringify(parsed.workouts);
@@ -145,7 +145,7 @@ describe('Strong-Export und Vorlagen', () => {
     expect(importedTemplateCandidates([{ ...newer, source: 'other' }], [], dismissed))
       .toHaveLength(1);
   });
-  it('konvertiert Pfund und bekannte Strecken, setzt aber keine Gewichte voraus', () => {
+  it('converts pounds and known distances, but assumes no weights', () => {
     const csv =
       'Date;Workout Name;Exercise Name;Set Order;Weight (lbs);Reps;Distance (km);Seconds\n2024-01-01 18:00:00;A;Bench Press (Barbell);1;100;8;;\n2024-01-01 18:00:00;A;Plank;2;;;;30';
     const result = parseStrongCsvPreview(csv);
@@ -157,7 +157,7 @@ describe('Strong-Export und Vorlagen', () => {
       seconds: 30,
     });
   });
-  it('liest BOM, mehrzeilige und maskierte Notizen sowie explizite Satzarten', () => {
+  it('reads BOM, multi-line and escaped notes as well as explicit set types', () => {
     const csv =
       '\uFEFFDate,Workout Name,Exercise Name,Set Order,Weight (kg),Reps,Seconds,Notes\r\n2024-01-01 18:00:00,A,Squat (Barbell),W,30,8,,"Rack, tief\n""Kontrolle"""\r\n2024-01-01 18:00:00,A,Squat (Barbell),Rest Timer,,,60,\r\n2024-01-01 18:00:00,A,Squat (Barbell),F,40,8,,\r\n';
     const result = parseStrongCsvPreview(csv);
@@ -169,7 +169,7 @@ describe('Strong-Export und Vorlagen', () => {
     expect(result.workouts[0].sets[0].notes).toBe('Rack, tief\n"Kontrolle"');
     expect(result.workouts[0].sets[0].restSeconds).toBe(60);
   });
-  it('ordnet fremde oder doppelte Pausen nicht dem falschen Satz zu', () => {
+  it('does not assign foreign or duplicate rests to the wrong set', () => {
     const csv =
       'Date;Workout Name;Exercise Name;Set Order;Reps;Seconds\n2024-01-01 18:00:00;A;Squat;1;8;\n2024-01-01 18:00:00;A;Curl;Rest Timer;;30\n2024-01-01 18:00:00;A;Squat;Rest Timer;;60';
     const result = parseStrongCsvPreview(csv);
@@ -177,7 +177,7 @@ describe('Strong-Export und Vorlagen', () => {
     expect(result.skipped).toBe(2);
     expect(result.workouts[0].sets[0].restSeconds).toBeUndefined();
   });
-  it('lässt gute Daten aus beschädigten Einheiten erhalten, baut aber keine verkürzte Vorlage', () => {
+  it('keeps good data from damaged sessions but builds no shortened template', () => {
     const csv =
       'Date;Workout Name;Exercise Name;Set Order;Reps;Weight (kg)\n2024-01-01 18:00:00;A;Squat;1;8;20\n2024-01-01 18:00:00;A;Squat;2;acht;20\n2024-02-31 18:00:00;B;Squat;1;8;20';
     const result = parseStrongCsvPreview(csv);
@@ -186,7 +186,7 @@ describe('Strong-Export und Vorlagen', () => {
     expect(result.workouts[0].incomplete).toBe(true);
     expect(importedTemplateCandidates(result.workouts)).toEqual([]);
   });
-  it('weist unvollständige Anführungszeichen und überschrittene Grenzen sichtbar zurück', () => {
+  it('visibly rejects unclosed quotes and exceeded limits', () => {
     expect(() =>
       parseStrongCsvPreview('Date,Exercise Name,Set Order\n"2024-01-01,A,1'),
     ).toThrow(/Anführungszeichen/);
@@ -194,8 +194,8 @@ describe('Strong-Export und Vorlagen', () => {
   });
 });
 
-describe('lokale Übungssammlung', () => {
-  it('liefert eine breite, versionierte Auswahl mit prüfbarer Quelle', () => {
+describe('local exercise collection', () => {
+  it('provides a broad, versioned selection with a verifiable source', () => {
     expect(CATALOG.length).toBeGreaterThan(250);
     expect(EXERCISE_DATABASE.license).toBe('Unlicense');
     expect(EXERCISE_DATABASE.revision).toMatch(/^[a-f0-9]{40}$/);
@@ -206,7 +206,7 @@ describe('lokale Übungssammlung', () => {
     expect(searchCatalog('multipresse', 300).length).toBeGreaterThan(5);
     expect(searchCatalog('', CATALOG.length).length).toBe(CATALOG.length);
   });
-  it('findet deutsche und englische Wörter, Umlaute und Gerätevarianten', () => {
+  it('finds German and English words, umlauts and device variants', () => {
     expect(searchCatalog('Arnold Press')[0].id).toBe(
       'fedb:Arnold_Dumbbell_Press',
     );
@@ -222,7 +222,7 @@ describe('lokale Übungssammlung', () => {
     expect(resolveCatalogExercise('Chest Fly')?.equipment).toBe('unknown');
     expect(searchCatalog('', -1)).toEqual([]);
   });
-  it('erfindet keine numerischen Muskelmodelle für neue Datenbankübungen', () => {
+  it('invents no numeric muscle models for new database exercises', () => {
     const exercise = catalogExercise('fedb:Arnold_Dumbbell_Press')!;
     expect(exercise.shares).toEqual({});
     expect(exercise.eccentric).toBeUndefined();
@@ -265,7 +265,7 @@ const attachment = (require('process') as { env: Record<string, string | undefin
 );
 
 
-it('hält Strecken ohne Einheit offen und rechnet nur ausdrücklich genannte Kilometer um', () => {
+it('leaves distances without a unit open and converts only explicitly named kilometers', () => {
   const csv = 'Date;Workout Name;Exercise Name;Set Order;Distance;Seconds\n2024-01-01 18:00:00;A;Cardio;1;2,5;600';
   const raw = parseStrongCsvPreview(csv).workouts[0].sets[0];
   expect(raw.distance).toBe(2.5);
@@ -274,7 +274,7 @@ it('hält Strecken ohne Einheit offen und rechnet nur ausdrücklich genannte Kil
   expect(known.distance).toBe(2500);
   expect(known.distanceUnit).toBe('m');
 });
-it('behält verschiedene eigene Übungen auch bei nichtlateinischen Namen getrennt', () => {
+it('keeps different custom exercises separate even with non-Latin names', () => {
   const csv = 'Date;Workout Name;Exercise Name;Set Order;Weight (kg);Reps\n2024-01-01 18:00:00;A;推;1;40;8\n2024-01-01 18:00:00;A;拉;1;40;8';
   const candidate = importedTemplateCandidates(parseStrongCsvPreview(csv).workouts)[0];
   expect(candidate.template.exercises).toHaveLength(2);

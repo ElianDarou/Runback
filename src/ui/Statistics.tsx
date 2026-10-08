@@ -17,6 +17,7 @@ import {
   type StatsRecord,
 } from '../domain/statisticsView';
 import { ChipGroup, Segmented, Copy, EmptyState, Section } from './components';
+import { tr } from '../domain/i18n';
 import {
   Chart,
   ChartDetail,
@@ -33,26 +34,26 @@ import { STATS_MODULES, type Area, type StatsModule } from '../domain/features';
 import { StrengthStatistics, STRENGTH_METRICS } from './StrengthStatistics';
 
 /**
- * Statistik in drei Tiefen:
+ * Statistics in three depths:
  *
- * 1. Kopf — Zeitraum wählen, drei Kennzahlen mit Vergleich zum Zeitraum davor.
- * 2. Verlauf — ein Diagramm, dessen Kennzahl der Nutzer wählt; jeder Balken
- *    ist antippbar und öffnet seine Werte an Ort und Stelle.
- * 3. Abschnitte — Verteilung, Bestwerte, Konsistenz, Körperwerte; eingeklappt,
- *    bis jemand sie sehen will.
+ * 1. Header — pick a period, three figures with a comparison to the period before.
+ * 2. Trend — one chart whose metric the user picks; every bar is tappable and
+ *    opens its values in place.
+ * 3. Sections — distribution, personal bests, consistency, body figures; collapsed
+ *    until someone wants to see them.
  *
- * Die Zeitraumauswahl steht über allem und gilt für alles darunter. Es gibt
- * keine zweite Auswahl, die nur einen Abschnitt betrifft.
+ * The period picker sits above everything and applies to everything below it.
+ * There is no second picker that only affects one section.
  *
- * Laufen und Krafttraining sind getrennte Bereiche: Haben beide Daten, wählt
- * ein `Segmented` oben den Bereich, der Zeitraum gilt für beide. Verrechnet
- * wird nichts — Kilometer und Sätze sind keine gemeinsame Größe.
+ * Running and strength are separate areas: when both have data, a `Segmented`
+ * at the top picks the area, and the period applies to both. Nothing is
+ * combined — kilometers and sets are not a shared quantity.
  */
 
 export interface StatisticsView {
   range: StatsRange;
   metric: StatsMetric;
-  /** Zuletzt gewählter Bereich; zählt nur, wenn beide Bereiche Daten haben. */
+  /** Last chosen area; only counts when both areas have data. */
   area?: Area;
   strengthMetric?: StrengthStatsMetric;
 }
@@ -62,8 +63,8 @@ export const defaultStatisticsView: StatisticsView = {
   metric: 'distance',
 };
 
-/** Die Einstellungen kommen als ungeprüftes JSON aus dem nativen Speicher.
- *  Unbekanntes fällt auf die Voreinstellung zurück, statt die Seite zu leeren. */
+/** Settings arrive as unchecked JSON from native storage. Unknown values fall
+ *  back to the default instead of emptying the page. */
 export function readStatisticsView(value: unknown): StatisticsView {
   const raw = (value ?? {}) as {
     range?: unknown;
@@ -88,23 +89,28 @@ export function readStatisticsView(value: unknown): StatisticsView {
   };
 }
 
-const AREAS: { value: Area; label: string }[] = [
-  { value: 'running', label: 'Laufen' },
-  { value: 'strength', label: 'Krafttraining' },
+const areas = (): { value: Area; label: string }[] => [
+  { value: 'running', label: tr('Laufen', 'Running') },
+  { value: 'strength', label: tr('Krafttraining', 'Strength') },
 ];
 
 const METRICS: {
   value: StatsMetric;
-  label: string;
-  /** Kennzahlen ohne sinnvollen Nullpunkt werden als Punkte gezeigt. */
+  /** Figures without a meaningful zero are shown as points. */
   shape: 'bar' | 'point';
 }[] = [
-  { value: 'distance', label: 'Distanz', shape: 'bar' },
-  { value: 'duration', label: 'Dauer', shape: 'bar' },
-  { value: 'count', label: 'Läufe', shape: 'bar' },
-  { value: 'pace', label: 'Tempo', shape: 'point' },
-  { value: 'effort', label: 'Gefühl', shape: 'point' },
+  { value: 'distance', shape: 'bar' },
+  { value: 'duration', shape: 'bar' },
+  { value: 'count', shape: 'bar' },
+  { value: 'pace', shape: 'point' },
+  { value: 'effort', shape: 'point' },
 ];
+
+const runWord = (count: number) =>
+  tr(count === 1 ? 'Lauf' : 'Läufe', count === 1 ? 'run' : 'runs');
+
+const weekWord = (count: number) =>
+  tr(count === 1 ? 'Woche' : 'Wochen', count === 1 ? 'week' : 'weeks');
 
 const formatKm = (value: number) => `${decimal(value, value >= 100 ? 0 : 1)}`;
 
@@ -117,8 +123,8 @@ const formatPace = (seconds: number | null) => {
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
 };
 
-/** Ein Wert samt Einheit — die einzige Stelle, an der eine Kennzahl in Text
- *  übersetzt wird. Sie wird für Kacheln, Achse und Detailzeile benutzt. */
+/** A value with its unit — the only place a metric is turned into text. It is
+ *  used for tiles, the axis and the detail line. */
 function formatMetric(
   metric: StatsMetric,
   value: number | null,
@@ -134,7 +140,7 @@ function formatMetric(
     case 'count':
       return {
         value: String(Math.round(value)),
-        unit: value === 1 ? 'Lauf' : 'Läufe',
+        unit: runWord(value),
       };
     case 'pace':
       return { value: formatPace(value), unit: 'min / km' };
@@ -143,8 +149,20 @@ function formatMetric(
   }
 }
 
-const metricLabel = (metric: StatsMetric) =>
-  METRICS.find(entry => entry.value === metric)?.label ?? '';
+const metricLabel = (metric: StatsMetric) => {
+  switch (metric) {
+    case 'distance':
+      return tr('Distanz', 'Distance');
+    case 'duration':
+      return tr('Dauer', 'Duration');
+    case 'count':
+      return tr('Läufe', 'Runs');
+    case 'pace':
+      return tr('Tempo', 'Pace');
+    case 'effort':
+      return tr('Gefühl', 'Feel');
+  }
+};
 
 export function Statistics({
   runs,
@@ -163,11 +181,11 @@ export function Statistics({
   showStrength = true,
 }: {
   runs: Run[];
-  /** Abgeschlossene Krafteinheiten. Ohne sie gibt es den Bereich hier nicht. */
+  /** Finished strength sessions. Without them this area does not exist here. */
   sessions?: StrengthSession[];
-  /** Puls der Krafteinheiten von der Uhr, nach Einheit. */
+  /** Heart rate of the strength sessions from the watch, per session. */
   heart?: Record<string, StrengthHeartSummary>;
-  /** Zuletzt gewählter Zeitraum und Kennzahl. */
+  /** Last chosen period and metric. */
   view?: StatisticsView;
   onViewChange?: (view: StatisticsView) => void;
   onOpenRecord?: (record: StatsRecord) => void;
@@ -175,16 +193,16 @@ export function Statistics({
   onOpenStrengthRecord?: (record: StrengthRecord) => void;
   onOpenExercise?: (exerciseId: string) => void;
   busy?: boolean;
-  /** Als Teil einer Seite, die den Titel schon trägt (Verlauf). */
+  /** Part of a page that already has the title (History). */
   embedded?: boolean;
-  /** Blöcke unter „Tiefer schauen“, die der Nutzer sehen will. */
+  /** Blocks under "Explore further" the user wants to see. */
   modules?: StatsModule[];
-  /** Abgeschaltete Bereiche zeigen hier nichts — auch keinen Leerzustand. */
+  /** Switched-off areas show nothing here — not even an empty state. */
   showRunning?: boolean;
   showStrength?: boolean;
 }) {
   const [localView, setLocalView] = useState(view);
-  // Ohne Speicher von außen bleibt die Auswahl wenigstens für diese Sitzung.
+  // Without outside storage, the choice at least lasts for this session.
   const active = onViewChange ? view : localView;
   const setView = (next: StatisticsView) => {
     setLocalView(next);
@@ -196,8 +214,8 @@ export function Statistics({
     [runs, active.range],
   );
   const [selected, setSelected] = useState<number | null>(null);
-  // Eine Kennzahl, für die es keine Daten gibt, wird nicht angeboten — und
-  // eine bereits gewählte fällt auf die Distanz zurück.
+  // A metric without data is not offered — and one already chosen falls back
+  // to distance.
   const metrics = METRICS.filter(
     entry =>
       (entry.value !== 'pace' || stats.available.pace) &&
@@ -207,8 +225,8 @@ export function Statistics({
     ? active.metric
     : 'distance';
 
-  // Ein Bereich, der abgewählt ist oder keine Daten hat, erscheint nicht —
-  // auch nicht als Leerzustand neben dem anderen.
+  // An area that is switched off or has no data does not appear — not even as
+  // an empty state next to the other one.
   const hasStrength =
     showStrength && sessions.some(session => session.status === 'finished');
   const hasRunning = showRunning && runs.length > 0;
@@ -220,14 +238,14 @@ export function Statistics({
       : 'running';
   const title = embedded ? null : (
     <Text accessibilityRole="header" style={styles.title}>
-      Statistik
+      {tr('Statistik', 'Statistics')}
     </Text>
   );
   const areaPicker =
     hasRunning && hasStrength ? (
       <Segmented
-        label="Bereich"
-        options={AREAS}
+        label={tr('Bereich', 'Area')}
+        options={areas()}
         value={area}
         onChange={next => {
           setSelected(null);
@@ -259,8 +277,11 @@ export function Statistics({
           />
         ) : (
           <EmptyState
-            title="Noch keine Krafteinheit"
-            copy="Sobald ein Training abgeschlossen oder importiert ist, stehen hier Einheiten, Sätze, Muskeln und Übungen."
+            title={tr('Noch keine Krafteinheit', 'No strength session yet')}
+            copy={tr(
+              'Sobald ein Training abgeschlossen oder importiert ist, stehen hier Einheiten, Sätze, Muskeln und Übungen.',
+              'As soon as a workout is finished or imported, sessions, sets, muscles and exercises appear here.',
+            )}
           />
         )}
       </View>
@@ -271,8 +292,11 @@ export function Statistics({
       <View style={styles.page}>
         {title}
         <EmptyState
-          title="Noch keine Läufe"
-          copy="Sobald ein Lauf abgeschlossen oder importiert ist, entsteht hier deine Entwicklung."
+          title={tr('Noch keine Läufe', 'No runs yet')}
+          copy={tr(
+            'Sobald ein Lauf abgeschlossen oder importiert ist, entsteht hier deine Entwicklung.',
+            'As soon as a run is finished or imported, your progress appears here.',
+          )}
         />
       </View>
     );
@@ -284,7 +308,7 @@ export function Statistics({
       {areaPicker}
 
       <Segmented
-        label="Zeitraum"
+        label={tr('Zeitraum', 'Period')}
         options={STATS_RANGES}
         value={active.range}
         onChange={range => {
@@ -297,34 +321,37 @@ export function Statistics({
         <Tile
           value={formatKm(stats.totals.distanceKm)}
           unit="km"
-          label="Distanz"
+          label={tr('Distanz', 'Distance')}
           delta={stats.deltas.distance}
         />
         <Tile
           value={String(stats.totals.runCount)}
           unit=""
-          label={stats.totals.runCount === 1 ? 'Lauf' : 'Läufe'}
+          label={runWord(stats.totals.runCount)}
           delta={stats.deltas.count}
         />
         <Tile
           value={formatDuration(stats.totals.durationSeconds)}
           unit=""
-          label="Zeit"
+          label={tr('Zeit', 'Time')}
           delta={stats.deltas.duration}
         />
       </View>
       {stats.comparisonLabel ? (
         <Copy muted style={styles.compare}>
-          {`Pfeile vergleichen mit ${stats.comparisonLabel}.`}
+          {tr(
+            `Pfeile vergleichen mit ${stats.comparisonLabel}.`,
+            `Arrows compare with ${stats.comparisonLabel}.`,
+          )}
         </Copy>
       ) : null}
 
-      <Section title="Zeitverlauf">
+      <Section title={tr('Zeitverlauf', 'Over time')}>
         <ChipGroup
-          label="Kennzahl im Verlauf"
+          label={tr('Kennzahl im Verlauf', 'Metric over time')}
           options={metrics.map(entry => ({
             value: entry.value,
-            label: entry.label,
+            label: metricLabel(entry.value),
           }))}
           value={metric}
           onChange={next => setView({ ...active, metric: next })}
@@ -351,15 +378,20 @@ export function Statistics({
       </Section>
 
       {modules.length ? (
-        <Section title="Tiefer schauen">
+        <Section title={tr('Tiefer schauen', 'Explore further')}>
           {modules.includes('distribution') ? (
             <Panel
-              title="Verteilung"
+              title={tr('Verteilung', 'Distribution')}
               summary={
                 stats.purposes.length
-                  ? `${stats.purposes[0].label} führt mit ${Math.round(
-                      stats.purposes[0].share * 100,
-                    )} %`
+                  ? tr(
+                      `${stats.purposes[0].label} führt mit ${Math.round(
+                        stats.purposes[0].share * 100,
+                      )} %`,
+                      `${stats.purposes[0].label} leads with ${Math.round(
+                        stats.purposes[0].share * 100,
+                      )} %`,
+                    )
                   : DASH
               }
             >
@@ -371,9 +403,7 @@ export function Statistics({
                     share.share * 100,
                   )} %`}
                   share={share.share}
-                  meta={`${share.runCount} ${
-                    share.runCount === 1 ? 'Lauf' : 'Läufe'
-                  }`}
+                  meta={`${share.runCount} ${runWord(share.runCount)}`}
                 />
               ))}
             </Panel>
@@ -381,7 +411,7 @@ export function Statistics({
 
           {modules.includes('records') ? (
             <Panel
-              title="Bestwerte"
+              title={tr('Bestwerte', 'Personal bests')}
               summary={stats.records.length ? stats.records[0].value : DASH}
             >
               {stats.records.length ? (
@@ -401,7 +431,10 @@ export function Statistics({
                 ))
               ) : (
                 <Copy muted>
-                  Für diesen Zeitraum gibt es noch keine Bestwerte.
+                  {tr(
+                    'Für diesen Zeitraum gibt es noch keine Bestwerte.',
+                    'There are no personal bests for this period yet.',
+                  )}
                 </Copy>
               )}
             </Panel>
@@ -409,31 +442,30 @@ export function Statistics({
 
           {modules.includes('consistency') ? (
             <Panel
-              title="Konsistenz"
-              summary={`${stats.consistency.activeWeeks} von ${stats.consistency.weekCount} Wochen`}
+              title={tr('Konsistenz', 'Consistency')}
+              summary={tr(
+                `${stats.consistency.activeWeeks} von ${stats.consistency.weekCount} Wochen`,
+                `${stats.consistency.activeWeeks} of ${stats.consistency.weekCount} ${weekWord(stats.consistency.weekCount)}`,
+              )}
             >
               <ValueRow
-                label="Wochen mit Lauf"
+                label={tr('Wochen mit Lauf', 'Weeks with a run')}
                 value={`${stats.consistency.activeWeeks} / ${stats.consistency.weekCount}`}
               />
               <ValueRow
-                label="Aktuelle Serie"
-                value={`${stats.consistency.currentStreakWeeks} ${
-                  stats.consistency.currentStreakWeeks === 1
-                    ? 'Woche'
-                    : 'Wochen'
-                }`}
+                label={tr('Aktuelle Serie', 'Current streak')}
+                value={`${stats.consistency.currentStreakWeeks} ${weekWord(
+                  stats.consistency.currentStreakWeeks,
+                )}`}
               />
               <ValueRow
-                label="Längste Serie"
-                value={`${stats.consistency.longestStreakWeeks} ${
-                  stats.consistency.longestStreakWeeks === 1
-                    ? 'Woche'
-                    : 'Wochen'
-                }`}
+                label={tr('Längste Serie', 'Longest streak')}
+                value={`${stats.consistency.longestStreakWeeks} ${weekWord(
+                  stats.consistency.longestStreakWeeks,
+                )}`}
               />
               <ValueRow
-                label="Läufe je Woche"
+                label={tr('Läufe je Woche', 'Runs per week')}
                 value={
                   stats.totals.runsPerWeek === null
                     ? DASH
@@ -441,7 +473,7 @@ export function Statistics({
                 }
               />
               <ValueRow
-                label="Tage mit Lauf"
+                label={tr('Tage mit Lauf', 'Days with a run')}
                 value={String(stats.consistency.activeDays)}
               />
             </Panel>
@@ -449,7 +481,7 @@ export function Statistics({
 
           {modules.includes('body') ? (
             <Panel
-              title="Körperwerte"
+              title={tr('Körperwerte', 'Body figures')}
               summary={
                 stats.totals.paceSecondsPerKm === null
                   ? DASH
@@ -457,16 +489,19 @@ export function Statistics({
               }
             >
               <ValueRow
-                label="Ø Tempo"
+                label={tr('Ø Tempo', 'Ø Pace')}
                 value={
                   stats.totals.paceSecondsPerKm === null
                     ? DASH
                     : `${formatPace(stats.totals.paceSecondsPerKm)} min / km`
                 }
-                meta="Nach Strecke gewichtet, Läufe ab 500 m"
+                meta={tr(
+                  'Nach Strecke gewichtet, Läufe ab 500 m',
+                  'Weighted by distance, runs from 500 m',
+                )}
               />
               <ValueRow
-                label="Ø Distanz je Lauf"
+                label={tr('Ø Distanz je Lauf', 'Ø Distance per run')}
                 value={
                   stats.totals.averageDistanceKm === null
                     ? DASH
@@ -474,7 +509,7 @@ export function Statistics({
                 }
               />
               <ValueRow
-                label="Beine (Median)"
+                label={tr('Beine (Median)', 'Legs (median)')}
                 value={
                   stats.totals.medianLegsRpe === null
                     ? DASH
@@ -482,7 +517,7 @@ export function Statistics({
                 }
               />
               <ValueRow
-                label="Atmung (Median)"
+                label={tr('Atmung (Median)', 'Breathing (median)')}
                 value={
                   stats.totals.medianBreathingRpe === null
                     ? DASH
@@ -490,7 +525,7 @@ export function Statistics({
                 }
               />
               <ValueRow
-                label="Ø Puls"
+                label={tr('Ø Puls', 'Ø Heart rate')}
                 value={
                   stats.totals.averageHeartRate === null
                     ? DASH
@@ -498,7 +533,7 @@ export function Statistics({
                 }
               />
               <ValueRow
-                label="Ø Schrittfrequenz"
+                label={tr('Ø Schrittfrequenz', 'Ø Cadence')}
                 value={
                   stats.totals.averageCadence === null
                     ? DASH
@@ -513,8 +548,8 @@ export function Statistics({
   );
 }
 
-/** Was hinter einem angetippten Balken steckt — an Ort und Stelle, ohne
- *  neue Ansicht. Ohne Auswahl steht hier der Hinweis, dass es etwas gibt. */
+/** What sits behind a tapped bar — shown in place, without a new view. With no
+ *  selection, nothing is shown here. */
 function BucketDetail({
   bucket,
   metric,
@@ -533,7 +568,7 @@ function BucketDetail({
         highlighted.unit
       }`.trim()}
       meta={[
-          `${bucket.runCount} ${bucket.runCount === 1 ? 'Lauf' : 'Läufe'}`,
+          `${bucket.runCount} ${runWord(bucket.runCount)}`,
           `${formatKm(bucket.distanceKm)} km`,
           formatDuration(bucket.durationSeconds),
           bucket.paceSecondsPerKm === null
@@ -541,7 +576,7 @@ function BucketDetail({
             : `${formatPace(bucket.paceSecondsPerKm)} min / km`,
           bucket.effort === null
             ? null
-            : `Gefühl ${decimal(bucket.effort)} / 10`,
+            : `${tr('Gefühl', 'Feel')} ${decimal(bucket.effort)} / 10`,
         ]
         .filter(Boolean)
         .join(' · ')}

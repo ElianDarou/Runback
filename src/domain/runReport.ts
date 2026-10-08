@@ -1,15 +1,15 @@
 /**
- * Laufbericht und Analyse-Export zum Teilen.
+ * Run report and analysis export for sharing.
  *
- * Drei Dateien: der Markdown-Bericht für Menschen (mit kompakter JSON-
- * Zusammenfassung), `…_analysis.json` für Auswertungen und die 5-s-Zeitreihe
- * `…_timeseries.csv`, die nativ geschrieben wird. Rohdaten, bereinigte Daten
- * und abgeleitete Kennzahlen bleiben getrennt: Zeitbudget, Phasen, Höhe und
- * Datenqualität tragen ihre Modellversion; Abdeckungen sind gemessen, es gibt
- * keinen erfundenen Gesamtscore.
+ * Three files: the Markdown report for people (with a compact JSON summary),
+ * `…_analysis.json` for analysis, and the 5-second time series
+ * `…_timeseries.csv`, which is written natively. Raw data, cleaned data and
+ * derived metrics stay separate: time budget, phases, elevation and data
+ * quality carry their model version; coverages are measured, and there is no
+ * invented overall score.
  *
- * Was fehlt, fehlt: keine Nullen, keine erfundenen Werte. Rohsamples bleiben
- * nativ; der Zeitverlauf kommt als begrenztes Aggregat aus Kotlin.
+ * What is missing stays missing: no zeros, no invented values. Raw samples stay
+ * native; the time course arrives as a bounded aggregate from Kotlin.
  */
 import type {
   Adherence,
@@ -33,6 +33,7 @@ import {
 import { runTargetLabel, type RunTarget } from './runTarget';
 import { focusLabel, type TrainingFocus } from './focus';
 import { QUALITY_VERSION } from './analysis';
+import { dateFormat, locale, quote, tr } from './i18n';
 
 export const RUN_REPORT_VERSION = 'runback-report-2';
 export const RUN_ANALYSIS_EXPORT_VERSION = 'runback-analysis-1';
@@ -50,12 +51,12 @@ export interface ReportEvent {
   data?: Record<string, unknown>;
 }
 export interface TimelineRow {
-  /** Sekunden seit dem Start, Pausen eingeschlossen (Fensterende). */
+  /** Seconds since the start, pauses included (end of the window). */
   elapsedSeconds: number;
-  /** Zurückgelegte Strecke am Fensterende, in m. */
+  /** Distance covered at the end of the window, in m. */
   distanceMeters: number;
   stepDistanceMeters: number;
-  /** Sekunden mit gültigen GPS-Schritten im Fenster — keine Bewegungszeit. */
+  /** Seconds with valid GPS steps in the window — not moving time. */
   gpsCoveredSeconds: number;
   avgHeartRate?: number;
   avgCadence?: number;
@@ -77,7 +78,7 @@ export interface RunReportContext {
   goalTargetDate?: string;
   focus?: TrainingFocus | null;
   adherence?: Adherence;
-  /** Andere Läufe für Wochenumfang und Einordnung; der Lauf selbst darf enthalten sein. */
+  /** Other runs for weekly volume and context; the run itself may be included. */
   history?: RunSummary[];
 }
 export interface RunReportInput {
@@ -85,7 +86,7 @@ export interface RunReportInput {
   analysis?: RunAnalysis | null;
   timeline?: RunTimeline | null;
   context?: RunReportContext;
-  /** Zeitpunkt des Exports; Standard: jetzt. */
+  /** Time of the export; default: now. */
   now?: number;
 }
 
@@ -93,14 +94,14 @@ const DAY = 24 * 3600 * 1000;
 
 const fmt = (value: number, digits = 1) =>
   Number.isFinite(value)
-    ? value.toLocaleString('de-DE', {
+    ? value.toLocaleString(locale(), {
         minimumFractionDigits: digits,
         maximumFractionDigits: digits,
       })
     : '–';
 const int = (value: number | undefined) =>
   value !== undefined && Number.isFinite(value)
-    ? Math.round(value).toLocaleString('de-DE')
+    ? Math.round(value).toLocaleString(locale())
     : '–';
 const formatDuration = (seconds: number) => {
   if (!Number.isFinite(seconds) || seconds < 0) return '–';
@@ -112,7 +113,7 @@ const formatDuration = (seconds: number) => {
     ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
     : `${m}:${String(sec).padStart(2, '0')}`;
 };
-/** Tempo in m:ss /km; unter 20 m Strecke oder ohne Zeit nicht bestimmbar. */
+/** Pace in m:ss /km; not determinable under 20 m of distance or without time. */
 const formatPace = (meters: number, seconds: number) =>
   meters >= 20 && seconds > 0
     ? `${formatDuration(seconds / (meters / 1000))} /km`
@@ -121,19 +122,21 @@ const formatSpeed = (meters: number, seconds: number) =>
   meters >= 20 && seconds > 0
     ? `${fmt(meters / 1000 / (seconds / 3600), 1)} km/h`
     : '–';
-const dateTime = new Intl.DateTimeFormat('de-DE', {
-  weekday: 'long',
-  day: '2-digit',
-  month: '2-digit',
-  year: 'numeric',
-  hour: '2-digit',
-  minute: '2-digit',
-});
-const clock = new Intl.DateTimeFormat('de-DE', {
-  hour: '2-digit',
-  minute: '2-digit',
-  second: '2-digit',
-});
+const dateTime = (timestamp: number) =>
+  dateFormat({
+    weekday: 'long',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(timestamp));
+const clock = (timestamp: number) =>
+  dateFormat({
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(new Date(timestamp));
 const iso = (timestamp: number | undefined) =>
   timestamp && Number.isFinite(timestamp)
     ? new Date(timestamp).toISOString()
@@ -141,7 +144,7 @@ const iso = (timestamp: number | undefined) =>
 const percent = (value: number | undefined) =>
   value === undefined || !Number.isFinite(value)
     ? '–'
-    : `${Math.round(value * 100)} %`;
+    : `${Math.round(value * 100)}${tr(' %', '%')}`;
 const escapeCell = (value: string) => value.replace(/\|/g, '\\|');
 const table = (header: string[], rows: string[][]) =>
   [
@@ -149,115 +152,175 @@ const table = (header: string[], rows: string[][]) =>
     `| ${header.map(() => '---').join(' | ')} |`,
     ...rows.map(row => `| ${row.map(escapeCell).join(' | ')} |`),
   ].join('\n');
-const quote = (text: string) =>
+/** Markdown blockquote, one `>` per line. */
+const blockquote = (text: string) =>
   text
     .trim()
     .split(/\r?\n/)
     .map(line => `> ${line}`)
     .join('\n');
+const usableWord = (usable: boolean) =>
+  usable ? tr('nutzbar', 'usable') : tr('nicht nutzbar', 'not usable');
 
-const SOURCE_LABELS: Record<string, string> = {
-  phone: 'Telefon (Runback)',
-  wear: 'Uhr (Runback Wear)',
-  import: 'Import',
-  healthconnect: 'Health Connect',
+const sourceLabel = (source: string) => {
+  switch (source) {
+    case 'phone':
+      return tr('Telefon (Runback)', 'Phone (Runback)');
+    case 'wear':
+      return tr('Uhr (Runback Wear)', 'Watch (Runback Wear)');
+    case 'import':
+      return tr('Import', 'Import');
+    case 'healthconnect':
+      return 'Health Connect';
+  }
+  return source.startsWith('import') ? `Import (${source})` : source;
 };
-const sourceLabel = (source: string) =>
-  SOURCE_LABELS[source] ||
-  (source.startsWith('import') ? `Import (${source})` : source);
 
-const EVENT_LABELS: Record<string, string> = {
-  start: 'Start',
-  pause: 'Pause',
-  resume: 'Weiter',
-  stop: 'Ende',
-  completed: 'Ende',
-  interrupted: 'Unterbrochen',
-  target_cue: 'Hinweis zum Ziel',
-  target_pace: 'Zieltempo geändert',
-  progress_cue: 'Zwischenstand',
-  warning: 'Warnung',
-  feedback: 'Feedback gespeichert',
-};
+const eventLabel = (type: string): string =>
+  (
+    {
+      start: tr('Start', 'Start'),
+      pause: tr('Pause', 'Pause'),
+      resume: tr('Weiter', 'Resumed'),
+      stop: tr('Ende', 'Stopped'),
+      completed: tr('Ende', 'Finished'),
+      interrupted: tr('Unterbrochen', 'Interrupted'),
+      target_cue: tr('Hinweis zum Ziel', 'Target cue'),
+      target_pace: tr('Zieltempo geändert', 'Target pace changed'),
+      progress_cue: tr('Zwischenstand', 'Progress update'),
+      warning: tr('Warnung', 'Warning'),
+      feedback: tr('Feedback gespeichert', 'Feedback saved'),
+    } as Record<string, string>
+  )[type] || type;
 
 const phaseLabel = (phase: SegmentAggregate['phase']) =>
-  ((
+  (
     {
-      warmup: 'Einlaufen',
-      work: 'Belastung',
-      recovery: 'Erholung',
-      cooldown: 'Auslaufen',
-      pause: 'Pause',
+      warmup: tr('Einlaufen', 'Warm-up'),
+      work: tr('Belastung', 'Work'),
+      recovery: tr('Erholung', 'Recovery'),
+      cooldown: tr('Auslaufen', 'Cool-down'),
+      pause: tr('Pause', 'Pause'),
     } as Record<string, string>
-  )[phase || ''] || '');
+  )[phase || ''] || '';
 
-const STATE_LABELS: Record<MovementState, string> = {
-  RUN: 'Laufen',
-  WALK: 'Gehen',
-  STOPPED: 'Stillstand',
-  PAUSED: 'Pause',
-  UNKNOWN: 'Unbekannt',
-};
-const ELEVATION_REASONS: Record<string, string> = {
-  NO_ELEVATION_SOURCE: 'keine Höhenquelle',
-  NO_VERTICAL_ACCURACY: 'GPS-Höhe ohne Genauigkeitsangabe',
-  VERTICAL_ACCURACY_TOO_LOW: 'GPS-Höhe zu ungenau',
-};
+const stateLabel = (state: MovementState | string): string =>
+  (
+    {
+      RUN: tr('Laufen', 'Running'),
+      WALK: tr('Gehen', 'Walking'),
+      STOPPED: tr('Stillstand', 'Standing'),
+      PAUSED: tr('Pause', 'Pause'),
+      UNKNOWN: tr('Unbekannt', 'Unknown'),
+    } as Record<string, string>
+  )[state] || state;
+
+const elevationReasonLabel = (reason: string): string =>
+  (
+    {
+      NO_ELEVATION_SOURCE: tr('keine Höhenquelle', 'no elevation source'),
+      NO_VERTICAL_ACCURACY: tr(
+        'GPS-Höhe ohne Genauigkeitsangabe',
+        'GPS elevation without accuracy information',
+      ),
+      VERTICAL_ACCURACY_TOO_LOW: tr(
+        'GPS-Höhe zu ungenau',
+        'GPS elevation too imprecise',
+      ),
+    } as Record<string, string>
+  )[reason] || reason;
 
 function overviewRows(run: ReportRun): string[][] {
   const sport = normalizeSport(run.sport);
   const pace = usesPace(sport);
   const rows: string[][] = [
-    ['Sportart', sportWords(sport).label],
-    ['Laufart', purposeLabel(run.purpose)],
-    ['Start', dateTime.format(new Date(run.startTime))],
+    [tr('Sportart', 'Sport'), sportWords(sport).label],
+    [tr('Laufart', 'Run type'), purposeLabel(run.purpose)],
+    [tr('Start', 'Start'), dateTime(run.startTime)],
   ];
   if (run.endTime > run.startTime) {
-    rows.push(['Ende', clock.format(new Date(run.endTime))]);
+    rows.push([tr('Ende', 'End'), clock(run.endTime)]);
   }
   if (isAccidentalRun(run)) {
-    rows.push(['Gültigkeit', 'Fehlstart (zählt nicht als Training)']);
+    rows.push([
+      tr('Gültigkeit', 'Validity'),
+      tr(
+        'Fehlstart (zählt nicht als Training)',
+        'False start (does not count as training)',
+      ),
+    ]);
   }
   const time = run.time;
   const rate = (meters: number, seconds: number) =>
     pace ? formatPace(meters, seconds) : formatSpeed(meters, seconds);
   if (time) {
-    rows.push(['Gesamtzeit (Start bis Ende)', formatDuration(time.elapsedSeconds)]);
-    if (time.pausedSeconds >= 1)
-      rows.push(['Pausen', formatDuration(time.pausedSeconds)]);
-    rows.push(['Aufzeichnungszeit (ohne Pausen)', formatDuration(time.activeSeconds)]);
     rows.push([
-      'Bewegungszeit (Laufen + Gehen)',
-      `${formatDuration(time.movingSeconds)} (Laufen ${formatDuration(
-        time.runningSeconds,
-      )} · Gehen ${formatDuration(time.walkingSeconds)})`,
+      tr('Gesamtzeit (Start bis Ende)', 'Total time (start to end)'),
+      formatDuration(time.elapsedSeconds),
+    ]);
+    if (time.pausedSeconds >= 1)
+      rows.push([tr('Pausen', 'Pauses'), formatDuration(time.pausedSeconds)]);
+    rows.push([
+      tr('Aufzeichnungszeit (ohne Pausen)', 'Recorded time (without pauses)'),
+      formatDuration(time.activeSeconds),
+    ]);
+    rows.push([
+      tr('Bewegungszeit (Laufen + Gehen)', 'Moving time (running + walking)'),
+      tr(
+        `${formatDuration(time.movingSeconds)} (Laufen ${formatDuration(
+          time.runningSeconds,
+        )} · Gehen ${formatDuration(time.walkingSeconds)})`,
+        `${formatDuration(time.movingSeconds)} (running ${formatDuration(
+          time.runningSeconds,
+        )} · walking ${formatDuration(time.walkingSeconds)})`,
+      ),
     ]);
     if (time.stoppedSeconds >= 1)
-      rows.push(['Stillstand', formatDuration(time.stoppedSeconds)]);
+      rows.push([tr('Stillstand', 'Standing'), formatDuration(time.stoppedSeconds)]);
     if (time.unknownSeconds >= 1)
-      rows.push(['Ohne Bewegungsdaten', formatDuration(time.unknownSeconds)]);
+      rows.push([
+        tr('Ohne Bewegungsdaten', 'Without motion data'),
+        formatDuration(time.unknownSeconds),
+      ]);
   } else {
     if (run.endTime > run.startTime) {
       const wall = (run.endTime - run.startTime) / 1000;
       if (wall - run.durationSeconds > 30) {
-        rows.push(['Pausen gesamt', formatDuration(wall - run.durationSeconds)]);
+        rows.push([
+          tr('Pausen gesamt', 'Total pauses'),
+          formatDuration(wall - run.durationSeconds),
+        ]);
       }
     }
-    rows.push(['Aufzeichnungszeit (ohne Pausen)', formatDuration(run.durationSeconds)]);
+    rows.push([
+      tr('Aufzeichnungszeit (ohne Pausen)', 'Recorded time (without pauses)'),
+      formatDuration(run.durationSeconds),
+    ]);
   }
-  rows.push(['Distanz', `${fmt(run.distanceMeters / 1000, 2)} km`]);
-  const paceWord = pace ? 'Ø Tempo' : 'Ø Geschwindigkeit';
+  rows.push([tr('Distanz', 'Distance'), `${fmt(run.distanceMeters / 1000, 2)} km`]);
+  const paceWord = pace
+    ? tr('Ø Tempo', 'Avg pace')
+    : tr('Ø Geschwindigkeit', 'Avg speed');
   rows.push([
-    `${paceWord} über die Aufzeichnungszeit`,
+    tr(
+      `${paceWord} über die Aufzeichnungszeit`,
+      `${paceWord} over recorded time`,
+    ),
     rate(run.distanceMeters, time ? time.activeSeconds : run.durationSeconds),
   ]);
   if (time) {
-    rows.push([`${paceWord} in Bewegung`, rate(run.distanceMeters, time.movingSeconds)]);
+    rows.push([
+      tr(`${paceWord} in Bewegung`, `${paceWord} while moving`),
+      rate(run.distanceMeters, time.movingSeconds),
+    ]);
     const running = run.phaseMetrics?.running;
     if (running && running.meters >= 100) {
       rows.push([
-        `${paceWord} beim Laufen`,
-        `${rate(running.meters, running.seconds)} (nur RUN-Phasen; durch die Erkennungsschwelle schneller als eine Easy Pace)`,
+        tr(`${paceWord} beim Laufen`, `${paceWord} while running`),
+        `${rate(running.meters, running.seconds)} ${tr(
+          '(nur RUN-Phasen; durch die Erkennungsschwelle schneller als eine Easy Pace)',
+          '(RUN phases only; faster than an easy pace because of the detection threshold)',
+        )}`,
       ]);
     }
   }
@@ -267,42 +330,63 @@ function overviewRows(run: ReportRun): string[][] {
         ? `, ${int(run.avgHeartRateMin)}–${int(run.avgHeartRateMax)} bpm`
         : '';
     rows.push([
-      'Ø Puls',
+      tr('Ø Puls', 'Avg heart rate'),
       `${int(run.avgHeartRate)} bpm${extremes}${
         run.heartRateCoverage !== undefined
-          ? ` (Abdeckung ${percent(run.heartRateCoverage)} der Aufzeichnungszeit)`
+          ? tr(
+              ` (Abdeckung ${percent(run.heartRateCoverage)} der Aufzeichnungszeit)`,
+              ` (coverage ${percent(run.heartRateCoverage)} of recorded time)`,
+            )
           : ''
       }`,
     ]);
   }
   if (run.avgCadence) {
     rows.push([
-      pace ? 'Ø Schrittfrequenz' : 'Ø Trittfrequenz',
+      pace
+        ? tr('Ø Schrittfrequenz', 'Avg cadence')
+        : tr('Ø Trittfrequenz', 'Avg pedal rate'),
       `${int(run.avgCadence)} /min${
         run.cadenceCoverage !== undefined
-          ? ` (Abdeckung ${percent(run.cadenceCoverage)})`
+          ? tr(
+              ` (Abdeckung ${percent(run.cadenceCoverage)})`,
+              ` (coverage ${percent(run.cadenceCoverage)})`,
+            )
           : ''
       }`,
     ]);
   }
   const elevation = run.elevation;
   if (elevation?.available) {
+    const source =
+      elevation.source === 'barometer'
+        ? tr('Barometer', 'barometer')
+        : tr('GPS, geglättet', 'GPS, smoothed');
+    const reference =
+      elevation.reference === 'start'
+        ? tr(', Höhe relativ zum Start', ', elevation relative to start')
+        : '';
     rows.push([
-      'Anstieg / Abstieg',
-      `${int(elevation.ascentMeters)} m / ${int(elevation.descentMeters)} m (${
-        elevation.source === 'barometer' ? 'Barometer' : 'GPS, geglättet'
-      }${elevation.reference === 'start' ? ', Höhe relativ zum Start' : ''})`,
+      tr('Anstieg / Abstieg', 'Ascent / descent'),
+      `${int(elevation.ascentMeters)} m / ${int(elevation.descentMeters)} m (${source}${reference})`,
     ]);
   } else if (elevation) {
     rows.push([
-      'Anstieg / Abstieg',
-      `nicht bestimmbar (${ELEVATION_REASONS[elevation.reason] || elevation.reason})`,
+      tr('Anstieg / Abstieg', 'Ascent / descent'),
+      tr(
+        `nicht bestimmbar (${elevationReasonLabel(elevation.reason)})`,
+        `not determinable (${elevationReasonLabel(elevation.reason)})`,
+      ),
     ]);
   } else if (run.elevationGainMeters !== undefined) {
-    rows.push(['Anstieg gesamt (laut Quelle)', `${int(run.elevationGainMeters)} m`]);
+    rows.push([
+      tr('Anstieg gesamt (laut Quelle)', 'Total ascent (per source)'),
+      `${int(run.elevationGainMeters)} m`,
+    ]);
   }
-  if (run.calories) rows.push(['Kalorien', `${int(run.calories)} kcal`]);
-  if (run.steps) rows.push(['Schritte', int(run.steps)]);
+  if (run.calories)
+    rows.push([tr('Kalorien', 'Calories'), `${int(run.calories)} kcal`]);
+  if (run.steps) rows.push([tr('Schritte', 'Steps'), int(run.steps)]);
   if (
     run.context?.temperatureC !== undefined ||
     run.context?.windMps !== undefined
@@ -311,15 +395,21 @@ function overviewRows(run: ReportRun): string[][] {
     if (run.context.temperatureC !== undefined)
       parts.push(`${fmt(run.context.temperatureC, 0)} °C`);
     if (run.context.windMps !== undefined)
-      parts.push(`Wind ${fmt(run.context.windMps, 1)} m/s`);
-    rows.push(['Wetter', parts.join(' · ')]);
+      parts.push(`${tr('Wind', 'Wind')} ${fmt(run.context.windMps, 1)} m/s`);
+    rows.push([tr('Wetter', 'Weather'), parts.join(' · ')]);
   }
   if (run.target && run.target.kind !== 'none') {
-    rows.push(['Begleitung unterwegs', runTargetLabel(run.target)]);
+    rows.push([
+      tr('Begleitung unterwegs', 'Guidance during the run'),
+      runTargetLabel(run.target),
+    ]);
   }
-  rows.push(['Quelle', sourceLabel(run.source)]);
+  rows.push([tr('Quelle', 'Source'), sourceLabel(run.source)]);
   if (run.sourceActivityType)
-    rows.push(['Aktivitätstyp der Quelle', run.sourceActivityType]);
+    rows.push([
+      tr('Aktivitätstyp der Quelle', 'Source activity type'),
+      run.sourceActivityType,
+    ]);
   return rows;
 }
 
@@ -328,13 +418,20 @@ function phaseTable(run: ReportRun): string | undefined {
   if (!phases.length) return undefined;
   const pace = usesPace(normalizeSport(run.sport));
   const hasHeart = phases.some(p => p.avgHeartRate !== undefined);
-  const header = ['Phase', 'Von', 'Bis', 'Dauer', 'Strecke', pace ? 'Tempo' : 'Geschw.'];
-  if (hasHeart) header.push('Ø Puls');
+  const header = [
+    tr('Phase', 'Phase'),
+    tr('Von', 'From'),
+    tr('Bis', 'To'),
+    tr('Dauer', 'Duration'),
+    tr('Strecke', 'Distance'),
+    pace ? tr('Tempo', 'Pace') : tr('Geschw.', 'Speed'),
+  ];
+  if (hasHeart) header.push(tr('Ø Puls', 'Avg heart rate'));
   const rows = phases.map(p => {
     const seconds = p.endElapsedSeconds - p.startElapsedSeconds;
     const moving = p.state === 'RUN' || p.state === 'WALK';
     const row = [
-      STATE_LABELS[p.state] || p.state,
+      stateLabel(p.state),
       formatDuration(p.startElapsedSeconds),
       formatDuration(p.endElapsedSeconds),
       formatDuration(seconds),
@@ -359,26 +456,51 @@ function phaseMetricLines(run: ReportRun): string[] {
   const lines: string[] = [];
   if (m.longestRunSeconds !== undefined && m.longestRunMeters !== undefined) {
     lines.push(
-      `- Längste Laufphase am Stück: ${fmt(m.longestRunMeters / 1000, 2)} km in ${formatDuration(
-        m.longestRunSeconds,
-      )}`,
+      tr(
+        `- Längste Laufphase am Stück: ${fmt(m.longestRunMeters / 1000, 2)} km in ${formatDuration(
+          m.longestRunSeconds,
+        )}`,
+        `- Longest run phase without a break: ${fmt(m.longestRunMeters / 1000, 2)} km in ${formatDuration(
+          m.longestRunSeconds,
+        )}`,
+      ),
     );
   }
   if (m.longestMovingSeconds !== undefined)
-    lines.push(`- Längste Bewegung ohne Stillstand: ${formatDuration(m.longestMovingSeconds)}`);
-  lines.push(`- Wechsel zwischen Laufen und Gehen: ${m.runWalkTransitions}`);
+    lines.push(
+      tr(
+        `- Längste Bewegung ohne Stillstand: ${formatDuration(m.longestMovingSeconds)}`,
+        `- Longest movement without standing still: ${formatDuration(m.longestMovingSeconds)}`,
+      ),
+    );
+  lines.push(
+    tr(
+      `- Wechsel zwischen Laufen und Gehen: ${m.runWalkTransitions}`,
+      `- Changes between running and walking: ${m.runWalkTransitions}`,
+    ),
+  );
   if (m.fastestSustained300sSecondsPerKm !== undefined && pace) {
     lines.push(
-      `- Schnellste 5 Minuten am Stück: ${formatDuration(
-        m.fastestSustained300sSecondsPerKm,
-      )} /km`,
+      tr(
+        `- Schnellste 5 Minuten am Stück: ${formatDuration(
+          m.fastestSustained300sSecondsPerKm,
+        )} /km`,
+        `- Fastest 5 minutes in a row: ${formatDuration(
+          m.fastestSustained300sSecondsPerKm,
+        )} /km`,
+      ),
     );
   }
   if (m.trailingIdleSeconds >= 300) {
     lines.push(
-      `- Am Ende ${formatDuration(
-        m.trailingIdleSeconds,
-      )} ohne Bewegung: vermutlich wurde die Aufzeichnung nicht gestoppt.`,
+      tr(
+        `- Am Ende ${formatDuration(
+          m.trailingIdleSeconds,
+        )} ohne Bewegung: vermutlich wurde die Aufzeichnung nicht gestoppt.`,
+        `- ${formatDuration(
+          m.trailingIdleSeconds,
+        )} without movement at the end: the recording was probably not stopped.`,
+      ),
     );
   }
   return lines;
@@ -395,15 +517,20 @@ function segmentTable(run: ReportRun): string | undefined {
   const hasClimb = segments.some(s => s.ascentMeters !== undefined);
   const hasGap = segments.some(s => (s.gapSeconds ?? 0) > 0);
   const hasPhase = segments.some(s => s.phase);
-  const header = ['#', 'Bis km', 'Länge', 'Zeit'];
-  if (hasMoving) header.push('In Bewegung');
-  header.push(pace ? 'Tempo' : 'Geschw.');
-  if (hasHeart) header.push('Ø Puls');
-  if (hasCadence) header.push('Ø Kadenz');
-  if (hasGrade) header.push('Steigung');
-  if (hasClimb) header.push('Auf / Ab');
-  if (hasGap) header.push('GPS-Lücke');
-  if (hasPhase) header.push('Phase');
+  const header = [
+    '#',
+    tr('Bis km', 'To km'),
+    tr('Länge', 'Length'),
+    tr('Zeit', 'Time'),
+  ];
+  if (hasMoving) header.push(tr('In Bewegung', 'Moving'));
+  header.push(pace ? tr('Tempo', 'Pace') : tr('Geschw.', 'Speed'));
+  if (hasHeart) header.push(tr('Ø Puls', 'Avg heart rate'));
+  if (hasCadence) header.push(tr('Ø Kadenz', 'Avg cadence'));
+  if (hasGrade) header.push(tr('Steigung', 'Grade'));
+  if (hasClimb) header.push(tr('Auf / Ab', 'Up / down'));
+  if (hasGap) header.push(tr('GPS-Lücke', 'GPS gap'));
+  if (hasPhase) header.push(tr('Phase', 'Phase'));
   let cumulative = 0;
   const rows = segments.map((s, i) => {
     cumulative += s.distanceMeters;
@@ -428,7 +555,9 @@ function segmentTable(run: ReportRun): string | undefined {
       row.push(s.avgCadence !== undefined ? `${int(s.avgCadence)}` : '–');
     if (hasGrade)
       row.push(
-        s.gradePercent !== undefined ? `${fmt(s.gradePercent, 1)} %` : '–',
+        s.gradePercent !== undefined
+          ? `${fmt(s.gradePercent, 1)}${tr(' %', '%')}`
+          : '–',
       );
     if (hasClimb)
       row.push(
@@ -454,13 +583,15 @@ function timelineTable(
   const hasCadence = timeline.rows.some(r => r.avgCadence !== undefined);
   const hasAltitude = timeline.rows.some(r => r.altitudeM !== undefined);
   const header = [
-    'Zeit seit Start',
-    'km gesamt',
-    pace ? 'Tempo im Fenster' : 'Geschw. im Fenster',
+    tr('Zeit seit Start', 'Time since start'),
+    tr('km gesamt', 'km total'),
+    pace
+      ? tr('Tempo im Fenster', 'Pace in window')
+      : tr('Geschw. im Fenster', 'Speed in window'),
   ];
-  if (hasHeart) header.push('Ø Puls');
-  if (hasCadence) header.push('Ø Kadenz');
-  if (hasAltitude) header.push('Höhe');
+  if (hasHeart) header.push(tr('Ø Puls', 'Avg heart rate'));
+  if (hasCadence) header.push(tr('Ø Kadenz', 'Avg cadence'));
+  if (hasAltitude) header.push(tr('Höhe', 'Elevation'));
   const rows = timeline.rows.map(r => {
     const row = [
       formatDuration(r.elapsedSeconds),
@@ -492,8 +623,8 @@ function eventLines(run: ReportRun): string[] {
     const message =
       e.message ||
       (typeof e.data?.message === 'string' ? (e.data.message as string) : '');
-    const label = EVENT_LABELS[e.type as string] || (e.type as string);
-    return `- ${clock.format(new Date(e.at as number))} — ${label}${
+    const label = eventLabel(e.type as string);
+    return `- ${clock(e.at as number)} — ${label}${
       message ? `: ${message}` : ''
     }`;
   });
@@ -502,17 +633,25 @@ function eventLines(run: ReportRun): string[] {
 function impressionLines(run: ReportRun, context?: RunReportContext): string[] {
   const lines: string[] = [];
   if (run.rpe?.legs !== undefined)
-    lines.push(`- Beine: ${run.rpe.legs} von 10`);
+    lines.push(`- ${tr('Beine', 'Legs')}: ${run.rpe.legs} ${tr('von 10', 'of 10')}`);
   if (run.rpe?.breathing !== undefined)
-    lines.push(`- Atmung: ${run.rpe.breathing} von 10`);
-  if (context?.adherence) {
     lines.push(
-      `- Empfehlung ausprobiert: ${
-        { yes: 'Ja', no: 'Nein', unknown: 'Unklar' }[context.adherence]
-      }`,
+      `- ${tr('Atmung', 'Breathing')}: ${run.rpe.breathing} ${tr('von 10', 'of 10')}`,
+    );
+  if (context?.adherence) {
+    const adherenceLabel = (
+      {
+        yes: tr('Ja', 'Yes'),
+        no: tr('Nein', 'No'),
+        unknown: tr('Unklar', 'Unclear'),
+      } as const
+    )[context.adherence];
+    lines.push(
+      `- ${tr('Empfehlung ausprobiert', 'Tried the recommendation')}: ${adherenceLabel}`,
     );
   }
-  if (run.note?.trim()) lines.push(`- Notiz:\n\n${quote(run.note)}`);
+  if (run.note?.trim())
+    lines.push(`- ${tr('Notiz', 'Note')}:\n\n${blockquote(run.note)}`);
   return lines;
 }
 
@@ -523,13 +662,13 @@ export interface QualityIssueGroup {
   suspected: boolean;
   message: string;
   segmentIds: string[];
-  /** Betroffene Zeitbereiche in Sekunden seit Start, wenn die Abschnitte sie kennen. */
+  /** Affected time ranges in seconds since the start, when the segments know them. */
   ranges: [number, number][];
 }
 export interface DataQuality {
   model_version: string;
   gps: {
-    /** Anteil der Aufzeichnungszeit mit gültigen GPS-Schritten; fehlt ohne Lückenliste. */
+    /** Share of the recorded time with valid GPS steps; missing without a gap list. */
     coverage?: number;
     rejectedSteps?: number;
     gaps?: number;
@@ -554,9 +693,9 @@ export interface DataQuality {
 }
 
 /**
- * Datenqualität als Zahlen, die gemessen wurden: Abdeckungen, Anzahl, Zeitbereiche.
- * Ein Gesamtscore fehlt absichtlich — er wäre erfunden. `usable` ist die
- * versionierte Entscheidung der Regeln in analysis.ts.
+ * Data quality as measured numbers: coverages, counts, time ranges. A total
+ * score is deliberately missing — it would be invented. `usable` is the
+ * versioned decision of the rules in analysis.ts.
  */
 export function dataQualityFor(
   run: ReportRun,
@@ -644,21 +783,30 @@ export function dataQualityFor(
 
 function analysisLines(run: ReportRun, analysis: RunAnalysis): string[] {
   const lines: string[] = [];
-  lines.push(`- Einordnung: ${analysis.classification}`);
-  lines.push(`- Nächster Schritt: ${analysis.nextAction}`);
+  lines.push(`- ${tr('Einordnung', 'Assessment')}: ${analysis.classification}`);
+  lines.push(`- ${tr('Nächster Schritt', 'Next step')}: ${analysis.nextAction}`);
   const dq = dataQualityFor(run, analysis);
+  const gpsCoverage =
+    dq.gps.coverage !== undefined
+      ? tr(
+          ` (GPS-Abdeckung ${percent(dq.gps.coverage)})`,
+          ` (GPS coverage ${percent(dq.gps.coverage)})`,
+        )
+      : '';
+  const heartCoverage =
+    dq.heartRate.coverage !== undefined
+      ? tr(
+          ` (Abdeckung ${percent(dq.heartRate.coverage)})`,
+          ` (coverage ${percent(dq.heartRate.coverage)})`,
+        )
+      : '';
+  const heartReason = dq.heartRate.reason ? ` [${dq.heartRate.reason}]` : '';
+  const elevationReason = dq.elevation.reason ? ` [${dq.elevation.reason}]` : '';
   lines.push(
-    `- Datenqualität (${dq.model_version}): Tempo ${
-      dq.gps.usable ? 'nutzbar' : 'nicht nutzbar'
-    }${dq.gps.coverage !== undefined ? ` (GPS-Abdeckung ${percent(dq.gps.coverage)})` : ''}; Puls ${
-      dq.heartRate.usable ? 'nutzbar' : 'nicht nutzbar'
-    }${
-      dq.heartRate.coverage !== undefined
-        ? ` (Abdeckung ${percent(dq.heartRate.coverage)})`
-        : ''
-    }${dq.heartRate.reason ? ` [${dq.heartRate.reason}]` : ''}; Höhe ${
-      dq.elevation.usable ? 'nutzbar' : 'nicht nutzbar'
-    }${dq.elevation.reason ? ` [${dq.elevation.reason}]` : ''}`,
+    tr(
+      `- Datenqualität (${dq.model_version}): Tempo ${usableWord(dq.gps.usable)}${gpsCoverage}; Puls ${usableWord(dq.heartRate.usable)}${heartCoverage}${heartReason}; Höhe ${usableWord(dq.elevation.usable)}${elevationReason}`,
+      `- Data quality (${dq.model_version}): pace ${usableWord(dq.gps.usable)}${gpsCoverage}; heart rate ${usableWord(dq.heartRate.usable)}${heartCoverage}${heartReason}; elevation ${usableWord(dq.elevation.usable)}${elevationReason}`,
+    ),
   );
   for (const group of dq.issues) {
     const where = group.ranges.length
@@ -667,20 +815,27 @@ function analysisLines(run: ReportRun, analysis: RunAnalysis): string[] {
           .map(([a, b]) => `${formatDuration(a)}–${formatDuration(b)}`)
           .join(', ')}${group.ranges.length > 6 ? ', …' : ''})`
       : '';
+    const suspected = group.suspected ? tr('Vermutet: ', 'Suspected: ') : '';
     lines.push(
-      `  - ${group.suspected ? 'Vermutet: ' : ''}${group.message} ×${group.count}${where}`,
+      `  - ${suspected}${group.message} ×${group.count}${where}`,
     );
   }
   const effort = analysis.effort;
+  const speedIndex =
+    effort.speedIndex === undefined
+      ? tr('nicht bestimmbar', 'not determinable')
+      : tr(
+          `Tempoindex ${fmt(effort.speedIndex, 0)} (${effort.unit})`,
+          `pace index ${fmt(effort.speedIndex, 0)} (${effort.unit})`,
+        );
   lines.push(
-    `- Modellierte Anforderung: ${
-      effort.speedIndex === undefined
-        ? 'nicht bestimmbar'
-        : `Tempoindex ${fmt(effort.speedIndex, 0)} (${effort.unit})`
-    }; ${effort.uncertainty}`,
+    `- ${tr('Modellierte Anforderung', 'Modeled effort')}: ${speedIndex}; ${effort.uncertainty}`,
   );
   lines.push(
-    `  - Faktoren: Tempo ${effort.factors.tempo} · Steigung ${effort.factors.slope} · Wind ${effort.factors.wind} · Wärme ${effort.factors.heat}`,
+    tr(
+      `  - Faktoren: Tempo ${effort.factors.tempo} · Steigung ${effort.factors.slope} · Wind ${effort.factors.wind} · Wärme ${effort.factors.heat}`,
+      `  - Factors: pace ${effort.factors.tempo} · slope ${effort.factors.slope} · wind ${effort.factors.wind} · heat ${effort.factors.heat}`,
+    ),
   );
   if (
     effort.sessionLoad?.legs !== undefined ||
@@ -688,37 +843,57 @@ function analysisLines(run: ReportRun, analysis: RunAnalysis): string[] {
   ) {
     const parts: string[] = [];
     if (effort.sessionLoad.legs !== undefined)
-      parts.push(`Beine ${fmt(effort.sessionLoad.legs, 0)}`);
+      parts.push(`${tr('Beine', 'legs')} ${fmt(effort.sessionLoad.legs, 0)}`);
     if (effort.sessionLoad.breathing !== undefined)
-      parts.push(`Atmung ${fmt(effort.sessionLoad.breathing, 0)}`);
-    lines.push(`  - Belastung (RPE × Minuten): ${parts.join(' · ')}`);
+      parts.push(
+        `${tr('Atmung', 'breathing')} ${fmt(effort.sessionLoad.breathing, 0)}`,
+      );
+    lines.push(
+      `  - ${tr('Belastung (RPE × Minuten)', 'Load (RPE × minutes)')}: ${parts.join(' · ')}`,
+    );
   }
   if (analysis.pacing) {
     const p = analysis.pacing;
     lines.push(
-      `- Tempoverlauf: erste Hälfte ${formatDuration(
-        p.firstPaceSecondsPerKm,
-      )} /km, zweite ${formatDuration(
-        p.lastPaceSecondsPerKm,
-      )} /km, Abfall ${fmt(p.fadePercent, 1)} %, Streuung ${fmt(
-        p.coefficientOfVariation * 100,
-        1,
-      )} %`,
+      tr(
+        `- Tempoverlauf: erste Hälfte ${formatDuration(
+          p.firstPaceSecondsPerKm,
+        )} /km, zweite ${formatDuration(
+          p.lastPaceSecondsPerKm,
+        )} /km, Abfall ${fmt(p.fadePercent, 1)} %, Streuung ${fmt(
+          p.coefficientOfVariation * 100,
+          1,
+        )} %`,
+        `- Pace profile: first half ${formatDuration(
+          p.firstPaceSecondsPerKm,
+        )} /km, second ${formatDuration(
+          p.lastPaceSecondsPerKm,
+        )} /km, fade ${fmt(p.fadePercent, 1)}%, spread ${fmt(
+          p.coefficientOfVariation * 100,
+          1,
+        )}%`,
+      ),
     );
   }
   if (analysis.recommendation) {
     const r = analysis.recommendation;
-    lines.push(`- Empfehlung „${r.title}“: ${r.action}`);
-    lines.push(`  - Begründung: ${r.reason}`);
+    lines.push(
+      `- ${tr('Empfehlung', 'Recommendation')} ${quote(r.title)}: ${r.action}`,
+    );
+    lines.push(`  - ${tr('Begründung', 'Reason')}: ${r.reason}`);
   }
   if (analysis.question) {
-    lines.push(`- Offene Frage der App: ${analysis.question.text}`);
+    lines.push(
+      `- ${tr('Offene Frage der App', 'Open question in the app')}: ${analysis.question.text}`,
+    );
   }
-  lines.push(`- Modellversion: ${analysis.model_version}`);
+  lines.push(
+    `- ${tr('Modellversion', 'Model version')}: ${analysis.model_version}`,
+  );
   return lines;
 }
 
-/** Frühere, abgeschlossene Einheiten ohne Fehlstarts — dieselbe Regel wie die Statistik. */
+/** Earlier, completed workouts without false starts — the same rule as the statistics. */
 function historyBefore(run: ReportRun, context?: RunReportContext): RunSummary[] {
   return (context?.history || []).filter(
     r =>
@@ -733,38 +908,48 @@ function contextLines(run: ReportRun, context?: RunReportContext): string[] {
   const lines: string[] = [];
   if (!context) return lines;
   if (context.goal?.trim()) {
-    lines.push(
-      `- Ziel: ${context.goal.trim()}${
-        context.goalTargetDate ? ` (bis ${context.goalTargetDate})` : ''
-      }`,
-    );
+    const until = context.goalTargetDate
+      ? tr(` (bis ${context.goalTargetDate})`, ` (until ${context.goalTargetDate})`)
+      : '';
+    lines.push(`- ${tr('Ziel', 'Goal')}: ${context.goal.trim()}${until}`);
   }
-  if (context.focus) lines.push(`- Fokus: ${focusLabel(context.focus)}`);
+  if (context.focus)
+    lines.push(`- ${tr('Fokus', 'Focus')}: ${focusLabel(context.focus)}`);
   const history = historyBefore(run, context);
   const skipped = (context.history || []).filter(
     r => r.id !== run.id && r.startTime < run.startTime && isAccidentalRun(r),
   ).length;
-  if (skipped)
+  if (skipped) {
+    const word =
+      skipped === 1 ? tr('Fehlstart', 'false start') : tr('Fehlstarts', 'false starts');
     lines.push(
-      `- Nicht mitgezählt: ${skipped} Fehlstart${skipped === 1 ? '' : 's'} (unter 60 s und unter 100 m)`,
+      `- ${tr('Nicht mitgezählt', 'Not counted')}: ${skipped} ${word} ${tr(
+        '(unter 60 s und unter 100 m)',
+        '(under 60 s and under 100 m)',
+      )}`,
     );
+  }
   if (history.length) {
     const windowStats = (days: number) => {
       const from = run.startTime - days * DAY;
       const runs = history.filter(r => r.startTime >= from);
       const km = runs.reduce((a, r) => a + r.distanceMeters, 0) / 1000;
-      return `${runs.length} ${
-        runs.length === 1 ? 'Einheit' : 'Einheiten'
-      }, ${fmt(km, 1)} km`;
+      const count =
+        runs.length === 1 ? tr('Einheit', 'workout') : tr('Einheiten', 'workouts');
+      return `${runs.length} ${count}, ${fmt(km, 1)} km`;
     };
-    lines.push(`- Vorher in den letzten 7 Tagen: ${windowStats(7)}`);
-    lines.push(`- Vorher in den letzten 28 Tagen: ${windowStats(28)}`);
+    lines.push(
+      `- ${tr('Vorher in den letzten 7 Tagen', 'Before, in the last 7 days')}: ${windowStats(7)}`,
+    );
+    lines.push(
+      `- ${tr('Vorher in den letzten 28 Tagen', 'Before, in the last 28 days')}: ${windowStats(28)}`,
+    );
     const previous = history.reduce((best, r) =>
       r.startTime > best.startTime ? r : best,
     );
     lines.push(
-      `- Letzte Einheit davor: ${dateTime.format(
-        new Date(previous.startTime),
+      `- ${tr('Letzte Einheit davor', 'Last workout before')}: ${dateTime(
+        previous.startTime,
       )} · ${fmt(previous.distanceMeters / 1000, 2)} km · ${formatDuration(
         previous.durationSeconds,
       )}`,
@@ -783,13 +968,16 @@ function routeLines(run: ReportRun): string[] {
   const coord = (p: ReportRoutePoint) =>
     `${fmt(p.latitude, 5)}, ${fmt(p.longitude, 5)}`;
   return [
-    `- Start: ${coord(points[0])}`,
-    `- Ende: ${coord(points[points.length - 1])}`,
-    `- Ausdehnung: ${fmt(Math.min(...lat), 5)}–${fmt(
+    `- ${tr('Start', 'Start')}: ${coord(points[0])}`,
+    `- ${tr('Ende', 'End')}: ${coord(points[points.length - 1])}`,
+    `- ${tr('Ausdehnung', 'Extent')}: ${fmt(Math.min(...lat), 5)}–${fmt(
       Math.max(...lat),
       5,
-    )} N, ${fmt(Math.min(...lon), 5)}–${fmt(Math.max(...lon), 5)} O`,
-    `- ${points.length} gespeicherte Punkte (ausgedünnt); Koordinaten bleiben in der App`,
+    )} N, ${fmt(Math.min(...lon), 5)}–${fmt(Math.max(...lon), 5)} ${tr('O', 'E')}`,
+    tr(
+      `- ${points.length} gespeicherte Punkte (ausgedünnt); Koordinaten bleiben in der App`,
+      `- ${points.length} saved points (thinned); coordinates stay in the app`,
+    ),
   ];
 }
 
@@ -818,7 +1006,10 @@ function historyStats(run: ReportRun, context?: RunReportContext) {
     ? history.reduce((best, r) => (r.startTime > best.startTime ? r : best))
     : undefined;
   return {
-    rule: 'Nur abgeschlossene Einheiten derselben Sportart vor diesem Start; Fehlstarts (< 60 s und < 100 m) ausgeschlossen.',
+    rule: tr(
+      'Nur abgeschlossene Einheiten derselben Sportart vor diesem Start; Fehlstarts (< 60 s und < 100 m) ausgeschlossen.',
+      'Only completed workouts of the same sport before this start; false starts (< 60 s and < 100 m) excluded.',
+    ),
     last7Days: window(7),
     last28Days: window(28),
     previous: previous
@@ -855,8 +1046,10 @@ function timeAndPace(run: ReportRun) {
       : {
           elapsedSeconds: round((run.endTime - run.startTime) / 1000, 0),
           activeSeconds: round(run.durationSeconds, 0),
-          definition:
+          definition: tr(
             'Ohne Phasenerkennung (Altdaten, Import): nur Aufzeichnungszeit ohne Pausen bekannt; keine Bewegungszeit.',
+            'Without phase detection (old data, import): only recorded time without pauses is known; no moving time.',
+          ),
         },
     pace: {
       activeSecondsPerKm: pace(
@@ -865,7 +1058,10 @@ function timeAndPace(run: ReportRun) {
       ),
       movingSecondsPerKm: time ? pace(run.distanceMeters, time.movingSeconds) : undefined,
       runningSecondsPerKm: running ? pace(running.meters, running.seconds) : undefined,
-      note: 'runningSecondsPerKm ist das Tempo der als RUN erkannten Phasen und durch die Erkennungsschwelle nach oben verzerrt; es ist keine Easy Pace.',
+      note: tr(
+        'runningSecondsPerKm ist das Tempo der als RUN erkannten Phasen und durch die Erkennungsschwelle nach oben verzerrt; es ist keine Easy Pace.',
+        'runningSecondsPerKm is the pace of the phases detected as RUN and is skewed upward by the detection threshold; it is not an easy pace.',
+      ),
     },
   };
 }
@@ -957,8 +1153,8 @@ function elevationFor(run: ReportRun) {
 }
 
 /**
- * `…_analysis.json`: alles, was eine Auswertung braucht, ohne Zeitreihe und
- * ohne Route. Einheiten: Sekunden, Meter, bpm, /min; Zeiten ISO 8601 (UTC).
+ * `…_analysis.json`: everything an analysis needs, without the time series and
+ * without the route. Units: seconds, meters, bpm, /min; times ISO 8601 (UTC).
  */
 export function buildRunAnalysisExport(input: RunReportInput) {
   const { run, analysis, context } = input;
@@ -1069,7 +1265,7 @@ export function buildRunAnalysisExport(input: RunReportInput) {
   };
 }
 
-/** Kompakter JSON-Anhang des Markdown-Berichts: Zusammenfassung ohne Zeitreihe und Route. */
+/** Compact JSON appendix of the Markdown report: summary without the time series and route. */
 function machineReadable(input: RunReportInput) {
   const { run, analysis, context } = input;
   return {
@@ -1141,18 +1337,23 @@ export function buildRunReport(input: RunReportInput): string {
   const words = sportWords(normalizeSport(run.sport));
   const parts: string[] = [];
   parts.push(
-    `# ${runTitle(run)} — ${words.noun} vom ${dateTime.format(
-      new Date(run.startTime),
+    `# ${runTitle(run)} — ${tr(
+      `${words.noun} vom ${dateTime(run.startTime)}`,
+      `${words.noun} from ${dateTime(run.startTime)}`,
     )}`,
   );
   parts.push(
-    `Exportiert aus Runback am ${dateTime.format(
-      new Date(now),
-    )} · Berichtsformat ${RUN_REPORT_VERSION}. Alle Zeiten in der Zeitzone des Geräts; Zahlen im deutschen Format (Komma als Dezimaltrenner). Fehlende Werte sind als „–“ markiert und wurden nicht geschätzt.`,
+    tr(
+      `Exportiert aus Runback am ${dateTime(now)} · Berichtsformat ${RUN_REPORT_VERSION}. Alle Zeiten in der Zeitzone des Geräts; Zahlen im deutschen Format (Komma als Dezimaltrenner). Fehlende Werte sind als ${quote('–')} markiert und wurden nicht geschätzt.`,
+      `Exported from Runback on ${dateTime(now)} · report format ${RUN_REPORT_VERSION}. All times in the device time zone; numbers in English format (point as decimal separator). Missing values are marked ${quote('–')} and were not estimated.`,
+    ),
   );
 
   parts.push(
-    `## Überblick\n\n${table(['Kennzahl', 'Wert'], overviewRows(run))}`,
+    `## ${tr('Überblick', 'Overview')}\n\n${table(
+      [tr('Kennzahl', 'Metric'), tr('Wert', 'Value')],
+      overviewRows(run),
+    )}`,
   );
 
   const impression = impressionLines(run, context);
@@ -1163,7 +1364,10 @@ export function buildRunReport(input: RunReportInput): string {
   if (phases) {
     const metrics = phaseMetricLines(run);
     parts.push(
-      `## Bewegungsphasen\n\nErkannt aus Schrittfrequenz, Tempo und Beschleunigung über 15-s-Fenster; eine Phase dauert mindestens 20 s. „Pause“ hat der Nutzer ausgelöst, „Unbekannt“ heißt: keine Daten, die Bewegung oder Stillstand belegen.\n\n${phases}${
+      `## ${tr('Bewegungsphasen', 'Movement phases')}\n\n${tr(
+        `Erkannt aus Schrittfrequenz, Tempo und Beschleunigung über 15-s-Fenster; eine Phase dauert mindestens 20 s. ${quote('Pause')} hat der Nutzer ausgelöst, ${quote('Unbekannt')} heißt: keine Daten, die Bewegung oder Stillstand belegen.`,
+        `Detected from step rate, pace and acceleration over 15-second windows; a phase lasts at least 20 s. ${quote('Pause')} was set by the user; ${quote('Unknown')} means no data that shows movement or standing still.`,
+      )}\n\n${phases}${
         metrics.length ? `\n\n${metrics.join('\n')}` : ''
       }`,
     );
@@ -1172,7 +1376,10 @@ export function buildRunReport(input: RunReportInput): string {
   const segments = segmentTable(run);
   if (segments) {
     parts.push(
-      `## Kilometer-Abschnitte\n\nAbschnitte enden bei jedem vollen Kilometer oder an einer Pause; der letzte ist meist kürzer. GPS-Lücken bleiben im Abschnitt und stehen als eigene Spalte.\n\n${segments}`,
+      `## ${tr('Kilometer-Abschnitte', 'Kilometer splits')}\n\n${tr(
+        'Abschnitte enden bei jedem vollen Kilometer oder an einer Pause; der letzte ist meist kürzer. GPS-Lücken bleiben im Abschnitt und stehen als eigene Spalte.',
+        'Segments end at each whole kilometer or at a pause; the last one is usually shorter. GPS gaps stay within the segment and appear in their own column.',
+      )}\n\n${segments}`,
     );
   }
 
@@ -1180,29 +1387,39 @@ export function buildRunReport(input: RunReportInput): string {
     const rows = timelineTable(run, timeline);
     if (rows) {
       parts.push(
-        `## Zeitverlauf\n\nFenster von je ${formatDuration(
-          timeline.stepSeconds,
-        )} min (m:ss) seit dem Start, Pausen eingeschlossen. Tempo bezieht sich nur auf Sekunden mit gültigen GPS-Schritten im Fenster; Fenster ohne Messwerte fehlen. Die feine 5-s-Zeitreihe liegt in der CSV-Datei.\n\n${rows}`,
+        `## ${tr('Zeitverlauf', 'Time course')}\n\n${tr(
+          `Fenster von je ${formatDuration(
+            timeline.stepSeconds,
+          )} min (m:ss) seit dem Start, Pausen eingeschlossen. Tempo bezieht sich nur auf Sekunden mit gültigen GPS-Schritten im Fenster; Fenster ohne Messwerte fehlen. Die feine 5-s-Zeitreihe liegt in der CSV-Datei.`,
+          `Windows of ${formatDuration(
+            timeline.stepSeconds,
+          )} min (m:ss) each since the start, pauses included. Pace only counts seconds with valid GPS steps in the window; windows without measurements are left out. The fine 5-second time series is in the CSV file.`,
+        )}\n\n${rows}`,
       );
     }
   }
 
   const events = eventLines(run);
-  if (events.length) parts.push(`## Ereignisse\n\n${events.join('\n')}`);
+  if (events.length)
+    parts.push(`## ${tr('Ereignisse', 'Events')}\n\n${events.join('\n')}`);
 
   if (analysis)
     parts.push(
-      `## Auswertung durch Runback\n\n${analysisLines(run, analysis).join('\n')}`,
+      `## ${tr('Auswertung durch Runback', 'Analysis by Runback')}\n\n${analysisLines(run, analysis).join('\n')}`,
     );
 
   const ctx = contextLines(run, context);
-  if (ctx.length) parts.push(`## Trainingskontext\n\n${ctx.join('\n')}`);
+  if (ctx.length)
+    parts.push(`## ${tr('Trainingskontext', 'Training context')}\n\n${ctx.join('\n')}`);
 
   const route = routeLines(run);
-  if (route.length) parts.push(`## Strecke\n\n${route.join('\n')}`);
+  if (route.length) parts.push(`## ${tr('Strecke', 'Route')}\n\n${route.join('\n')}`);
 
   parts.push(
-    `## Daten als JSON\n\nZusammenfassung maschinenlesbar. Zeiten als ISO 8601 (UTC), Strecken in Metern, Dauern in Sekunden. Phasen, Lücken und Ereignisse stehen vollständig in der Datei „…_analysis.json“, die Zeitreihe in „…_timeseries.csv“.\n\n\`\`\`json\n${JSON.stringify(
+    `## ${tr('Daten als JSON', 'Data as JSON')}\n\n${tr(
+      `Zusammenfassung maschinenlesbar. Zeiten als ISO 8601 (UTC), Strecken in Metern, Dauern in Sekunden. Phasen, Lücken und Ereignisse stehen vollständig in der Datei ${quote('…_analysis.json')}, die Zeitreihe in ${quote('…_timeseries.csv')}.`,
+      `Machine-readable summary. Times as ISO 8601 (UTC), distances in meters, durations in seconds. Phases, gaps and events are listed in full in the file ${quote('…_analysis.json')}, the time series in ${quote('…_timeseries.csv')}.`,
+    )}\n\n\`\`\`json\n${JSON.stringify(
       machineReadable(input),
       null,
       1,
@@ -1211,7 +1428,7 @@ export function buildRunReport(input: RunReportInput): string {
   return parts.join('\n\n') + '\n';
 }
 
-/** Dateiname ohne Sonderzeichen: Datum, Uhrzeit und Titel. */
+/** File name without special characters: date, time and title. */
 export function runReportFileName(run: ReportRun): string {
   return `${runExportBaseName(run)}.md`;
 }
@@ -1221,6 +1438,7 @@ export function runExportBaseName(run: ReportRun): string {
   const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
     d.getDate(),
   )}_${pad(d.getHours())}-${pad(d.getMinutes())}`;
+  // Umlauts become plain letters so German titles still give ASCII file names.
   const slug = runTitle(run)
     .toLowerCase()
     .replace(/ä/g, 'ae')
@@ -1232,7 +1450,7 @@ export function runExportBaseName(run: ReportRun): string {
     .slice(0, 40);
   return `runback_${stamp}${slug ? `_${slug}` : ''}`;
 }
-/** Die drei Exportdateien eines Laufs. */
+/** The three export files of a run. */
 export function runExportFileNames(run: ReportRun) {
   const base = runExportBaseName(run);
   return {
