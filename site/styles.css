@@ -175,7 +175,8 @@ section { border-top: 1px solid var(--line); padding: 120px 0; }
   background: #000;
 }
 .watches .watch:nth-child(2) { width: 230px; }
-@media (max-width: 560px) { .watch, .watches .watch:nth-child(2) { width: 160px; } }
+.watches.big .watch, .watches.big .watch:nth-child(2) { width: 250px; }
+@media (max-width: 560px) { .watch, .watches .watch:nth-child(2), .watches.big .watch, .watches.big .watch:nth-child(2) { width: 148px; } }
 
 /* ---------- Import-Quellen ---------- */
 .sources {

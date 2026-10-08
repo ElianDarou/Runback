@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Runback – Running and strength training, open and local</title>
-<meta name="description" content="Runback is an open Android app with a Wear OS watch app. It records runs and strength training, imports your history and shows how your training develops – no account, no cloud, no ads.">
+<title>Runback: Running and strength training, open and local</title>
+<meta name="description" content="Runback is an open Android app with a Wear OS watch app. It records your runs and your gym sessions, takes over your history from other apps and shows you how your training develops. No account, no cloud, no subscription.">
 <meta name="theme-color" content="#0c0d0c">
-<meta property="og:title" content="Runback – Running and strength training">
+<meta property="og:title" content="Runback: Running and strength training">
 <meta property="og:description" content="Open Android app with a Wear OS watch app. Everything recorded, everything on your phone.">
 <meta property="og:type" content="website">
 <link rel="canonical" href="https://runback-training.vercel.app/en">
@@ -38,13 +38,13 @@
 <header class="hero">
   <div class="wrap">
     <h1>Running and strength training.<br>Everything recorded.<br><span>Everything on your phone.</span></h1>
-    <p class="lead">Runback is an open Android app with a Wear OS watch app. It records runs and sets, imports your old history and shows how your training develops.</p>
+    <p class="lead">Runback is an open Android app with a Wear OS watch app. It records your runs and your gym sessions and shows you how your training develops.</p>
     <div class="cta">
       <a class="btn primary" data-download="phone" href="https://github.com/GhostCodeByte/Runback/releases">Download for Android</a>
       <a class="btn" href="https://github.com/GhostCodeByte/Runback">View source <span aria-hidden="true">↗</span></a>
     </div>
     <ul class="checks inline">
-      <li>No account</li><li>No cloud</li><li>No ads</li><li>Free</li>
+      <li>No account</li><li>No cloud</li><li>No subscription</li><li>No ads</li>
     </ul>
   </div>
   <div class="hero-shots wrap">
@@ -58,9 +58,36 @@
 <section class="feature">
   <div class="wrap split">
     <div class="copy">
+      <p class="eyebrow">Switching</p>
+      <h2>Don't start from zero.</h2>
+      <p class="sub">Coming from another app? Export your data there and import it into Runback. That way you start right away with your whole history instead of an empty app.</p>
+      <div class="sources">
+        <div><b>Garmin</b><code>FIT · GPX · ZIP</code></div>
+        <div><b>Strava</b><code>Data export</code></div>
+        <div><b>Fitbit</b><code>Takeout · TCX</code></div>
+        <div><b>Google Fit</b><code>Takeout</code></div>
+        <div><b>Apple Health</b><code>export.zip</code></div>
+        <div><b>Samsung Health</b><code>ZIP · GPX</code></div>
+        <div><b>Mi Fitness</b><code>GPX · CSV</code></div>
+        <div><b>Polar</b><code>TCX · GPX</code></div>
+        <div><b>Strong</b><code>strong.csv</code></div>
+      </div>
+      <ul class="checks inline small">
+        <li>Review first, then take over</li><li>Duplicate runs are detected</li><li>Each import can be deleted on its own</li>
+      </ul>
+    </div>
+    <div class="single">
+      <img class="shot" src="/shots/import.webp" width="594" height="1320" loading="lazy" alt="Review import: 41 new runs and 21 new strength sessions, take over 62 entries">
+    </div>
+  </div>
+</section>
+
+<section class="feature">
+  <div class="wrap split reverse">
+    <div class="copy">
       <p class="eyebrow">Running</p>
       <h2>Every run, complete.</h2>
-      <p class="sub">Route, pace, heart rate and cadence — recorded by the phone, the watch or a chest strap. Afterwards you see every kilometre.</p>
+      <p class="sub">Route, pace, heart rate and cadence, recorded by the phone, the watch or a chest strap. Afterwards you see every kilometre.</p>
       <ul class="checks">
         <li>GPS route on the map, also in the background</li>
         <li>Pace, heart rate and cadence over distance or time</li>
@@ -77,11 +104,30 @@
 </section>
 
 <section class="feature">
+  <div class="wrap split">
+    <div class="copy">
+      <p class="eyebrow">In context</p>
+      <h2>Every run, put in relation.</h2>
+      <p class="sub">Runback compares every run with the median of your recent runs and shows you in numbers how it went: faster or slower, with a higher or lower heart rate, more efficient or not.</p>
+      <ul class="checks">
+        <li>Pace, heart rate, metres per heartbeat, cadence and pace fade</li>
+        <li>The gap to your baseline for every number, with an arrow for better or worse</li>
+        <li>On the same route: how many times you ran it and the gap to last time</li>
+        <li>Heart rate at the same pace compared with your usual level</li>
+      </ul>
+    </div>
+    <div class="single">
+      <img class="shot" src="/shots/vergleich.webp" width="594" height="1320" loading="lazy" alt="Compared with you: pace 4:43 per kilometre, 7 seconds faster than the baseline, plus heart rate, metres per heartbeat, cadence and pace fade">
+    </div>
+  </div>
+</section>
+
+<section class="feature">
   <div class="wrap split reverse">
     <div class="copy">
       <p class="eyebrow">Strength training</p>
-      <h2>Every set, traceable.</h2>
-      <p class="sub">Weight and reps for each set, compared with your last sessions. So you see whether an exercise is really moving forward.</p>
+      <h2>Every gym session, traceable.</h2>
+      <p class="sub">Exercises, weights and reps, compared with your last sessions. So you see whether an exercise is really moving forward.</p>
       <ul class="checks">
         <li>Tick off sets, with a rest timer</li>
         <li>Each exercise compared with your last sessions</li>
@@ -97,15 +143,53 @@
   </div>
 </section>
 
+<section class="feature">
+  <div class="wrap split">
+    <div class="copy">
+      <p class="eyebrow">Detected automatically</p>
+      <h2>Your watch counts along.</h2>
+      <p class="sub">Wear the watch while you train. It recognises the exercise, counts your reps and notices when a set is done. You take a quick look and confirm.</p>
+      <ul class="checks">
+        <li>The exercise is recognised</li>
+        <li>Reps are counted live</li>
+        <li>The end of a set is detected, the rest starts once you confirm</li>
+        <li>Fix the number with + and − before it is saved</li>
+      </ul>
+    </div>
+    <div class="watches big">
+      <img class="watch" src="/shots/w-zaehlt.webp" width="384" height="384" loading="lazy" alt="Watch during bench press: set 2 of 4, 60 kg times 8, counting along, 4 reps">
+      <img class="watch" src="/shots/w-erkannt.webp" width="384" height="384" loading="lazy" alt="Watch after the set: set detected, bench press, 8 reps, confirm">
+    </div>
+  </div>
+</section>
+
 <section class="feature center">
   <div class="wrap">
     <p class="eyebrow">Statistics</p>
-    <h2>Week by week.</h2>
-    <p class="sub">Distance, time, sets and volume over four weeks, twelve weeks or everything. Personal bests lead straight to the session they come from.</p>
+    <h2>Every statistic. No subscription.</h2>
+    <p class="sub">Runback shows you everything that can be calculated from your data and goes deep. None of it sits behind a subscription, as you might know it from Strava.</p>
     <div class="trio">
       <img class="shot" src="/shots/statistik-laufen.webp" width="594" height="1320" loading="lazy" alt="Running statistics: 273 km, 41 runs, 25 hours in 12 weeks, weekly chart">
       <img class="shot" src="/shots/bestwerte.webp" width="594" height="1320" loading="lazy" alt="Personal bests: longest run, longest duration, fastest run from 5 km, strongest week">
       <img class="shot" src="/shots/statistik-kraft.webp" width="594" height="1320" loading="lazy" alt="Strength statistics: 21 sessions, 294 sets, weekly chart">
+    </div>
+  </div>
+</section>
+
+<section class="feature">
+  <div class="wrap split reverse">
+    <div class="copy">
+      <p class="eyebrow">Reports</p>
+      <h2>Ask the AI of your choice.</h2>
+      <p class="sub">Export your runs as a report with analysis and time series, and your strength training with sets, heart rate and motion data. Hand the files to ChatGPT or another AI chat and have your training analysed.</p>
+      <ul class="checks">
+        <li>Share single runs directly, whole periods as a ZIP</li>
+        <li>A report to read, the analysis as JSON, the time series as CSV</li>
+        <li>Strength training with sets, heart rate and motion data from the watch</li>
+      </ul>
+    </div>
+    <div class="single">
+      <img class="shot" src="/shots/export.webp" width="594" height="1320" loading="lazy" alt="Your data: export run reports for a period and export strength training as a ZIP, for spreadsheets or a language model">
     </div>
   </div>
 </section>
@@ -119,7 +203,7 @@
       <ul class="checks">
         <li>Record runs with just the watch, with GPS and heart rate</li>
         <li>Control strength training from your wrist while the phone is connected</li>
-        <li>Detect the end of a set and reps for selected exercises</li>
+        <li>Live heart rate on the watch during strength training</li>
         <li>If the watch switches off, what you recorded so far is kept</li>
       </ul>
     </div>
@@ -127,33 +211,6 @@
       <img class="watch" src="/shots/w-lauf.webp" width="384" height="384" loading="lazy" alt="Watch during a run: 1:12, 0.24 km, heart rate 163">
       <img class="watch" src="/shots/w-kraft2.webp" width="384" height="384" loading="lazy" alt="Watch during strength training: set 1 of 3, 32 kg times 8 reps, set done">
       <img class="watch" src="/shots/w-start.webp" width="384" height="384" loading="lazy" alt="Watch home screen: continue strength training or start a run">
-    </div>
-  </div>
-</section>
-
-<section class="feature">
-  <div class="wrap split reverse">
-    <div class="copy">
-      <p class="eyebrow">Import</p>
-      <h2>Your history comes along.</h2>
-      <p class="sub">Export there, import here. Runback first shows what would be new and only takes it over once you say okay.</p>
-      <div class="sources">
-        <div><b>Garmin</b><code>FIT · GPX · ZIP</code></div>
-        <div><b>Strava</b><code>Data export</code></div>
-        <div><b>Fitbit</b><code>Takeout · TCX</code></div>
-        <div><b>Google Fit</b><code>Takeout</code></div>
-        <div><b>Apple Health</b><code>export.zip</code></div>
-        <div><b>Samsung Health</b><code>ZIP · GPX</code></div>
-        <div><b>Mi Fitness</b><code>GPX · CSV</code></div>
-        <div><b>Polar</b><code>TCX · GPX</code></div>
-        <div><b>Strong</b><code>strong.csv</code></div>
-      </div>
-      <ul class="checks inline small">
-        <li>Duplicate runs are detected</li><li>Each import can be deleted on its own</li>
-      </ul>
-    </div>
-    <div class="single">
-      <img class="shot" src="/shots/import.webp" width="594" height="1320" loading="lazy" alt="Review import: 41 new runs and 21 new strength sessions, take over 62 entries">
     </div>
   </div>
 </section>
@@ -173,7 +230,7 @@
 </section>
 
 <section class="feature">
-  <div class="wrap split">
+  <div class="wrap split reverse">
     <div class="copy">
       <p class="eyebrow">Coach · optional</p>
       <h2>One suggestion, when the data supports it.</h2>
