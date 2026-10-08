@@ -17,6 +17,7 @@ import android.os.Vibrator
 import com.google.android.gms.tasks.Tasks
 import com.google.android.gms.wearable.Wearable
 import androidx.wear.remote.interactions.RemoteActivityHelper
+import com.runback.core.DisplayNames
 import com.runback.core.Lang
 import com.runback.core.RestCue
 import com.runback.core.RunStore
@@ -118,6 +119,18 @@ object StrengthMirror {
         listener?.invoke()
     }
 
+    /**
+     * Visible names. The phone sends them in its language (`displayName`); the
+     * stored name is only the fallback, and stored names never change here.
+     */
+    fun exerciseTitle(exercise: JSONObject?): String? =
+        exercise?.optString("displayName")?.takeIf { it.isNotBlank() }
+            ?: exercise?.optString("name")?.takeIf { it.isNotBlank() }?.let { DisplayNames.exercise(it) }
+
+    fun sessionTitle(state: JSONObject): String =
+        state.optString("displayName").takeIf { it.isNotBlank() }
+            ?: DisplayNames.session(state.optString("name", "Krafttraining"))
+
     /** Running state, or `null` if nothing runs or the phone is silent. */
     fun current(context: Context): JSONObject? {
         val state = RunStore(context).getDocument(DOC) ?: return null
@@ -214,7 +227,7 @@ object StrengthMirror {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val builder = Notification.Builder(context, CHANNEL)
             .setSmallIcon(R.drawable.ic_runback)
-            .setContentTitle(exercise?.optString("name")?.takeIf { it.isNotBlank() } ?: state.optString("name", Lang.tr("Krafttraining", "Strength training")))
+            .setContentTitle(exerciseTitle(exercise) ?: sessionTitle(state))
             .setContentText(text)
             .setOngoing(true)
             .setOnlyAlertOnce(true)

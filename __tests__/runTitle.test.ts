@@ -35,6 +35,15 @@ describe('isMeaningfulRunName', () => {
     expect(isMeaningfulRunName('Afternoon Run')).toBe(false);
     expect(isMeaningfulRunName('activity')).toBe(false);
   });
+
+  it('rejects the placeholders from imports made in English', () => {
+    expect(isMeaningfulRunName('Garmin run')).toBe(false);
+    expect(isMeaningfulRunName('Garmin Lauf')).toBe(false);
+    expect(isMeaningfulRunName('Apple Health run')).toBe(false);
+    expect(isMeaningfulRunName('Google Fit run')).toBe(false);
+    expect(isMeaningfulRunName('Mi Fitness activity')).toBe(false);
+    expect(isMeaningfulRunName('Samsung Health run')).toBe(false);
+  });
 });
 
 describe('dayPartTitle', () => {

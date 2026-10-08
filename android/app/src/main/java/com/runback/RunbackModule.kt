@@ -19,6 +19,7 @@ import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.facebook.react.modules.core.PermissionAwareActivity
 import com.facebook.react.modules.core.PermissionListener
+import com.runback.core.DisplayNames
 import com.runback.core.RunStore
 import com.runback.core.RecordingService
 import com.runback.core.BleSensors
@@ -169,6 +170,11 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     }
     @ReactMethod fun getStrengthSessions(limit: Int, promise: Promise) = task(promise) {
         JSONObject().put("sessions", store.strengthSessions(limit)).put("imports", store.strengthImports(limit))
+    }
+    // Display-only: the language and the catalog names the native surfaces show; stored names never change.
+    @ReactMethod fun setDisplayNames(json: String, promise: Promise) = task(promise) {
+        DisplayNames.update(store, JSONObject(json))
+        JSONObject().put("saved", true)
     }
     @ReactMethod fun saveStrengthTemplates(json: String, promise: Promise) = task(promise) {
         store.putDocument("strength_templates", JSONObject().put("templates", JSONArray(json)))

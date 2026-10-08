@@ -46,6 +46,7 @@ jest.mock('../src/native', () => {
       ),
       strengthSessions: jest.fn(() => Promise.resolve([])),
       sorenessReports: jest.fn(() => Promise.resolve([])),
+      setDisplayNames: jest.fn(() => Promise.resolve()),
       saveStrengthSession: jest.fn(() => Promise.resolve()),
       finishStrengthSession: jest.fn(() =>
         Promise.resolve(emptyStrengthState()),

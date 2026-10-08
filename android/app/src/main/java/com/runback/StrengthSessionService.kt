@@ -25,6 +25,7 @@ import android.os.Vibrator
 import android.util.Log
 import com.google.android.gms.tasks.Tasks
 import com.google.android.gms.wearable.Wearable
+import com.runback.core.DisplayNames
 import com.runback.core.Lang
 import com.runback.core.RestCue
 import com.runback.core.RunStore
@@ -204,7 +205,8 @@ class StrengthSessionService : Service() {
         val set = mirror.optJSONObject("set")
         val rest = mirror.optJSONObject("rest")
         val sessionId = mirror.optString("sessionId")
-        val title = exercise?.optString("name")?.takeIf { it.isNotBlank() } ?: mirror.optString("name", Lang.tr("Krafttraining", "Strength training"))
+        val title = exercise?.optString("name")?.takeIf { it.isNotBlank() }?.let { DisplayNames.exercise(it) }
+            ?: DisplayNames.session(mirror.optString("name", "Krafttraining"))
         val text = when {
             set != null -> Lang.tr("Satz ${set.optInt("number")} von ${exercise?.optInt("total")} · ${set.optString("label")}",
                 "Set ${set.optInt("number")} of ${exercise?.optInt("total")} · ${set.optString("label")}")

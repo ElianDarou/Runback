@@ -255,6 +255,8 @@ object StrengthLive {
     /**
      * Small status for the watch and notification: current exercise, next set
      * with its values, rest. The session's raw values stay on the phone.
+     * `name` stays the stored name (the watch writes it into its history);
+     * `displayName` fields carry the names in the phone's language for the watch.
      */
     fun mirror(session: JSONObject, history: List<JSONObject>, now: Long, restTimer: Boolean): JSONObject {
         val list = exercises(session)
@@ -267,7 +269,7 @@ object StrengthLive {
             completedSets += progress.completed
             totalSets += progress.total
             if (index < MAX_MIRRORED_EXERCISES) summaries.put(JSONObject()
-                .put("name", exercise.optString("name"))
+                .put("name", exercise.optString("name")).put("displayName", DisplayNames.exercise(exercise.optString("name")))
                 .put("completed", progress.completed).put("total", progress.total).put("done", progress.done))
         }
         val result = JSONObject()
@@ -275,6 +277,7 @@ object StrengthLive {
             .put("active", session.optString("status") == "active")
             .put("sessionId", session.optString("id"))
             .put("name", session.optString("name"))
+            .put("displayName", DisplayNames.session(session.optString("name")))
             .put("startTime", session.optLong("startTime"))
             .put("updatedAt", now)
             .put("revision", session.optString("revision"))
@@ -287,7 +290,7 @@ object StrengthLive {
         list.getOrNull(current)?.let { exercise ->
             val progress = progress(exercise)
             result.put("exercise", JSONObject()
-                .put("index", current).put("name", exercise.optString("name"))
+                .put("index", current).put("name", exercise.optString("name")).put("displayName", DisplayNames.exercise(exercise.optString("name")))
                 .put("exerciseId", exercise.optString("exerciseId"))
                 .put("completed", progress.completed).put("total", progress.total).put("done", progress.done))
             activeSet(exercise)?.let { set ->

@@ -151,6 +151,25 @@ class StrengthLiveTest {
         assertFalse(StrengthLive.mirror(workout, emptyList(), 31_000L, restTimer = false).has("rest"))
     }
 
+    @Test fun mirrorKeepsStoredNamesAndCarriesTheNamesOfThePhoneLanguage() {
+        val store = FakeDocuments()
+        val english = JSONObject().put("language", "en").put("names", JSONObject().put("Bankdrücken", "Bench press"))
+        DisplayNames.update(store, english)
+        try {
+            Lang.set("en")
+            val workout = session(exercise("bench", "Bankdrücken", set("a", planned(reps = 8))))
+                .put("name", "Freies Training")
+            val mirror = StrengthLive.mirror(workout, emptyList(), 1_000L, restTimer = false)
+            assertEquals("Freies Training", mirror.getString("name"))
+            assertEquals("Free training", mirror.getString("displayName"))
+            assertEquals("Bankdrücken", mirror.getJSONObject("exercise").getString("name"))
+            assertEquals("Bench press", mirror.getJSONObject("exercise").getString("displayName"))
+        } finally {
+            Lang.set("de")
+            DisplayNames.update(store, JSONObject().put("language", "de").put("names", JSONObject()))
+        }
+    }
+
     @Test fun labelsFollowTheAppWording() {
         val bodyweight = set("a", JSONObject().put("kind", "normal").put("loadKind", "bodyweight").put("reps", 12))
         assertEquals("Eigengewicht × 12 Wdh.", StrengthLive.label(bodyweight, StrengthLive.Prefill(null, 12, null)))

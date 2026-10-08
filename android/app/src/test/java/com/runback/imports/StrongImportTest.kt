@@ -1,5 +1,6 @@
 package com.runback.imports
 
+import com.runback.core.Lang
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.File
@@ -45,6 +46,20 @@ class StrongImportTest {
         assertEquals(60.0, sets.first().restSeconds!!, 0.0)
         assertEquals(0, result.skipped)
         assertFalse(JSONObject(result.workouts.first().extra).getBoolean("durationKnown"))
+    }
+    @Test fun unnamedWorkoutKeepsItsIdentityInEveryLanguage() {
+        val csv = "$header\n2024-01-01 18:00:00;;Squat;1;20;8;;\n"
+        try {
+            Lang.set("de")
+            val german = VendorImports.parseStrongCsv(csv, "strong").workouts.single()
+            Lang.set("en")
+            val english = VendorImports.parseStrongCsv(csv, "strong").workouts.single()
+            assertEquals("Krafttraining", german.name)
+            assertEquals(german.name, english.name)
+            assertEquals(german.id, english.id)
+        } finally {
+            Lang.set("de")
+        }
     }
     @Test fun unknownUnitsStayUnknownAndPoundsRemainOriginal() {
         val csv = "Date;Exercise Name;Set Order;Weight;Reps\n2024-01-01 18:00:00;Squat;1;100;8"

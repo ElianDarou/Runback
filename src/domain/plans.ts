@@ -8,8 +8,8 @@ import type {
   TemplateExercise,
   WorkoutTemplate,
 } from './strength';
-import { displaySessionName } from './strength';
 import { tr } from './i18n';
+import { displaySessionName } from './strength';
 
 /**
  * Training plans.
@@ -324,6 +324,7 @@ export function duplicateTemplate(
   const copy: WorkoutTemplate = {
     ...source,
     id: uniqueId(templates, `template-${now.toString(36)}`),
+    // A new name the user owns; created in the language of the moment.
     name: tr(`${source.name} (Kopie)`, `${source.name} (copy)`),
     days: [],
     createdAt: now,

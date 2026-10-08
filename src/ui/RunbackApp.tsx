@@ -1,7 +1,7 @@
 import { ServerSettings } from './ServerSettings';
 import { ConnectionMark } from './components';
 import { serverMark, serverStateLabel, type ServerLinkStatus } from '../domain/serverLink';
-import { exerciseDisplayName } from '../domain/catalog';
+import { exerciseDisplayName, nativeDisplayNames } from '../domain/catalog';
 import React, {
   memo,
   useCallback,
@@ -643,6 +643,11 @@ export function RunbackApp({
     ? state.settings.language
     : deviceLanguage();
   setLanguage(language);
+  // The watch and notifications have no JS of their own: they get the names
+  // of this language whenever it is set or changes.
+  useEffect(() => {
+    void native.setDisplayNames(language, nativeDisplayNames(language).names).catch(() => {});
+  }, [language]);
   const [serverStatus, setServerStatus] = useState<ServerLinkStatus | null>(null);
   useEffect(() => {
     let alive = true;

@@ -23,7 +23,9 @@ import {
 } from './regions';
 import { quote, tr } from './i18n';
 
-export const SORENESS_LEXICON_VERSION = 'soreness-lexicon-v1';
+// v2 adds English input: English fillers, side and intensity words. Reports
+// keep the version they were evaluated with.
+export const SORENESS_LEXICON_VERSION = 'soreness-lexicon-v2';
 
 /** A proposed entry. Value 0–10, as the user reported it. */
 export interface SorenessProposal {
@@ -396,8 +398,25 @@ const FILLER = new Set([
   'some',
   'just',
   'yesterday',
+  'today',
+  'tonight',
+  'now',
+  'this',
+  'morning',
   'little',
   'bit',
+  'kind',
+  'think',
+  'about',
+  'around',
+  'maybe',
+  'probably',
+  'is',
+  'be',
+  'been',
+  'there',
+  'and',
+  'or',
   'very',
   'really',
   'quite',

@@ -3,7 +3,7 @@ import type {
   MotionWrist,
   Run,
 } from './domain/trainingRecords';
-import { tr } from './domain/i18n';
+import { tr, type Language } from './domain/i18n';
 export type {
   Preset,
   Settings,
@@ -324,6 +324,16 @@ export const native = {
     return normalizeStrength(
       await nativeCall<any>('saveStrengthTemplates', JSON.stringify(templates)),
     );
+  },
+  /**
+   * Names the phone and watch show in `language`. Display only: stored names
+   * and exports never use this map. Sent on start and whenever the language changes.
+   */
+  async setDisplayNames(
+    language: Language,
+    names: Record<string, string>,
+  ): Promise<void> {
+    await nativeCall('setDisplayNames', JSON.stringify({ language, names }));
   },
   /** `conflict`: the watch or notification was faster; `active` is its state. */
   async saveStrengthSession(

@@ -237,10 +237,11 @@ describe('Session names on display', () => {
     expect(displaySessionName('Push day')).toBe('Push day');
   });
 
-  it('does not change the stored name of a new session', () => {
+  it('stores the default name of a new session in German, whatever the language', () => {
     setLanguage('en');
     const session = startSession(null, 5);
-    expect(session.name).toBe('Free training');
+    expect(session.name).toBe('Freies Training');
+    expect(displaySessionName(session.name)).toBe('Free training');
     setLanguage('de');
     expect(displaySessionName(session.name)).toBe('Freies Training');
   });

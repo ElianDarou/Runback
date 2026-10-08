@@ -1,7 +1,9 @@
 import {
+  CATALOG,
   catalogExercise,
   exerciseDisplayName,
   exerciseName,
+  nativeDisplayNames,
 } from '../src/domain/catalog';
 import { exerciseMuscleLabels } from '../src/domain/catalogData';
 import { setLanguage } from '../src/domain/i18n';
@@ -68,5 +70,40 @@ describe('exercise names', () => {
     expect(exerciseMuscleLabels(exercise)).toEqual(['Schultern']);
     setLanguage('en');
     expect(exerciseMuscleLabels(exercise)).toEqual(['Shoulders']);
+  });
+});
+
+describe('native display names', () => {
+  afterEach(() => setLanguage('de'));
+
+  it('sends no names in German, where stored and visible names are the same', () => {
+    expect(nativeDisplayNames('de')).toEqual({ language: 'de', names: {} });
+  });
+
+  it('maps every stored German catalog name to its English name', () => {
+    const { language, names } = nativeDisplayNames('en');
+    expect(language).toBe('en');
+    expect(names['Kniebeuge (Langhantel)']).toBe('Back squat (barbell)');
+    expect(names['Beinpresse']).toBe('Leg press');
+    for (const [stored, display] of Object.entries(names)) {
+      expect(CATALOG.some(exercise => exercise.name === stored)).toBe(true);
+      expect(display).not.toBe(stored);
+    }
+  });
+
+  it('only includes names that differ, so the payload stays bounded', () => {
+    const differing = CATALOG.filter(
+      exercise => exercise.en && exercise.en !== exercise.name,
+    ).length;
+    expect(Object.keys(nativeDisplayNames('en').names).length).toBeLessThanOrEqual(
+      differing,
+    );
+    expect(Object.keys(nativeDisplayNames('en').names).length).toBeGreaterThan(0);
+  });
+
+  it('defaults to the active language', () => {
+    setLanguage('en');
+    expect(nativeDisplayNames().language).toBe('en');
+    expect(nativeDisplayNames().names['Beinpresse']).toBe('Leg press');
   });
 });

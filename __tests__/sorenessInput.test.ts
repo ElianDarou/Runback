@@ -48,6 +48,35 @@ describe('Soreness input', () => {
     });
   });
 
+  it('reads full English utterances without asking about filler words', () => {
+    expect(parseSoreness('left calf three today')).toMatchObject({
+      proposals: [{ regionId: 'calf_gastroc_l', value: 3 }],
+      questions: [],
+    });
+    expect(parseSoreness('my right quad is about five')).toMatchObject({
+      proposals: [{ regionId: 'quad_r', value: 5 }],
+      questions: [],
+    });
+    expect(parseSoreness('I think my left calf is a little strong')).toMatchObject({
+      proposals: [{ regionId: 'calf_gastroc_l', value: 8 }],
+      questions: [],
+    });
+  });
+
+  it('treats English “nothing today” as a confirmed answer', () => {
+    expect(parseSoreness('nothing today')).toMatchObject({
+      nothingToday: true,
+      proposals: [],
+      questions: [],
+    });
+  });
+
+  it('records the lexicon version it was evaluated with', () => {
+    expect(parseSoreness('left calf three').lexiconVersion).toBe(
+      'soreness-lexicon-v2',
+    );
+  });
+
   it('discards unknown structured regions instead of inventing them', () => {
     const result = fromStructured([
       { region: 'quad_l', value: 4 },

@@ -1,3 +1,4 @@
+import { setLanguage } from '../src/domain/i18n';
 import {
   addPlannedSet,
   addTemplateExercise,
@@ -211,6 +212,11 @@ describe('Duplicating and deleting', () => {
     expect(list[1].id).not.toBe('template-1');
     list[1].exercises[0].sets[0].reps = 99;
     expect(list[0].exercises[0].sets[0].reps).toBe(5);
+  });
+  it('names the copy in the active language', () => {
+    setLanguage('en');
+    const list = duplicateTemplate([plan()], 'template-1', NOW + 1000);
+    expect(list[1].name).toBe('Unterkörper (copy)');
   });
 
   it('leaves the list untouched when the id is missing', () => {

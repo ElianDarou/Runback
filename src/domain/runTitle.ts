@@ -138,7 +138,8 @@ export function hasNamedPurpose(purpose: RunPurpose | undefined): boolean {
 }
 
 // Names that carry no information. The German entries stay because existing
-// runs may have been imported with them; the English ones are the same idea.
+// runs may have been imported with them; the English ones are the same idea,
+// written by imports made while the app was in English.
 const GENERIC_NAMES = new Set([
   'lauf',
   'laufen',
@@ -162,6 +163,12 @@ const GENERIC_NAMES = new Set([
   'google fit lauf',
   'mi fitness lauf',
   'google health lauf',
+  'garmin run',
+  'apple health run',
+  'google fit run',
+  'mi fitness run',
+  'samsung health run',
+  'mi fitness activity',
   'outdoor run',
   'treadmill run',
   'outdoor lauf',

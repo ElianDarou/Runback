@@ -27,6 +27,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import com.google.android.gms.wearable.Wearable
+import com.runback.core.DisplayNames
 import com.runback.core.Lang
 import com.runback.core.RecordingService
 import com.runback.core.RunStore
@@ -181,8 +182,8 @@ class MainActivity : Activity() {
         if (mirror != null) {
             button(Lang.tr("Krafttraining fortsetzen", "Continue strength training"), true, 8) { page = PAGE_STRENGTH; render() }
             text(Lang.tr(
-                "${mirror.optString("name")} · ${mirror.optInt("completedSets")}/${mirror.optInt("totalSets")} Sätze",
-                "${mirror.optString("name")} · ${mirror.optInt("completedSets")}/${mirror.optInt("totalSets")} sets",
+                "${StrengthMirror.sessionTitle(mirror)} · ${mirror.optInt("completedSets")}/${mirror.optInt("totalSets")} Sätze",
+                "${StrengthMirror.sessionTitle(mirror)} · ${mirror.optInt("completedSets")}/${mirror.optInt("totalSets")} sets",
             ), 12, muted, margin = 4)
         } else if (MotionCaptureService.activeSession != null) {
             text("${Lang.tr("Krafttraining", "Strength training")} · ${captureLabel()}", 12, green, margin = 4)
@@ -251,7 +252,7 @@ class MainActivity : Activity() {
             strengthRest = text("", 40, green, true, 2)
             if (set != null) text(Lang.tr("Danach ${set.optString("label")}", "Up next: ${set.optString("label")}"), 13, muted, margin = 2)
         } else {
-            text(exercise?.optString("name")?.takeIf { it.isNotBlank() } ?: state.optString("name"), 18, ink, true, 4)
+            text(StrengthMirror.exerciseTitle(exercise) ?: StrengthMirror.sessionTitle(state), 18, ink, true, 4)
             if (set != null) {
                 text(Lang.tr(
                     "Satz ${set.optInt("number")} von ${exercise?.optInt("total")}",
@@ -518,7 +519,7 @@ class MainActivity : Activity() {
             items += entry.optLong("startedAt") to {
                 val minutes = ((entry.optLong("endedAt") - entry.optLong("startedAt")) / 60_000L).coerceAtLeast(0)
                 val heart = entry.optLong("averageBpm").takeIf { entry.has("averageBpm") }?.let { " · Ø $it bpm" } ?: ""
-                button("${day(entry.optLong("startedAt"))} · ${entry.optString("name")}\n$minutes min$heart\n${mark(MotionSync.delivered(this, entry.optString("id")))}",
+                button("${day(entry.optLong("startedAt"))} · ${DisplayNames.session(entry.optString("name"))}\n$minutes min$heart\n${mark(MotionSync.delivered(this, entry.optString("id")))}",
                     false, 8, small = true) { strengthDetails(entry) }
             }
         }
@@ -557,7 +558,7 @@ class MainActivity : Activity() {
         content.removeAllViews()
         scroll.scrollTo(0, 0)
         text(day(entry.optLong("startedAt")).uppercase(Lang.locale()), 12, green, true)
-        text(entry.optString("name"), 18, ink, true, 8)
+        text(DisplayNames.session(entry.optString("name")), 18, ink, true, 8)
         val minutes = ((entry.optLong("endedAt") - entry.optLong("startedAt")) / 60_000L).coerceAtLeast(0)
         text("$minutes min" + (if (entry.has("completedSets")) " · ${entry.optInt("completedSets")} ${Lang.tr("Sätze", "sets")}" else ""), 16, ink, margin = 4)
         val heart = when {

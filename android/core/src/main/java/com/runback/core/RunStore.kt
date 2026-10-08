@@ -1376,7 +1376,10 @@ class RunStore(context: Context) : DocumentStore {
             zip.putNextEntry(ZipEntry("manifest.json"));zip.write(JSONObject().put("schemaVersion",3).put("app","Runback").put("createdAt",System.currentTimeMillis()).toString().toByteArray());zip.closeEntry()
             tables.forEach { table ->
                 zip.putNextEntry(ZipEntry("$table.ndjson"))
-                db.rawQuery("SELECT * FROM $table",null).use { c ->while(c.moveToNext()){
+                // Display names are sent again by the app on start, so they stay out of a backup.
+                val cursor = if (table == "documents") db.rawQuery("SELECT * FROM documents WHERE key<>?", arrayOf(DisplayNames.DOCUMENT))
+                    else db.rawQuery("SELECT * FROM $table", null)
+                cursor.use { c ->while(c.moveToNext()){
                     val row=JSONObject(); for(i in 0 until c.columnCount) when(c.getType(i)){
                         android.database.Cursor.FIELD_TYPE_BLOB -> row.put(c.getColumnName(i),android.util.Base64.encodeToString(c.getBlob(i),android.util.Base64.NO_WRAP))
                         android.database.Cursor.FIELD_TYPE_INTEGER -> row.put(c.getColumnName(i),c.getLong(i))

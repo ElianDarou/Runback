@@ -6,7 +6,7 @@ import {
   exerciseMuscleLabels,
   IMPORT_EXERCISE_ALIASES,
 } from './catalogData';
-import { tr } from './i18n';
+import { getLanguage, tr, type Language } from './i18n';
 
 /**
  * Versioned exercise catalog with a local selection from the Free Exercise DB.
@@ -471,6 +471,25 @@ export function exerciseDisplayName(exerciseId: string, storedName: string): str
   return exercise && storedName === exercise.name
     ? exerciseName(exercise)
     : storedName;
+}
+
+/**
+ * Stored German catalog name → visible name in `language`, for the native
+ * surfaces (notification, watch). Only names that differ are included, so the
+ * German map is empty. Stored names are the keys and never change.
+ */
+export function nativeDisplayNames(
+  language: Language = getLanguage(),
+): { language: Language; names: Record<string, string> } {
+  const names: Record<string, string> = {};
+  for (const exercise of CATALOG) {
+    const display =
+      language === 'en' ? (exercise.en ?? exercise.name) : exercise.name;
+    if (display !== exercise.name) {
+      names[exercise.name] = display;
+    }
+  }
+  return { language, names };
 }
 
 export function normalizeExerciseName(name: string): string {

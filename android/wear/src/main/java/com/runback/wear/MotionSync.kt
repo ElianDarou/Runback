@@ -94,7 +94,8 @@ object MotionSync {
         val store = RunStore(context)
         val mirror = store.getDocument("strength_mirror")?.takeIf { it.optString("sessionId") == id }
         val entry = JSONObject().put("id", id).put("startedAt", startedAt).put("endedAt", endedAt)
-            .put("name", mirror?.optString("name")?.takeIf { it.isNotBlank() } ?: Lang.tr("Krafttraining", "Strength training"))
+            // Stored in the history: German, like every stored default name.
+            .put("name", mirror?.optString("name")?.takeIf { it.isNotBlank() } ?: "Krafttraining")
             .put("heart", heart).put("motion", motion)
         averageBpm?.let { entry.put("averageBpm", Math.round(it)) }
         maxBpm?.let { entry.put("maxBpm", Math.round(it)) }

@@ -213,7 +213,8 @@ export function displaySessionName(name: string): string {
 export function startSession(
   template: WorkoutTemplate | null,
   now: number,
-  name = tr('Freies Training', 'Free training'),
+  // Stored as German text, like sessions from older data; shown via displaySessionName.
+  name = 'Freies Training',
 ): StrengthSession {
   const exercises = (template?.exercises || []).map(
     (exercise, exerciseIndex) => ({

@@ -25,6 +25,7 @@ jest.mock('../src/native', () => {
       sorenessReports: jest.fn(async () => [
         { id: 'today', at: Date.now(), entries: [] },
       ]),
+      setDisplayNames: jest.fn(() => Promise.resolve()),
       saveStrengthSession: jest.fn(async () => ({})),
     },
   };

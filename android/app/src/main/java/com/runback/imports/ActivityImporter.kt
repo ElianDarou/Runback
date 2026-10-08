@@ -273,8 +273,8 @@ class ActivityImporter(private val context: Context, private val store: RunStore
     private fun displayName(uri: Uri): String = try {
         context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
             if (it.moveToFirst()) it.getString(0) else null
-        } ?: uri.lastPathSegment ?: Lang.tr("Aktivität", "Activity")
-    } catch (_: Exception) { uri.lastPathSegment ?: Lang.tr("Aktivität", "Activity") }
+        } ?: uri.lastPathSegment ?: "Aktivität"
+    } catch (_: Exception) { uri.lastPathSegment ?: "Aktivität" }
 
     private fun isZip(file: File): Boolean = file.inputStream().use {
         val header = ByteArray(4)
@@ -741,7 +741,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
                     if (distM <= 0 && duration <= 0) continue
                     val end = start + (duration * 1000).toLong().coerceIn(0, 24 * 3600 * 1000L)
                     val draft = VendorImports.RunDraft(start, if (end > start) end else start, duration, distM,
-                        Lang.tr("Mi Fitness Lauf", "Mi Fitness run"), "mi_fitness",
+                        "Mi Fitness Lauf", "mi_fitness",
                         VendorImports.parseDoubleFlexible(get(cHr))?.takeIf { it in 30.0..240.0 },
                         VendorImports.parseDoubleFlexible(get(cCal)))
                     if (!acceptDraft(draft, type)) continue
@@ -815,7 +815,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
                 endTime = if (end > start) end else start,
                 durationSeconds = duration,
                 distanceMeters = distance,
-                name = if (VendorImports.isRunningActivityType(type) == true) Lang.tr("Lauf", "Run") else type.ifBlank { Lang.tr("Mi Fitness Aktivität", "Mi Fitness activity") }.take(120),
+                name = if (VendorImports.isRunningActivityType(type) == true) "Lauf" else type.ifBlank { "Mi Fitness Aktivität" }.take(120),
                 source = "mi_fitness",
                 avgHeartRate = hr,
                 calories = cal?.takeIf { it in 0.0..20000.0 },
@@ -1069,7 +1069,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
                 val distance = VendorImports.parseDoubleFlexible(get(cDist)) ?: 0.0
                 if (distance <= 0 && duration <= 0) continue
                 val draft = VendorImports.RunDraft(start, if (end > start) end else start, duration, distance,
-                    Lang.tr("Samsung Health Lauf", "Samsung Health run"), "samsung_health", null,
+                    "Samsung Health Lauf", "samsung_health", null,
                     VendorImports.parseDoubleFlexible(get(cCal)))
                 if (!acceptDraft(draft)) continue
                 recordImported(saveSummaryRun(summaryFromDraft(draft),
@@ -1423,7 +1423,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
                         if (end > start) (end - start) / 1000.0 else 0.0)
                     if (distance <= 0 && duration <= 0) continue
                     val draft = VendorImports.RunDraft(start, end, duration, distance,
-                        obj.optString("name", Lang.tr("Google Fit Lauf", "Google Fit run")).take(120), "google_fit")
+                        obj.optString("name", "Google Fit Lauf").take(120), "google_fit")
                     if (!acceptDraft(draft, type)) continue
                     when (saveSummaryRun(summaryFromDraft(draft), "vendor:google_fit:$start").optString("status")) {
                         "imported" -> runs++
@@ -1465,7 +1465,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
                     val distance = obj.optDouble("distance", 0.0)
                     val duration = obj.optDouble("duration", obj.optDouble("elapsedDuration", 0.0))
                     val draft = VendorImports.RunDraft(start, start + (duration * 1000).toLong(), duration, distance,
-                        obj.optString("name", Lang.tr("Garmin Lauf", "Garmin run")).take(120), "garmin",
+                        obj.optString("name", "Garmin Lauf").take(120), "garmin",
                         obj.optDouble("avgHr", Double.NaN).takeIf { it in 30.0..240.0 },
                         obj.optDouble("calories", Double.NaN).takeIf { it in 0.0..20000.0 })
                     if (!acceptDraft(draft, type)) continue
@@ -1544,7 +1544,7 @@ class ActivityImporter(private val context: Context, private val store: RunStore
                                     if ((distance > 0 || duration > 0) &&
                                         VendorImports.plausibleRunSpeed(distance, duration)) {
                                         val draft = VendorImports.RunDraft(start, end, duration, distance,
-                                            Lang.tr("Apple Health Lauf", "Apple Health run"), "apple_health")
+                                            "Apple Health Lauf", "apple_health")
                                         when (saveSummaryRun(summaryFromDraft(draft),
                                             "vendor:apple:$start").optString("status")) {
                                             "imported" -> runs++

@@ -443,7 +443,9 @@ object VendorImports {
             val time = if (get(cDate).matches(Regex("[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2}"))) local
                 else parseTimeFlexible(get(cDate))
             if (time == null || time <= 0) { skipped++; continue }
-            val key = Key(time, get(cWorkout).ifBlank { Lang.tr("Krafttraining", "Strength training") }.take(120), get(cNumber).take(120), parseTimeFlexible(get(cDate)) ?: time)
+            // The fallback name feeds the workout id, so it stays German in every language;
+            // the app shows the localized name when it displays the session.
+            val key = Key(time, get(cWorkout).ifBlank { "Krafttraining" }.take(120), get(cNumber).take(120), parseTimeFlexible(get(cDate)) ?: time)
             val group = groups.getOrPut(key) { Group(ArrayList(), null, "") }
             if (cells.size != header.size) { group.incomplete = true; group.lastExercise = ""; skipped++; continue }
             val durationRaw = get(cDuration)
@@ -554,7 +556,7 @@ object VendorImports {
             val elevation = parseDoubleFlexible(get(cElevation))?.takeIf { it.isFinite() && it >= 0.0 }
             val sourceId = get(cId).trim().takeIf { it.isNotBlank() }?.take(120)
             runs.add(RunDraft(start, if (end > start) end else start, duration, distance,
-                get(cName).ifBlank { Lang.tr("Lauf", "Run") }.take(120), source,
+                get(cName).ifBlank { "Lauf" }.take(120), source,
                 parseDoubleFlexible(get(cHr))?.takeIf { it in 30.0..240.0 },
                 parseDoubleFlexible(get(cCal))?.takeIf { it in 0.0..20000.0 },
                 elevationGainMeters = elevation,
@@ -636,7 +638,7 @@ object VendorImports {
                 endTime = if (end > start) end else start,
                 durationSeconds = actualDuration,
                 distanceMeters = distance,
-                name = activityType.ifBlank { Lang.tr("Lauf", "Run") }.take(120),
+                name = activityType.ifBlank { "Lauf" }.take(120),
                 source = source,
                 avgHeartRate = jsonNumber(obj, "averageHeartRate", "avgHeartRate")
                     ?.takeIf { it in 30.0..240.0 },
@@ -698,7 +700,7 @@ object VendorImports {
                 endTime = if (end > start) end else start,
                 durationSeconds = duration,
                 distanceMeters = distance,
-                name = type.ifBlank { Lang.tr("Lauf", "Run") }.take(120),
+                name = type.ifBlank { "Lauf" }.take(120),
                 source = source,
                 avgHeartRate = parseDoubleFlexible(get(cHr))?.takeIf { it in 30.0..240.0 },
                 calories = parseDoubleFlexible(get(cCal))?.takeIf { it in 0.0..20000.0 },
