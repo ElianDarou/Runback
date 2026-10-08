@@ -9,6 +9,9 @@
 <meta property="og:title" content="Runback – Laufen und Krafttraining">
 <meta property="og:description" content="Offene Android-App mit Wear-OS-Uhr. Alles aufgezeichnet, alles auf deinem Handy.">
 <meta property="og:type" content="website">
+<link rel="canonical" href="https://runback-training.vercel.app/">
+<link rel="alternate" hreflang="de" href="https://runback-training.vercel.app/">
+<link rel="alternate" hreflang="en" href="https://runback-training.vercel.app/en">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="preload" href="/fonts/dm-sans.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/styles.css">
@@ -21,6 +24,7 @@
     <a class="brand" href="/" aria-label="Runback">runback <span>/</span></a>
     <div class="nav-right">
       <a class="nav-link" href="#download">Download</a>
+      <div class="lang" role="group" aria-label="Sprache"><span aria-current="true"><abbr title="Deutsch">DE</abbr></span><a href="/en" hreflang="en" lang="en" aria-label="English">EN</a></div>
       <a class="pill" href="https://github.com/GhostCodeByte/Runback">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.7 5.4-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></svg>
         Quellcode
@@ -44,9 +48,9 @@
     </ul>
   </div>
   <div class="hero-shots wrap">
-    <img class="shot side" src="/shots/verlauf.webp" width="720" height="954" alt="Verlauf: Läufe und Krafteinheiten nach Wochen, mit Distanz, Zeit, Sätzen und Volumen">
-    <img class="shot main" src="/shots/lauf.webp" width="720" height="954" alt="Lauf-Detail: GPS-Route auf der Karte, 5,12 km in 24:08, Tempo 4:43 pro Kilometer, Puls 173">
-    <img class="shot side" src="/shots/bankdruecken.webp" width="720" height="954" alt="Übung Bankdrücken: geschätztes Maximum 88,5 kg, Label Steigt, Verlauf über acht Wochen">
+    <img class="shot side" src="/shots/verlauf.webp" width="594" height="1320" alt="Verlauf: Läufe und Krafteinheiten nach Wochen, mit Distanz, Zeit, Sätzen und Volumen">
+    <img class="shot main" src="/shots/lauf.webp" width="594" height="1320" alt="Lauf-Detail: GPS-Route auf der Karte, 5,12 km in 24:08, Tempo 4:43 pro Kilometer, Puls 173">
+    <img class="shot side" src="/shots/bankdruecken.webp" width="594" height="1320" alt="Übung Bankdrücken: geschätztes Maximum 88,5 kg, Label Steigt, Verlauf über acht Wochen">
   </div>
   <p class="wrap caption">Echte Screenshots der App, mit Beispieldaten.</p>
 </header>
@@ -66,8 +70,8 @@
       </ul>
     </div>
     <div class="pair">
-      <img class="shot" src="/shots/lauf-tempo.webp" width="720" height="814" loading="lazy" alt="Tempoverlauf eines Laufs über fünf Kilometer mit Durchschnittslinie">
-      <img class="shot" src="/shots/lauf-puls.webp" width="720" height="814" loading="lazy" alt="Pulsverlauf eines Laufs, anfangs stark und danach langsam ansteigend">
+      <img class="shot" src="/shots/lauf-tempo.webp" width="594" height="1320" loading="lazy" alt="Lauf-Detail: Tempoverlauf über fünf Kilometer">
+      <img class="shot" src="/shots/lauf-puls.webp" width="594" height="1320" loading="lazy" alt="Lauf-Detail: Pulsverlauf, anfangs stark und danach langsam ansteigend, darunter die Kilometer">
     </div>
   </div>
 </section>
@@ -87,8 +91,8 @@
       </ul>
     </div>
     <div class="pair">
-      <img class="shot" src="/shots/krafteinheit.webp" width="720" height="1046" loading="lazy" alt="Krafteinheit Oberkörper Drücken: 13 Sätze, 4.365 kg Volumen, Übungen mit Veränderung in Prozent">
-      <img class="shot" src="/shots/uebungen.webp" width="720" height="860" loading="lazy" alt="Übungsliste mit Trend-Labels Steigt und Noch nicht klar">
+      <img class="shot" src="/shots/krafteinheit.webp" width="594" height="1320" loading="lazy" alt="Krafteinheit Oberkörper Drücken: 13 Sätze, 4.365 kg Volumen, Übungen mit Veränderung in Prozent">
+      <img class="shot" src="/shots/uebungen.webp" width="594" height="1320" loading="lazy" alt="Kraftstatistik: Übungen mit Trend-Labels Steigt und Noch nicht klar">
     </div>
   </div>
 </section>
@@ -99,9 +103,9 @@
     <h2>Woche für Woche.</h2>
     <p class="sub">Distanz, Zeit, Sätze und Volumen über vier Wochen, zwölf Wochen oder alles. Bestwerte führen direkt zur Einheit, aus der sie stammen.</p>
     <div class="trio">
-      <img class="shot" src="/shots/statistik-laufen.webp" width="720" height="1280" loading="lazy" alt="Laufstatistik: 273 km, 41 Läufe, 25 Stunden in 12 Wochen, Wochendiagramm">
-      <img class="shot" src="/shots/bestwerte.webp" width="720" height="966" loading="lazy" alt="Bestwerte: längster Lauf, längste Dauer, schnellster Lauf ab 5 km, stärkste Woche">
-      <img class="shot" src="/shots/statistik-kraft.webp" width="720" height="1280" loading="lazy" alt="Kraftstatistik: 21 Einheiten, 294 Sätze, Wochendiagramm">
+      <img class="shot" src="/shots/statistik-laufen.webp" width="594" height="1320" loading="lazy" alt="Laufstatistik: 273 km, 41 Läufe, 25 Stunden in 12 Wochen, Wochendiagramm">
+      <img class="shot" src="/shots/bestwerte.webp" width="594" height="1320" loading="lazy" alt="Bestwerte: längster Lauf, längste Dauer, schnellster Lauf ab 5 km, stärkste Woche">
+      <img class="shot" src="/shots/statistik-kraft.webp" width="594" height="1320" loading="lazy" alt="Kraftstatistik: 21 Einheiten, 294 Sätze, Wochendiagramm">
     </div>
   </div>
 </section>
@@ -149,7 +153,7 @@
       </ul>
     </div>
     <div class="single">
-      <img class="shot" src="/shots/import.webp" width="720" height="1270" loading="lazy" alt="Import prüfen: 41 neue Läufe und 21 neue Krafteinheiten, 62 Einträge übernehmen">
+      <img class="shot" src="/shots/import.webp" width="594" height="1320" loading="lazy" alt="Import prüfen: 41 neue Läufe und 21 neue Krafteinheiten, 62 Einträge übernehmen">
     </div>
   </div>
 </section>
@@ -176,7 +180,7 @@
       <p class="sub">Runback schlägt höchstens eine Sache je Bereich vor und prüft später, ob sie geholfen hat. Reichen die Daten nicht, steht da „noch nicht klar“. Wer das nicht braucht, schaltet es ab.</p>
     </div>
     <div class="single">
-      <img class="shot" src="/shots/heute.webp" width="720" height="980" loading="lazy" alt="Heute: Lauf starten, Krafttraining starten und ein Vorschlag für die Kniebeuge">
+      <img class="shot" src="/shots/heute.webp" width="594" height="1320" loading="lazy" alt="Heute: Wochenleiste, Lauf starten, Krafttraining starten und ein Vorschlag für die Kniebeuge">
     </div>
   </div>
 </section>
