@@ -4,6 +4,7 @@ import ReactTestRenderer from 'react-test-renderer';
 import { WorkoutScreen } from '../src/ui/WorkoutScreen';
 import {
   completeSet,
+  editSet,
   startSession,
   type StrengthSession,
   type WorkoutTemplate,
@@ -186,6 +187,104 @@ describe('Trainingsansicht', () => {
     const inputs = tree.root.findAllByType(TextInput);
     expect(inputs[0].props.value).toBe('102,5');
     expect(inputs[1].props.value).toBe('4');
+  });
+
+  it.each([
+    [0, '70'],
+    [1, '8'],
+    [2, '2'],
+  ])(
+    'zeigt die sechs bestätigten Wiederholungen der Uhr nach Eingabe in Feld %i',
+    (field, value) => {
+      const props = handlers();
+      const session = startSession(
+        {
+          ...template,
+          exercises: [
+            {
+              exerciseId: 'barbell_bench_press',
+              name: 'Bankdrücken',
+              sets: [
+                {
+                  kind: 'normal',
+                  loadKind: 'kg',
+                  reps: 8,
+                  weightKg: 60,
+                  restSeconds: 120,
+                },
+              ],
+            },
+          ],
+        },
+        1_000_000,
+      );
+      const setId = session.exercises[0].sets[0].id;
+      const tree = render(session, props);
+      ReactTestRenderer.act(() => {
+        tree.root.findAllByType(TextInput)[field].props.onChangeText(value);
+      });
+      ReactTestRenderer.act(() => {
+        tree.root.findAllByType(TextInput)[field].props.onBlur();
+      });
+      const edited = editSet(
+        session,
+        0,
+        setId,
+        props.onEditSet.mock.calls[0][2],
+      );
+      const update = (next: StrengthSession) =>
+        ReactTestRenderer.act(() => {
+          tree.update(
+            <WorkoutScreen
+              history={[]}
+              now={1_010_000}
+              session={next}
+              {...props}
+            />,
+          );
+        });
+      update(edited);
+      update(completeSet(edited, 0, setId, 1_010_000, { actualReps: 6 }));
+
+      const inputs = tree.root.findAllByType(TextInput);
+      expect(inputs[0].props.value).toBe(field === 0 ? '70' : '60');
+      expect(inputs[1].props.value).toBe('6');
+      expect(inputs[2].props.value).toBe(field === 2 ? '2' : '');
+      expect(
+        byLabel(tree, 'Satz 1 zurücknehmen').props.accessibilityState.checked,
+      ).toBe(true);
+      ReactTestRenderer.act(() => inputs[0].props.onBlur());
+      expect(props.onEditSet.mock.lastCall[2].actualReps).toBe(6);
+
+      // Auch ein auf der Uhr bestätigter Satz bleibt am Handy korrigierbar.
+      ReactTestRenderer.act(() => inputs[1].props.onChangeText('7'));
+      expect(tree.root.findAllByType(TextInput)[1].props.value).toBe('7');
+    },
+  );
+
+  it('behält einen offenen Gewichtsentwurf bei, wenn sich nur die Wiederholungen ändern', () => {
+    const props = handlers();
+    const session = base();
+    const tree = render(session, props);
+    ReactTestRenderer.act(() => {
+      tree.root.findAllByType(TextInput)[0].props.onChangeText('102,');
+    });
+    const updated = editSet(session, 0, session.exercises[0].sets[0].id, {
+      actualReps: 6,
+    });
+    ReactTestRenderer.act(() => {
+      tree.update(
+        <WorkoutScreen
+          history={[]}
+          now={1_010_000}
+          session={updated}
+          {...props}
+        />,
+      );
+    });
+    const inputs = tree.root.findAllByType(TextInput);
+    expect(inputs[0].props.value).toBe('102,');
+    expect(inputs[1].props.value).toBe('6');
   });
 
   it('lässt den einzigen Satz einer Übung nicht wegwischen', () => {
