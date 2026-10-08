@@ -26,8 +26,9 @@ Lies vor Änderungen:
 - `__tests__/` — Jest; `android/*/src/test` — JUnit.
 - `site/` — öffentliche Produktseite, statisch, auf Vercel (Projekt `runback`,
   Root `site`). Baut nur, wenn sich `site/` ändert. Aussagen dort müssen zum
-  Stand der App passen. Screenshots sind echte App-Bilder mit Beispieldaten
-  aus `tools/site-demo/gen.py`.
+  Stand der App passen. Screenshots sind echte, ungeschnittene App-Bilder mit
+  Beispieldaten aus `tools/site-demo/gen.py`. Deutsch steht in `index.html`,
+  Englisch in `en.html`; ändere immer beide.
 
 ## So arbeitest du hier
 

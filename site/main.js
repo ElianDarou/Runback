@@ -2,6 +2,7 @@
 // Prereleases, deshalb funktioniert /releases/latest nicht. Schlägt die Abfrage
 // fehl, bleiben die Links auf der Release-Übersicht.
 (async () => {
+  const en = document.documentElement.lang === 'en';
   try {
     const res = await fetch(
       'https://api.github.com/repos/GhostCodeByte/Runback/releases?per_page=20',
@@ -35,14 +36,16 @@
     }
 
     const version = (phone.name.match(/runback-phone-(\d+(?:\.\d+)*)/) || [])[1];
-    const date = new Date(release.published_at).toLocaleDateString('de-DE', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    });
+    const date = new Date(release.published_at).toLocaleDateString(
+      en ? 'en-GB' : 'de-DE',
+      { day: 'numeric', month: 'long', year: 'numeric' },
+    );
     if (!version) return;
+    const text = en
+      ? `Version ${version} from ${date} · Android 8 or newer · Wear OS 3 or newer · Test build`
+      : `Version ${version} vom ${date} · Android 8 oder neuer · Wear OS 3 oder neuer · Testsoftware`;
     for (const line of document.querySelectorAll('[data-release-line]')) {
-      line.textContent = `Version ${version} vom ${date} · Android 8 oder neuer · Wear OS 3 oder neuer · Testsoftware`;
+      line.textContent = text;
     }
   } catch {
     // Offline oder Rate-Limit: Links zeigen weiter auf die Release-Übersicht.
