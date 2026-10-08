@@ -105,8 +105,11 @@ npm test -- --runInBand
 cd android && ./gradlew :core:testDebugUnitTest :app:lintRelease :wear:lintRelease :app:assembleRelease :wear:assembleRelease
 ```
 
-Windows: `gradlew.bat`. CI baut bei jedem Push auf `main` ein Prerelease
-(`.github/workflows/android.yml`).
+Windows: `gradlew.bat`. CI prüft App und Server abhängig von den geänderten
+Dateien; geteilte Logik, Abhängigkeiten und CI-Änderungen prüfen beide. Reine
+Website- und Doku-Änderungen bauen keine APKs. Bei App-Änderungen auf `main`
+veröffentlicht CI ein Prerelease und übernimmt dafür nach Möglichkeit den
+identischen, erfolgreichen PR-Build (`.github/workflows/android.yml`).
 
 ## Dokumentation
 
