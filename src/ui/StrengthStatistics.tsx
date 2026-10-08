@@ -297,7 +297,7 @@ export function StrengthStatistics({
                 topGroup
                   ? tr(
                       `${topGroup.label} führt mit ${topGroup.sets} ${topGroup.sets === 1 ? 'Satz' : 'Sätzen'}`,
-                      `${topGroup.label} leads with ${counted(topGroup.sets, setWord)}`,
+                      `${topGroup.label}: ${counted(topGroup.sets, setWord)}`,
                     )
                   : DASH
               }
@@ -415,7 +415,7 @@ export function StrengthStatistics({
 
           {modules.includes('body') ? (
             <Panel
-              title={tr('Körperwerte', 'Body figures')}
+              title={tr('Körperwerte', 'Body values')}
               summary={
                 totals.averageBpm === null
                   ? totals.medianRir === null
@@ -428,7 +428,7 @@ export function StrengthStatistics({
               }
             >
               <ValueRow
-                label={tr('Ø Puls', 'Ø Heart rate')}
+                label={tr('Ø Puls', 'Avg heart rate')}
                 value={bpm(totals.averageBpm)}
                 meta={
                   totals.heartSessions
@@ -479,7 +479,7 @@ export function StrengthStatistics({
                 )}
               />
               <ValueRow
-                label={tr('Ø Dauer je Einheit', 'Ø Duration per session')}
+                label={tr('Ø Dauer je Einheit', 'Avg duration per session')}
                 value={
                   totals.averageDurationSeconds === null
                     ? DASH

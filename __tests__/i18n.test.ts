@@ -6,6 +6,7 @@ import {
   locale,
   numberFormat,
   parseDecimal,
+  percentSign,
   quote,
   setLanguage,
   tr,
@@ -63,6 +64,15 @@ describe('number and text helpers', () => {
     expect(quote('Heute')).toBe('„Heute“');
     setLanguage('en');
     expect(quote('Today')).toBe('“Today”');
+    setLanguage('de');
+  });
+
+  it('spaces the percent sign in German and closes it up in English', () => {
+    expect(percentSign()).toBe(' %');
+    expect(`${3}${percentSign()}`).toBe('3 %');
+    setLanguage('en');
+    expect(percentSign()).toBe('%');
+    expect(`+${3}${percentSign()}`).toBe('+3%');
     setLanguage('de');
   });
 

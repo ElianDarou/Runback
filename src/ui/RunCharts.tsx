@@ -34,7 +34,7 @@ import {
   type SeriesAxis,
   type SeriesMetric,
 } from '../domain/runSeries';
-import { tr } from '../domain/i18n';
+import { percentSign, tr } from '../domain/i18n';
 import {
   ChipGroup,
   Copy,
@@ -100,7 +100,7 @@ export function RunSeriesPanel({
       <Copy muted>
         {tr(
           'Für diesen Lauf gibt es keinen Verlauf — nur Aufzeichnungen mit GPS oder Sensoren haben einen.',
-          'There is no history for this run — only recordings with GPS or sensors have one.',
+          'There is no trace for this run — only recordings with GPS or sensors have one.',
         )}
       </Copy>
     );
@@ -636,7 +636,7 @@ export function KilometerTable({
           split.gradePercent !== undefined && Math.abs(split.gradePercent) >= 1
             ? `${split.gradePercent > 0 ? '+' : '−'}${Math.round(
                 Math.abs(split.gradePercent),
-              )} %`
+              )}${percentSign()}`
             : '';
         const climb = [
           grade,

@@ -36,7 +36,7 @@ import {
   type RecentComparison,
 } from '../domain/insights';
 import { gaitInsight, type GaitLine } from '../domain/gait';
-import { fixed, tr } from '../domain/i18n';
+import { fixed, percentSign, tr } from '../domain/i18n';
 import {
   Copy,
   Disclosure,
@@ -78,7 +78,7 @@ export const metricWord = (metric: ComparedMetric): string => {
     case 'pace':
       return tr('Tempo', 'Pace');
     case 'heartRate':
-      return tr('Ø Puls', 'Ø Heart rate');
+      return tr('Ø Puls', 'Avg heart rate');
     case 'metersPerBeat':
       return tr('Meter je Herzschlag', 'Meters per beat');
     case 'cadence':
@@ -102,7 +102,7 @@ function metricText(metric: ComparedMetric, value: number): string {
       return `${Math.round(value)} spm`;
     case 'drift':
     case 'fade':
-      return `${formatNumber(value, 1)}${tr(' %', '%')}`;
+      return `${formatNumber(value, 1)}${percentSign()}`;
   }
 }
 /** Difference to the baseline in the metric's unit, with sign. */
@@ -398,7 +398,7 @@ export function RunInsights({
                   color.series.heart,
                 ][i],
                 label: `Z${zone.zone} ${zone.label}`,
-                text: `${Math.round(zone.share * 100)} %`,
+                text: `${Math.round(zone.share * 100)}${percentSign()}`,
               }))}
             />
           ) : null}
@@ -523,7 +523,7 @@ export function RunInsights({
                   }`,
                   `${formatSignedSeconds(cost.windSecondsPerKm)}/km — estimated${
                     cost.windCoverage !== undefined && cost.windCoverage < 0.9
-                      ? `, ${Math.round(cost.windCoverage * 100)} % of the route`
+                      ? `, ${Math.round(cost.windCoverage * 100)}% of the route`
                       : ''
                   }`,
                 )

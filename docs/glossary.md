@@ -38,7 +38,7 @@ product. Code names are identifiers and stay as they are.
 | Stabil | Stable | `PlateauStatus` `stable` | Strength trend that demonstrably stays narrowly around zero. “Not clear yet” is not a plateau. |
 | Trainingstag | Training day | `collapseToDays` | Two workouts on the same day count once in the strength trend. |
 | Datenqualität | Data quality | `QualityReport` | How complete and suitable the data is for exactly this statement. |
-| Laufart | Run type | `RunPurpose` | What a run was meant to be: Just run (`free`), Easy (`easy`), Long run (`long`), Pace changes (`intervals`), Against the clock (`race`, including the daily home loop for a personal best). Not set yet (`unknown`) is not a choice but the state until one is given. |
+| Laufart | Run type | `RunPurpose` | What a run was meant to be: Just run (`free`), Easy (`easy`), Long run (`long`), Pace changes (`intervals`), Time trial (`race`, including the daily home loop for a personal best). Not set yet (`unknown`) is not a choice but the state until one is given. |
 | Vorschlag zur Laufart | Run type suggestion | `suggestRunPurpose` | After the run, from heart rate against max heart rate or breathing, pace variation (pace changes only with repeated back-and-forth on a known flat route), and length. Preview only; applies only after “That’s right” and then stores version, signals, max heart rate with its origin, and comparison runs. A manual choice clears this trail. |
 | Sportart | Sport | `Sport` | `running`, `cycling`; if the field is missing, running applies. |
 | Effort | Effort | `EffortEstimate` | Modeled external demand of a run. Not a fitness or fatigue value. |

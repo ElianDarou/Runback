@@ -84,12 +84,12 @@ export function VendorImport({
           } doppelt`,
           `Runs: ${status.imported ?? 0} imported · ${
             status.duplicates ?? 0
-          } duplicate`,
+          } ${status.duplicates === 1 ? 'duplicate' : 'duplicates'}`,
         )}
         {status.wellness !== undefined
           ? tr(
               ` · Kontextwerte: ${status.wellness}`,
-              ` · Context values: ${status.wellness}`,
+              ` · Health values: ${status.wellness}`,
             )
           : ''}
         {status.strength !== undefined
@@ -101,7 +101,9 @@ export function VendorImport({
         {status.strengthDuplicates
           ? tr(
               ` · ${status.strengthDuplicates} Krafteinheiten doppelt`,
-              ` · ${status.strengthDuplicates} strength sessions duplicate`,
+              ` · ${status.strengthDuplicates} ${
+                status.strengthDuplicates === 1 ? 'strength session' : 'strength sessions'
+              } duplicate`,
             )
           : ''}
         {status.nonRunning
@@ -173,7 +175,7 @@ export function VendorImport({
             ))}
           </Section>
         ) : null}
-        <Section title={tr('Diese Dateien', 'These files')}>
+        <Section title={tr('Diese Dateien', 'Files')}>
           {vendor.filePatterns.map((pattern, i) => (
             <Copy muted key={i}>
               • {pattern}
@@ -195,7 +197,7 @@ export function VendorImport({
               } Kontext`,
               `Already imported: ${counts.imported ?? 0} runs · ${
                 counts.wellness ?? 0
-              } context`,
+              } health values`,
             )}
             {counts.strength
               ? tr(

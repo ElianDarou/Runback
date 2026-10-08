@@ -7,7 +7,7 @@ import type {
 import type { RunSeries, SeriesRow } from './runSeries';
 import { formatPace } from './runSeries';
 import { segmentIsFlat } from './analysis';
-import { fixed, tr } from './i18n';
+import { fixed, percentSign, tr } from './i18n';
 
 /**
  * Deeper insights into a single run for the detail page. Everything here is
@@ -1046,7 +1046,7 @@ export function formatSignedNumber(value: number, digits = 0): string {
   return `${sign}${fixed(Math.abs(rounded), digits)}`;
 }
 export function formatSignedPercent(value: number, digits = 0): string {
-  return `${formatSignedNumber(value, digits)}${tr(' %', '%')}`;
+  return `${formatSignedNumber(value, digits)}${percentSign()}`;
 }
 /** How a phase reads in a sentence; keeps the glossary and the UI together. */
 export function phaseWord(state: MovementPhase['state']): string {

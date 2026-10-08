@@ -33,7 +33,7 @@ import {
 import { runTargetLabel, type RunTarget } from './runTarget';
 import { focusLabel, type TrainingFocus } from './focus';
 import { QUALITY_VERSION } from './analysis';
-import { dateFormat, locale, quote, tr } from './i18n';
+import { dateFormat, locale, percentSign, quote, tr } from './i18n';
 
 export const RUN_REPORT_VERSION = 'runback-report-2';
 export const RUN_ANALYSIS_EXPORT_VERSION = 'runback-analysis-1';
@@ -144,7 +144,7 @@ const iso = (timestamp: number | undefined) =>
 const percent = (value: number | undefined) =>
   value === undefined || !Number.isFinite(value)
     ? '–'
-    : `${Math.round(value * 100)}${tr(' %', '%')}`;
+    : `${Math.round(value * 100)}${percentSign()}`;
 const escapeCell = (value: string) => value.replace(/\|/g, '\\|');
 const table = (header: string[], rows: string[][]) =>
   [
@@ -556,7 +556,7 @@ function segmentTable(run: ReportRun): string | undefined {
     if (hasGrade)
       row.push(
         s.gradePercent !== undefined
-          ? `${fmt(s.gradePercent, 1)}${tr(' %', '%')}`
+          ? `${fmt(s.gradePercent, 1)}${percentSign()}`
           : '–',
       );
     if (hasClimb)

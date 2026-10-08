@@ -65,7 +65,7 @@ import {
   space,
   type as typography,
 } from './components';
-import { getLanguage, tr } from '../domain/i18n';
+import { dateFormat, getLanguage, tr } from '../domain/i18n';
 
 export type { ScheduleState, ScheduledSession } from '../domain/schedule';
 
@@ -214,7 +214,9 @@ function dateLabel(value: Date): string {
   const month = monthNames()[value.getMonth()].slice(0, 3);
   return tr(
     `${weekday}, ${value.getDate()}. ${month}.`,
-    `${weekday}, ${value.getDate()} ${month}`,
+    dateFormat({ weekday: 'short', day: 'numeric', month: 'short' }).format(
+      value,
+    ),
   );
 }
 
@@ -223,7 +225,9 @@ function fullDateLabel(value: Date): string {
   const month = monthNames()[value.getMonth()];
   return tr(
     `${weekday}, ${value.getDate()}. ${month}`,
-    `${weekday}, ${month} ${value.getDate()}`,
+    dateFormat({ weekday: 'long', day: 'numeric', month: 'long' }).format(
+      value,
+    ),
   );
 }
 

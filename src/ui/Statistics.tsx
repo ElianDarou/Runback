@@ -17,7 +17,7 @@ import {
   type StatsRecord,
 } from '../domain/statisticsView';
 import { ChipGroup, Segmented, Copy, EmptyState, Section } from './components';
-import { tr } from '../domain/i18n';
+import { percentSign, tr } from '../domain/i18n';
 import {
   Chart,
   ChartDetail,
@@ -388,9 +388,9 @@ export function Statistics({
                       `${stats.purposes[0].label} führt mit ${Math.round(
                         stats.purposes[0].share * 100,
                       )} %`,
-                      `${stats.purposes[0].label} leads with ${Math.round(
+                      `${stats.purposes[0].label}: ${Math.round(
                         stats.purposes[0].share * 100,
-                      )} %`,
+                      )}%`,
                     )
                   : DASH
               }
@@ -401,7 +401,7 @@ export function Statistics({
                   label={share.label}
                   value={`${formatKm(share.distanceKm)} km · ${Math.round(
                     share.share * 100,
-                  )} %`}
+                  )}${percentSign()}`}
                   share={share.share}
                   meta={`${share.runCount} ${runWord(share.runCount)}`}
                 />
@@ -489,7 +489,7 @@ export function Statistics({
               }
             >
               <ValueRow
-                label={tr('Ø Tempo', 'Ø Pace')}
+                label={tr('Ø Tempo', 'Avg pace')}
                 value={
                   stats.totals.paceSecondsPerKm === null
                     ? DASH
@@ -501,7 +501,7 @@ export function Statistics({
                 )}
               />
               <ValueRow
-                label={tr('Ø Distanz je Lauf', 'Ø Distance per run')}
+                label={tr('Ø Distanz je Lauf', 'Avg distance per run')}
                 value={
                   stats.totals.averageDistanceKm === null
                     ? DASH
@@ -525,7 +525,7 @@ export function Statistics({
                 }
               />
               <ValueRow
-                label={tr('Ø Puls', 'Ø Heart rate')}
+                label={tr('Ø Puls', 'Avg heart rate')}
                 value={
                   stats.totals.averageHeartRate === null
                     ? DASH
@@ -533,7 +533,7 @@ export function Statistics({
                 }
               />
               <ValueRow
-                label={tr('Ø Schrittfrequenz', 'Ø Cadence')}
+                label={tr('Ø Schrittfrequenz', 'Avg cadence')}
                 value={
                   stats.totals.averageCadence === null
                     ? DASH

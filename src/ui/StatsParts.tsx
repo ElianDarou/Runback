@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { StatsDelta } from '../domain/statisticsView';
-import { fixed, tr } from '../domain/i18n';
+import { fixed, percentSign, tr } from '../domain/i18n';
 import {
   Chevron,
   Row,
@@ -47,7 +47,7 @@ export function Tile({
   const percent =
     delta.changeRatio === null
       ? DASH
-      : `${Math.abs(Math.round(delta.changeRatio * 100))} %`;
+      : `${Math.abs(Math.round(delta.changeRatio * 100))}${percentSign()}`;
   const spoken =
     delta.direction === 'up'
       ? tr(`${percent} mehr`, `${percent} more`)
@@ -66,7 +66,9 @@ export function Tile({
       {/* Without a comparison period there is no arrow and no placeholder. */}
       {delta.direction === 'unknown' ? null : (
         <Text style={statsStyles.tileDelta}>
-          {delta.direction === 'flat' ? '± 0 %' : `${arrow} ${percent}`}
+          {delta.direction === 'flat'
+            ? tr('± 0 %', '±0%')
+            : `${arrow} ${percent}`}
         </Text>
       )}
     </View>

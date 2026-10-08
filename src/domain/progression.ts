@@ -419,7 +419,7 @@ export function assessPlateau(
       : null;
   const criterion = tr(
     'Stabil bedeutet: das Steigungsintervall liegt vollständig innerhalb ±0,5 % des e1RM pro Woche und umfasst mindestens vier Wochen. Ein breites Intervall um 0 heißt nur „noch nicht klar“.',
-    'Stable means: the slope interval lies entirely within ±0.5 % of the e1RM per week and spans at least four weeks. A wide interval around 0 only means "not clear yet".',
+    'Stable means: the slope interval lies entirely within ±0.5% of the e1RM per week and spans at least four weeks. A wide interval around 0 only means "not clear yet".',
   );
   if (!trend || margin === null) {
     return {
@@ -572,7 +572,7 @@ function makeSuggestion(
         )
       : tr(
           `Die Frischemodulation bleibt mit ${fixed(freshnessFactor * 100 - 100, 1)} % unter der 8-%-Grenze.`,
-          `The freshness adjustment stays at ${fixed(freshnessFactor * 100 - 100, 1)} %, below the 8 % limit.`,
+          `The freshness adjustment stays at ${fixed(freshnessFactor * 100 - 100, 1)}%, below the 8% limit.`,
         );
   return {
     kind: 'strength_load',
@@ -603,7 +603,7 @@ function makeSuggestion(
       reviewAfterSessions: 3,
       check: tr(
         'Ab sechs umgesetzten Einheiten per Vorzeichentest prüfen, ob das beste Arbeits-e1RM häufiger als zufällig mindestens 4 % über dem Median der Vergleichseinheiten liegt; die Ausführung bleibt maßgeblich.',
-        'From six completed sessions, use a sign test to check whether the best working e1RM is at least 4 % above the median of the comparison sessions more often than chance; execution still decides.',
+        'From six completed sessions, use a sign test to check whether the best working e1RM is at least 4% above the median of the comparison sessions more often than chance; execution still decides.',
       ),
     },
   };

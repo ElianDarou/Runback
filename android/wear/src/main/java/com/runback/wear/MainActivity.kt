@@ -981,7 +981,7 @@ class MainActivity : Activity() {
         "easy" -> Lang.tr("Ruhig", "Easy")
         "long" -> Lang.tr("Lange Runde", "Long run")
         "intervals" -> Lang.tr("Tempowechsel", "Pace changes")
-        "race" -> Lang.tr("Auf Zeit", "Against the clock")
+        "race" -> Lang.tr("Auf Zeit", "Time trial")
         "free" -> Lang.tr("Einfach laufen", "Just run")
         else -> Lang.tr("Noch offen", "Not set yet")
     }

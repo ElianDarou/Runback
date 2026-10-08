@@ -714,7 +714,7 @@ export function modelIsUnlocked(
       code: 'gain_too_small',
       reason: tr(
         `Der Gewinn gegenüber der besten einfachen Vorhersage ist kleiner als vorab festgelegt (mindestens ${VALIDATION_THRESHOLDS.minimumAbsoluteGainPoints} Punkt und ${Math.round(VALIDATION_THRESHOLDS.minimumRelativeGain * 100)} %).`,
-        `The gain over the best simple prediction is smaller than set in advance (at least ${VALIDATION_THRESHOLDS.minimumAbsoluteGainPoints} point and ${Math.round(VALIDATION_THRESHOLDS.minimumRelativeGain * 100)} %).`,
+        `The gain over the best simple prediction is smaller than set in advance (at least ${VALIDATION_THRESHOLDS.minimumAbsoluteGainPoints} point and ${Math.round(VALIDATION_THRESHOLDS.minimumRelativeGain * 100)}%).`,
       ),
     });
   }

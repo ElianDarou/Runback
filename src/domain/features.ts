@@ -101,7 +101,7 @@ export const FEATURE_CATALOG: readonly {
     get description() {
       return tr(
         'Vorhaben je Bereich festlegen',
-        'Set plans for each area',
+        'Set goals for each area',
       );
     },
   },

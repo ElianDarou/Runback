@@ -8,7 +8,7 @@ import {
   type MotionWrist,
   type Settings,
 } from '../native';
-import { fixed, tr } from '../domain/i18n';
+import { fixed, percentSign, tr } from '../domain/i18n';
 import {
   Button,
   ChipGroup,
@@ -471,7 +471,7 @@ export function DeviceSettings({
             {device.measurements?.battery ? (
               <Copy muted>
                 {tr('Akku', 'Battery')}:{' '}
-                {device.measurements.battery.values.percent} %
+                {device.measurements.battery.values.percent}{percentSign()}
               </Copy>
             ) : null}
             <Button

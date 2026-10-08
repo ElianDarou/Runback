@@ -40,7 +40,7 @@ function useEditorData<T>(
               ? e.message
               : tr(
                   'Der Verlauf ließ sich nicht laden.',
-                  'The history could not be loaded.',
+                  'The trace could not be loaded.',
                 ),
           ),
       );
@@ -102,7 +102,7 @@ export function StrengthEndSheet({
       {error ? <Notice>{error}</Notice> : null}
       {saveError ? <Notice>{saveError}</Notice> : null}
       {!data && !error ? (
-        <Copy muted>{tr('Lade Verlauf …', 'Loading history …')}</Copy>
+        <Copy muted>{tr('Lade Verlauf …', 'Loading trace …')}</Copy>
       ) : null}
       {data ? (
         <EndEditor
@@ -192,13 +192,13 @@ export function RunEndSheet({
       {error ? <Notice>{error}</Notice> : null}
       {saveError ? <Notice>{saveError}</Notice> : null}
       {!data && !error ? (
-        <Copy muted>{tr('Lade Verlauf …', 'Loading history …')}</Copy>
+        <Copy muted>{tr('Lade Verlauf …', 'Loading trace …')}</Copy>
       ) : null}
       {data && !data.series ? (
         <Copy>
           {tr(
             'Ohne aufgezeichneten Verlauf lässt sich das Ende nicht prüfen.',
-            'Without a recorded history, the end cannot be checked.',
+            'Without a recorded trace, the end cannot be checked.',
           )}
         </Copy>
       ) : null}
@@ -235,7 +235,7 @@ export function RunEndSheet({
           ]}
           emptyHint={tr(
             'Der Verlauf hat keine Bewegung und keinen Puls.',
-            'The history has no movement and no heart rate.',
+            'The trace has no movement and no heart rate.',
           )}
           busy={busy}
           onSave={endTime => void save(endTime)}

@@ -204,7 +204,7 @@ export function ExerciseDetail({
       </View>
 
       {metrics.length ? (
-        <Section title={tr('Verlauf', 'History')}>
+        <Section title={tr('Verlauf', 'Trace')}>
           <ChipGroup
             label={tr('Kennzahl im Verlauf', 'Metric over time')}
             options={metrics.map(entry => ({

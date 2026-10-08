@@ -262,7 +262,7 @@ export function buildUpWeek(input: BuildUpInput): BuildUpWeek {
         `Mit höchstens 10 % mehr pro Woche kommst du bis zum Ziel auf lange Läufe von etwa ${formatDistanceKm(
           reachable,
         )} statt ${formatDistanceKm(peak)}.`,
-        `With at most 10 % more per week, you reach long runs of about ${formatDistanceKm(
+        `With at most 10% more per week, you reach long runs of about ${formatDistanceKm(
           reachable,
         )} by the target instead of ${formatDistanceKm(peak)}.`,
       ),

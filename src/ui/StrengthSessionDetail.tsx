@@ -40,7 +40,7 @@ import {
   strengthWatchTransfer,
   type StrengthWatchInfo,
 } from '../domain/wearLink';
-import { dateFormat, numberFormat, tr } from '../domain/i18n';
+import { dateFormat, numberFormat, percentSign, tr } from '../domain/i18n';
 import { exerciseDisplayName } from '../domain/catalog';
 import {
   Badge,
@@ -99,8 +99,8 @@ const RATING_MARK: Record<Rating, string> = {
 const signedPercent = (value: number) => {
   const rounded = Math.round(value);
   return rounded === 0
-    ? '± 0 %'
-    : `${rounded > 0 ? '+' : '−'}${Math.abs(rounded)} %`;
+    ? tr('± 0 %', '±0%')
+    : `${rounded > 0 ? '+' : '−'}${Math.abs(rounded)}${percentSign()}`;
 };
 
 /** Confirmed sets of an exercise as a chain of values. Skipped ones are named, not hidden. */
@@ -307,7 +307,7 @@ export function StrengthSessionDetail({
         {heart ? (
           <Stat
             value={String(Math.round(heart.averageBpm))}
-            label={tr('Ø Puls', 'Ø Heart rate')}
+            label={tr('Ø Puls', 'Avg heart rate')}
             delta={deltaLine(comparison?.averageBpm)}
           />
         ) : null}
@@ -347,7 +347,7 @@ export function StrengthSessionDetail({
             </Copy>
           ) : null}
           <ValueRow
-            label={tr('Ø Puls', 'Ø Heart rate')}
+            label={tr('Ø Puls', 'Avg heart rate')}
             value={`${Math.round(heart.averageBpm)} bpm`}
           />
           <ValueRow
@@ -400,7 +400,7 @@ export function StrengthSessionDetail({
                 )} % der Zeit einen Pulswert; Lücken bleiben leer.`,
                 `${isWatchHeart(heart) ? 'The watch' : heartSourceLabel(heart)} had a heart rate value for only ${Math.round(
                   heart.coverage * 100,
-                )} % of the time; gaps stay empty.`,
+                )}% of the time; gaps stay empty.`,
               )}
             </Copy>
           ) : null}
@@ -538,7 +538,7 @@ export function StrengthSessionDetail({
               format={formatDuration}
             />
             <ComparedRow
-              label={tr('Ø Puls', 'Ø Heart rate')}
+              label={tr('Ø Puls', 'Avg heart rate')}
               value={comparison.averageBpm}
               format={value => `${Math.round(value)} bpm`}
             />
@@ -557,7 +557,7 @@ export function StrengthSessionDetail({
           title={tr('Ende bearbeiten', 'Edit end')}
           subtitle={tr(
             'Vergessen zu beenden? Wähle im Verlauf, wann Schluss war.',
-            'Forgot to finish? Choose in History when it ended.',
+            'Forgot to finish? Pick on the chart when it ended.',
           )}
           onPress={onEditEnd}
           disabled={busy}
@@ -595,7 +595,7 @@ export function StrengthSessionDetail({
               }.`,
               `Heart rate from ${isWatchHeart(heart) ? 'the watch' : heartSourceLabel(heart)} in ${heart.stepSeconds}-s windows, ${Math.round(
                 heart.coverage * 100,
-              )} % covered${
+              )}% covered${
                 heart.clockAligned
                   ? ''
                   : '; watch and phone not synced, set times may be a few seconds off'

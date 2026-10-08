@@ -99,7 +99,7 @@ export function strengthRecommendationFor(
       reason: suggestion.reason,
       goal: tr(
         `In den umgesetzten Einheiten liegt dein bestes Arbeits-e1RM bei ${name} häufiger als zufällig mindestens ${suggestion.checkCriterion.minimumRelevantChangePercent} % über dem Median der Vergleichseinheiten.`,
-        `In the followed sessions, your best working e1RM for ${name} is at least ${suggestion.checkCriterion.minimumRelevantChangePercent} % above the median of the comparison sessions more often than chance.`,
+        `In the followed sessions, your best working e1RM for ${name} is at least ${suggestion.checkCriterion.minimumRelevantChangePercent}% above the median of the comparison sessions more often than chance.`,
       ),
       exerciseId,
       exerciseName: name,
@@ -437,7 +437,7 @@ export function evaluateStrengthExperiment(
       verdict: 'improved',
       summary: tr(
         `Dein bestes Arbeits-e1RM lag in ${test.positives} von ${outcomes.length} umgesetzten Einheiten mindestens ${c.minimumRelevantChangePercent} % über den Vergleichseinheiten; das ist häufiger als zufällig.${causal}`,
-        `Your best working e1RM was at least ${c.minimumRelevantChangePercent} % above the comparison sessions in ${test.positives} of ${outcomes.length} followed sessions; that is more often than chance.${causal}`,
+        `Your best working e1RM was at least ${c.minimumRelevantChangePercent}% above the comparison sessions in ${test.positives} of ${outcomes.length} followed sessions; that is more often than chance.${causal}`,
       ),
     };
   }
@@ -447,7 +447,7 @@ export function evaluateStrengthExperiment(
       verdict: 'worsened',
       summary: tr(
         `Dein bestes Arbeits-e1RM lag in ${test.negatives} von ${outcomes.length} umgesetzten Einheiten mindestens ${c.minimumRelevantChangePercent} % unter den Vergleichseinheiten; das ist häufiger als zufällig.${causal}`,
-        `Your best working e1RM was at least ${c.minimumRelevantChangePercent} % below the comparison sessions in ${test.negatives} of ${outcomes.length} followed sessions; that is more often than chance.${causal}`,
+        `Your best working e1RM was at least ${c.minimumRelevantChangePercent}% below the comparison sessions in ${test.negatives} of ${outcomes.length} followed sessions; that is more often than chance.${causal}`,
       ),
     };
   }
@@ -457,7 +457,7 @@ export function evaluateStrengthExperiment(
       verdict: 'no_relevant_effect',
       summary: tr(
         `Alle ${outcomes.length} umgesetzten Einheiten lagen innerhalb von ±${c.minimumRelevantChangePercent} % der Vergleichseinheiten.${causal}`,
-        `All ${outcomes.length} followed sessions were within ±${c.minimumRelevantChangePercent} % of the comparison sessions.${causal}`,
+        `All ${outcomes.length} followed sessions were within ±${c.minimumRelevantChangePercent}% of the comparison sessions.${causal}`,
       ),
     };
   }

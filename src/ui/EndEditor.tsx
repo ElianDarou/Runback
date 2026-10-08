@@ -236,7 +236,7 @@ export function EndEditor({
             )} bis ${clock().format(
               new Date(rangeEnd),
             )}. Tippe, wo die Einheit endete.`,
-            `History from ${clock().format(
+            `Trace from ${clock().format(
               new Date(startTime),
             )} to ${clock().format(
               new Date(rangeEnd),

@@ -6,7 +6,7 @@ In the app, the ZIP is imported under Settings › Your data › From other apps
 Strong. The routes come once from OSRM foot routing (OpenStreetMap data). The values
 are invented and only meant for screenshots.
 
-    python3 tools/site-demo/gen.py [ausgabeordner]
+    python3 tools/site-demo/gen.py [output_dir]
 """
 import json, math, random, datetime as dt, zipfile, os, sys, urllib.request
 

@@ -32,6 +32,7 @@ import {
   isLanguage,
   numberFormat,
   parseDecimal,
+  percentSign,
   setLanguage,
   tr,
   type Language,
@@ -304,7 +305,7 @@ const tempoValue = (run: Run) => (usesPace(run.sport) ? pace(run) : speed(run));
 const tempoUnit = (run: Run) => (usesPace(run.sport) ? '/km' : 'km/h');
 const tempoLabel = (run: Run) =>
   usesPace(run.sport)
-    ? tr('Ø min / km', 'Avg min / km')
+    ? tr('Ø min / km', 'Avg pace')
     : tr('Ø km/h', 'Avg km/h');
 const date = (timestamp: number) =>
   dateFormat({
@@ -397,7 +398,7 @@ const startKindOptions = (): {
 }[] => [
   { value: 'running', label: tr('Laufen', 'Running') },
   { value: 'cycling', label: tr('Radfahren', 'Cycling') },
-  { value: 'strength', label: tr('Krafttraining', 'Strength training') },
+  { value: 'strength', label: tr('Krafttraining', 'Strength') },
 ];
 const weekdayShortLabels = (): string[] =>
   getLanguage() === 'en'
@@ -3133,7 +3134,7 @@ export function RunbackApp({
           {sport === 'running' ? (
             // The carry position rarely changes: collapsed, with the last choice as value.
             <Disclosure
-              title={tr('Handy', 'Phone')}
+              title={tr('Handy', 'Phone position')}
               subtitle={
                 PHONE_PLACEMENTS.find(
                   item =>
@@ -3487,7 +3488,7 @@ export function RunbackApp({
           'Prozentpunkte weniger Tempoabfall als der Median der Vergleichsläufe (',
           'percentage points less pace fade than the median of the comparison runs (',
         )}
-        {number(recommendation.criteria.baselineFadePercent, 1)} %)
+        {number(recommendation.criteria.baselineFadePercent, 1)}{percentSign()})
       </Copy>
       {recommendation.criteria.exclusions.map((text, i) => (
         <Copy muted key={i}>
@@ -3663,7 +3664,7 @@ export function RunbackApp({
           'Vorzeichentest: häufiger als zufällig mindestens',
           'sign test: more often than chance, at least',
         )}{' '}
-        {recommendation.criteria.minimumRelevantChangePercent} %{' '}
+        {recommendation.criteria.minimumRelevantChangePercent}{percentSign()}{' '}
         {tr(
           'über dem Median der Vergleichseinheiten',
           'above the median of the comparison sessions',
@@ -3871,7 +3872,7 @@ export function RunbackApp({
           <Button
             secondary
             small
-            title={tr('Vorschlag ablehnen', 'Decline suggestion')}
+            title={tr('Vorschlag ablehnen', 'Decline')}
             disabled={busy}
             onPress={() =>
               save({
@@ -5177,7 +5178,7 @@ export function RunbackApp({
                       )
                     : tr(
                         'Vergessen zu beenden? Wähle im Verlauf, wann Schluss war.',
-                        'Forgot to end it? Choose in History when it ended.',
+                        'Forgot to end it? Pick on the chart when it ended.',
                       )
                 }
                 onPress={() => setEndEdit({ kind: 'run', id: selected.id })}

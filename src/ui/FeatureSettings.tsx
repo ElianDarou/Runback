@@ -374,9 +374,9 @@ export function FeatureSettings({
             )}
           />
           <Row
-            title={tr('Radfahren in der Auswahl', 'Cycling in the selection')}
+            title={tr('Radfahren in der Auswahl', 'Offer cycling')}
             trailing={toggle(
-              tr('Radfahren in der Auswahl', 'Cycling in the selection'),
+              tr('Radfahren in der Auswahl', 'Offer cycling'),
               features.sports.cycling,
               value => patch('sports', { cycling: value }),
             )}

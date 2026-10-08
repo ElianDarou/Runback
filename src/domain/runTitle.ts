@@ -79,7 +79,7 @@ export const RUN_PURPOSES: RunPurposeOption[] = [
   {
     value: 'race',
     get label() {
-      return tr('Auf Zeit', 'Against the clock');
+      return tr('Auf Zeit', 'Time trial');
     },
     get description() {
       return tr(
@@ -105,7 +105,7 @@ const purposeLabels = (): Record<RunPurpose, string> => ({
   easy: tr('Ruhig', 'Easy'),
   long: tr('Lange Runde', 'Long run'),
   intervals: tr('Tempowechsel', 'Pace changes'),
-  race: tr('Auf Zeit', 'Against the clock'),
+  race: tr('Auf Zeit', 'Time trial'),
   unknown: tr('Noch offen', 'Not set yet'),
 });
 

@@ -89,6 +89,11 @@ export function fixed(value: number, digits = 1): string {
   return active() === 'de' ? text.replace('.', ',') : text;
 }
 
+/** Space and percent sign of the active language: "3 %" in German, "3%" in English. */
+export function percentSign(): string {
+  return active() === 'en' ? '%' : ' %';
+}
+
 /** Parses a typed decimal; accepts comma and point in both languages. */
 export function parseDecimal(input: string): number {
   return Number(input.trim().replace(',', '.'));

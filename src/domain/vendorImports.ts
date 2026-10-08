@@ -605,7 +605,7 @@ const VENDOR_INFOS_EN: VendorInfo[] = [
     name: 'Strong (strength training)',
     short: 'Sessions, sets and reusable templates',
     exportSteps: [
-      'Open Strong → Profile → Settings → export Strong data (iOS) or Export data (Android).',
+      'Open Strong → Profile → Settings → Export Strong Data (iOS) or Export data (Android).',
       'Get the CSV file (one row per set) to the phone by file, email or Drive.',
       'Import the CSV into Runback and take over the recognized templates in the plan.',
     ],

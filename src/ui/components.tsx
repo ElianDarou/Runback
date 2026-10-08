@@ -31,7 +31,7 @@ import {
   type EdgeInsets,
 } from 'react-native-safe-area-context';
 import type { RoutePoint } from '../native';
-import { tr } from '../domain/i18n';
+import { percentSign, tr } from '../domain/i18n';
 
 /**
  * Shared building blocks for the whole interface. The binding rules for use,
@@ -863,7 +863,12 @@ export function Ring({
       accessibilityValue={
         percent === null
           ? undefined
-          : { min: 0, max: 100, now: percent, text: `${percent} %` }
+          : {
+              min: 0,
+              max: 100,
+              now: percent,
+              text: `${percent}${percentSign()}`,
+            }
       }
       style={[s.ring, { width: size, height: size }]}
     >
@@ -893,7 +898,7 @@ export function Ring({
       </Svg>
       <View style={s.ringCenter} pointerEvents="none">
         <Text style={s.ringValue}>
-          {percent === null ? '–' : `${percent} %`}
+          {percent === null ? '–' : `${percent}${percentSign()}`}
         </Text>
         {caption ? <Text style={s.ringCaption}>{caption}</Text> : null}
       </View>
