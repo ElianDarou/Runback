@@ -130,7 +130,7 @@ jobs:
             '-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -XX:+HeapDumpOnOutOfMemoryError' \
             -PversionCode="$VERSION_CODE" -PversionName="$VERSION_NAME" \
             -PreactNativeArchitectures=armeabi-v7a,arm64-v8a,x86_64 \
-            :core:testDebugUnitTest :app:testDebugUnitTest :app:lintRelease :wear:lintRelease \
+            :core:testDebugUnitTest :app:testDebugUnitTest :wear:testDebugUnitTest :app:lintRelease :wear:lintRelease \
             :app:assembleRelease :wear:assembleRelease
       - name: Verify and package APKs
         env:
@@ -153,6 +153,7 @@ jobs:
           path: |
             android/core/build/reports/tests/
             android/app/build/reports/tests/
+            android/wear/build/reports/tests/
             android/app/build/reports/lint-results-release.*
             android/wear/build/reports/lint-results-release.*
           if-no-files-found: ignore
