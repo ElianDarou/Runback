@@ -1,9 +1,9 @@
 # Runback – Hinweise für Agenten
 
 Runback ist eine lokale Android-Trainings-App (React Native + Kotlin) für Laufen
-und Krafttraining mit Wear-OS-Companion. Sie gibt je Bereich (Laufen,
-Krafttraining) **höchstens eine** begründete, prüfbare Empfehlung und sagt
-sonst ehrlich, was fehlt.
+und Krafttraining mit Wear-OS-Companion. Sie zeichnet auf, übernimmt die
+Historie aus anderen Apps und zeigt ehrlich, was in den Daten steckt und was
+fehlt. Empfehlungen sind optional, je Bereich höchstens eine.
 
 Lies vor Änderungen:
 

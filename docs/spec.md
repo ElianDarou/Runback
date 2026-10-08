@@ -5,14 +5,14 @@ umgesetzt ist, steht im Code, nicht hier.
 
 ## Ziel
 
-Runback ist eine lokale Android-Trainings-App für Laufen und Krafttraining. Aus
-aufgezeichneten und importierten Einheiten leitet sie je Bereich **höchstens
-eine** begründete, umsetzbare und prüfbare Empfehlung ab — und prüft später
-ehrlich, ob sie umgesetzt wurde und ob sie geholfen hat.
+Runback ist eine lokale Android-Trainings-App für Laufen und Krafttraining.
+Sie zeichnet Einheiten mit Handy und Uhr auf, übernimmt die Historie aus
+anderen Apps und zeigt ehrlich, was in diesen Daten steckt: Tempo, Puls,
+Abschnitte, Laufstil, Sätze, Muskeln, der Vergleich mit früheren Einheiten.
 
-Kernversprechen: Eine Einheit rein → höchstens eine Empfehlung für diesen
-Bereich raus, wenn die Daten sie tragen. Sonst sagt die App knapp, was bekannt
-ist und was fehlt. **Keine Empfehlung ist ein vollwertiges Ergebnis.**
+Kernversprechen: Deine Daten bleiben vollständig, nachvollziehbar und bei dir.
+Jede Zahl hat eine Herkunft; was nicht bekannt ist, bleibt sichtbar
+unbekannt. Ziele, Pläne und Empfehlungen sind optionale Funktionen darauf.
 
 ## Mentalität
 
@@ -21,8 +21,6 @@ ist und was fehlt. **Keine Empfehlung ist ein vollwertiges Ergebnis.**
   Schlaf, am Wetter, am zufällig schlechten Lauf davor. „Noch nicht klar“ ist
   deshalb der Normalfall, und lieber „eher ein Eindruck“ als eine präzise Zahl
   ohne Grundlage.
-- **Ruhig statt reaktiv.** Ein neuer Lauf ist kein Grund für einen neuen Tipp.
-  Beibehalten ist eine Empfehlung.
 - **Der Nutzer entscheidet.** Die App schlägt vor, der Nutzer nimmt an. Pläne
   sind Nutzerartefakte; die App schreibt sie nicht von sich aus um.
 - **Alles ist optional.** Aufzeichnen funktioniert ohne Ziel, Fokus, Plan,
@@ -30,50 +28,6 @@ ist und was fehlt. **Keine Empfehlung ist ein vollwertiges Ergebnis.**
   abgewählt weder Hinweise noch leere Flächen.
 - **Schmaler Output, beliebige interne Komplexität.** Eine Aussage je Fläche,
   ein Satz im Imperativ, Tiefe unter „Details“.
-
-## Zwei Bereiche
-
-**Laufen** und **Krafttraining** sind getrennte Bereiche mit eigenem Ziel,
-eigenem Fokus und eigener Empfehlung. Sie werden an getrennten Daten geprüft
-(Läufe bzw. Sätze und Muskelkater) und stören sich in der Auswertung deshalb
-kaum. Wer nur einen Bereich nutzt, sieht vom anderen nichts.
-
-- Höchstens **eine aktive Empfehlung je Bereich**, also nie mehr als zwei.
-- Eine Empfehlung, die beide Bereiche berührt („Beinbelastung vor dem langen
-  Lauf runter“), belegt **beide Plätze**.
-- **Kopplungssperre:** Bevor die zweite Empfehlung vorgeschlagen wird, prüft
-  Runback, ob ihre Handlungsklasse die Zielgröße der ersten beeinflussen kann
-  (mehr Beinvolumen → Lauftempo). Wenn ja, erscheint sie nicht parallel,
-  sondern als „Danach vorgesehen“.
-- Auf „Heute“ steht die Empfehlung für die Einheit, die gerade gestartet wird.
-  Nie beide untereinander.
-
-Freigeschaltete Handlungsklassen: Laufen „ruhigerer Start“, Krafttraining
-„Last einer Übung“. Mehr Kennzahlen müssen nicht mehr Klassen erzeugen.
-
-## Die drei Ebenen
-
-Je Bereich:
-
-| Ebene | Bedeutung |
-|---|---|
-| **Ziel** | Optionales Vorhaben, ggf. mit Datum. Darf enden. Ein Datum macht Aufbau und Tapering berechenbar. |
-| **Fokus** | Dauerhaftes Thema ohne Enddatum, höchstens einer aktiv je Bereich. Wird **nie bewertet**. Ein Ziel darf einen Fokus vorschlagen. |
-| **Empfehlung** | Höchstens eine konkrete Handlung je Bereich, die geprüft wird. Zustände: Vorschlag → Angenommen → Aktiv / Pausiert → Abgeschlossen / Abgebrochen. |
-
-Die drei Ebenen sind unabhängig optional. Ein Fokuswechsel beendet keine
-laufende Empfehlung; das Ende eines Ziels löscht keinen Fokus.
-
-Der Fokus hat zwei Felder: die **Fokus-Art** aus einer kurzen, versionierten
-Liste je Bereich (rechnet die Priorisierung) und eine **eigene Bezeichnung** als Freitext
-(steht im UI, wird nicht ausgewertet). Mit Ziel schlägt Runback eine Fokus-Art
-vor; ohne Ziel rät Runback nicht, der Nutzer wählt selbst oder lässt es leer.
-Ein sehr breiter Fokus („fitter werden“) wird wie „kein Fokus“ behandelt; dann
-entscheiden Datenqualität und Umsetzbarkeit.
-
-Alt und neu bezeichnen dasselbe Objekt: „Arbeitsthema“, „nächste Handlung“ und
-„Intervention“ heißen heute Empfehlung. Nicht „Laufempfehlung“ — Krafttraining
-gehört dazu. Nicht „Änderung“ — Beibehalten ist eine Empfehlung.
 
 ## Grundregeln
 
@@ -138,23 +92,79 @@ Getrennt und nie vermischt:
   als „bereit“, „belastbar“ oder „Verletzungsrisiko“. Ihre Spanne ist eine
   grobe Setzung, kein Vorhersageintervall, bis eine Prüfung an späteren,
   unbekannten Meldungen etwas anderes belegt.
-- **Priorisierung** — deterministisch, kein lernendes Profil:
-  - Eine versionierte **Relevanzmatrix** gibt jeder Handlungsklasse je
-    Fokus-Art ein festes Gewicht. Gleiche Eingaben → gleiche Reihenfolge.
-  - Ein Fokus kann Klassen **sperren**, nicht nur abwerten („verletzungsfrei
-    bleiben“ sperrt Umfangssteigerung).
-  - Ein Ziel mit Datum filtert per **Kalender** hart: kein Technikumbau in den
-    letzten drei Wochen, kein Tapering mehr als zwölf Wochen vorher.
-  - Danach zählt: höheres Gewicht, bessere Datenqualität, bessere
-    Umsetzbarkeit, kleinerer Aufwand.
-  - Unter „Details“ stehen auch die **verworfenen Alternativen** mit Grund.
-    Läuft eine Empfehlung, darf die nächste als „Danach vorgesehen“ erscheinen,
-    ohne die aktive Prüfung zu ändern.
-  - Die Gewichte sind redaktionell. Im UI heißt das „So priorisiert Runback“,
-    nie „für dich berechnet“.
 
 Übungskatalog, Muskelregionen, Modelle und Matrix sind versionierte Daten;
 ihre Version wandert in jede Ableitung.
+
+## Empfehlungen (optional)
+
+Wer sie einschaltet, bekommt je Bereich höchstens eine begründete, umsetzbare
+und prüfbare Empfehlung; Runback prüft später ehrlich, ob sie umgesetzt wurde
+und ob sie geholfen hat. Keine Empfehlung ist ein vollwertiges Ergebnis. Ein
+neuer Lauf ist kein Grund für einen neuen Tipp; Beibehalten ist eine
+Empfehlung.
+
+### Zwei Bereiche
+
+**Laufen** und **Krafttraining** sind getrennte Bereiche mit eigenem Ziel,
+eigenem Fokus und eigener Empfehlung. Sie werden an getrennten Daten geprüft
+(Läufe bzw. Sätze und Muskelkater) und stören sich in der Auswertung deshalb
+kaum. Wer nur einen Bereich nutzt, sieht vom anderen nichts.
+
+- Höchstens **eine aktive Empfehlung je Bereich**, also nie mehr als zwei.
+- Eine Empfehlung, die beide Bereiche berührt („Beinbelastung vor dem langen
+  Lauf runter“), belegt **beide Plätze**.
+- **Kopplungssperre:** Bevor die zweite Empfehlung vorgeschlagen wird, prüft
+  Runback, ob ihre Handlungsklasse die Zielgröße der ersten beeinflussen kann
+  (mehr Beinvolumen → Lauftempo). Wenn ja, erscheint sie nicht parallel,
+  sondern als „Danach vorgesehen“.
+- Auf „Heute“ steht die Empfehlung für die Einheit, die gerade gestartet wird.
+  Nie beide untereinander.
+
+Freigeschaltete Handlungsklassen: Laufen „ruhigerer Start“, Krafttraining
+„Last einer Übung“. Mehr Kennzahlen müssen nicht mehr Klassen erzeugen.
+
+### Die drei Ebenen
+
+Je Bereich:
+
+| Ebene | Bedeutung |
+|---|---|
+| **Ziel** | Optionales Vorhaben, ggf. mit Datum. Darf enden. Ein Datum macht Aufbau und Tapering berechenbar. |
+| **Fokus** | Dauerhaftes Thema ohne Enddatum, höchstens einer aktiv je Bereich. Wird **nie bewertet**. Ein Ziel darf einen Fokus vorschlagen. |
+| **Empfehlung** | Höchstens eine konkrete Handlung je Bereich, die geprüft wird. Zustände: Vorschlag → Angenommen → Aktiv / Pausiert → Abgeschlossen / Abgebrochen. |
+
+Die drei Ebenen sind unabhängig optional. Ein Fokuswechsel beendet keine
+laufende Empfehlung; das Ende eines Ziels löscht keinen Fokus.
+
+Der Fokus hat zwei Felder: die **Fokus-Art** aus einer kurzen, versionierten
+Liste je Bereich (rechnet die Priorisierung) und eine **eigene Bezeichnung** als Freitext
+(steht im UI, wird nicht ausgewertet). Mit Ziel schlägt Runback eine Fokus-Art
+vor; ohne Ziel rät Runback nicht, der Nutzer wählt selbst oder lässt es leer.
+Ein sehr breiter Fokus („fitter werden“) wird wie „kein Fokus“ behandelt; dann
+entscheiden Datenqualität und Umsetzbarkeit.
+
+Alt und neu bezeichnen dasselbe Objekt: „Arbeitsthema“, „nächste Handlung“ und
+„Intervention“ heißen heute Empfehlung. Nicht „Laufempfehlung“ — Krafttraining
+gehört dazu. Nicht „Änderung“ — Beibehalten ist eine Empfehlung.
+
+### Priorisierung
+
+Deterministisch, kein lernendes Profil:
+
+- Eine versionierte **Relevanzmatrix** gibt jeder Handlungsklasse je
+  Fokus-Art ein festes Gewicht. Gleiche Eingaben → gleiche Reihenfolge.
+- Ein Fokus kann Klassen **sperren**, nicht nur abwerten („verletzungsfrei
+  bleiben“ sperrt Umfangssteigerung).
+- Ein Ziel mit Datum filtert per **Kalender** hart: kein Technikumbau in den
+  letzten drei Wochen, kein Tapering mehr als zwölf Wochen vorher.
+- Danach zählt: höheres Gewicht, bessere Datenqualität, bessere
+  Umsetzbarkeit, kleinerer Aufwand.
+- Unter „Details“ stehen auch die **verworfenen Alternativen** mit Grund.
+  Läuft eine Empfehlung, darf die nächste als „Danach vorgesehen“ erscheinen,
+  ohne die aktive Prüfung zu ändern.
+- Die Gewichte sind redaktionell. Im UI heißt das „So priorisiert Runback“,
+  nie „für dich berechnet“.
 
 ## Rahmen
 
