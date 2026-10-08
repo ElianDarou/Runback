@@ -6,10 +6,25 @@ zur Einrichtung.
 
 Website: [runback-training.vercel.app](https://runback-training.vercel.app)
 
-Runback zeichnet Einheiten auf, importiert deine Historie und leitet daraus
-**höchstens eine** begründete Empfehlung fürs Laufen und eine fürs Krafttraining
-ab — und prüft später ehrlich, ob sie geholfen hat. „Noch nicht klar“ ist ein
-normales Ergebnis.
+Runback zeichnet Läufe und Krafttraining mit Handy und Uhr auf, holt deine
+Historie aus anderen Apps und zeigt, was in den Daten steckt: Tempo, Puls,
+Kilometer, Laufstil, Sätze, Muskeln, der Vergleich mit deinen letzten
+Einheiten. Fehlt etwas, steht dort „–“ statt einer geschätzten Zahl.
+
+## Daten
+
+- **Import** aus Garmin, Strava, Fitbit, Google Fit, Apple Health, Samsung
+  Health, Mi Fitness, Polar, Strong u. a. — siehe [Importe](docs/imports.md).
+- **Backup** als ZIP mit allem, was Runback kennt; Wiederherstellung auf einer
+  frischen Installation.
+- **Export** eines Laufs als GPX, Laufberichte und Krafttraining als ZIP.
+- **Health Connect** lesen und (je Lauf, ausdrücklich) schreiben.
+- **BLE-Sensoren** für Puls und Laufkadenz.
+- **Wetter** nur nach Aktivierung, per Open-Meteo.
+- **OpenRouter** optional mit eigenem Schlüssel für Formulierung und
+  Trainingschat. Der Chat liest, er schreibt nichts und entscheidet nichts.
+- **Eigener Server** optional, selbst gehostet, mit einer lesenden Kopie
+  freigegebener Daten — siehe [server/README.md](server/README.md).
 
 ## Was du in der App siehst
 
@@ -19,7 +34,7 @@ Vorlagen oder Muskelkater. Alles andere liegt unter **Alle Funktionen**.
 
 - **Heute** — Was mache ich jetzt? Wochenleiste, die heutige Einheit als
   Karte mit einem Start-Button (Sportart, Zweck, Vorlage und Tempo-/Pulsziel
-  im Start-Sheet), die laufende Empfehlung kompakt, Muskelkater melden, die
+  im Start-Sheet), Muskelkater melden, die laufende Empfehlung (falls aktiv), die
   letzten Einheiten.
 - **Verlauf** — Was habe ich gemacht? Einheiten nach Wochen gruppiert mit
   Summe. Detailansicht mit Karte, Kennzahlen, nächstem Schritt, Gefühl,
@@ -41,11 +56,7 @@ Unter **Funktionen** wählst du, was Runback zeigt und wann es fragt: Bereiche
 Pausentimer und mehr. Unter **Navigation** wählst du die Tabs. Abgeschaltetes
 verschwindet aus der App; Daten bleiben erhalten.
 
-Nach einem Lauf zeigt Runback drei Dinge: wie der Lauf zu seinem Zweck passt,
-wo die aktuelle Empfehlung steht und was du als Nächstes tun kannst — auch
-„so weitermachen“. Details, Datenbasis und Unsicherheit liegen unter „Details“.
-
-## Ziel, Fokus, Empfehlung
+## Ziel, Fokus, Empfehlung (optional)
 
 Laufen und Krafttraining sind getrennte Bereiche. Jeder hat sein eigenes Ziel,
 seinen eigenen Fokus und seine eigene Empfehlung; wer nur eins macht, sieht vom
@@ -60,20 +71,9 @@ anderen nichts.
   Empfehlung beides („weniger Beinbelastung vor dem langen Lauf“), gibt es
   solange keine zweite.
 
-## Daten
-
-- **Import** aus Garmin, Strava, Fitbit, Google Fit, Apple Health, Samsung
-  Health, Mi Fitness, Polar, Strong u. a. — siehe [Importe](docs/imports.md).
-- **Backup** als ZIP mit allem, was Runback kennt; Wiederherstellung auf einer
-  frischen Installation.
-- **Export** eines Laufs als GPX, Laufberichte und Krafttraining als ZIP.
-- **Health Connect** lesen und (je Lauf, ausdrücklich) schreiben.
-- **BLE-Sensoren** für Puls und Laufkadenz.
-- **Wetter** nur nach Aktivierung, per Open-Meteo.
-- **OpenRouter** optional mit eigenem Schlüssel für Formulierung und
-  Trainingschat. Der Chat liest, er schreibt nichts und entscheidet nichts.
-- **Eigener Server** optional, selbst gehostet, mit einer lesenden Kopie
-  freigegebener Daten — siehe [server/README.md](server/README.md).
+Nach einem Lauf zeigt Runback drei Dinge: wie der Lauf zu seinem Zweck passt,
+wo die aktuelle Empfehlung steht und was du als Nächstes tun kannst — auch
+„so weitermachen“. Details, Datenbasis und Unsicherheit liegen unter „Details“.
 
 ## Installation
 
