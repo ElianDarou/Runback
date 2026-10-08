@@ -128,6 +128,27 @@ class ReuseTests(unittest.TestCase):
         self.jobs = []
         self.assertIsNone(self.find())
 
+    def test_server_skip_is_reused_only_for_verified_app_only_changes(self):
+        for job in self.jobs:
+            if job["name"] == reuse.SERVER_JOB:
+                job["conclusion"] = "skipped"
+        self.assertIsNone(self.find())
+        found = reuse.find_reusable_build(REPO, MERGED, self.current, TREE, self.fetch,
+                                          server_required=False)
+        self.assertIsNotNone(found)
+        self.jobs = [job for job in self.jobs if job["name"] != reuse.SERVER_JOB]
+        self.assertIsNone(reuse.find_reusable_build(REPO, MERGED, self.current, TREE, self.fetch,
+                                                   server_required=False))
+
+    def test_failed_or_incomplete_selection_blocks_reuse(self):
+        for conclusion, status in (("failure", "completed"), ("skipped", "completed"),
+                                   (None, "in_progress")):
+            with self.subTest(conclusion=conclusion, status=status):
+                self.jobs = [{"name": name, "status": status if name == "Select checks and verified PR build" else "completed",
+                              "conclusion": conclusion if name == "Select checks and verified PR build" else "success"}
+                             for name in reuse.REQUIRED_JOBS]
+                self.assertIsNone(self.find())
+
     def test_missing_expired_and_old_attempt_artifacts_require_fresh_build(self):
         for artifacts in ([], [{"id": 88, "name": "runback-apks-19-2", "expired": True}],
                           [{"id": 88, "name": "runback-apks-19-1", "expired": False}]):

@@ -70,6 +70,34 @@ class StrengthLiveTest {
         assertFalse(next.has("restStartedAt"))
     }
 
+    @Test fun theNextSetStaysAvailableAndCanBeConfirmedBeforeRestEnds() {
+        for (paused in listOf(false, true)) {
+            val original = session(exercise("triceps_pushdown", "Trizepsdrücken",
+                set("a", planned(reps = 8, rest = 180)), set("b", planned(reps = 8, rest = 180))))
+            val afterFirst = StrengthLive.apply(original, command(StrengthLive.COMPLETE_SET, "setId" to "a"),
+                10_000L, emptyList())!!
+            val resting = if (!paused) afterFirst else StrengthLive.apply(afterFirst,
+                command(StrengthLive.PAUSE_REST), 20_000L, emptyList())!!
+            assertTrue(StrengthLive.restRemaining(resting, 40_000L)!! > 0)
+            for (timerEnabled in listOf(false, true)) {
+                val mirror = StrengthLive.mirror(resting, emptyList(), 40_000L, timerEnabled)
+                assertEquals("b", mirror.getJSONObject("set").getString("id"))
+                assertEquals(timerEnabled, mirror.has("rest"))
+            }
+            val confirmed = StrengthLive.apply(resting,
+                command(StrengthLive.COMPLETE_SET, "setId" to "b", "reps" to 6, "detectionId" to "early-set"),
+                65_000L, emptyList())!!
+            val sets = confirmed.getJSONArray("exercises").getJSONObject(0).getJSONArray("sets")
+            assertEquals(8, sets.getJSONObject(0).getInt("actualReps"))
+            assertEquals(6, sets.getJSONObject(1).getInt("actualReps"))
+            assertEquals(10_000L, sets.getJSONObject(0).getLong("completedAt"))
+            assertEquals(65_000L, sets.getJSONObject(1).getLong("completedAt"))
+            assertEquals(65_000L, confirmed.getLong("restStartedAt"))
+            assertEquals(180L, StrengthLive.restRemaining(confirmed, 65_000L))
+            assertFalse(StrengthLive.restPaused(confirmed))
+        }
+    }
+
     @Test fun completingAnAlreadyCompletedSetChangesNothing() {
         val bench = exercise("bench", "Bench press", set("a", planned(reps = 8), 10L))
         assertNull(StrengthLive.apply(session(bench), command(StrengthLive.COMPLETE_SET, "setId" to "a"), 20L, emptyList()))

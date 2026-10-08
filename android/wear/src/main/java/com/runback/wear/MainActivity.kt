@@ -17,6 +17,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -312,7 +313,9 @@ class MainActivity : Activity() {
             isEnabled = review.status != AutoSets.Status.SENDING && review.reps + delta >= 0
             setTextColor(if (isEnabled) ink else muted)
             background = GradientDrawable().apply { setColor(surface); cornerRadius = dp(24).toFloat() }
-            minHeight = dp(48); minimumHeight = dp(48); minWidth = dp(52); minimumWidth = dp(52)
+            minHeight = dp(48); minimumHeight = dp(48); minWidth = dp(48); minimumWidth = dp(48)
+            setPadding(0, 0, 0, 0)
+            layoutParams = LinearLayout.LayoutParams(dp(48), dp(48))
             contentDescription = description
             setOnClickListener { vibrate(20); MotionCaptureService.review(this@MainActivity, MotionCaptureService.REVIEW_ADJUST, delta) }
         }
@@ -320,6 +323,9 @@ class MainActivity : Activity() {
         line.addView(TextView(this).apply {
             text = AutoSets.repsNumber(review)
             textSize = 34f; setTextColor(ink); gravity = Gravity.CENTER
+            // On small watches even "~11" and three-digit numbers must not wrap.
+            maxLines = 1
+            setAutoSizeTextTypeUniformWithConfiguration(12, 34, 1, TypedValue.COMPLEX_UNIT_SP)
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             contentDescription = "${review.reps} " + Lang.tr("Wiederholungen", "reps") +
                 if (review.uncertain && !review.touched) Lang.tr(", ungefähr", ", approximately") else ""

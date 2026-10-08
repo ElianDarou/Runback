@@ -85,6 +85,7 @@ class AutoSets(
             }
         }
         val nextProfile = next?.takeIf { set?.optBoolean("timed") != true }?.let { RepProfiles.forExercise(it.exerciseId) }
+        // The rest timer is only a hint: keep counting before it ends; timer changes reset nothing.
         if (nextProfile == null) {
             if (detector != null) buffer.pause()
             detector = null; profile = null

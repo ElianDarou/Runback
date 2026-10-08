@@ -31,9 +31,14 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = '17' }
+    testOptions {
+        unitTests.includeAndroidResources = true
+    }
 }
 
 dependencies {
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.17'
     implementation project(':core')
     implementation 'com.google.android.gms:play-services-wearable:19.0.0'
     implementation 'androidx.wear:wear-remote-interactions:1.2.0'
