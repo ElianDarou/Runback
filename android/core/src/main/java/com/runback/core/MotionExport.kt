@@ -12,7 +12,7 @@ import kotlin.math.roundToLong
 
 /**
  * Export der Bewegungsdaten als ZIP mit CSV-Dateien, gedacht fürs Trainieren
- * am PC (Anleitung: docs/bewegungsdaten.md). Zeit überall in ms relativ zum
+ * am PC (Anleitung: docs/motion-data.md). Zeit überall in ms relativ zum
  * Start der Einheit auf der Handyuhr; die Messwerte der Uhr werden dafür um
  * den gemessenen Uhrenversatz verschoben. Ist er unbekannt, bleibt die Uhrzeit
  * der Uhr stehen und `clock_aligned` ist 0. Unbekannte Werte bleiben leer.
@@ -71,7 +71,7 @@ object MotionExport {
                 .put("exportedAt", exportedAt)
                 .put("sessions", sessions.size)
                 .put("timeBase", "t_ms = Millisekunden seit Start der Einheit, Handyuhr")
-                .put("guide", "docs/bewegungsdaten.md im Runback-Repository")
+                .put("guide", "docs/motion-data.md im Runback-Repository")
                 .toString(2))
         }
     }

@@ -112,8 +112,8 @@ Windows: `gradlew.bat`. CI baut bei jedem Push auf `main` ein Prerelease
 
 - [Spec](docs/spec.md) — Ziel, Mentalität, Grundregeln.
 - [Design Language](docs/design-language.md) — wie Oberflächen aussehen und sprechen.
-- [Glossar](docs/glossar.md) — Alltagswort → Codename.
+- [Glossar](docs/glossary.md) — Alltagswort → Codename.
 - [Importe](docs/imports.md) — welche Exporte woher kommen und was daraus wird.
-- [Bewegungsdaten](docs/bewegungsdaten.md) — Bewegungen im Krafttraining exportieren und für ein Modell nutzen.
+- [Bewegungsdaten](docs/motion-data.md) — Bewegungen im Krafttraining exportieren und für ein Modell nutzen.
 
 Das Repository ist öffentlich; die Lizenz ist noch nicht festgelegt.

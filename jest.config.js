@@ -1,5 +1,6 @@
 module.exports = {
   preset: 'react-native',
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   modulePathIgnorePatterns: ['<rootDir>/.scaffold/', '<rootDir>/server/'],
   // Gemeinsame Testdaten, keine Tests.
   testPathIgnorePatterns: [

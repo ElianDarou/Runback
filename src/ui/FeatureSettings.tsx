@@ -25,6 +25,7 @@ import {
   availableHomeSections,
   visibleHomeSections,
   withArea,
+  tabLabel,
   type Area,
   type FeatureSettings as Features,
   type RecordingMetric,
@@ -192,13 +193,13 @@ export function FeatureSettings({
             selected.map((tab, index) => (
               <Row
                 key={tab}
-                title={tab}
+                title={tabLabel(tab)}
                 subtitle={`Platz ${index + 2}`}
                 trailing={
                   <Button
                     secondary
                     small
-                    title={`${tab} entfernen`}
+                    title={`${tabLabel(tab)} entfernen`}
                     disabled={disabled}
                     onPress={() => choose(tab, false)}
                   />
@@ -224,7 +225,7 @@ export function FeatureSettings({
           {availableTabs(features).map(tab => (
             <CheckRow
               key={tab}
-              title={tab}
+              title={tabLabel(tab)}
               subtitle={
                 selected.includes(tab)
                   ? 'In der Leiste'
@@ -254,13 +255,13 @@ export function FeatureSettings({
           onClose={() => setReplacement(null)}
         >
           <Copy muted>
-            Wähle den Platz für {replacement}; die ersetzte Funktion bleibt
+            Wähle den Platz für {replacement ? tabLabel(replacement) : ''}; die ersetzte Funktion bleibt
             aktiv.
           </Copy>
           {selected.map(tab => (
             <Row
               key={tab}
-              title={`${tab} ersetzen`}
+              title={`${tabLabel(tab)} ersetzen`}
               disabled={disabled}
               onPress={() => {
                 if (replacement)

@@ -106,7 +106,7 @@ describe('Ableitungen', () => {
       soreness: { enabled: false },
       recommendations: { running: 'off', strength: 'suggest' },
     });
-    expect(visibleTabs(f)).toEqual(['Heute', 'Coach', 'Verlauf']);
+    expect(visibleTabs(f)).toEqual(['today', 'coach', 'history']);
     expect(availableHomeSections(f)).toEqual(['goal', 'recent']);
     expect(visibleHomeSections(f)).toEqual(availableHomeSections(f));
     expect(recommendationsShown(f, 'running')).toBe(false);
@@ -258,7 +258,7 @@ describe('Funktionen und Navigation v2', () => {
     expect(f.planning.enabled).toBe(false);
     expect(f.recording.routes).toBe(false);
     expect(f.recommendations.running).toBe('off');
-    expect(visibleTabs(f)).toEqual(['Heute', 'Coach', 'Verlauf']);
+    expect(visibleTabs(f)).toEqual(['today', 'coach', 'history']);
   });
   it('normalisiert Plätze ohne ihre Reihenfolge zu verlieren', () => {
     const f = normalizeFeatures({
@@ -266,8 +266,8 @@ describe('Funktionen und Navigation v2', () => {
         tabs: ['Routen', 'Statistik', 'Routen', 'Heute', 'Coach', 'garbage'],
       },
     });
-    expect(f.navigation.tabs).toEqual(['Routen', 'Statistik']);
-    expect(visibleTabs(f)).toEqual(['Heute', 'Routen', 'Statistik', 'Verlauf']);
+    expect(f.navigation.tabs).toEqual(['routes', 'statistics']);
+    expect(visibleTabs(f)).toEqual(['today', 'routes', 'statistics', 'history']);
     expect(
       normalizeFeatures({ navigation: { tabs: [] } }).navigation.tabs,
     ).toEqual([]);
@@ -278,16 +278,16 @@ describe('Funktionen und Navigation v2', () => {
       'planning',
       false,
     );
-    expect(visibleTabs(f)).toEqual(['Heute', 'Verlauf']);
+    expect(visibleTabs(f)).toEqual(['today', 'history']);
     const enabled = withFeature(f, 'coach', true);
     expect(enabled.coach.enabled).toBe(true);
-    expect(visibleTabs(enabled)).toEqual(['Heute', 'Verlauf']);
-    const pinned = withNavigation(enabled, ['Statistik', 'Routen']);
+    expect(visibleTabs(enabled)).toEqual(['today', 'history']);
+    const pinned = withNavigation(enabled, ['statistics', 'routes']);
     expect(visibleTabs(pinned)).toEqual([
-      'Heute',
-      'Statistik',
-      'Routen',
-      'Verlauf',
+      'today',
+      'statistics',
+      'routes',
+      'history',
     ]);
     expect(withNavigation(pinned, []).statistics.enabled).toBe(true);
   });
@@ -309,10 +309,10 @@ describe('Funktionen und Navigation v2', () => {
       coach: { enabled: false },
     });
     expect(availableTabs(f)).toEqual([
-      'Statistik',
-      'Routen',
-      'Vorlagen',
-      'Muskelkater',
+      'statistics',
+      'routes',
+      'templates',
+      'soreness',
     ]);
     expect(featureEnabled(f, 'templates')).toBe(true);
   });
@@ -324,15 +324,15 @@ describe('Funktionen und Navigation v2', () => {
     });
     expect(
       withNavigation(f, [
-        'Routen',
-        'Statistik',
-        'Muskelkater',
-        'Vorlagen',
-        'Vorlagen',
-        'Coach',
-        'Plan',
+        'routes',
+        'statistics',
+        'soreness',
+        'templates',
+        'templates',
+        'coach',
+        'plan',
       ]).navigation.tabs,
-    ).toEqual(['Vorlagen', 'Coach']);
+    ).toEqual(['templates', 'coach']);
     expect(featureEnabled(f, 'routes')).toBe(false);
   });
   it('blendet Zielnähe nur über den unabhängigen Zielschalter aus', () => {

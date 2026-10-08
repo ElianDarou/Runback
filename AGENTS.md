@@ -11,7 +11,7 @@ Lies vor Änderungen:
   Die Grundregeln sind nicht verhandelbar; eine Verletzung ist ein Bug.
 - [docs/design-language.md](docs/design-language.md) — jede Oberfläche folgt
   ihr. Token und Bausteine kommen nur aus `src/ui/components.tsx`.
-- [docs/glossar.md](docs/glossar.md) — welche Wörter der Nutzer sieht und wie
+- [docs/glossary.md](docs/glossary.md) — welche Wörter der Nutzer sieht und wie
   sie im Code heißen.
 
 ## Aufbau

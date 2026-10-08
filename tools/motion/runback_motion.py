@@ -3,7 +3,7 @@
 Liest den Krafttraining-Export aus der App (Ordner `bewegungsdaten/`; ältere
 Bewegungsexporte ohne Ordner gehen auch) und liefert
 pro Krafteinheit Beschleunigung, Gyroskop, Sätze und Ereignisse als
-pandas-DataFrames. Anleitung und Format: docs/bewegungsdaten.md.
+pandas-DataFrames. Anleitung und Format: docs/motion-data.md.
 
     python tools/motion/runback_motion.py runback-krafttraining.zip
     python tools/motion/runback_motion.py export.zip --windows fenster.npz

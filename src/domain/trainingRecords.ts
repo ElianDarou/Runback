@@ -11,6 +11,7 @@ import type { ScheduleState } from './schedule';
 import type { RunTarget } from './runTarget';
 import type { FeatureSettings } from './features';
 import type { PurposeHintProvenance } from './purposeHint';
+import type { Language } from './i18n';
 
 /** Gemeinsame Datensätze von Telefon und Server, ohne Abhängigkeit zur nativen Brücke. */
 export interface Preset {
@@ -59,6 +60,8 @@ export interface Settings {
   dismissedStrengthImportTemplateIds?: string[];
   adherence?: Record<string, Adherence>;
   postponedUntil?: number;
+  /** App language; missing means the device language (`ui/deviceLanguage`). Kotlin reads it for notifications. */
+  language?: Language;
   [key: string]: unknown;
 }
 export type MotionWrist = 'left' | 'right' | 'unknown';

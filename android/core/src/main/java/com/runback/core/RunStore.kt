@@ -37,6 +37,7 @@ class RunStore(context: Context) : DocumentStore {
             }
             db = helper!!.writableDatabase
         }
+        Lang.update(settings())
     }
     private fun <T> locked(block: () -> T): T = synchronized(lock, block)
     /** Was das erste Öffnen nach einem Prozessverlust tut; für Tests ohne echten Absturz. */
@@ -937,7 +938,7 @@ class RunStore(context: Context) : DocumentStore {
     }
 
     fun settings(): JSONObject = getDocument("settings") ?: JSONObject().put("rawBudgetMb",512).put("weatherEnabled",false)
-    fun saveSettings(value: JSONObject) { putDocument("settings",value) }
+    fun saveSettings(value: JSONObject) { putDocument("settings",value); Lang.update(value) }
     fun saveFeedback(id: String, value: JSONObject) = locked {
         read(id); val feedback = getDocument("feedback_$id") ?: JSONObject()
         value.keys().forEach { feedback.put(it,value.get(it)) }; feedback.put("updatedAt",System.currentTimeMillis())

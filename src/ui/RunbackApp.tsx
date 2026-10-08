@@ -24,6 +24,13 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  isLanguage,
+  setLanguage,
+  tr,
+  type Language,
+} from '../domain/i18n';
+import { deviceLanguage } from './deviceLanguage';
 import { FocusEditor } from './FocusEditor';
 import { focusLabel } from '../domain/focus';
 import { selectRecommendations } from '../domain/recommendationSelection';
@@ -209,6 +216,7 @@ import {
   shouldPromptSoreness,
   visibleHomeSections,
   visibleTabs,
+  tabLabel,
   type FeatureSettings as Features,
 } from '../domain/features';
 import {
@@ -605,6 +613,12 @@ export function RunbackApp({
 } = {}) {
   const insets = useSafeAreaInsets();
   const [state, setState] = useState<AppState>(initial);
+  // Set before anything below builds text; children remount on a change
+  // through the key on the root view.
+  const language: Language = isLanguage(state.settings.language)
+    ? state.settings.language
+    : deviceLanguage();
+  setLanguage(language);
   const [serverStatus, setServerStatus] = useState<ServerLinkStatus | null>(null);
   useEffect(() => {
     let alive = true;
@@ -625,7 +639,7 @@ export function RunbackApp({
     entryId: string;
     activityId: string;
   } | null>(null);
-  const [tab, setTab] = useState<Tab>('Heute');
+  const [tab, setTab] = useState<Tab>('today');
   const [page, setPage] = useState<Page>('main');
   const [featureDetail, setFeatureDetail] = useState<
     FeatureId | 'recording' | 'strength'
@@ -1378,11 +1392,11 @@ export function RunbackApp({
   // Verschwindet der aktuelle Tab (Plan abgeschaltet), geht es zu Heute.
   useEffect(() => {
     if (
-      tab !== 'Heute' &&
-      tab !== 'Verlauf' &&
+      tab !== 'today' &&
+      tab !== 'history' &&
       !availableTabs(features).includes(tab)
     ) {
-      setTab('Heute');
+      setTab('today');
     }
   }, [features, tab]);
   useEffect(() => {
@@ -1441,8 +1455,8 @@ export function RunbackApp({
           leaveDepthRef.current();
           return true;
         }
-        if (tab !== 'Heute') {
-          setTab('Heute');
+        if (tab !== 'today') {
+          setTab('today');
           return true;
         }
         return false;
@@ -1623,7 +1637,7 @@ export function RunbackApp({
   const openCoach = (area: 'running' | 'strength') => {
     setCoachArea(area);
     setCriteriaOpen(false);
-    switchTab('Coach');
+    switchTab('coach');
   };
   // Eine Ebene zurück: aus der Tiefe des Krafttrainings dorthin, woher man
   // kam, sonst zur festen Elternseite.
@@ -1954,7 +1968,7 @@ export function RunbackApp({
       if (!stateRef.current.recording) {
         await beginRecording(purpose, sport);
       }
-      switchTab('Heute');
+      switchTab('today');
     });
   };
   // Das Start-Sheet öffnet mit der Art, die man auf Heute angetippt hat; die
@@ -2023,7 +2037,7 @@ export function RunbackApp({
           throw new Error(message);
         }
         if (entry.kind === 'run') {
-          switchTab('Heute');
+          switchTab('today');
         } else {
           setWorkoutOpen(true);
           setNow(Date.now());
@@ -2044,7 +2058,7 @@ export function RunbackApp({
       }
       if (entry.activityId) {
         if (stateRef.current.recording?.id === entry.activityId) {
-          switchTab('Heute');
+          switchTab('today');
           return;
         }
         if (strengthRef.current.active?.id === entry.activityId) {
@@ -2063,7 +2077,7 @@ export function RunbackApp({
         const active = await beginRecording(entry.purpose || 'free', 'running');
         activityId = active.id;
         pendingScheduleLink.current = { entryId: entry.id, activityId };
-        switchTab('Heute');
+        switchTab('today');
       } else {
         const template = entry.templateId
           ? strengthRef.current.templates.find(
@@ -2475,7 +2489,7 @@ export function RunbackApp({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Diese Woche im Plan ansehen"
-        onPress={() => switchTab('Plan')}
+        onPress={() => switchTab('plan')}
         style={({ pressed }) => [styles.weekStrip, pressed && styles.pressed]}
       >
         {WEEKDAY_SHORT.map((label, index) => {
@@ -2718,7 +2732,7 @@ export function RunbackApp({
             <Row
               title="Alle Einheiten"
               subtitle={counted(units.length, 'Einheit', 'Einheiten')}
-              onPress={() => switchTab('Verlauf')}
+              onPress={() => switchTab('history')}
             />
           ) : null}
         </Section>
@@ -3605,11 +3619,11 @@ export function RunbackApp({
                           }
                         : {
                             title: 'Einheiten ansehen',
-                            onPress: () => switchTab('Verlauf'),
+                            onPress: () => switchTab('history'),
                           }
                       : {
                           title: 'Ersten Lauf starten',
-                          onPress: () => switchTab('Heute'),
+                          onPress: () => switchTab('today'),
                         }
                   }
                 />
@@ -3778,11 +3792,11 @@ export function RunbackApp({
                       : finishedSessions.length
                       ? {
                           title: 'Einheiten ansehen',
-                          onPress: () => switchTab('Verlauf'),
+                          onPress: () => switchTab('history'),
                         }
                       : {
                           title: 'Erstes Training starten',
-                          onPress: () => switchTab('Heute'),
+                          onPress: () => switchTab('today'),
                         }
                   }
                 />
@@ -4597,6 +4611,17 @@ export function RunbackApp({
   const renderSettings = () => (
     <>
       <Title>Einstellungen</Title>
+      <Section title={tr('Sprache', 'Language')}>
+        <Segmented<Language>
+          label={tr('Sprache', 'Language')}
+          options={[
+            { value: 'de', label: 'Deutsch' },
+            { value: 'en', label: 'English' },
+          ]}
+          value={language}
+          onChange={next => save({ language: next })}
+        />
+      </Section>
       <View>
         <Row
           title="Funktionen"
@@ -5178,7 +5203,7 @@ export function RunbackApp({
                       minutes: p.minutes,
                       cues: p.cues,
                     });
-                    switchTab('Heute');
+                    switchTab('today');
                     openStartSheet('run');
                   });
                 }}
@@ -5580,13 +5605,13 @@ export function RunbackApp({
     renderMuscleMap()
   ) : page === 'models' ? (
     renderModels()
-  ) : tab === 'Heute' ? (
+  ) : tab === 'today' ? (
     recording ? (
       renderRecording()
     ) : (
       renderHome()
     )
-  ) : tab === 'Plan' ? (
+  ) : tab === 'plan' ? (
     <PlanningScreen
       state={schedule}
       onSave={saveSchedule}
@@ -5615,9 +5640,9 @@ export function RunbackApp({
       showMonth={features.planning.month}
       showStrength={showStrength}
     />
-  ) : tab === 'Vorlagen' ? (
+  ) : tab === 'templates' ? (
     renderTemplates()
-  ) : tab === 'Muskelkater' ? (
+  ) : tab === 'soreness' ? (
     <>
       <Title>Muskelkater</Title>
       <Button
@@ -5636,10 +5661,10 @@ export function RunbackApp({
         </Notice>
       ) : null}
     </>
-  ) : tab === 'Routen' ? null : tab === 'Verlauf' || tab === 'Statistik' ? (
+  ) : tab === 'routes' ? null : tab === 'history' || tab === 'statistics' ? (
     <>
-      <Title>{tab === 'Statistik' ? 'Statistik' : 'Verlauf'}</Title>
-      {tab === 'Verlauf' && features.statistics.enabled ? (
+      <Title>{tabLabel(tab)}</Title>
+      {tab === 'history' && features.statistics.enabled ? (
         <Segmented
           label="Ansicht"
           options={VERLAUF_VIEWS}
@@ -5867,7 +5892,7 @@ export function RunbackApp({
           }}
           onDone={() => {
             setSetupOpen(false);
-            setTab('Heute');
+            setTab('today');
             setPage('main');
           }}
         />
@@ -5878,7 +5903,7 @@ export function RunbackApp({
   const isUnits =
     !selected &&
     page === 'main' &&
-    tab === 'Verlauf' &&
+    tab === 'history' &&
     (verlaufView === 'units' || !features.statistics.enabled);
   const runCount = units.filter(unit => unitMatches(unit, 'runs')).length;
   const cyclingCount = units.filter(unit =>
@@ -5930,7 +5955,7 @@ export function RunbackApp({
         copy="Jede bestätigte Einheit erscheint hier, mit Sätzen und Volumen."
         action={{
           title: 'Krafttraining starten',
-          onPress: () => switchTab('Heute'),
+          onPress: () => switchTab('today'),
         }}
       />
     ) : activeUnitFilter === 'cycling' ? (
@@ -5941,7 +5966,7 @@ export function RunbackApp({
           title: 'Radfahrt starten',
           onPress: () => {
             save({ sport: 'cycling' });
-            switchTab('Heute');
+            switchTab('today');
             openStartSheet('run');
           },
         }}
@@ -5952,7 +5977,7 @@ export function RunbackApp({
         copy="Nach deinem ersten Lauf stehen hier Strecke, Laufgefühl und der nächste Schritt."
         action={{
           title: 'Ersten Lauf starten',
-          onPress: () => switchTab('Heute'),
+          onPress: () => switchTab('today'),
         }}
       />
     ) : (
@@ -5961,14 +5986,14 @@ export function RunbackApp({
         copy="Läufe, Radfahrten und Krafteinheiten stehen ab dem ersten Mal gemeinsam in dieser Liste."
         action={{
           title: 'Aufzeichnung starten',
-          onPress: () => switchTab('Heute'),
+          onPress: () => switchTab('today'),
         }}
       />
     );
   // Der Chat braucht die volle Höhe: Verlauf scrollt, die Eingabe bleibt unten.
   const isChat = !selected && page === 'chat';
   return (
-    <View style={[styles.app, { paddingTop: insets.top }]}>
+    <View key={language} style={[styles.app, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         {selected || page !== 'main' ? (
           <Pressable
@@ -5997,7 +6022,7 @@ export function RunbackApp({
             style={({ pressed }) => [styles.settingsButton, pressed && styles.pressed]}
           >
             <ConnectionMark mark={serverMark(serverStatus)} />
-            <Icon name="Einstellungen" />
+            <Icon name="settings" />
           </Pressable>
         ) : null}
       </View>
@@ -6028,8 +6053,8 @@ export function RunbackApp({
         </View>
       ) : isChat ? (
         <TrainingChat onSettings={() => openPage('models')} />
-      ) : !selected && page === 'main' && tab === 'Routen' ? (
-        <RoutePlannerScreen embedded onClose={() => switchTab('Heute')} />
+      ) : !selected && page === 'main' && tab === 'routes' ? (
+        <RoutePlannerScreen embedded onClose={() => switchTab('today')} />
       ) : isUnits ? (
         <FlatList
           data={unitListItems}
@@ -6178,7 +6203,7 @@ export function RunbackApp({
             key={name}
             accessibilityRole="tab"
             accessibilityState={{ selected: tab === name }}
-            accessibilityLabel={name}
+            accessibilityLabel={tabLabel(name)}
             onPress={() => switchTab(name)}
             style={[styles.tab, tab === name && styles.tabActive]}
           >
@@ -6186,7 +6211,7 @@ export function RunbackApp({
             <Text
               style={[styles.tabText, tab === name && styles.tabTextActive]}
             >
-              {name}
+              {tabLabel(name)}
             </Text>
           </Pressable>
         ))}

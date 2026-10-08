@@ -1,3 +1,4 @@
+import { tr } from './i18n';
 import type { Sport } from './types';
 import type { StrengthSession } from './strength';
 import type { SorenessReport } from './sorenessInput';
@@ -36,13 +37,22 @@ export type AfterRun = 'detail' | 'feeling' | 'home';
 export type StatsModule = 'distribution' | 'records' | 'consistency' | 'body';
 export type Area = 'running' | 'strength';
 export type OptionalTab =
-  | 'Plan'
-  | 'Coach'
-  | 'Statistik'
-  | 'Routen'
-  | 'Vorlagen'
-  | 'Muskelkater';
-export type Tab = 'Heute' | 'Verlauf' | OptionalTab;
+  | 'plan'
+  | 'coach'
+  | 'statistics'
+  | 'routes'
+  | 'templates'
+  | 'soreness';
+export type Tab = 'today' | 'history' | OptionalTab;
+/** Tab ids before the English rename; saved navigation still carries them. */
+const LEGACY_TABS: Record<string, OptionalTab> = {
+  Plan: 'plan',
+  Coach: 'coach',
+  Statistik: 'statistics',
+  Routen: 'routes',
+  Vorlagen: 'templates',
+  Muskelkater: 'soreness',
+};
 export type FeatureId =
   | 'planning'
   | 'coach'
@@ -61,13 +71,13 @@ export const FEATURE_CATALOG: readonly {
     id: 'coach',
     title: 'Coach',
     description: 'Empfehlungen und ihre Prüfung',
-    tab: 'Coach',
+    tab: 'coach',
   },
   {
     id: 'planning',
     title: 'Planung',
     description: 'Woche und Monat planen',
-    tab: 'Plan',
+    tab: 'plan',
   },
   {
     id: 'goals',
@@ -78,34 +88,34 @@ export const FEATURE_CATALOG: readonly {
     id: 'statistics',
     title: 'Statistik',
     description: 'Läufe und Krafttraining auswerten',
-    tab: 'Statistik',
+    tab: 'statistics',
   },
   {
     id: 'routes',
     title: 'Routen',
     description: 'Runden planen und mit Ansagen laufen',
-    tab: 'Routen',
+    tab: 'routes',
   },
   {
     id: 'templates',
     title: 'Vorlagen',
     description: 'Kraft- und Lauftraining vorbereiten',
-    tab: 'Vorlagen',
+    tab: 'templates',
   },
   {
     id: 'soreness',
     title: 'Muskelkater',
     description: 'Muskelkater melden und ansehen',
-    tab: 'Muskelkater',
+    tab: 'soreness',
   },
 ];
 const OPTIONAL_TABS: OptionalTab[] = [
-  'Plan',
-  'Coach',
-  'Statistik',
-  'Routen',
-  'Vorlagen',
-  'Muskelkater',
+  'plan',
+  'coach',
+  'statistics',
+  'routes',
+  'templates',
+  'soreness',
 ];
 
 export interface FeatureSettings {
@@ -200,7 +210,7 @@ export const DEFAULT_FEATURES: FeatureSettings = {
   coach: { enabled: true },
   goals: { enabled: true },
   templates: { enabled: true },
-  navigation: { tabs: ['Plan', 'Coach'] },
+  navigation: { tabs: ['plan', 'coach'] },
   recommendations: {
     running: 'suggest',
     strength: 'suggest',
@@ -295,6 +305,7 @@ export function normalizeFeatures(
   const navigation = isRecord(raw.navigation) ? raw.navigation : {};
   const navigationTabs = Array.isArray(navigation.tabs)
     ? navigation.tabs
+        .map(tab => (typeof tab === 'string' && LEGACY_TABS[tab]) || tab)
         .filter(
           (tab, index, all): tab is OptionalTab =>
             OPTIONAL_TABS.includes(tab as OptionalTab) &&
@@ -451,8 +462,29 @@ export function pinnedTabs(features: FeatureSettings): OptionalTab[] {
     .filter(tab => availableTabs(features).includes(tab))
     .slice(0, 2);
 }
+/** Visible name of a tab in the active language. */
+export function tabLabel(tab: Tab): string {
+  switch (tab) {
+    case 'today':
+      return tr('Heute', 'Today');
+    case 'history':
+      return tr('Verlauf', 'History');
+    case 'plan':
+      return tr('Plan', 'Plan');
+    case 'coach':
+      return tr('Coach', 'Coach');
+    case 'statistics':
+      return tr('Statistik', 'Statistics');
+    case 'routes':
+      return tr('Routen', 'Routes');
+    case 'templates':
+      return tr('Vorlagen', 'Templates');
+    case 'soreness':
+      return tr('Muskelkater', 'Soreness');
+  }
+}
 export function visibleTabs(features: FeatureSettings): Tab[] {
-  return ['Heute', ...pinnedTabs(features), 'Verlauf'];
+  return ['today', ...pinnedTabs(features), 'history'];
 }
 /** Unbekannte, doppelte und ausgeschaltete Ziele kommen nie in die Leiste. */
 export function withNavigation(
