@@ -1,6 +1,7 @@
 import type { Run } from './trainingRecords';
 import { medianOrNull } from './inference';
 import { isAccidentalRun, isRun } from './sport';
+import { dateFormat } from './i18n';
 
 export interface StatisticsWeek {
   startTime: number;
@@ -15,7 +16,7 @@ export interface RunStatistics {
   totalDurationSeconds: number;
   runCount: number;
   paceSecondsPerKm: number | null;
-  /** RPE ist ordinal: Median statt Mittelwert. */
+  /** RPE is ordinal, so use the median instead of the mean. */
   medianLegsRpe: number | null;
   medianBreathingRpe: number | null;
   longestRun: Run | null;
@@ -24,8 +25,8 @@ export interface RunStatistics {
 
 const EIGHT_WEEKS = 8;
 
-/** Geteilt mit `statisticsView.ts`, damit beide Sichten dieselben Läufe zählen.
- *  Andere Sportarten zählen nicht: Kilometer und Tempo wären sonst gemischt. */
+/** Shared with `statisticsView.ts` so both views count the same runs.
+ *  Other sports don't count: kilometers and pace would be mixed. */
 export function validRun(run: Run, now: number) {
   const start = run.startTime;
   return (
@@ -105,7 +106,7 @@ export function aggregateStatistics(
       const date = new Date(currentWeek);
       date.setDate(date.getDate() - (EIGHT_WEEKS - 1 - index) * 7);
       const startTime = date.getTime();
-      const label = new Intl.DateTimeFormat('de-DE', {
+      const label = dateFormat({
         day: '2-digit',
         month: '2-digit',
       }).format(new Date(startTime));

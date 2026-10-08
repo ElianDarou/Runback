@@ -80,7 +80,7 @@ describe('titles by sport', () => {
     expect(
       runTitle({ startTime: at(6), purpose: 'free', sport: 'cycling' }),
     ).toBe('Morgenfahrt');
-    // Ein benannter Zweck gilt für beide Sportarten.
+    // A named purpose applies to both sports.
     expect(
       runTitle({ startTime: at(6), purpose: 'intervals', sport: 'cycling' }),
     ).toBe('Tempowechsel');
@@ -91,7 +91,7 @@ describe('isAccidentalRun', () => {
   it('marks only recordings that are both under 60 s and under 100 m', () => {
     expect(isAccidentalRun({ durationSeconds: 6, distanceMeters: 0 })).toBe(true);
     expect(isAccidentalRun({ durationSeconds: 59, distanceMeters: 99 })).toBe(true);
-    // Ein kurzer Sprint oder eine Minute Stehen sind kein Fehlstart.
+    // A short sprint or a minute of standing still is not a false start.
     expect(isAccidentalRun({ durationSeconds: 20, distanceMeters: 120 })).toBe(false);
     expect(isAccidentalRun({ durationSeconds: 60, distanceMeters: 0 })).toBe(false);
     expect(isAccidentalRun({ durationSeconds: Number.NaN, distanceMeters: 0 })).toBe(false);

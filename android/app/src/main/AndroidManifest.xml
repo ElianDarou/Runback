@@ -10,7 +10,7 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
-    <!-- Normale Berechtigung; erfüllt die Vorgabe für den Health-Dienst der laufenden Krafteinheit. -->
+    <!-- Normal permission; meets the requirement for the health service of the running strength session. -->
     <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
@@ -109,7 +109,7 @@
             <category android:name="android.intent.category.BROWSABLE" />
             <data android:scheme="runback" android:host="recording" />
         </intent-filter>
-        <!-- Die Uhr öffnet die App, nachdem sie ein Krafttraining gestartet hat; der Link trägt keine Befehle. -->
+        <!-- The watch opens the app after it starts a strength session; the link carries no commands. -->
         <intent-filter>
             <action android:name="android.intent.action.VIEW" />
             <category android:name="android.intent.category.DEFAULT" />

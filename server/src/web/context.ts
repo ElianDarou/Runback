@@ -1,6 +1,7 @@
 import type { Store } from '../db';
 import type { Dataset } from '../records';
 import { relative } from './format';
+import type { Translator } from './i18n';
 
 export interface PageContext {
   store: Store;
@@ -8,28 +9,34 @@ export interface PageContext {
   now: number;
   url: URL;
   csrf: string;
+  tx: Translator;
 }
 
 /**
- * Kopfzeile: wann das Telefon zuletzt alles übertragen hat. Rot, solange noch
- * nie vollständig übertragen wurde oder der letzte Abgleich unvollständig war.
+ * Header line: when the phone last transferred everything. Red until a full
+ * transfer has happened, or while the last sync was incomplete.
  */
 export function syncStatus(
+  tx: Translator,
   data: Dataset,
   now: number,
 ): { label: string; stale: boolean } {
   if (!data.lastCompleteAt) {
     return {
-      label: data.lastCommitAt ? 'Unvollständig' : 'Noch keine Daten',
+      label: data.lastCommitAt
+        ? tx.t('Unvollständig', 'Incomplete')
+        : tx.t('Noch keine Daten', 'No data yet'),
       stale: true,
     };
   }
   const incomplete = (data.lastCommitAt ?? 0) > data.lastCompleteAt;
+  const when = relative(
+    tx,
+    incomplete ? data.lastCommitAt! : data.lastCompleteAt,
+    now,
+  );
   return {
-    label: `Stand ${relative(
-      incomplete ? data.lastCommitAt! : data.lastCompleteAt,
-      now,
-    )}`,
+    label: tx.t(`Stand ${when}`, `As of ${when}`),
     stale: incomplete,
   };
 }

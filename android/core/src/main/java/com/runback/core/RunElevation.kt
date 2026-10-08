@@ -1,24 +1,24 @@
 package com.runback.core
 
 /**
- * Höhenverlauf einer Aufzeichnung auf einem festen Zeitraster.
+ * Altitude profile of a recording on a fixed time grid.
  *
- * Quelle in dieser Reihenfolge: Barometer (liegt als `pressure`-Sample vor,
- * rauscht ±1–2 m, misst aber nur Änderungen), sonst GPS-Höhe mit bekannter
- * vertikaler Genauigkeit. GPS-Höhe ohne Genauigkeitsangabe wird nicht
- * verwendet: ±5–15 m Rauschen erzeugte sonst Höhenmeter, die es nicht gab.
- * Je Rasterfenster steht der Median der Messwerte, darüber ein gleitender
- * Median; Auf- und Abstieg summieren nur Änderungen über der Hysterese.
- * Fenster ohne Messwert bleiben leer statt interpoliert.
+ * Sources in this order: barometer (present as `pressure` samples, noisy by
+ * ±1–2 m, but measures only changes), otherwise GPS altitude with known vertical
+ * accuracy. GPS altitude without an accuracy value is not used: its ±5–15 m noise
+ * would otherwise produce elevation gain that never happened.
+ * Each grid window holds the median of its readings, and a rolling median on top
+ * of that; ascent and descent only sum changes above the hysteresis.
+ * Windows without a reading stay empty instead of interpolated.
  */
 object RunElevation {
     const val VERSION = "runback-elevation-1"
     const val GRID_SECONDS = 5
-    /** Gleitender Median: ±1 Fenster beim Barometer, ±3 Fenster bei GPS. */
+    /** Rolling median: ±1 window for the barometer, ±3 windows for GPS. */
     const val BAROMETER_SMOOTHING_WINDOWS = 1
     const val GPS_SMOOTHING_WINDOWS = 3
     const val MAX_GPS_VERTICAL_ACCURACY_METERS = 15.0
-    /** Absoluter Bezug fürs Barometer: GPS-Höhe der ersten Minute, nur bei guter vertikaler Genauigkeit. */
+    /** Absolute reference for the barometer: GPS altitude of the first minute, only with good vertical accuracy. */
     const val ANCHOR_WINDOW_SECONDS = 60
     const val ANCHOR_MAX_VERTICAL_ACCURACY_METERS = 10.0
     const val MIN_PRESSURE_SAMPLES = 10
@@ -27,13 +27,13 @@ object RunElevation {
     data class GpsAltitude(val time: Long, val altitudeM: Double, val verticalAccuracyM: Double?)
     data class Result(
         val source: String,
-        /** `absolute` (Meter über Meer) oder `start` (relativ zum Startpunkt = 0 m). */
+        /** `absolute` (meters above sea level) or `start` (relative to the start point = 0 m). */
         val reference: String,
         val ascentMeters: Double,
         val descentMeters: Double,
         val rejectedSamples: Int,
         val hysteresisMeters: Double,
-        /** Geglättete Höhe je Rasterfenster; null ohne Messwert. */
+        /** Smoothed altitude per grid window; null without a reading. */
         val grid: List<Double?>,
     )
     sealed class Outcome {
@@ -75,10 +75,10 @@ object RunElevation {
     }
 
     /**
-     * Steigung in Prozent um ein Rasterfenster: Höhendifferenz über das kleinste
-     * symmetrische Fenster, das mindestens `minHorizontalMeters` Strecke
-     * enthält. Zwei Nachbarpunkte reichen nie; über wenige Meter wird jede
-     * Höhenungenauigkeit zu einer absurden Steigung.
+     * Grade in percent around a grid window: altitude difference across the smallest
+     * symmetric window that covers at least `minHorizontalMeters` of distance.
+     * Two neighboring points are never enough; over a few meters, any altitude
+     * error becomes an absurd grade.
      */
     fun gradePercent(grid: List<Double?>, distanceAtEnd: List<Double>, index: Int, minHorizontalMeters: Double = 50.0): Double? {
         if (index !in grid.indices || grid.size != distanceAtEnd.size) return null
@@ -118,7 +118,7 @@ object RunElevation {
         return buckets.map { median(it) }
     }
 
-    /** Median über die vorhandenen Werte in ±`radius` Fenstern; leere Fenster bleiben leer. */
+    /** Median over the existing values in ±`radius` windows; empty windows stay empty. */
     fun rollingMedian(values: List<Double?>, radius: Int): List<Double?> = values.indices.map { index ->
         if (values[index] == null) null else median(
             (maxOf(0, index - radius)..minOf(values.lastIndex, index + radius)).mapNotNull { values[it] })

@@ -34,7 +34,7 @@ class AutoSetsTest {
             .put("exercises", JSONArray(listOf(exercise)))
     }
 
-    /** Echte Handy-Spiegelung und Uhrsteuerung; nach 30 s kommen acht synthetische Wiederholungen. */
+    /** Real phone mirror and watch control; after 30 s eight synthetic reps arrive. */
     private fun replay(
         restSeconds: Int = 180,
         restTimer: Boolean = true,
@@ -44,11 +44,11 @@ class AutoSetsTest {
         val events = mutableListOf<JSONObject>()
         val sets = AutoSets(RuntimeEnvironment.getApplication(), "session-1", hasGyro = true, autoConfirm = false,
             log = { _, event -> events += event },
-            later = { _, _ -> error("Ohne automatische Übernahme ist kein Senden geplant") })
+            later = { _, _ -> error("Without auto-confirm nothing is scheduled to be sent") })
         var current = session(restSeconds)
         val random = Random(7)
         try {
-            // Wie MotionCaptureService: Spiegelung sekündlich, Sensoren unabhängig davon mit 50 Hz.
+            // Like MotionCaptureService: mirror every second, sensors independently at 50 Hz.
             repeat(75 * 50) { frame ->
                 val elapsedMs = frame * 20L
                 val now = startedAt + elapsedMs
@@ -87,7 +87,7 @@ class AutoSetsTest {
     }
 
     private fun assertSameDetection(expected: JSONObject, actual: JSONObject) {
-        assertEquals("Der Timer darf weder Zählung, Grenzen noch Merkmale verändern", expected.toString(), actual.toString())
+        assertEquals("The timer must not change counting, boundaries or features", expected.toString(), actual.toString())
     }
 
     @Test fun startingAfterThirtySecondsCountsWhileTheThreeMinuteTimerStillRuns() {

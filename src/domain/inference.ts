@@ -1,7 +1,7 @@
 /**
- * Kleine, geteilte Statistikbausteine ohne Modellannahmen: Median,
- * Vorzeichentest und die exakte Verteilung von Kendalls S für kleine n.
- * Alles hier ist deterministisch und hat keine Ersatzwerte.
+ * Small shared statistics building blocks without model assumptions: median,
+ * sign test, and the exact distribution of Kendall's S for small n.
+ * Everything here is deterministic and has no fallback values.
  */
 export const INFERENCE_VERSION = 'inference-v1';
 
@@ -11,7 +11,7 @@ export const finite = (value: unknown): value is number =>
 export function median(values: number[]): number {
   const sorted = values.filter(finite).sort((a, b) => a - b);
   if (!sorted.length) {
-    throw new Error('Der Median braucht mindestens einen Wert.');
+    throw new Error('The median needs at least one value.');
   }
   const middle = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 0
@@ -19,13 +19,13 @@ export function median(values: number[]): number {
     : sorted[middle];
 }
 
-/** Median oder null; für Anzeigen, die ohne Wert leer bleiben dürfen. */
+/** Median or null; for displays that may stay empty without a value. */
 export function medianOrNull(values: number[]): number | null {
   const usable = values.filter(finite);
   return usable.length ? median(usable) : null;
 }
 
-/** Robuste Streuung: 1,4826 · MAD. Ohne Werte 0. */
+/** Robust spread: 1.4826 · MAD. Without values, 0. */
 export function robustScale(values: number[]): number {
   const usable = values.filter(finite);
   if (!usable.length) {
@@ -50,13 +50,13 @@ export interface SignTestResult {
   positives: number;
   negatives: number;
   ties: number;
-  /** Zweiseitiger exakter p-Wert unter p = ½; 1 ohne Beobachtungen. */
+  /** Two-sided exact p-value under p = ½; 1 without observations. */
   pValue: number;
 }
 
 /**
- * Exakter Vorzeichentest: Bindungen (innerhalb der Relevanzschwelle) zählen
- * nicht. Vorab festgelegt, damit Ergebnisse nicht passend gemacht werden.
+ * Exact sign test: ties (within the relevance threshold) do not count. Fixed
+ * in advance so results cannot be tuned to fit.
  */
 export function signTest(
   changes: number[],
@@ -91,9 +91,9 @@ export function signTest(
 }
 
 /**
- * Anzahl Permutationen von n Elementen mit genau k Inversionen (Mahonian
- * numbers). Unter „kein Trend“ ist jede Reihenfolge gleich wahrscheinlich;
- * daraus folgt die exakte Verteilung der negativen paarweisen Steigungen.
+ * Number of permutations of n elements with exactly k inversions (Mahonian
+ * numbers). Under "no trend" every order is equally likely; the exact
+ * distribution of the negative pairwise slopes follows from this.
  */
 export function inversionCounts(n: number): number[] {
   let counts = [1];
@@ -110,10 +110,9 @@ export function inversionCounts(n: number): number[] {
 }
 
 /**
- * Größter Rang k, für den unter „kein Trend“ höchstens `alpha` der
- * Reihenfolgen k oder weniger Inversionen haben. null, wenn selbst die
- * perfekt monotone Reihenfolge wahrscheinlicher als `alpha` ist — dann
- * trägt n keine Richtungsaussage.
+ * Largest rank k for which, under "no trend", at most `alpha` of the orders
+ * have k or fewer inversions. null if even the perfectly monotone order is
+ * more likely than `alpha` — then n carries no directional statement.
  */
 export function exactLowerRank(n: number, alpha: number): number | null {
   if (!(n >= 2) || !(alpha > 0)) {

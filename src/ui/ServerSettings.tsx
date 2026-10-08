@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { Linking } from 'react-native';
 import { native } from '../native';
+import { locale, tr } from '../domain/i18n';
 import {
   DEFAULT_SERVER_SCOPE,
   SERVER_SCOPE_OPTIONS,
@@ -54,7 +55,9 @@ export function ServerSettings({
       setCode('');
     } catch (failure) {
       setError(
-        failure instanceof Error ? failure.message : 'Versuche es erneut.',
+        failure instanceof Error
+          ? failure.message
+          : tr('Versuche es erneut.', 'Try again.'),
       );
     } finally {
       busyRef.current = false;
@@ -71,10 +74,10 @@ export function ServerSettings({
   };
   return (
     <>
-      <Title>Eigener Server</Title>
+      <Title>{tr('Eigener Server', 'Own server')}</Title>
       {error ? (
         <Notice
-          title="Aktion nicht abgeschlossen"
+          title={tr('Aktion nicht abgeschlossen', 'Action not completed')}
           onDismiss={() => setError('')}
         >
           {error}
@@ -82,8 +85,11 @@ export function ServerSettings({
       ) : null}
       {!status ? (
         <EmptyState
-          title="Status wird geladen"
-          copy="Warte kurz auf den Verbindungsstand."
+          title={tr('Status wird geladen', 'Loading status')}
+          copy={tr(
+            'Warte kurz auf den Verbindungsstand.',
+            'Wait a moment for the connection status.',
+          )}
         />
       ) : (
         <>
@@ -93,33 +99,45 @@ export function ServerSettings({
                 {serverStateLabel(status)}
               </Badge>
               <Copy>{serverStateSentence(status)}</Copy>
-              <Row title="Adresse" subtitle={status.url ?? undefined} />
               <Row
-                title="Letzter Abgleich"
+                title={tr('Adresse', 'Address')}
+                subtitle={status.url ?? undefined}
+              />
+              <Row
+                title={tr('Letzter Abgleich', 'Last sync')}
                 subtitle={formatSyncTime(status.lastSuccessAt, Date.now())}
               />
               {status.pending !== null && status.pending > 0 ? (
                 <Row
-                  title="Noch ausstehend"
-                  subtitle={`${status.pending.toLocaleString(
-                    'de-DE',
-                  )} Einträge`}
+                  title={tr('Noch ausstehend', 'Still pending')}
+                  subtitle={tr(
+                    `${status.pending.toLocaleString(locale())} Einträge`,
+                    `${status.pending.toLocaleString(locale())} ${
+                      status.pending === 1 ? 'entry' : 'entries'
+                    }`,
+                  )}
                 />
               ) : null}
             </Card>
           ) : (
             <Copy muted>
-              Verbinde deinen Server, um deine Daten dort anzusehen.
+              {tr(
+                'Verbinde deinen Server, um deine Daten dort anzusehen.',
+                'Connect your server to view your data there.',
+              )}
             </Copy>
           )}
           {pairing ? (
-            <Section title="Verbinden">
+            <Section title={tr('Verbinden', 'Connect')}>
               <Field
-                label="Serveradresse"
-                hint="Zum Beispiel nas.local:8080 oder https://runback.deine-domain.de"
+                label={tr('Serveradresse', 'Server address')}
+                hint={tr(
+                  'Zum Beispiel nas.local:8080 oder https://runback.deine-domain.de',
+                  'For example nas.local:8080 or https://runback.your-domain.com',
+                )}
               >
                 <Input
-                  label="Serveradresse"
+                  label={tr('Serveradresse', 'Server address')}
                   value={address}
                   onChangeText={setAddress}
                   editable={!busy}
@@ -130,11 +148,14 @@ export function ServerSettings({
                 />
               </Field>
               <Field
-                label="Kopplungscode"
-                hint="Erzeuge den Code auf deiner Website unter „Daten“."
+                label={tr('Kopplungscode', 'Pairing code')}
+                hint={tr(
+                  'Erzeuge den Code auf deiner Website unter „Daten“.',
+                  'Create the code on your website under “Your data”.',
+                )}
               >
                 <Input
-                  label="Kopplungscode"
+                  label={tr('Kopplungscode', 'Pairing code')}
                   value={code}
                   onChangeText={setCode}
                   editable={!busy}
@@ -145,7 +166,12 @@ export function ServerSettings({
               </Field>
             </Section>
           ) : null}
-          <Section title="Was darf auf deinen Server?">
+          <Section
+            title={tr(
+              'Was darf auf deinen Server?',
+              'What may go to your server?',
+            )}
+          >
             {SERVER_SCOPE_OPTIONS.map(option => (
               <CheckRow
                 key={option.key}
@@ -163,7 +189,11 @@ export function ServerSettings({
             <Button
               disabled={busy || !address.trim() || code.trim().length !== 8}
               onPress={connect}
-              title={busy ? 'Wird verbunden …' : 'Server verbinden'}
+              title={
+                busy
+                  ? tr('Wird verbunden …', 'Connecting …')
+                  : tr('Server verbinden', 'Connect server')
+              }
             />
           ) : (
             <Button
@@ -176,44 +206,60 @@ export function ServerSettings({
               }
               title={
                 busy || status.state === 'syncing'
-                  ? 'Wird übertragen …'
-                  : 'Freigabe speichern und abgleichen'
+                  ? tr('Wird übertragen …', 'Sending …')
+                  : tr(
+                      'Freigabe speichern und abgleichen',
+                      'Save sharing and sync',
+                    )
               }
             />
           )}
-          <Disclosure title="Details">
+          <Disclosure title={tr('Details', 'Details')}>
             <Copy muted>
-              Das Telefon bleibt das Original. Die Website liest eine Kopie;
-              Pläne und Empfehlungen änderst du in der App.
+              {tr(
+                'Das Telefon bleibt das Original. Die Website liest eine Kopie; Pläne und Empfehlungen änderst du in der App.',
+                'The phone stays the original. The website reads a copy; you change plans and recommendations in the app.',
+              )}
             </Copy>
             <Copy muted>
-              Ohne Verbindung trainierst du weiter. Rohsamples, Originaldateien
-              und Zugangsschlüssel bleiben auf dem Telefon.
+              {tr(
+                'Ohne Verbindung trainierst du weiter. Rohsamples, Originaldateien und Zugangsschlüssel bleiben auf dem Telefon.',
+                'Without a connection you keep training. Raw samples, original files and access keys stay on the phone.',
+              )}
             </Copy>
             <Copy muted>
-              Eine abgewählte Datenart verschwindet beim nächsten vollständigen
-              Abgleich vom Server.
+              {tr(
+                'Eine abgewählte Datenart verschwindet beim nächsten vollständigen Abgleich vom Server.',
+                'A data type you clear disappears from the server at the next full sync.',
+              )}
             </Copy>
             {connected ? (
               <>
                 <Row
-                  title="Website öffnen"
+                  title={tr('Website öffnen', 'Open website')}
                   onPress={() => {
                     void Linking.openURL(status.url!).catch(() =>
-                      setError('Die Website konnte nicht geöffnet werden.'),
+                      setError(
+                        tr(
+                          'Die Website konnte nicht geöffnet werden.',
+                          'The website could not be opened.',
+                        ),
+                      ),
                     );
                   }}
                 />
                 <Copy muted>
-                  Beim Trennen bleibt die Kopie auf dem Server; löschen kannst
-                  du sie dort unter „Daten“.
+                  {tr(
+                    'Beim Trennen bleibt die Kopie auf dem Server; löschen kannst du sie dort unter „Daten“.',
+                    'When you disconnect, the copy stays on the server; you can delete it there under “Your data”.',
+                  )}
                 </Copy>
                 <Button
                   danger
                   secondary
                   disabled={busy}
                   onPress={() => void act(() => native.disconnectServer())}
-                  title="Server trennen"
+                  title={tr('Server trennen', 'Disconnect server')}
                 />
               </>
             ) : null}

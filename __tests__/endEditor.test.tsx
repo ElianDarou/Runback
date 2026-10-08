@@ -68,7 +68,7 @@ describe('EndEditor', () => {
       );
     });
     expect(readout(tree)).toBe('Ende 18:00:00 · Dauer 2:00:00');
-    // Unverändert lässt sich nichts speichern.
+    // Nothing can be saved while unchanged.
     expect(
       tree.root.find(
         node =>

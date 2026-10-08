@@ -2,36 +2,47 @@ import React, { useEffect, useState } from 'react';
 import { AppState as AndroidAppState, View } from 'react-native';
 import { nativeCall } from '../native';
 import { wearRecordingLink, type WearRecordingLink } from '../domain/wearLink';
+import { tr } from '../domain/i18n';
 import { Badge, Row } from './components';
 
-const WORDS: Record<
+// Built per render so the active language applies without a restart.
+const wordsFor = (): Record<
   WearRecordingLink,
   { label: string; hint?: string; muted: boolean }
-> = {
-  recording: { label: 'Zeichnet mit', muted: false },
+> => ({
+  recording: { label: tr('Zeichnet mit', 'Recording with'), muted: false },
   waiting: {
-    label: 'Wartet',
-    hint: 'Öffne Runback auf der Uhr.',
+    label: tr('Wartet', 'Waiting'),
+    hint: tr('Öffne Runback auf der Uhr.', 'Open Runback on the watch.'),
     muted: true,
   },
   silent: {
-    label: 'Keine Daten',
-    hint: 'Prüfe, ob die Uhr noch aufzeichnet.',
+    label: tr('Keine Daten', 'No data'),
+    hint: tr(
+      'Prüfe, ob die Uhr noch aufzeichnet.',
+      'Check whether the watch is still recording.',
+    ),
     muted: true,
   },
   failed: {
-    label: 'Nicht erreicht',
-    hint: 'Öffne Runback auf der Uhr und prüfe die Verbindung.',
+    label: tr('Nicht erreicht', 'Not reached'),
+    hint: tr(
+      'Öffne Runback auf der Uhr und prüfe die Verbindung.',
+      'Open Runback on the watch and check the connection.',
+    ),
     muted: true,
   },
   disconnected: {
-    label: 'Nicht verbunden',
-    hint: 'Das Telefon zeichnet allein auf.',
+    label: tr('Nicht verbunden', 'Not connected'),
+    hint: tr(
+      'Das Telefon zeichnet allein auf.',
+      'The phone is recording on its own.',
+    ),
     muted: true,
   },
-};
+});
 
-/** Zeigt während einer Aufzeichnung, ob die Uhr mitschreibt. */
+/** Shows during a recording whether the watch is recording too. */
 export function WearRecordingRow({
   run,
 }: {
@@ -52,7 +63,7 @@ export function WearRecordingRow({
           setNow(Date.now());
         }
       } catch {
-        // Bleibt beim letzten Stand; ohne Status wird die Zeile nicht gezeigt.
+        // Keeps the last state; without a status the row is not shown.
       }
     };
     void update();
@@ -66,11 +77,11 @@ export function WearRecordingRow({
   if (!link) {
     return null;
   }
-  const words = WORDS[link];
+  const words = wordsFor()[link];
   return (
     <View accessibilityLiveRegion="polite">
       <Row
-        title="Uhr"
+        title={tr('Uhr', 'Watch')}
         subtitle={words.hint}
         trailing={<Badge muted={words.muted}>{words.label}</Badge>}
       />

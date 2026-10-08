@@ -1,5 +1,5 @@
-/* Runback-Website. Akzent und Grundfarben kommen aus src/ui/components.tsx;
-   Aufbau und Typografie orientieren sich an ruhigen Produktseiten wie t3.codes. */
+/* Runback website. Accent and base colors come from src/ui/components.tsx;
+   layout and typography follow calm product pages such as t3.codes. */
 @font-face {
   font-family: 'DM Sans';
   src: url('/fonts/dm-sans.woff2') format('woff2');
@@ -98,7 +98,7 @@ p { margin: 0; }
 .text-link { color: var(--muted); text-decoration: none; font-size: 0.95rem; }
 .text-link:hover { color: var(--text); }
 
-/* ---------- Häkchenlisten ---------- */
+/* ---------- Checkmark lists ---------- */
 .checks { list-style: none; padding: 0; margin: 26px 0 0; display: grid; gap: 12px; }
 .checks li { position: relative; padding-left: 28px; color: #c9cfc7; }
 .checks li::before {
@@ -111,7 +111,7 @@ p { margin: 0; }
 .checks.inline li { color: var(--muted); font-size: 0.92rem; }
 .checks.small { justify-content: flex-start; margin-top: 22px; }
 
-/* ---------- Einstieg ---------- */
+/* ---------- Intro ---------- */
 .hero { position: relative; text-align: center; padding: 110px 0 70px; isolation: isolate; }
 .hero::before {
   content: ''; position: absolute; inset: 0 0 auto 0; height: 760px; z-index: -1;
@@ -125,7 +125,7 @@ p { margin: 0; }
 }
 .lead { color: var(--muted); font-size: 1.2rem; max-width: 46ch; margin: 28px auto 0; }
 
-/* Ganze Bildschirme, ungeschnitten, mit einem schmalen Gehäuserand. */
+/* Whole screens, uncropped, with a narrow device frame edge. */
 .shot {
   border-radius: 34px;
   border: 7px solid #1b1e1b;
@@ -144,7 +144,7 @@ p { margin: 0; }
   .hero-shots .main { width: min(310px, 80vw); }
 }
 
-/* ---------- Abschnitte ---------- */
+/* ---------- Sections ---------- */
 section { border-top: 1px solid var(--line); padding: 120px 0; }
 .center { text-align: center; }
 
@@ -178,7 +178,7 @@ section { border-top: 1px solid var(--line); padding: 120px 0; }
 .watches.big .watch, .watches.big .watch:nth-child(2) { width: 250px; }
 @media (max-width: 560px) { .watch, .watches .watch:nth-child(2), .watches.big .watch, .watches.big .watch:nth-child(2) { width: 148px; } }
 
-/* ---------- Import-Quellen ---------- */
+/* ---------- Import sources ---------- */
 .sources {
   display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
   border: 1px solid var(--line); border-radius: 14px; overflow: hidden; margin-top: 30px;
@@ -195,7 +195,7 @@ section { border-top: 1px solid var(--line); padding: 120px 0; }
   .sources div:last-child { border-bottom: 0; }
 }
 
-/* ---------- Daten ---------- */
+/* ---------- Data ---------- */
 .cards4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-top: 56px; text-align: left; }
 .card { border: 1px solid var(--line); border-radius: 14px; padding: 22px; background: var(--panel); display: grid; gap: 6px; }
 .card b { font-weight: 600; }
@@ -217,7 +217,7 @@ section { border-top: 1px solid var(--line); padding: 120px 0; }
 .os-card .checks { margin-top: 0; }
 .mono { font: 0.78rem ui-monospace, Menlo, Consolas, monospace; color: var(--muted); margin-top: 24px; }
 
-/* ---------- Abschluss ---------- */
+/* ---------- Closing ---------- */
 .final { text-align: center; padding: 140px 0 150px; }
 .final h2 { font-size: clamp(2.4rem, 5.6vw, 4.2rem); }
 

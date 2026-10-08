@@ -12,30 +12,31 @@ import {
 } from './types';
 
 import { finite, median } from './inference';
+import { fixed, tr } from './i18n';
 
 /**
- * v2: Vergleichsbasis ist der Median mehrerer vergleichbarer Läufe statt
- * eines einzelnen auffälligen Laufs (Regression zur Mitte), Prüfung per
- * Vorzeichentest, Kadenz-Lock auch bei Schritten pro Fuß, Flachheit über
- * Auf- und Abstieg statt Nettohöhe, Belastung als RPE × Minuten.
+ * v2: The comparison base is the median of several comparable runs instead of
+ * a single conspicuous run (regression to the mean), checked with a sign test.
+ * Cadence lock also applies to steps per foot, flatness counts ascent and
+ * descent instead of net elevation, and load is RPE × minutes.
  */
 export const MODEL_VERSION = 'runback-rules-2.0.0';
-/** Regeln der Datenqualitätsprüfung; 2: Lücken je Abschnitt werden wirksam (gapSeconds aus Distanzmodell 3.0). */
+/** Data-quality rules; 2: gaps per segment take effect (gapSeconds from distance model 3.0). */
 export const QUALITY_VERSION = 'runback-quality-2';
 export const PACING_METHOD = 'pacing-fade-v2';
 export const MAX_SEGMENTS = 500;
-/** Ab diesem Median des späten Tempoabfalls wird ein ruhigerer Start vorgeschlagen (Setzung). */
+/** From this median late pace fade on, a calmer start is suggested (chosen threshold). */
 export const FADE_TRIGGER_PERCENT = 8;
-/** Vergleichsbasis: mindestens drei, höchstens fünf vergleichbare Läufe. */
+/** Comparison base: at least three, at most five comparable runs. */
 export const MINIMUM_BASELINE_RUNS = 3;
 export const MAXIMUM_BASELINE_RUNS = 5;
 const BASELINE_WINDOW_DAYS = 90;
 const DURATION_TOLERANCE_PERCENT = 20;
 const DISTANCE_TOLERANCE_PERCENT = 15;
-/** Prozentpunkte, unterhalb derer eine Änderung des Tempoabfalls als Bindung zählt (Setzung). */
+/** Percentage points below which a change in pace fade counts as no change (chosen value). */
 export const MINIMUM_RELEVANT_CHANGE_PERCENT_POINTS = 3;
 export const SIGN_TEST_ALPHA = 0.05;
-/** Auf- plus Abstieg je Strecke, bis zu dem ein Abschnitt als flach gilt. */
+/** Ascent plus descent per distance up to which a segment counts as flat. */
 export const FLAT_GRADE_PERCENT = 2;
 const DAY = 86400000;
 export const segmentId = (s: SegmentAggregate, i: number): string =>
@@ -53,9 +54,9 @@ export const provenance = (
   segmentIds,
 });
 /**
- * Optische Pulssensoren rasten auf die Schrittfrequenz ein. BLE meldet
- * Schritte pro Minute (~170), FIT/TCX oft Schritte pro Fuß (~85); deshalb
- * wird gegen beide Einheiten geprüft.
+ * Optical heart rate sensors lock onto the step frequency. BLE reports steps
+ * per minute (~170), FIT/TCX often steps per foot (~85); so both units are
+ * checked.
  */
 export function cadenceLocked(
   heartRate: number | undefined,
@@ -87,10 +88,24 @@ export function assessQuality(run: RunSummary): QualityReport {
     run.endTime > run.startTime;
   const validDistance = finite(run.distanceMeters) && run.distanceMeters > 0;
   if (!validTime) {
-    issue('time', 'invalid_time', 'Zeitdaten fehlen oder widersprechen sich.');
+    issue(
+      'time',
+      'invalid_time',
+      tr(
+        'Zeitdaten fehlen oder widersprechen sich.',
+        'Time data is missing or contradictory.',
+      ),
+    );
   }
   if (!validDistance) {
-    issue('gps', 'invalid_distance', 'Keine verlässliche Distanz vorhanden.');
+    issue(
+      'gps',
+      'invalid_distance',
+      tr(
+        'Keine verlässliche Distanz vorhanden.',
+        'No reliable distance available.',
+      ),
+    );
   }
   if (
     validTime &&
@@ -99,14 +114,20 @@ export function assessQuality(run: RunSummary): QualityReport {
     issue(
       'time',
       'duration_mismatch',
-      'Aufzeichnungszeit überschreitet die Spanne zwischen Start und Ende.',
+      tr(
+        'Aufzeichnungszeit überschreitet die Spanne zwischen Start und Ende.',
+        'Recorded time exceeds the span between start and end.',
+      ),
     );
   }
   if ((run.segments?.length ?? 0) > MAX_SEGMENTS) {
     issue(
       'time',
       'aggregate_limit',
-      'Zu viele Abschnitte: Detailauswertung bleibt aus.',
+      tr(
+        'Zu viele Abschnitte: Detailauswertung bleibt aus.',
+        'Too many segments: detailed analysis is skipped.',
+      ),
     );
   }
   const usablePaceSegmentIds: string[] = [];
@@ -131,7 +152,10 @@ export function assessQuality(run: RunSummary): QualityReport {
       issue(
         'time',
         'invalid_segment_time',
-        'Abschnitt mit ungültiger Dauer ausgeschlossen.',
+        tr(
+          'Abschnitt mit ungültiger Dauer ausgeschlossen.',
+          'Segment with invalid duration excluded.',
+        ),
         id,
       );
     }
@@ -139,7 +163,10 @@ export function assessQuality(run: RunSummary): QualityReport {
       issue(
         'gps',
         'suspected_jump',
-        'Distanz unplausibel; möglicher GPS-Sprung.',
+        tr(
+          'Distanz unplausibel; möglicher GPS-Sprung.',
+          'Implausible distance; possible GPS jump.',
+        ),
         id,
         true,
       );
@@ -149,7 +176,10 @@ export function assessQuality(run: RunSummary): QualityReport {
       issue(
         'time',
         'gap',
-        'Messlücke: Abschnitt für Pacing nicht geeignet.',
+        tr(
+          'Messlücke: Abschnitt für Pacing nicht geeignet.',
+          'Recording gap: segment not suitable for pacing.',
+        ),
         id,
       );
     }
@@ -157,7 +187,10 @@ export function assessQuality(run: RunSummary): QualityReport {
       issue(
         'elevation',
         'suspected_elevation',
-        'Unplausible Steigung; Höhenquelle prüfen.',
+        tr(
+          'Unplausible Steigung; Höhenquelle prüfen.',
+          'Implausible grade; check the elevation source.',
+        ),
         id,
         true,
       );
@@ -178,7 +211,10 @@ export function assessQuality(run: RunSummary): QualityReport {
       issue(
         'heartRate',
         'implausible_hr',
-        'Pulswert außerhalb des unterstützten Bereichs.',
+        tr(
+          'Pulswert außerhalb des unterstützten Bereichs.',
+          'Heart rate outside the supported range.',
+        ),
         id,
       );
     }
@@ -187,7 +223,10 @@ export function assessQuality(run: RunSummary): QualityReport {
       issue(
         'heartRate',
         'possible_cadence_lock',
-        'Puls folgt möglicherweise der Kadenz; kein sicherer Gerätefehler.',
+        tr(
+          'Puls folgt möglicherweise der Kadenz; kein sicherer Gerätefehler.',
+          'Heart rate may be following cadence; not a confirmed device fault.',
+        ),
         id,
         true,
       );
@@ -199,7 +238,10 @@ export function assessQuality(run: RunSummary): QualityReport {
       issue(
         'cadence',
         'implausible_cadence',
-        'Kadenz außerhalb des unterstützten Bereichs.',
+        tr(
+          'Kadenz außerhalb des unterstützten Bereichs.',
+          'Cadence outside the supported range.',
+        ),
         id,
       );
     }
@@ -232,7 +274,10 @@ export function assessQuality(run: RunSummary): QualityReport {
     issue(
       'heartRate',
       'no_usable_hr',
-      'Keine geeigneten Pulsdaten; Tempo bleibt separat auswertbar.',
+      tr(
+        'Keine geeigneten Pulsdaten; Tempo bleibt separat auswertbar.',
+        'No usable heart rate data; pace can still be evaluated separately.',
+      ),
     );
   }
   return {
@@ -271,21 +316,44 @@ export function estimateEffort(
         ? undefined
         : { legs, breathing },
     unit: 'index (100 = 3 m/s)',
-    uncertainty:
+    uncertainty: tr(
       'Keine validierte Unsicherheitsspanne. Der Tempoindex erfasst weder persönliche Leistungsfähigkeit noch Umweltbelastung.',
+      'No validated uncertainty range. The pace index captures neither personal fitness nor environmental strain.',
+    ),
     assumptions: [
-      'Version 2: 100 Indexpunkte entsprechen 3 m/s; linearer Tempoindex.',
-      'Nur gleichmäßige Laufbewegung mit plausibler Zeit und Distanz; keine physiologische Gesamtbewertung.',
-      'Belastung: RPE × Bewegungsminuten je Skala (Beine, Atmung), angelehnt an Session-RPE; kein Gesamtwert aus beiden.',
+      tr(
+        'Version 2: 100 Indexpunkte entsprechen 3 m/s; linearer Tempoindex.',
+        'Version 2: 100 index points equal 3 m/s; linear pace index.',
+      ),
+      tr(
+        'Nur gleichmäßige Laufbewegung mit plausibler Zeit und Distanz; keine physiologische Gesamtbewertung.',
+        'Only steady running with plausible time and distance; no overall physiological assessment.',
+      ),
+      tr(
+        'Belastung: RPE × Bewegungsminuten je Skala (Beine, Atmung), angelehnt an Session-RPE; kein Gesamtwert aus beiden.',
+        'Load: RPE × moving minutes per scale (legs, breathing), based on session RPE; no total combining both.',
+      ),
     ],
     factors: {
       tempo:
         speedIndex === undefined
-          ? 'Nicht bestimmbar'
-          : `${Math.round(speedIndex)} Indexpunkte`,
-      slope: 'Nicht bestimmbar – kein validiertes Steigungsmodell',
-      wind: 'Nicht bestimmbar – kein validiertes Windmodell',
-      heat: 'Nicht bestimmbar – kein validiertes Hitzemodell',
+          ? tr('Nicht bestimmbar', 'Not determinable')
+          : tr(
+              `${Math.round(speedIndex)} Indexpunkte`,
+              `${Math.round(speedIndex)} index points`,
+            ),
+      slope: tr(
+        'Nicht bestimmbar – kein validiertes Steigungsmodell',
+        'Not determinable – no validated slope model',
+      ),
+      wind: tr(
+        'Nicht bestimmbar – kein validiertes Windmodell',
+        'Not determinable – no validated wind model',
+      ),
+      heat: tr(
+        'Nicht bestimmbar – kein validiertes Hitzemodell',
+        'Not determinable – no validated heat model',
+      ),
     },
   };
 }
@@ -333,9 +401,9 @@ export function pacingFor(
 }
 
 /**
- * Flach heißt: Auf- plus Abstieg ≤ 2 % der Strecke. Die Nettohöhe allein
- * würde „hoch und wieder runter“ als flach zählen. Ohne Auf-/Abstieg
- * (Altdaten, Importe) zählt die Nettosteigung; ohne beides ist es unbekannt.
+ * Flat means: ascent plus descent ≤ 2 % of the distance. Net elevation alone
+ * would count "up and down again" as flat. Without ascent/descent (old data,
+ * imports) the net grade counts; without either it is unknown.
  */
 export function segmentIsFlat(s: SegmentAggregate): boolean {
   if (!finite(s.distanceMeters) || s.distanceMeters <= 0) {
@@ -366,9 +434,9 @@ export interface BaselineRun {
 }
 
 /**
- * Vergleichsläufe für die Basis: gleicher Zweck, flach, ähnlicher Umfang,
- * innerhalb von 90 Tagen davor. Der auslösende Lauf steht vorn, die
- * jüngsten Vorläufe folgen; höchstens fünf insgesamt.
+ * Comparison runs for the baseline: same purpose, flat, similar size, within 90
+ * days before. The triggering run comes first, the most recent earlier runs
+ * follow; at most five in total.
  */
 export function comparableBaseline(
   run: RunSummary,
@@ -415,8 +483,8 @@ export function comparableBaseline(
 }
 
 /**
- * `history` sind alle bekannten Läufe; daraus wird die Vergleichsbasis
- * gebildet. Ohne Historie kann es keine Empfehlung geben, nur Beobachtung.
+ * `history` holds all known runs; the comparison baseline is built from them.
+ * Without history there can be no recommendation, only observation.
  */
 export function analyzeRun(
   run: RunSummary,
@@ -429,11 +497,22 @@ export function analyzeRun(
   const result: RunAnalysis = {
     ...provenance([run], pacing?.segmentIds ?? []),
     classification: quality.paceUsable
-      ? 'Zeit und Distanz sind für eine einfache Tempoauswertung nutzbar.'
-      : 'Dieser Lauf ist gespeichert; Zeit oder Distanz reichen für eine Tempoauswertung nicht aus.',
-    focus: 'Noch nicht ausreichend beurteilbar.',
-    nextAction:
+      ? tr(
+          'Zeit und Distanz sind für eine einfache Tempoauswertung nutzbar.',
+          'Time and distance are usable for a simple pace review.',
+        )
+      : tr(
+          'Dieser Lauf ist gespeichert; Zeit oder Distanz reichen für eine Tempoauswertung nicht aus.',
+          'This run is saved; time or distance is not enough for a pace review.',
+        ),
+    focus: tr(
+      'Noch nicht ausreichend beurteilbar.',
+      'Not enough data to judge yet.',
+    ),
+    nextAction: tr(
       'Beim nächsten Lauf die Laufart angeben und geeignete Abschnitte aufzeichnen.',
+      'On the next run, set the run type and record usable segments.',
+    ),
     state: 'insufficient',
     quality,
     effort,
@@ -444,55 +523,89 @@ export function analyzeRun(
       ...result,
       focus:
         active.status === 'paused'
-          ? 'Deine Empfehlung ist pausiert.'
-          : 'Deine Empfehlung bleibt bestehen.',
+          ? tr('Deine Empfehlung ist pausiert.', 'Your recommendation is paused.')
+          : tr(
+              'Deine Empfehlung bleibt bestehen.',
+              'Your recommendation stays in place.',
+            ),
       nextAction:
         active.status === 'paused'
-          ? 'Setze die Empfehlung fort, wenn sie wieder in deinen Alltag passt.'
+          ? tr(
+              'Setze die Empfehlung fort, wenn sie wieder in deinen Alltag passt.',
+              'Resume the recommendation when it fits your routine again.',
+            )
           : active.recommendation.action,
       state: 'active',
     };
   }
   if (run.purpose === 'unknown' || run.purpose === 'free') {
-    result.focus =
-      'Ohne gewählte Laufart bewerten wir wechselndes Tempo nicht als Fehler.';
+    result.focus = tr(
+      'Ohne gewählte Laufart bewerten wir wechselndes Tempo nicht als Fehler.',
+      'Without a run type we do not treat changing pace as a mistake.',
+    );
     result.question = {
       id: `purpose-${run.id}`,
-      text: 'War das wechselnde Tempo beabsichtigt?',
-      reason:
+      text: tr(
+        'War das wechselnde Tempo beabsichtigt?',
+        'Was the changing pace intended?',
+      ),
+      reason: tr(
         'Die Laufart entscheidet, ob eine gleichmäßigere Einteilung sinnvoll ist.',
+        'The run type decides whether a more even pacing makes sense.',
+      ),
     };
-    result.nextAction =
-      'Ergänze bei Bedarf die Laufart; die Rückfrage ist freiwillig.';
+    result.nextAction = tr(
+      'Ergänze bei Bedarf die Laufart; die Rückfrage ist freiwillig.',
+      'Add the run type if you like; the question is optional.',
+    );
     return result;
   }
   if (run.purpose === 'intervals' || run.purpose === 'race') {
     return {
       ...result,
-      focus: 'Temposchwankungen können zu dieser Laufart gehören.',
-      nextAction:
+      focus: tr(
+        'Temposchwankungen können zu dieser Laufart gehören.',
+        'Pace swings can belong to this run type.',
+      ),
+      nextAction: tr(
         'Für diese Laufart gibt es noch keine ausreichend geprüfte Empfehlung.',
+        'There is no sufficiently tested recommendation for this run type yet.',
+      ),
     };
   }
   if (!pacing) {
-    result.focus =
-      'Für die Einteilung fehlen mindestens vier geeignete Abschnitte ab 500 m.';
-    result.nextAction =
-      'Laufart und geplanten Umfang beibehalten; aus diesen Daten folgt noch keine Änderung.';
+    result.focus = tr(
+      'Für die Einteilung fehlen mindestens vier geeignete Abschnitte ab 500 m.',
+      'Pacing needs at least four usable segments from 500 m on.',
+    );
+    result.nextAction = tr(
+      'Laufart und geplanten Umfang beibehalten; aus diesen Daten folgt noch keine Änderung.',
+      'Keep the run type and planned distance; this data does not call for a change yet.',
+    );
     return result;
   }
-  result.classification = `Die zweite Laufhälfte war ${Math.abs(
-    pacing.fadePercent,
-  ).toFixed(1)} % ${
-    pacing.fadePercent >= 0 ? 'langsamer' : 'schneller'
-  } (geeignete Abschnitte).`;
+  const fade = fixed(Math.abs(pacing.fadePercent), 1);
+  result.classification =
+    pacing.fadePercent >= 0
+      ? tr(
+          `Die zweite Laufhälfte war ${fade} % langsamer (geeignete Abschnitte).`,
+          `The second half was ${fade}% slower (usable segments).`,
+        )
+      : tr(
+          `Die zweite Laufhälfte war ${fade} % schneller (geeignete Abschnitte).`,
+          `The second half was ${fade}% faster (usable segments).`,
+        );
   if (!flatPacingContext(run, pacing)) {
     return {
       ...result,
-      focus:
+      focus: tr(
         'Für eine Empfehlung zur Starteinteilung fehlen vergleichbar flache Abschnitte.',
-      nextAction:
+        'A recommendation on the start pacing needs comparably flat segments.',
+      ),
+      nextAction: tr(
         'Tempoverteilung als Beobachtung nutzen. Für die Prüfung fehlen vergleichbar flache Abschnitte.',
+        'Use the pace split as an observation. The check needs comparably flat segments.',
+      ),
     };
   }
   const baseline = comparableBaseline(run, pacing, history);
@@ -503,31 +616,51 @@ export function analyzeRun(
       return {
         ...result,
         state: 'maintain',
-        focus: 'Du hast zum Ende nicht deutlich an Tempo verloren.',
-        nextAction:
+        focus: tr(
+          'Du hast zum Ende nicht deutlich an Tempo verloren.',
+          'You did not lose much pace toward the end.',
+        ),
+        nextAction: tr(
           'Die bisherige Einteilung für diese Laufart beibehalten. Andere Trainingsaspekte bleiben offen.',
+          'Keep your current pacing for this run type. Other training aspects stay open.',
+        ),
       };
     }
     return {
       ...result,
-      focus: `Heute hat die zweite Hälfte deutlich nachgelassen. Ein einzelner Lauf trägt keine Empfehlung; es fehlen vergleichbare Läufe (${baseline.length} von ${MINIMUM_BASELINE_RUNS}).`,
-      nextAction:
+      focus: tr(
+        `Heute hat die zweite Hälfte deutlich nachgelassen. Ein einzelner Lauf trägt keine Empfehlung; es fehlen vergleichbare Läufe (${baseline.length} von ${MINIMUM_BASELINE_RUNS}).`,
+        `Today the second half clearly faded. A single run does not support a recommendation; comparable runs are missing (${baseline.length} of ${MINIMUM_BASELINE_RUNS}).`,
+      ),
+      nextAction: tr(
         'Laufart und Umfang beibehalten. Entschieden wird über den Median mehrerer vergleichbarer flacher Läufe, nicht über einen Ausreißer.',
+        'Keep the run type and distance. The decision rests on the median of several comparable flat runs, not on one outlier.',
+      ),
     };
   }
   if (medianFade < FADE_TRIGGER_PERCENT) {
     return {
       ...result,
       state: 'maintain',
-      focus: `Im Median deiner letzten ${baseline.length} vergleichbaren Läufe war die zweite Hälfte ${medianFade.toFixed(
-        1,
-      )} % langsamer. Das ist kein Muster, das eine Änderung trägt.`,
-      nextAction:
+      focus: tr(
+        `Im Median deiner letzten ${baseline.length} vergleichbaren Läufe war die zweite Hälfte ${fixed(
+          medianFade,
+          1,
+        )} % langsamer. Das ist kein Muster, das eine Änderung trägt.`,
+        `At the median of your last ${baseline.length} comparable runs, the second half was ${fixed(
+          medianFade,
+          1,
+        )}% slower. That is not a pattern that justifies a change.`,
+      ),
+      nextAction: tr(
         'Die bisherige Einteilung für diese Laufart beibehalten. Andere Trainingsaspekte bleiben offen.',
+        'Keep your current pacing for this run type. Other training aspects stay open.',
+      ),
     };
   }
   const opening =
     median(baseline.map(item => item.pacing.firstPaceSecondsPerKm)) * 1.05;
+  const isLong = run.purpose === 'long';
   const recommendation: Recommendation = {
     ...provenance(
       baseline.map(item => item.run),
@@ -535,17 +668,34 @@ export function analyzeRun(
     ),
     id: `calmer-start:${run.id}:${MODEL_VERSION}`,
     kind: 'calmer_start',
-    title: 'Ruhiger beginnen',
-    action: `Beginne die nächste vergleichbar flache ${
-      run.purpose === 'long' ? 'lange' : 'ruhige'
-    } Runde in der ersten Hälfte etwa 5 % ruhiger (${formatPace(
-      opening,
-    )} min/km). Behalte Laufart und geplanten Umfang bei.`,
-    reason: `In ${baseline.length} vergleichbaren Läufen war die zweite Hälfte im Median ${medianFade.toFixed(
-      1,
-    )} % langsamer. Probiere einen ruhigeren Start aus; Gelände, Wetter und Tagesform können mitwirken.`,
+    title: tr('Ruhiger beginnen', 'Start more calmly'),
+    action: tr(
+      `Beginne die nächste vergleichbar flache ${
+        isLong ? 'lange' : 'ruhige'
+      } Runde in der ersten Hälfte etwa 5 % ruhiger (${formatPace(
+        opening,
+      )} min/km). Behalte Laufart und geplanten Umfang bei.`,
+      `Start your next comparably flat ${
+        isLong ? 'long' : 'easy'
+      } run about 5% easier in the first half (${formatPace(
+        opening,
+      )} min/km). Keep the run type and planned distance.`,
+    ),
+    reason: tr(
+      `In ${baseline.length} vergleichbaren Läufen war die zweite Hälfte im Median ${fixed(
+        medianFade,
+        1,
+      )} % langsamer. Probiere einen ruhigeren Start aus; Gelände, Wetter und Tagesform können mitwirken.`,
+      `Across ${baseline.length} comparable runs, the second half was ${fixed(
+        medianFade,
+        1,
+      )}% slower at the median. Try a calmer start; terrain, weather and form on the day may play a part.`,
+    ),
     purpose: run.purpose,
-    goal: 'Gleichmäßigere Einteilung: weniger später Tempoabfall bei gleicher Laufart und gleichem Umfang. Das ist keine Aussage über Leistungsfähigkeit.',
+    goal: tr(
+      'Gleichmäßigere Einteilung: weniger später Tempoabfall bei gleicher Laufart und gleichem Umfang. Das ist keine Aussage über Leistungsfähigkeit.',
+      'More even pacing: less late pace fade at the same run type and distance. This says nothing about fitness.',
+    ),
     criteria: {
       method: PACING_METHOD,
       baselineRunIds: baseline.map(item => item.run.id),
@@ -569,17 +719,38 @@ export function analyzeRun(
       reviewAfterRuns: 3,
       maxDays: 56,
       exclusions: [
-        'Andere Laufart',
-        'Dauer außerhalb ±20 % oder Distanz außerhalb ±15 %',
-        'Fehlende oder unzureichende Abschnitte',
-        'Unbekannte oder nicht flache Steigung',
-        'Bekannt deutlich abweichendes Wetter',
+        tr('Andere Laufart', 'Different run type'),
+        tr(
+          'Dauer außerhalb ±20 % oder Distanz außerhalb ±15 %',
+          'Duration outside ±20% or distance outside ±15%',
+        ),
+        tr(
+          'Fehlende oder unzureichende Abschnitte',
+          'Missing or insufficient segments',
+        ),
+        tr(
+          'Unbekannte oder nicht flache Steigung',
+          'Unknown or not flat grade',
+        ),
+        tr(
+          'Bekannt deutlich abweichendes Wetter',
+          'Known weather that differs markedly',
+        ),
       ],
       stopConditions: [
-        'Bei Beschwerden die Empfehlung pausieren; das ist keine Diagnose',
-        'Geändertes Trainingsziel',
-        'Modellfehler oder gelöschte Vergleichsläufe',
-        'Nach 56 Tagen mit zu wenig vergleichbaren Läufen neu entscheiden',
+        tr(
+          'Bei Beschwerden die Empfehlung pausieren; das ist keine Diagnose',
+          'If you have complaints, pause the recommendation; this is not a diagnosis',
+        ),
+        tr('Geändertes Trainingsziel', 'Changed training goal'),
+        tr(
+          'Modellfehler oder gelöschte Vergleichsläufe',
+          'Model error or deleted comparison runs',
+        ),
+        tr(
+          'Nach 56 Tagen mit zu wenig vergleichbaren Läufen neu entscheiden',
+          'After 56 days with too few comparable runs, decide again',
+        ),
       ],
     },
   };

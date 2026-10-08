@@ -6,19 +6,18 @@ import type { Store } from './db';
 import { rebuildDerived } from './records';
 
 /**
- * Abgleich vom Telefon. Das Telefon ist das Original; der Server übernimmt
- * dessen Stand und schreibt nie zurück.
+ * Sync from the phone. The phone is the original; the server takes over its
+ * state and never writes back.
  *
- * 1. `plan`: Das Telefon schickt sein vollständiges Inventar (Schlüssel →
- *    Hash). Der Server nennt, was ihm fehlt oder veraltet ist.
- * 2. `objects`: Das Telefon schickt genau diese Objekte, in Paketen.
- * 3. `commit`: Das Telefon schickt das Inventar noch einmal. Was nicht darin
- *    steht, hat das Telefon gelöscht oder nicht mehr freigegeben; der Server
- *    löscht es auch. Danach entstehen die Tabellen für SQL neu.
+ * 1. `plan`: The phone sends its full inventory (key → hash). The server names
+ *    what it is missing or has out of date.
+ * 2. `objects`: The phone sends exactly those objects, in batches.
+ * 3. `commit`: The phone sends the inventory again. Anything not in it was
+ *    deleted on the phone or is no longer shared; the server deletes it too.
+ *    Afterwards the SQL tables are rebuilt.
  *
- * Jeder Schritt lässt sich beliebig wiederholen. Bricht die Verbindung ab,
- * bleiben bereits übertragene Objekte liegen und werden nicht noch einmal
- * gebraucht.
+ * Every step can be repeated freely. If the connection drops, objects already
+ * sent stay in place and are not needed again.
  */
 
 export const KINDS = [
@@ -49,16 +48,16 @@ export function kindOf(key: string): ObjectKind {
   const match = KEY.exec(key);
   const kind = match?.[1] as ObjectKind | undefined;
   if (!match || !kind || !KINDS.includes(kind)) {
-    throw new SyncError(400, `Unbekannter Schlüssel: ${key.slice(0, 80)}`);
+    throw new SyncError(400, `Unknown key: ${key.slice(0, 80)}`);
   }
-  // Einzelobjekte haben keine Kennung, Listen immer eine.
+  // Single objects have no id; lists always have one.
   const single =
     kind === 'settings' ||
     kind === 'templates' ||
     kind === 'soreness' ||
     kind === 'strengthHeart';
   if (single !== (match[2] === undefined)) {
-    throw new SyncError(400, `Unbekannter Schlüssel: ${key.slice(0, 80)}`);
+    throw new SyncError(400, `Unknown key: ${key.slice(0, 80)}`);
   }
   return kind;
 }
@@ -67,24 +66,24 @@ function checkProtocol(body: any) {
   if (body?.protocol !== SERVER_SYNC_PROTOCOL) {
     throw new SyncError(
       409,
-      'App und Server sprechen verschiedene Versionen. Aktualisiere den Server oder die App.',
+      'The app and the server speak different versions. Update the server or the app.',
     );
   }
 }
 
 function readManifest(raw: unknown): Map<string, string> {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    throw new SyncError(400, 'Inventar fehlt.');
+    throw new SyncError(400, 'Inventory is missing.');
   }
   const entries = Object.entries(raw as Record<string, unknown>);
   if (entries.length > MAX_MANIFEST) {
-    throw new SyncError(413, 'Das Inventar ist zu groß.');
+    throw new SyncError(413, 'The inventory is too large.');
   }
   const manifest = new Map<string, string>();
   for (const [key, hash] of entries) {
     kindOf(key);
     if (typeof hash !== 'string' || !HASH.test(hash)) {
-      throw new SyncError(400, `Ungültiger Hash für ${key.slice(0, 80)}.`);
+      throw new SyncError(400, `Invalid hash for ${key.slice(0, 80)}.`);
     }
     manifest.set(key, hash);
   }
@@ -122,19 +121,16 @@ export function receive(
   checkProtocol(body);
   const objects = body?.objects;
   if (!Array.isArray(objects) || objects.length > MAX_BATCH) {
-    throw new SyncError(
-      400,
-      `Schicke höchstens ${MAX_BATCH} Objekte je Paket.`,
-    );
+    throw new SyncError(400, `Send at most ${MAX_BATCH} objects per batch.`);
   }
   const checked = objects.map(entry => {
     const key = String(entry?.key ?? '');
     const kind = kindOf(key);
     const hash = String(entry?.hash ?? '');
     if (!HASH.test(hash))
-      throw new SyncError(400, `Ungültiger Hash für ${key.slice(0, 80)}.`);
+      throw new SyncError(400, `Invalid hash for ${key.slice(0, 80)}.`);
     if (!entry.body || typeof entry.body !== 'object') {
-      throw new SyncError(400, `Objekt ${key.slice(0, 80)} hat keinen Inhalt.`);
+      throw new SyncError(400, `Object ${key.slice(0, 80)} has no content.`);
     }
     return { key, kind, hash, body: JSON.stringify(entry.body) };
   });
@@ -198,8 +194,8 @@ export function commit(
 }
 
 /**
- * Löscht die Kopie auf dem Server und trennt das Telefon. Sonst schickte es
- * beim nächsten Abgleich wieder alles; neu verbinden ist eine bewusste Aktion.
+ * Deletes the copy on the server and disconnects the phone. Otherwise the phone
+ * would send everything again at the next sync; reconnecting is a deliberate act.
  */
 export function deleteCopy(store: Store) {
   store.transaction(() => {

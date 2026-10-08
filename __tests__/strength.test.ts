@@ -1,6 +1,7 @@
 import {
   CATALOG_VERSION,
   addExercise,
+  displaySessionName,
   addSet,
   completeSet,
   editSet,
@@ -28,6 +29,7 @@ import {
   type StrengthSession,
   type WorkoutTemplate,
 } from '../src/domain/strength';
+import { setLanguage } from '../src/domain/i18n';
 import { CATALOG, catalogExercise, searchCatalog } from '../src/domain/catalog';
 import {
   allRegionIds,
@@ -38,13 +40,13 @@ import {
 
 const template: WorkoutTemplate = {
   id: 'template-1',
-  name: 'Unterkörper',
+  name: 'Lower body',
   days: [1],
   createdAt: 0,
   exercises: [
     {
       exerciseId: 'barbell_back_squat',
-      name: 'Kniebeuge (Langhantel)',
+      name: 'Back squat (barbell)',
       sets: [
         {
           kind: 'warmup',
@@ -71,7 +73,7 @@ const template: WorkoutTemplate = {
     },
     {
       exerciseId: 'romanian_deadlift',
-      name: 'Rumänisches Kreuzheben',
+      name: 'Romanian deadlift',
       sets: [
         {
           kind: 'normal',
@@ -87,34 +89,34 @@ const template: WorkoutTemplate = {
 
 const start = () => startSession(template, 1_000_000);
 
-describe('Muskelregionen', () => {
-  it('führt 45 konkrete Regionen', () => {
+describe('Muscle regions', () => {
+  it('lists 45 concrete regions', () => {
     expect(allRegionIds()).toHaveLength(45);
   });
 
-  it('hängt eine Seite nur an seitig geführte Regionen', () => {
+  it('attaches a side only to regions that have sides', () => {
     expect(regionId('quad', 'l')).toBe('quad_l');
     expect(regionId('neck', 'l')).toBe('neck');
   });
 
-  it('beschriftet konkrete Regionen mit ihrer Seite', () => {
+  it('labels concrete regions with their side', () => {
     expect(regionLabel('quad_r')).toBe('Quadrizeps rechts');
     expect(regionLabel('neck')).toBe('Nacken');
   });
 
-  it('gibt unbekannte Kennungen unverändert zurück, statt zu raten', () => {
+  it('returns unknown ids unchanged instead of guessing', () => {
     expect(regionLabel('unbekannt')).toBe('unbekannt');
   });
 
-  it('weist Anteile zurück, die sich nicht auf 1 summieren', () => {
+  it('rejects shares that do not add up to 1', () => {
     expect(sharesAreValid({ quad: 0.5, glute: 0.3 })).toBe(false);
     expect(sharesAreValid({ quad: 0.5, glute: 0.5 })).toBe(true);
     expect(sharesAreValid({})).toBe(false);
   });
 });
 
-describe('Übungskatalog', () => {
-  it('verteilt modellierte Übungen vollständig und lässt fehlende Modelle unbekannt', () => {
+describe('Exercise catalog', () => {
+  it('distributes modeled exercises completely and leaves missing models unknown', () => {
     const broken = CATALOG.filter(
       exercise =>
         exercise.eccentric !== undefined && !sharesAreValid(exercise.shares),
@@ -122,7 +124,7 @@ describe('Übungskatalog', () => {
     expect(broken.map(exercise => exercise.id)).toEqual([]);
   });
 
-  it('hält den Exzentrikfaktor im dokumentierten Bereich', () => {
+  it('keeps the eccentric factor within the documented range', () => {
     for (const exercise of CATALOG.filter(
       entry => entry.eccentric !== undefined,
     )) {
@@ -131,20 +133,20 @@ describe('Übungskatalog', () => {
     }
   });
 
-  it('vergibt jede Kennung nur einmal', () => {
+  it('assigns each id only once', () => {
     expect(new Set(CATALOG.map(exercise => exercise.id)).size).toBe(
       CATALOG.length,
     );
   });
 
-  it('kennzeichnet Herkunft und Katalogversion', () => {
+  it('marks origin and catalog version', () => {
     for (const exercise of CATALOG) {
       expect(exercise.origin).toBe('catalog');
       expect(exercise.catalogVersion).toBe(CATALOG_VERSION);
     }
   });
 
-  it('findet Übungen unabhängig von Groß- und Kleinschreibung', () => {
+  it('finds exercises regardless of letter case', () => {
     expect(searchCatalog('kniebeuge').length).toBeGreaterThan(0);
     expect(searchCatalog('gibtesnicht')).toEqual([]);
     expect(catalogExercise('leg_press')?.name).toBe('Beinpresse');
@@ -152,10 +154,10 @@ describe('Übungskatalog', () => {
   });
 });
 
-describe('Einheit starten', () => {
-  it('übernimmt Vorlage samt Vorgaben und Modellversionen', () => {
+describe('Starting a session', () => {
+  it('takes over the template with its targets and model versions', () => {
     const session = start();
-    expect(session.name).toBe('Unterkörper');
+    expect(session.name).toBe('Lower body');
     expect(session.templateId).toBe('template-1');
     expect(session.status).toBe('active');
     expect(session.exercises).toHaveLength(2);
@@ -165,14 +167,14 @@ describe('Einheit starten', () => {
     expect(session.catalogVersion).toBe(CATALOG_VERSION);
   });
 
-  it('erlaubt eine Einheit ohne Vorlage', () => {
+  it('allows a session without a template', () => {
     const session = startSession(null, 5);
     expect(session.name).toBe('Freies Training');
     expect(session.exercises).toEqual([]);
     expect(session.templateId).toBeUndefined();
   });
 
-  it('kopiert die Vorgaben, statt die Vorlage zu teilen', () => {
+  it('copies the targets instead of sharing the template', () => {
     const session = completeSet(
       start(),
       0,
@@ -186,14 +188,14 @@ describe('Einheit starten', () => {
     expect(session.exercises[0].sets[0].actualReps).toBe(12);
   });
 
-  it('vergibt je Satz eine eigene Kennung', () => {
+  it('gives each set its own id', () => {
     const ids = start().exercises.flatMap(exercise =>
       exercise.sets.map(set => set.id),
     );
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('hält auch bei derselben Übung mehrmals die Satzkennungen eindeutig', () => {
+  it('keeps set ids unique even when the same exercise appears several times', () => {
     const duplicate: WorkoutTemplate = {
       ...template,
       exercises: [template.exercises[0], template.exercises[0]],
@@ -209,8 +211,44 @@ describe('Einheit starten', () => {
   });
 });
 
-describe('Sätze erfassen', () => {
-  it('übernimmt beim Bestätigen ohne Eingabe die Vorgabe', () => {
+describe('Session names on display', () => {
+  afterEach(() => setLanguage('de'));
+
+  it('shows stored German defaults in German', () => {
+    expect(displaySessionName('Krafttraining')).toBe('Krafttraining');
+    expect(displaySessionName('Freies Training')).toBe('Freies Training');
+  });
+
+  it('shows stored German and English defaults in English', () => {
+    setLanguage('en');
+    expect(displaySessionName('Krafttraining')).toBe('Strength training');
+    expect(displaySessionName('Strength training')).toBe('Strength training');
+    expect(displaySessionName('Freies Training')).toBe('Free training');
+    expect(displaySessionName('Free training')).toBe('Free training');
+  });
+
+  it('keeps names the user typed, in both languages', () => {
+    setLanguage('en');
+    expect(displaySessionName('Push day')).toBe('Push day');
+    expect(displaySessionName('Krafttraining am Montag')).toBe(
+      'Krafttraining am Montag',
+    );
+    setLanguage('de');
+    expect(displaySessionName('Push day')).toBe('Push day');
+  });
+
+  it('stores the default name of a new session in German, whatever the language', () => {
+    setLanguage('en');
+    const session = startSession(null, 5);
+    expect(session.name).toBe('Freies Training');
+    expect(displaySessionName(session.name)).toBe('Free training');
+    setLanguage('de');
+    expect(displaySessionName(session.name)).toBe('Freies Training');
+  });
+});
+
+describe('Recording sets', () => {
+  it('takes the target when confirming without input', () => {
     const session = start();
     const setId = session.exercises[0].sets[1].id;
     const next = completeSet(session, 0, setId, 2_000);
@@ -220,7 +258,7 @@ describe('Sätze erfassen', () => {
     expect(set.actualReps).toBe(5);
   });
 
-  it('speichert abweichende Werte, ohne die Vorgabe zu verlieren', () => {
+  it('stores deviating values without losing the target', () => {
     const session = start();
     const setId = session.exercises[0].sets[1].id;
     const next = completeSet(session, 0, setId, 2_000, {
@@ -234,7 +272,7 @@ describe('Sätze erfassen', () => {
     expect(set.planned.reps).toBe(5);
   });
 
-  it('nimmt einen bestätigten Satz beim erneuten Tippen zurück', () => {
+  it('reopens a confirmed set when tapped again', () => {
     const session = start();
     const setId = session.exercises[0].sets[1].id;
     const done = completeSet(session, 0, setId, 2_000, { actualReps: 4 });
@@ -244,7 +282,7 @@ describe('Sätze erfassen', () => {
     expect(reopened.restStartedAt).toBeUndefined();
   });
 
-  it('ändert Werte ohne den Satz abzuschließen', () => {
+  it('changes values without completing the set', () => {
     const session = start();
     const setId = session.exercises[0].sets[0].id;
     const next = editSet(session, 0, setId, { actualWeightKg: 45 });
@@ -252,14 +290,14 @@ describe('Sätze erfassen', () => {
     expect(next.exercises[0].sets[0].completedAt).toBeUndefined();
   });
 
-  it('lässt unbekannte Sätze und Übungen unverändert', () => {
+  it('leaves unknown sets and exercises unchanged', () => {
     const session = start();
     expect(completeSet(session, 9, 'gibtesnicht', 1)).toBe(session);
     expect(editSet(session, 0, 'gibtesnicht', { actualReps: 1 })).toBe(session);
     expect(skipSet(session, 0, 'gibtesnicht')).toBe(session);
   });
 
-  it('behandelt Überspringen als Angabe, nicht als Fehler', () => {
+  it('treats skipping as information, not as an error', () => {
     const session = start();
     const setId = session.exercises[0].sets[0].id;
     const skipped = skipSet(session, 0, setId);
@@ -268,7 +306,7 @@ describe('Sätze erfassen', () => {
     expect(skipSet(skipped, 0, setId).exercises[0].sets[0].skipped).toBe(false);
   });
 
-  it('belegt einen ergänzten Satz aus dem letzten tatsächlichen Wert vor', () => {
+  it('prefills an added set from the last actual value', () => {
     const session = completeSet(
       start(),
       0,
@@ -283,14 +321,14 @@ describe('Sätze erfassen', () => {
     expect(added.completedAt).toBeUndefined();
   });
 
-  it('ergänzt einen Standardsatz, wenn die Übung noch leer ist', () => {
+  it('adds a default set when the exercise is still empty', () => {
     const empty = addExercise(startSession(null, 1), { ...CATALOG[0] }, 2, 0);
     const withSet = addSet(removeAllSets(empty), 0, 3);
     expect(withSet.exercises[0].sets[0].planned.reps).toBe(8);
     expect(withSet.exercises[0].sets[0].planned.restSeconds).toBe(120);
   });
 
-  it('entfernt einen Satz, behält aber den letzten', () => {
+  it('removes a set but keeps the last one', () => {
     const session = start();
     const removed = removeSet(session, 0, session.exercises[0].sets[0].id);
     expect(removed.exercises[0].sets).toHaveLength(2);
@@ -304,8 +342,8 @@ const removeAllSets = (session: StrengthSession): StrengthSession => ({
   exercises: session.exercises.map(exercise => ({ ...exercise, sets: [] })),
 });
 
-describe('Übungen wechseln und ergänzen', () => {
-  it('begrenzt die Auswahl auf vorhandene Übungen', () => {
+describe('Switching and adding exercises', () => {
+  it('limits the selection to existing exercises', () => {
     const session = start();
     expect(selectExercise(session, 5).currentExercise).toBe(1);
     expect(selectExercise(session, -3).currentExercise).toBe(0);
@@ -313,7 +351,7 @@ describe('Übungen wechseln und ergänzen', () => {
     expect(selectExercise(startSession(null, 1), 2).currentExercise).toBe(0);
   });
 
-  it('kennzeichnet frei ergänzte Übungen und springt zu ihnen', () => {
+  it('marks freely added exercises and jumps to them', () => {
     const session = addExercise(start(), CATALOG[0], 7_000);
     expect(session.exercises).toHaveLength(3);
     expect(session.exercises[2].added).toBe(true);
@@ -321,15 +359,15 @@ describe('Übungen wechseln und ergänzen', () => {
     expect(session.currentExercise).toBe(2);
   });
 
-  it('setzt bei Eigengewichtsübungen die passende Lastart', () => {
+  it('sets the matching load type for bodyweight exercises', () => {
     const pushUp = CATALOG.find(exercise => exercise.id === 'push_up')!;
     const session = addExercise(startSession(null, 1), pushUp, 2);
     expect(session.exercises[0].sets[0].planned.loadKind).toBe('bodyweight');
   });
 });
 
-describe('Satz bestätigen wie beim Tippen', () => {
-  it('nimmt einen inzwischen auf der Uhr abgehakten Satz nicht zurück', () => {
+describe('Confirming a set like a tap', () => {
+  it('does not undo a set already ticked off on the watch', () => {
     const session = start();
     const setId = session.exercises[0].sets[1].id;
     const onWatch = completeSet(session, 0, setId, 1_900);
@@ -342,20 +380,20 @@ describe('Satz bestätigen wie beim Tippen', () => {
     expect(replayed.restStartedAt).toBe(1_900);
   });
 
-  it('bestätigt oder öffnet, wenn der Stand noch derselbe ist', () => {
+  it('confirms or reopens when the state is still the same', () => {
     const session = start();
     const setId = session.exercises[0].sets[1].id;
     const done = confirmSet(session, 0, setId, false, 2_000);
     expect(done.exercises[0].sets[1].completedAt).toBe(2_000);
     const reopened = confirmSet(done, 0, setId, true, 3_000);
     expect(reopened.exercises[0].sets[1].completedAt).toBeUndefined();
-    // Schon geöffnet: Zurücknehmen tut nichts mehr.
+    // Already open: undoing does nothing more.
     expect(confirmSet(session, 0, setId, true, 3_000)).toBe(session);
   });
 });
 
-describe('Stand der Einheit', () => {
-  it('baut jeden gespeicherten Stand auf dem vorherigen auf', () => {
+describe('Session revisions', () => {
+  it('builds each saved revision on the previous one', () => {
     const session = start();
     const first = revise(session, session, () => 0.5);
     expect(first.revision).toBeTruthy();
@@ -363,13 +401,13 @@ describe('Stand der Einheit', () => {
     const second = revise(first, { ...first, note: 'x' }, () => 0.25);
     expect(second.baseRevision).toBe(first.revision);
     expect(second.revision).not.toBe(first.revision);
-    // Eine alte Basis wandert nicht mit.
+    // An old base does not carry over.
     expect(revise(second, second).baseRevision).toBe(second.revision);
   });
 });
 
-describe('Pause', () => {
-  it('hält an, behält die Restzeit und läuft danach weiter', () => {
+describe('Rest', () => {
+  it('pauses, keeps the remaining time and resumes afterwards', () => {
     const session = start();
     const resting = completeSet(session, 0, session.exercises[0].sets[1].id, 0);
     expect(restEndsAt(resting)).toBe(180_000);
@@ -377,7 +415,7 @@ describe('Pause', () => {
     expect(restRemaining(paused, 60_000)).toBe(120);
     expect(restRemaining(paused, 500_000)).toBe(120);
     expect(restEndsAt(paused)).toBeNull();
-    // Doppelt anhalten ändert nichts.
+    // Pausing twice changes nothing.
     expect(pauseRest(paused, 70_000)).toBe(paused);
     const resumed = resumeRest(paused, 100_000);
     expect(resumed.restPausedMs).toBe(40_000);
@@ -386,7 +424,7 @@ describe('Pause', () => {
     expect(resumeRest(resumed, 120_000)).toBe(resumed);
   });
 
-  it('springt beim Überspringen sofort ans Ende', () => {
+  it('jumps straight to the end when skipping', () => {
     const session = start();
     const resting = pauseRest(
       completeSet(session, 0, session.exercises[0].sets[1].id, 0),
@@ -398,13 +436,13 @@ describe('Pause', () => {
     expect(JSON.parse(JSON.stringify(skipped))).not.toHaveProperty('restStartedAt');
   });
 
-  it('hält eine abgelaufene Pause nicht mehr an', () => {
+  it('does not pause a rest that has already ended', () => {
     const session = start();
     const resting = completeSet(session, 0, session.exercises[0].sets[1].id, 0);
     expect(pauseRest(resting, 400_000)).toBe(resting);
   });
 
-  it('beendet die Pause, wenn ihr Satz gelöscht wird, und stellt ihn wieder her', () => {
+  it('ends the rest when its set is deleted and restores the set', () => {
     const session = start();
     const set = session.exercises[0].sets[1];
     const resting = completeSet(session, 0, set.id, 1_000);
@@ -413,14 +451,14 @@ describe('Pause', () => {
     expect(restRemaining(removed, 2_000)).toBeNull();
     const restored = restoreSet(removed, 0, resting.exercises[0].sets[1], 1);
     expect(restored.exercises[0].sets[1]).toEqual(resting.exercises[0].sets[1]);
-    // Ein zweites Zurückholen legt keinen doppelten Satz an.
+    // A second restore does not add a duplicate set.
     expect(restoreSet(restored, 0, resting.exercises[0].sets[1], 1)).toBe(restored);
-    // Ein anderer Satz lässt die laufende Pause stehen.
+    // Another set leaves the running rest alone.
     const other = removeSet(resting, 0, session.exercises[0].sets[0].id);
     expect(restRemaining(other, 2_000)).not.toBeNull();
   });
 
-  it('startet nach einem bestätigten Satz und läuft ab', () => {
+  it('starts after a confirmed set and counts down', () => {
     const session = start();
     const setId = session.exercises[0].sets[1].id;
     const next = completeSet(session, 0, setId, 10_000);
@@ -430,14 +468,14 @@ describe('Pause', () => {
     expect(restRemaining(next, 190_001)).toBeNull();
   });
 
-  it('startet keine Pause, wenn die Vorgabe keine vorsieht', () => {
+  it('starts no rest when the target has none', () => {
     const noRest = startSession(
       {
         ...template,
         exercises: [
           {
             exerciseId: 'plank',
-            name: 'Unterarmstütz',
+            name: 'Plank',
             sets: [
               {
                 kind: 'timed',
@@ -457,8 +495,8 @@ describe('Pause', () => {
   });
 });
 
-describe('Fortschritt und Auswertung', () => {
-  it('zählt Sätze und Volumen nur aus tatsächlichen Werten', () => {
+describe('Progress and evaluation', () => {
+  it('counts sets and volume from actual values only', () => {
     let session = start();
     session = completeSet(session, 0, session.exercises[0].sets[1].id, 1, {
       actualWeightKg: 100,
@@ -474,7 +512,7 @@ describe('Fortschritt und Auswertung', () => {
     expect(progress.volumeKg).toBe(900);
   });
 
-  it('meldet eine Übung erst als fertig, wenn kein Satz mehr offen ist', () => {
+  it('reports an exercise as done only when no set is open', () => {
     let session = start();
     expect(exerciseProgress(session.exercises[1]).done).toBe(false);
     session = completeSet(session, 1, session.exercises[1].sets[0].id, 1);
@@ -482,21 +520,21 @@ describe('Fortschritt und Auswertung', () => {
     expect(exerciseProgress(session.exercises[1]).activeSetId).toBeUndefined();
   });
 
-  it('nennt den nächsten offenen Satz', () => {
+  it('names the next open set', () => {
     const session = start();
     expect(exerciseProgress(session.exercises[0]).activeSetId).toBe(
       session.exercises[0].sets[0].id,
     );
   });
 
-  it('schätzt das Einwiederholungsmaximum nur bei brauchbaren Werten', () => {
+  it('estimates the one-rep max only from usable values', () => {
     expect(epley1RM(100, 5)).toBeCloseTo(116.667, 3);
     expect(epley1RM(100, 0)).toBeNull();
     expect(epley1RM(0, 5)).toBeNull();
     expect(epley1RM(100, 40)).toBeNull();
   });
 
-  it('lässt Aufwärmsätze aus der Bestleistung heraus', () => {
+  it('leaves warm-up sets out of the personal best', () => {
     let session = start();
     session = completeSet(session, 0, session.exercises[0].sets[0].id, 1, {
       actualWeightKg: 400,
@@ -513,7 +551,7 @@ describe('Fortschritt und Auswertung', () => {
     expect(sessionBest1RM(session, 'gibtesnicht')).toBeNull();
   });
 
-  it('schließt eine Einheit ab und fasst sie zusammen', () => {
+  it('finishes a session and summarizes it', () => {
     let session = start();
     session = completeSet(session, 0, session.exercises[0].sets[1].id, 1, {
       actualWeightKg: 100,
@@ -531,7 +569,7 @@ describe('Fortschritt und Auswertung', () => {
   });
 });
 
-describe('Bezug zur letzten Leistung', () => {
+describe('Reference to the last performance', () => {
   const historyFrom = (values: {
     weight?: number;
     reps?: number;
@@ -547,7 +585,7 @@ describe('Bezug zur letzten Leistung', () => {
     ];
   };
 
-  it('nennt Gewicht und Wiederholungen der letzten Einheit', () => {
+  it('names weight and reps of the last session', () => {
     expect(
       referenceLabel(
         historyFrom({ weight: 82.5, reps: 6 }),
@@ -557,7 +595,7 @@ describe('Bezug zur letzten Leistung', () => {
     ).toBe('82,5 kg × 6');
   });
 
-  it('kommt ohne Gewicht aus', () => {
+  it('works without weight', () => {
     const history = historyFrom({ reps: 12 }).map(session => ({
       ...session,
       exercises: session.exercises.map((exercise, index) =>
@@ -580,7 +618,7 @@ describe('Bezug zur letzten Leistung', () => {
     expect(referenceLabel(history, 'barbell_back_squat', 0)).toBe('12 Wdh.');
   });
 
-  it('liefert den letzten vergleichbaren Satz mit Zahlenwerten', () => {
+  it('returns the last comparable set with numeric values', () => {
     const set = referenceSet(
       historyFrom({ weight: 82.5, reps: 6 }),
       'barbell_back_squat',
@@ -590,7 +628,7 @@ describe('Bezug zur letzten Leistung', () => {
     expect(set?.actualReps).toBe(6);
   });
 
-  it('überspringt Einheiten ohne erfasste Werte', () => {
+  it('skips sessions without recorded values', () => {
     const empty = start();
     const withValues = historyFrom({ weight: 90, reps: 5 });
     expect(
@@ -599,7 +637,7 @@ describe('Bezug zur letzten Leistung', () => {
     ).toBe(90);
   });
 
-  it('gibt null zurück, wenn nichts Vergleichbares vorliegt', () => {
+  it('returns null when nothing comparable exists', () => {
     expect(referenceSet([], 'barbell_back_squat', 0)).toBeNull();
     expect(referenceLabel([], 'barbell_back_squat', 0)).toBeNull();
     expect(
@@ -615,8 +653,8 @@ describe('Bezug zur letzten Leistung', () => {
   });
 });
 
-describe('Vorlage für einen Wochentag', () => {
-  it('findet die Vorlage des Tages und meldet sonst nichts', () => {
+describe('Template for a weekday', () => {
+  it('finds the template for the day and reports nothing otherwise', () => {
     expect(templateForDay([template], 1)?.id).toBe('template-1');
     expect(templateForDay([template], 3)).toBeNull();
     expect(templateForDay([], 1)).toBeNull();

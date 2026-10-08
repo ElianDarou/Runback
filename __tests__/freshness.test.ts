@@ -30,7 +30,7 @@ const set = (id: string, completedAt: number, overrides: Partial<LoggedSet> = {}
   },
   actualReps: 5,
   actualWeightKg: 100,
-  // Gemeldete Reserve: ohne sie oder eine frühere Einheit bleibt der Reiz unbekannt.
+  // Reported reserve: without it or an earlier session, the stimulus stays unknown.
   actualRir: 2,
   completedAt,
   ...overrides,
@@ -53,8 +53,8 @@ const strengthSession = (exerciseId = 'barbell_back_squat'): StrengthSession => 
   }],
 });
 
-describe('Reiz- und Frischemodell', () => {
-  it('berechnet effektive Wiederholungen für Zeit- und Lastsätze', () => {
+describe('Stimulus and freshness model', () => {
+  it('computes effective reps for timed and load sets', () => {
     expect(effectiveRepetitionsFromSeconds(24)).toBe(2);
     const exercise = catalogExercise('leg_extension');
     expect(exercise).toBeDefined();
@@ -71,7 +71,7 @@ describe('Reiz- und Frischemodell', () => {
     const reported = calculateSetStimulus(set('set-1', sessionAt), exercise!);
     expect(reported.rirSource).toBe('reported');
     expect(reported.rir).toBe(2);
-    // Inverse Epley mit Wdh. + RIR: 100 × (1 + 7/30).
+    // Inverse Epley with reps + RIR: 100 × (1 + 7/30).
     expect(reported.e1rmEstimate).toBeCloseTo(100 * (1 + 7 / 30), 8);
     const timed = calculateSetStimulus({
       ...set('timed', sessionAt),
@@ -89,9 +89,9 @@ describe('Reiz- und Frischemodell', () => {
     expect(timed.effectiveReps).toBe(3);
   });
 
-  it('macht aus einem Satz ohne Anstrengungsangabe keinen Satz bis zum Versagen', () => {
+  it('does not turn a set without an effort rating into a set to failure', () => {
     const exercise = catalogExercise('barbell_back_squat')!;
-    // 80 kg × 10 ohne RIR und ohne frühere Einheit: die Reserve bleibt unbekannt.
+    // 80 kg × 10 without RIR and without an earlier session: the reserve stays unknown.
     const alone = calculateSetStimulus(
       set('set-1', sessionAt, {
         actualRir: undefined,
@@ -106,7 +106,7 @@ describe('Reiz- und Frischemodell', () => {
     expect(alone.valid).toBe(false);
     expect(alone.uncertainty.reasons.join(' ')).toMatch(/RIR/);
     expect(alone.uncertainty.calibrated).toBe(false);
-    // Eine frühere Einheit ist eine unabhängige Referenz.
+    // An earlier session is an independent reference.
     const earlier: StrengthSession = {
       ...strengthSession(),
       id: 'session-0',
@@ -138,7 +138,7 @@ describe('Reiz- und Frischemodell', () => {
     expect(referenced.valid).toBe(true);
   });
 
-  it('nimmt Planwerte nicht als Ist und kein Ersatz-Körpergewicht', () => {
+  it('takes planned values as neither actual nor a substitute body weight', () => {
     const exercise = catalogExercise('barbell_back_squat')!;
     const planned = calculateSetStimulus(
       set('set-1', sessionAt, {
@@ -182,7 +182,7 @@ describe('Reiz- und Frischemodell', () => {
     expect(withBodyweight.valid).toBe(true);
   });
 
-  it('verteilt bilaterale und einseitige Übungen korrekt', () => {
+  it('distributes bilateral and unilateral exercises correctly', () => {
     const bilateral = distributeStimulus(
       catalogExercise('barbell_back_squat')!,
       10,
@@ -198,7 +198,7 @@ describe('Reiz- und Frischemodell', () => {
     expect(unilateral.quad_r).toBeCloseTo(4, 8);
   });
 
-  it('normiert beide Impulsantworten auf ihr Maximum', () => {
+  it('normalizes both impulse responses to their maximum', () => {
     const rise = 12;
     const decay = 60;
     const peak = Math.log(decay / rise) / (1 / rise - 1 / decay);
@@ -207,7 +207,7 @@ describe('Reiz- und Frischemodell', () => {
     expect(combinedImpulseResponse(0)).toBe(0);
   });
 
-  it('berechnet Laufbeiträge mit Geschwindigkeit, Dauer und Gefälle', () => {
+  it('computes running contributions from speed, duration and gradient', () => {
     const level = runSegmentStimulus({
       id: 'flat',
       distanceMeters: 3 * 3600,
@@ -238,7 +238,7 @@ describe('Reiz- und Frischemodell', () => {
     );
   });
 
-  it('liefert unbekannt statt einer künstlichen 100 ohne Meldung', () => {
+  it('returns unknown instead of an artificial 100 without a report', () => {
     const input: FreshnessInput = {
       at: sessionAt,
       sessions: [strengthSession()],
@@ -255,7 +255,7 @@ describe('Reiz- und Frischemodell', () => {
     expect(result.catalog_version).toBe('catalog-v2');
   });
 
-  it('markiert eine Zukunftsauswertung ausdrücklich als Prognose', () => {
+  it('explicitly marks a future evaluation as a forecast', () => {
     const input: FreshnessInput = {
       at: sessionAt + 24 * hour,
       sessions: [strengthSession()],
@@ -268,7 +268,7 @@ describe('Reiz- und Frischemodell', () => {
     expect(result.regions.quad_l.value).toBeLessThan(100);
   });
 
-  it('behandelt eine explizite Heute-nichts-Meldung als Eingabe', () => {
+  it('treats an explicit “nothing today” report as input', () => {
     const report = nothingTodayReport(sessionAt + hour);
     const result = calculateFreshness({
       at: sessionAt + 2 * hour,
@@ -280,7 +280,7 @@ describe('Reiz- und Frischemodell', () => {
     expect(result.regions.quad_l.contributing_reports).toEqual([report]);
   });
 
-  it('verwirft Meldungen für unbekannte Muskelregionen', () => {
+  it('discards reports for unknown muscle regions', () => {
     expect(isValidMuscleReport({
       at: sessionAt,
       regionId: 'made_up_region',
@@ -288,7 +288,7 @@ describe('Reiz- und Frischemodell', () => {
     })).toBe(false);
   });
 
-  it('führt anonyme Laufabschnitte mit eigener Kennung und Startzeit', () => {
+  it('keeps anonymous run segments with their own id and start time', () => {
     const run = buildRunStimulusContributions({
       id: 'run-1',
       startTime: sessionAt,

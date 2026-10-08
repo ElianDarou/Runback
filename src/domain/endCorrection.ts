@@ -3,20 +3,20 @@ import type { StrengthSession } from './strength';
 import type { StrengthHeart } from './strengthHeart';
 
 /**
- * Ende nachträglich setzen, für Läufe und Krafteinheiten: wer vergessen hat
- * zu beenden, wählt im Verlauf, wann wirklich Schluss war. Die Korrektur
- * liegt neben dem Original (Kotlin: `trim_<id>`, `strength_end_<id>`), das
- * Original bleibt erhalten und lässt sich wiederherstellen.
+ * Set the end after the fact, for runs and strength sessions: whoever forgot to
+ * stop picks in the history when it really ended. The correction sits next to
+ * the original (Kotlin: `trim_<id>`, `strength_end_<id>`); the original is kept
+ * and can be restored.
  *
- * Vorschläge sind nur Vorschau, bis der Nutzer sie übernimmt: beim Lauf das
- * Ende der letzten Bewegung, bei einer aufgezeichneten Krafteinheit der
- * zuletzt abgehakte Satz. Ohne solche Spuren gibt es keinen Vorschlag.
+ * Suggestions are only a preview until the user accepts them: for a run the end
+ * of the last movement, for a recorded strength session the last ticked set.
+ * Without such traces there is no suggestion.
  */
 export const END_CORRECTION_VERSION = 'end-correction-v1';
 export const END_SUGGESTION_VERSION = 'end-suggestion-v1';
-/** Ein Vorschlag lohnt sich erst, wenn er mindestens zwei Minuten früher endet. */
+/** A suggestion is only worth it if it ends at least two minutes earlier. */
 export const MIN_SUGGESTION_GAP_SECONDS = 120;
-/** Kürzer als eine Minute wäre keine Einheit mehr. */
+/** Shorter than a minute would no longer be a workout. */
 export const MIN_DURATION_SECONDS = 60;
 
 export interface EndCorrection {
@@ -44,9 +44,9 @@ export function readEndCorrection(raw: unknown): EndCorrection | undefined {
 }
 
 /**
- * Krafteinheit mit korrigiertem Ende; ohne gültige Korrektur unverändert.
- * Sätze, die erst nach dem gesetzten Ende abgehakt wurden, zählen wie beim
- * Lauf nicht mehr; im gespeicherten Original bleiben sie.
+ * Strength session with the corrected end; unchanged without a valid correction.
+ * Sets ticked only after the chosen end no longer count, as with a run; they
+ * remain in the saved original.
  */
 export function applyStrengthEndCorrection(
   session: StrengthSession,
@@ -84,7 +84,7 @@ export function applyStrengthEndCorrection(
   };
 }
 
-/** Abhakzeiten aller Sätze, auch der hinter einem gesetzten Ende. */
+/** Tick times of all sets, including those after a set end. */
 export function strengthSetTimes(session: StrengthSession): number[] {
   const times = (session.exercises || [])
     .flatMap(exercise => exercise.sets || [])
@@ -93,7 +93,7 @@ export function strengthSetTimes(session: StrengthSession): number[] {
   return [...times, ...(session.endCorrection?.excludedSetTimes ?? [])];
 }
 
-/** Zuletzt abgehakter Satz einer aufgezeichneten Einheit. Importe kennen keine Satzzeiten. */
+/** Last ticked set of a recorded session. Imports have no set times. */
 export function strengthEndSuggestion(
   session: StrengthSession,
   currentEnd: number | undefined,
@@ -111,7 +111,7 @@ export function strengthEndSuggestion(
   return { time: last, reason: 'last_set', version: END_SUGGESTION_VERSION };
 }
 
-/** Ende der letzten Bewegung im unkorrigierten Verlauf eines Laufs. */
+/** End of the last movement in the uncorrected history of a run. */
 export function runEndSuggestion(
   startTime: number,
   series: RunSeries | null | undefined,
@@ -128,9 +128,9 @@ export function runEndSuggestion(
 }
 
 /**
- * Hält ein gewähltes Ende zwischen „eine Minute nach Start“ und dem Ende des
- * Zeitraums, auf volle Sekunden. Ist der Zeitraum kürzer als eine Minute, gilt
- * sein Ende.
+ * Keeps a chosen end between "one minute after the start" and the end of the
+ * time range, rounded to whole seconds. If the range is shorter than a minute,
+ * its end applies.
  */
 export function clampEnd(
   time: number,
@@ -143,12 +143,12 @@ export function clampEnd(
 }
 
 export interface TrackPoint {
-  /** Zeit in ms. */
+  /** Time in ms. */
   t: number;
   value: number | null;
 }
 
-/** Puls einer Krafteinheit als Zeitpunkte in der Fenstermitte. */
+/** Heart rate of a strength session as times at the window center. */
 export function heartTrack(heart: StrengthHeart | undefined): TrackPoint[] {
   if (!heart) return [];
   return heart.values.map((bpm, index) => ({
@@ -157,7 +157,7 @@ export function heartTrack(heart: StrengthHeart | undefined): TrackPoint[] {
   }));
 }
 
-/** Tempo als km/h (nur in Bewegung) und Puls aus dem Laufverlauf. */
+/** Speed in km/h (only while moving) and heart rate from the run history. */
 export function runTracks(
   startTime: number,
   series: RunSeries | null | undefined,
@@ -168,7 +168,7 @@ export function runTracks(
   return {
     speed: series.rows.map(row => ({
       t: at(row.elapsedSeconds),
-      // Stillstand und Unbekanntes bleiben Lücken: Wo die Linie aufhört, endete die Bewegung.
+      // Standing still and unknown stay gaps: where the line stops, the movement ended.
       value:
         row.moving && row.speedMps !== undefined && row.speedMps > 0
           ? Math.round(row.speedMps * 36) / 10

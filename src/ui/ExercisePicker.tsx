@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { CATALOG, searchCatalog } from '../domain/catalog';
-import { EQUIPMENT_LABEL } from '../domain/catalogData';
+import { CATALOG, exerciseName, searchCatalog } from '../domain/catalog';
+import { equipmentLabel, exerciseMuscleLabels } from '../domain/catalogData';
 import type { Exercise } from '../domain/strength';
 import { Button, Copy, Input, Row, Sheet } from './components';
+import { tr } from '../domain/i18n';
 
-/** Die lokale Sammlung bleibt auch ohne Netz vollständig durchsuchbar. */
+/** The local collection stays fully searchable even without a network. */
 export function ExercisePicker({
   visible,
   onSelect,
@@ -18,9 +19,13 @@ export function ExercisePicker({
   const [limit, setLimit] = useState(40);
   const results = useMemo(() => searchCatalog(query, CATALOG.length), [query]);
   return (
-    <Sheet visible={visible} title="Übung wählen" onClose={onClose}>
+    <Sheet
+      visible={visible}
+      title={tr('Übung wählen', 'Choose exercise')}
+      onClose={onClose}
+    >
       <Input
-        label="Übung suchen"
+        label={tr('Übung suchen', 'Search exercises')}
         value={query}
         onChangeText={value => {
           setQuery(value);
@@ -30,10 +35,10 @@ export function ExercisePicker({
       {results.slice(0, limit).map(exercise => (
         <Row
           key={exercise.id}
-          title={exercise.name}
+          title={exerciseName(exercise)}
           subtitle={[
-            EQUIPMENT_LABEL[exercise.equipment],
-            ...(exercise.muscleGroups ?? []),
+            equipmentLabel(exercise.equipment),
+            ...exerciseMuscleLabels(exercise),
           ].join(' · ')}
           onPress={() => {
             setQuery('');
@@ -43,16 +48,26 @@ export function ExercisePicker({
         />
       ))}
       {!results.length ? (
-        <Copy muted>Versuche einen anderen Namen oder ein Gerät.</Copy>
+        <Copy muted>
+          {tr(
+            'Versuche einen anderen Namen oder ein Gerät.',
+            'Try another name or a piece of equipment.',
+          )}
+        </Copy>
       ) : null}
       {results.length > limit ? (
         <Button
           secondary
-          title="Weitere Übungen zeigen"
+          title={tr('Weitere Übungen zeigen', 'Show more exercises')}
           onPress={() => setLimit(current => current + 40)}
         />
       ) : null}
-      <Button secondary small title="Schließen" onPress={onClose} />
+      <Button
+        secondary
+        small
+        title={tr('Schließen', 'Close')}
+        onPress={onClose}
+      />
     </Sheet>
   );
 }

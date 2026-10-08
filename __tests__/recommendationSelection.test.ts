@@ -24,7 +24,7 @@ const run = (
   })),
 });
 const DAY = 86400000;
-/** Vergleichsbasis: zwei gleichartige Vorläufe je Zweck; erst ihr Median trägt eine Empfehlung. */
+/** Comparison basis: two similar earlier runs per purpose; only their median supports a recommendation. */
 const history = (startTime: number, purpose: 'easy' | 'long' = 'easy') => [
   run(`${purpose}-prev-1`, startTime - 7 * DAY, purpose),
   run(`${purpose}-prev-2`, startTime - 14 * DAY, purpose),
@@ -144,8 +144,8 @@ describe('Selection and follow-up preview', () => {
       }).selected,
     ).toBeUndefined();
   });
-  it('trägt aus einem einzelnen auffälligen Lauf keine Empfehlung', () => {
-    // Ein Ausreißer allein wäre Regression zur Mitte; der Median entscheidet.
+  it('does not base a recommendation on a single unusual run', () => {
+    // An outlier alone would be regression to the mean; the median decides.
     const alone = selectRecommendations([run('alone', laterAt, 'long')], {
       ...options,
     });

@@ -28,6 +28,8 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import com.google.android.gms.wearable.Wearable
+import com.runback.core.DisplayNames
+import com.runback.core.Lang
 import com.runback.core.RecordingService
 import com.runback.core.RunStore
 import com.runback.core.StrengthLive
@@ -36,16 +38,15 @@ import com.runback.core.WearProtocol
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 import java.util.UUID
 import kotlin.math.roundToInt
 
 /**
- * Uhr-App. Die Uhr zeigt nur, was beim Training zählt: Zeit, Strecke, Puls,
- * den nächsten Satz und die Pause. Alles Weitere steht später auf dem Handy.
- * Krafttraining läuft über das Handy (StrengthMirror); die Uhr startet es,
- * misst den Puls und hakt Sätze ab — bei unterstützten Übungen erkennt sie
- * den Satz selbst und fragt nur nach der Zahl (AutoSets).
+ * Watch app. The watch shows only what matters during training: time, distance,
+ * heart rate, the next set and the rest. Everything else comes later on the
+ * phone. Strength training runs through the phone (StrengthMirror); the watch
+ * starts it, measures the heart rate and ticks off sets — for supported
+ * exercises it detects the set itself and only asks for the number (AutoSets).
  */
 class MainActivity : Activity() {
     private val bg = Color.rgb(9, 13, 11)
@@ -151,7 +152,7 @@ class MainActivity : Activity() {
                 } else false
             }
         }
-        // Rund: oben und unten so viel Rand, dass auch der erste und letzte Knopf in die Mitte scrollen.
+        // Round: enough margin top and bottom that the first and last button can scroll to the middle.
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
@@ -180,59 +181,65 @@ class MainActivity : Activity() {
         text("RUNBACK", 12, green, bold = true)
         val mirror = StrengthMirror.current(this)
         if (mirror != null) {
-            button("Krafttraining fortsetzen", true, 8) { page = PAGE_STRENGTH; render() }
-            text("${mirror.optString("name")} · ${mirror.optInt("completedSets")}/${mirror.optInt("totalSets")} Sätze", 12, muted, margin = 4)
+            button(Lang.tr("Krafttraining fortsetzen", "Continue strength training"), true, 8) { page = PAGE_STRENGTH; render() }
+            text(Lang.tr(
+                "${StrengthMirror.sessionTitle(mirror)} · ${mirror.optInt("completedSets")}/${mirror.optInt("totalSets")} Sätze",
+                "${StrengthMirror.sessionTitle(mirror)} · ${mirror.optInt("completedSets")}/${mirror.optInt("totalSets")} sets",
+            ), 12, muted, margin = 4)
         } else if (MotionCaptureService.activeSession != null) {
-            text("Krafttraining · ${captureLabel()}", 12, green, margin = 4)
+            text("${Lang.tr("Krafttraining", "Strength training")} · ${captureLabel()}", 12, green, margin = 4)
         }
-        button("Lauf starten", mirror == null, 8) { requestStart() }
-        button("Laufart · ${purposeLabel(purpose)}", false, 6, small = true) { choosePurpose() }
-        if (mirror == null) button("Krafttraining starten", false, 6) { page = PAGE_PICK; render() }
-        button("Verlauf", false, 6) { page = PAGE_HISTORY; render() }
-        button("Laufoptionen", false, 6) { page = PAGE_OPTIONS; render() }
+        button(Lang.tr("Lauf starten", "Start run"), mirror == null, 8) { requestStart() }
+        button("${Lang.tr("Laufart", "Run type")} · ${purposeLabel(purpose)}", false, 6, small = true) { choosePurpose() }
+        if (mirror == null) button(Lang.tr("Krafttraining starten", "Start strength training"), false, 6) { page = PAGE_PICK; render() }
+        button(Lang.tr("Verlauf", "History"), false, 6) { page = PAGE_HISTORY; render() }
+        button(Lang.tr("Laufoptionen", "Run options"), false, 6) { page = PAGE_OPTIONS; render() }
         val waiting = pendingRuns() + MotionSync.pendingCount(this)
         sync = text(syncSummary(waiting), 12, muted, margin = 14)
-        if (waiting > 0) button("Jetzt übertragen", false, 6, small = true) {
-            sync?.text = "Verbindung wird geprüft …"
+        if (waiting > 0) button(Lang.tr("Jetzt übertragen", "Sync now"), false, 6, small = true) {
+            sync?.text = Lang.tr("Verbindung wird geprüft …", "Checking connection …")
             MotionSync.retry(this)
             WearSync.retry(this) { runOnUiThread { sync?.text = WearSync.status } }
         }
     }
 
     private fun syncSummary(waiting: Int) = when (waiting) {
-        0 -> "✓ Alles auf dem Handy"
-        1 -> "1 Training wartet aufs Handy"
-        else -> "$waiting Trainings warten aufs Handy"
+        0 -> Lang.tr("✓ Alles auf dem Handy", "✓ All on phone")
+        1 -> Lang.tr("1 Training wartet aufs Handy", "1 workout waiting for phone")
+        else -> Lang.tr("$waiting Trainings warten aufs Handy", "$waiting workouts waiting for phone")
     }
 
     private fun captureLabel() = when {
-        MotionCaptureService.recordsHeart && MotionCaptureService.recordsMotion -> "Puls und Bewegungen"
-        MotionCaptureService.recordsHeart -> "Puls wird gemessen"
-        else -> "Bewegungen"
+        MotionCaptureService.recordsHeart && MotionCaptureService.recordsMotion -> Lang.tr("Puls und Bewegungen", "Heart rate and motion")
+        MotionCaptureService.recordsHeart -> Lang.tr("Puls wird gemessen", "Measuring heart rate")
+        else -> Lang.tr("Bewegungen", "Motion")
     }
 
-    /** Laufende Aufzeichnung: Zeit, Strecke, Puls jetzt und ob GPS Positionen liefert. */
+    /** Running recording: time, distance, heart rate now, and whether GPS delivers positions. */
     private fun recording(active: JSONObject) {
         val state = active.optString("status")
-        text(when (state) { "recording" -> "● LÄUFT"; "paused" -> "PAUSIERT"; else -> "UNTERBROCHEN" }, 12,
-            if (state == "recording") green else muted, true)
+        text(when (state) {
+            "recording" -> Lang.tr("● LÄUFT", "● RUNNING")
+            "paused" -> Lang.tr("PAUSIERT", "PAUSED")
+            else -> Lang.tr("UNTERBROCHEN", "INTERRUPTED")
+        }, 12, if (state == "recording") green else muted, true)
         timer = text("00:00", 34, ink, true, 2)
-        distance = text("0,00 km", 22, ink, true, 0)
+        distance = text(kmLabel(0.0), 22, ink, true, 0)
         sensors = text("", 13, muted, margin = 4)
         if (state == "recording") {
             button("Pause", true, 10) { command(RecordingService.PAUSE) }
         } else {
-            if (state == "interrupted") text("Bisher gesichert", 12, muted, margin = 6)
-            button("Fortsetzen", true, 10) { command(RecordingService.RESUME) }
-            button("Beenden", false, 6) { confirmFinish() }
+            if (state == "interrupted") text(Lang.tr("Bisher gesichert", "Saved so far"), 12, muted, margin = 6)
+            button(Lang.tr("Fortsetzen", "Resume"), true, 10) { command(RecordingService.RESUME) }
+            button(Lang.tr("Beenden", "Finish"), false, 6) { confirmFinish() }
         }
         updateMetrics(active)
     }
 
     /**
-     * Krafteinheit vom Handy: In der Pause die Restzeit groß, sonst der nächste
-     * Satz. Jede Aktion geht ans Handy; die Anzeige folgt dem Stand, den es
-     * zurückschickt.
+     * Strength session from the phone: during a rest the remaining time in large
+     * type, otherwise the next set. Every action goes to the phone; the display
+     * follows the state it sends back.
      */
     private fun strength(state: JSONObject) {
         page = PAGE_STRENGTH
@@ -244,32 +251,35 @@ class MainActivity : Activity() {
         strengthHeart = text("", 12, green, true)
         if (rest != null) {
             strengthRest = text("", 40, green, true, 2)
-            if (set != null) text("Danach ${set.optString("label")}", 13, muted, margin = 2)
+            if (set != null) text(Lang.tr("Danach ${set.optString("label")}", "Up next: ${set.optString("label")}"), 13, muted, margin = 2)
         } else {
-            text(exercise?.optString("name")?.takeIf { it.isNotBlank() } ?: state.optString("name"), 18, ink, true, 4)
+            text(StrengthMirror.exerciseTitle(exercise) ?: StrengthMirror.sessionTitle(state), 18, ink, true, 4)
             if (set != null) {
-                text("Satz ${set.optInt("number")} von ${exercise?.optInt("total")}", 12, muted, margin = 4)
+                text(Lang.tr(
+                    "Satz ${set.optInt("number")} von ${exercise?.optInt("total")}",
+                    "Set ${set.optInt("number")} of ${exercise?.optInt("total")}",
+                ), 12, muted, margin = 4)
                 text(set.optString("label"), 22, ink, true, 0)
             } else if (exercise?.optBoolean("done") == true) {
-                text("Übung erledigt", 14, muted, margin = 6)
+                text(Lang.tr("Übung erledigt", "Exercise done"), 14, muted, margin = 6)
             }
         }
         val index = exercise?.optInt("index") ?: 0
         if (set != null) autoLine = text("", 12, muted, margin = 4)
-        if (set != null) button("Satz fertig", true, 10) {
+        if (set != null) button(Lang.tr("Satz fertig", "Set done"), true, 10) {
             send(StrengthMirror.command(StrengthLive.COMPLETE_SET, state, "setId" to set.optString("id"), "exerciseIndex" to index))
         }
         if (rest != null) {
             val paused = rest.optBoolean("paused")
-            button(if (paused) "Pause weiter" else "Pause anhalten", false, 6, small = true) {
+            button(if (paused) Lang.tr("Pause weiter", "Resume rest") else Lang.tr("Pause anhalten", "Pause rest"), false, 6, small = true) {
                 send(StrengthMirror.command(if (paused) StrengthLive.RESUME_REST else StrengthLive.PAUSE_REST, state))
             }
-            button("Pause überspringen", false, 6, small = true) { send(StrengthMirror.command(StrengthLive.SKIP_REST, state)) }
+            button(Lang.tr("Pause überspringen", "Skip rest"), false, 6, small = true) { send(StrengthMirror.command(StrengthLive.SKIP_REST, state)) }
         }
         strengthStatus = text("", 12, muted, margin = 6)
         when {
-            total == 0 -> text("Füge Übungen am Handy hinzu.", 12, muted, margin = 2)
-            completed == total -> text("Alles erledigt. Beende das Training am Handy.", 12, muted, margin = 2)
+            total == 0 -> text(Lang.tr("Füge Übungen am Handy hinzu.", "Add exercises on the phone."), 12, muted, margin = 2)
+            completed == total -> text(Lang.tr("Alles erledigt. Beende das Training am Handy.", "All done. Finish the workout on the phone."), 12, muted, margin = 2)
         }
         val count = state.optInt("exerciseCount")
         if (count > 1) {
@@ -277,21 +287,21 @@ class MainActivity : Activity() {
             row(
                 Triple("‹", index > 0) { send(StrengthMirror.command(StrengthLive.SELECT_EXERCISE, state, "exerciseIndex" to index - 1)) },
                 Triple("›", index < count - 1) { send(StrengthMirror.command(StrengthLive.SELECT_EXERCISE, state, "exerciseIndex" to index + 1)) },
-                descriptions = listOf("Vorherige Übung", "Nächste Übung"),
+                descriptions = listOf(Lang.tr("Vorherige Übung", "Previous exercise"), Lang.tr("Nächste Übung", "Next exercise")),
             )
-            button("Übungen", false, 6) { chooseExercise(state) }
+            button(Lang.tr("Übungen", "Exercises"), false, 6) { chooseExercise(state) }
         }
-        button("Startseite", false, 6) { page = PAGE_OVERVIEW; render() }
+        button(Lang.tr("Startseite", "Home"), false, 6) { page = PAGE_OVERVIEW; render() }
         updateStrengthLive(state)
     }
 
     /**
-     * Erkannter Satz: Zahl prüfen, mit −/+ korrigieren, bestätigen. Ohne Eingabe
-     * übernimmt die Uhr die Zahl nach kurzer Zeit; „Kein Satz“ verwirft.
+     * Detected set: check the number, correct it with −/+, confirm. Without input
+     * the watch takes the number after a short time; "No set" discards it.
      */
     private fun review(review: AutoSets.Review) {
         page = PAGE_STRENGTH
-        text("SATZ ERKANNT", 12, green, true)
+        text(Lang.tr("SATZ ERKANNT", "SET DETECTED"), 12, green, true)
         text(review.target.exerciseName, 13, muted, margin = 2)
         val line = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -309,48 +319,50 @@ class MainActivity : Activity() {
             contentDescription = description
             setOnClickListener { vibrate(20); MotionCaptureService.review(this@MainActivity, MotionCaptureService.REVIEW_ADJUST, delta) }
         }
-        line.addView(step("−", "Eine Wiederholung weniger", -1))
+        line.addView(step("−", Lang.tr("Eine Wiederholung weniger", "One rep less"), -1))
         line.addView(TextView(this).apply {
-            text = AutoSets.repsLabel(review).removeSuffix(" Wdh.")
+            text = AutoSets.repsNumber(review)
             textSize = 34f; setTextColor(ink); gravity = Gravity.CENTER
-            // Auf kleinen Uhren dürfen auch „~11“ und dreistellige Zahlen nicht umbrechen.
+            // On small watches even "~11" and three-digit numbers must not wrap.
             maxLines = 1
             setAutoSizeTextTypeUniformWithConfiguration(12, 34, 1, TypedValue.COMPLEX_UNIT_SP)
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            contentDescription = "${review.reps} Wiederholungen" + if (review.uncertain && !review.touched) ", ungefähr" else ""
+            contentDescription = "${review.reps} " + Lang.tr("Wiederholungen", "reps") +
+                if (review.uncertain && !review.touched) Lang.tr(", ungefähr", ", approximately") else ""
             layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
         })
-        line.addView(step("+", "Eine Wiederholung mehr", 1))
+        line.addView(step("+", Lang.tr("Eine Wiederholung mehr", "One rep more"), 1))
         content.addView(line)
-        text("Wdh.", 12, muted)
-        if (review.uncertain && !review.touched) text("Nicht ganz sicher — prüf die Zahl.", 12, muted, margin = 4)
+        text(Lang.tr("Wdh.", "reps"), 12, muted)
+        if (review.uncertain && !review.touched) text(Lang.tr("Nicht ganz sicher — prüf die Zahl.", "Not quite sure — check the number."), 12, muted, margin = 4)
         val failed = review.status == AutoSets.Status.FAILED
-        button(if (failed) "Erneut senden" else "Bestätigen", true, 10) {
+        button(if (failed) Lang.tr("Erneut senden", "Send again") else Lang.tr("Bestätigen", "Confirm"), true, 10) {
             vibrate(40)
             MotionCaptureService.review(this, MotionCaptureService.REVIEW_CONFIRM)
         }
         reviewCountdown = text("", 12, muted, margin = 6)
-        if (review.status != AutoSets.Status.SENDING) button("Kein Satz", false, 8, small = true) {
+        if (review.status != AutoSets.Status.SENDING) button(Lang.tr("Kein Satz", "No set"), false, 8, small = true) {
             MotionCaptureService.review(this, MotionCaptureService.REVIEW_REJECT)
         }
         updateAutoSets()
     }
 
-    /** Neu zeichnen, wenn eine Bestätigung kommt, geht oder sich ihre Zahl ändert. */
+    /** Redraw when a confirmation arrives, leaves, or its count changes. */
     private fun reviewKey(): String = AutoSets.review?.let { "${it.id}:${it.reps}:${it.status}:${it.touched}" } ?: ""
 
-    /** Sekundentakt: Countdown der Bestätigung und was die Erkennung gerade sieht. */
+    /** Every second: countdown of the confirmation and what detection currently sees. */
     private fun updateAutoSets() {
         reviewCountdown?.let { label ->
             val review = AutoSets.review
             label.text = when {
                 review == null -> ""
-                review.status == AutoSets.Status.SENDING -> "Wird ans Handy gesendet …"
-                review.status == AutoSets.Status.FAILED -> "Handy nicht erreichbar."
+                review.status == AutoSets.Status.SENDING -> Lang.tr("Wird ans Handy gesendet …", "Sending to phone …")
+                review.status == AutoSets.Status.FAILED -> Lang.tr("Handy nicht erreichbar.", "Phone not reachable.")
                 review.decideAt == null -> ""
                 else -> {
                     val seconds = ((review.decideAt - android.os.SystemClock.elapsedRealtime() + 999) / 1000).coerceAtLeast(0)
-                    if (review.touched) "Übernimmt in $seconds s" else "Übernimmt in $seconds s ohne Eingabe"
+                    if (review.touched) Lang.tr("Übernimmt in $seconds s", "Confirms in $seconds s")
+                    else Lang.tr("Übernimmt in $seconds s ohne Eingabe", "Confirms in $seconds s without input")
                 }
             }
         }
@@ -359,42 +371,42 @@ class MainActivity : Activity() {
             label.text = when (live?.state) {
                 null -> ""
                 com.runback.core.SetDetector.State.SET_ACTIVE, com.runback.core.SetDetector.State.SET_END_CANDIDATE ->
-                    "Zählt mit · ${live.reps} Wdh."
-                else -> "Erkennt den Satz selbst"
+                    Lang.tr("Zählt mit · ${live.reps} Wdh.", "Counting · ${live.reps} reps")
+                else -> Lang.tr("Erkennt den Satz selbst", "Detecting the set itself")
             }
         }
     }
 
-    /** Training wählen: heute geplante Vorlagen zuerst, dann frei, dann die übrigen. */
+    /** Pick a workout: templates planned for today first, then free, then the rest. */
     private fun pickStrength() {
-        text("KRAFTTRAINING", 12, green, true)
+        text(Lang.tr("KRAFTTRAINING", "STRENGTH TRAINING"), 12, green, true)
         val pending = StrengthMirror.pendingStart?.takeIf { System.currentTimeMillis() - it.second < START_TIMEOUT_MS }
         if (pending != null) {
-            text("Startet am Handy …", 16, ink, true, 12)
-            button("Zurück", false, 12) { page = PAGE_HOME; render() }
+            text(Lang.tr("Startet am Handy …", "Starting on phone …"), 16, ink, true, 12)
+            button(Lang.tr("Zurück", "Back"), false, 12) { page = PAGE_HOME; render() }
             handler.postDelayed({ if (page == PAGE_PICK) render() }, START_TIMEOUT_MS)
             return
         }
         val templates = StrengthMirror.templates(this)
         val today = templates.filter { it.second }
         today.forEachIndexed { position, (template, _) ->
-            button("${template.optString("name")} · heute", position == 0, 8) { startStrength(template.optString("id")) }
+            button(Lang.tr("${template.optString("name")} · heute", "${template.optString("name")} · today"), position == 0, 8) { startStrength(template.optString("id")) }
         }
-        button("Frei trainieren", today.isEmpty(), 8) { startStrength(null) }
+        button(Lang.tr("Frei trainieren", "Train freely"), today.isEmpty(), 8) { startStrength(null) }
         templates.filterNot { it.second }.forEach { (template, _) ->
             button(template.optString("name"), false, 6) { startStrength(template.optString("id")) }
         }
-        strengthStatus = text("Sätze und Gewichte trägst du am Handy ein.", 12, muted, margin = 10)
-        button("Zurück", false, 8) { page = PAGE_HOME; render() }
+        strengthStatus = text(Lang.tr("Sätze und Gewichte trägst du am Handy ein.", "Enter sets and weights on the phone."), 12, muted, margin = 10)
+        button(Lang.tr("Zurück", "Back"), false, 8) { page = PAGE_HOME; render() }
     }
 
     private fun startStrength(templateId: String?) {
         vibrate(40)
-        strengthStatus?.text = "Wird ans Handy gesendet …"
+        strengthStatus?.text = Lang.tr("Wird ans Handy gesendet …", "Sending to phone …")
         StrengthMirror.start(this, templateId) { delivered ->
             runOnUiThread {
                 if (delivered) { if (page == PAGE_PICK) render() }
-                else strengthStatus?.text = "Handy nicht erreichbar. Krafttraining läuft über das Handy."
+                else strengthStatus?.text = Lang.tr("Handy nicht erreichbar. Krafttraining läuft über das Handy.", "Phone not reachable. Strength training runs on the phone.")
             }
         }
     }
@@ -406,47 +418,54 @@ class MainActivity : Activity() {
             val mark = if (item?.optBoolean("done") == true) "✓ " else ""
             "$mark${item?.optString("name")} · ${item?.optInt("completed")}/${item?.optInt("total")}"
         }
-        AlertDialog.Builder(this).setTitle("Übung wählen")
+        AlertDialog.Builder(this).setTitle(Lang.tr("Übung wählen", "Choose exercise"))
             .setItems(labels.toTypedArray()) { _, position ->
                 send(StrengthMirror.command(StrengthLive.SELECT_EXERCISE, state, "exerciseIndex" to position))
-            }.setNegativeButton("Zurück", null).show()
+            }.setNegativeButton(Lang.tr("Zurück", "Back"), null).show()
     }
 
     private fun send(command: JSONObject) {
         vibrate(40)
-        strengthStatus?.text = "Wird ans Handy gesendet …"
+        strengthStatus?.text = Lang.tr("Wird ans Handy gesendet …", "Sending to phone …")
         StrengthMirror.send(this, command) { delivered ->
-            runOnUiThread { if (!delivered) strengthStatus?.text = "Handy nicht erreichbar. Versuche es erneut." }
+            runOnUiThread { if (!delivered) strengthStatus?.text = Lang.tr("Handy nicht erreichbar. Versuche es erneut.", "Phone not reachable. Try again.") }
         }
     }
 
-    /** Sekundentakt der Kraftseite: Restzeit, Fortschritt und Puls dieser Uhr. */
+    /** Every second on the strength screen: remaining rest, progress and this watch's heart rate. */
     private fun updateStrengthLive(state: JSONObject?) {
         strengthHeart?.let { label ->
             val bpm = MotionCaptureService.currentBpm()
-            val progress = state?.takeIf { it.optInt("totalSets") > 0 }?.let { "${it.optInt("completedSets")}/${it.optInt("totalSets")} SÄTZE" }
-            label.text = listOfNotNull(progress ?: "KRAFTTRAINING", bpm?.let { "PULS $it" }).joinToString(" · ")
+            val progress = state?.takeIf { it.optInt("totalSets") > 0 }?.let {
+                "${it.optInt("completedSets")}/${it.optInt("totalSets")} " + Lang.tr("SÄTZE", "SETS")
+            }
+            label.text = listOfNotNull(
+                progress ?: Lang.tr("KRAFTTRAINING", "STRENGTH TRAINING"),
+                bpm?.let { Lang.tr("PULS $it", "HEART RATE $it") },
+            ).joinToString(" · ")
         }
         val label = strengthRest ?: return
         val rest = state?.optJSONObject("rest")
         val remaining = state?.let { StrengthMirror.restRemaining(it) }
         label.text = when {
-            rest == null || remaining == null -> "Los"
+            rest == null || remaining == null -> Lang.tr("Los", "Go")
             rest.optBoolean("paused") -> "‖ ${clock(remaining)}"
             else -> clock(remaining)
         }
         label.contentDescription = when {
-            rest == null || remaining == null -> "Pause vorbei"
-            rest.optBoolean("paused") -> "Pause angehalten, noch ${clock(remaining)}"
-            else -> "Pause, noch ${clock(remaining)}"
+            rest == null || remaining == null -> Lang.tr("Pause vorbei", "Rest over")
+            rest.optBoolean("paused") -> Lang.tr("Pause angehalten, noch ${clock(remaining)}", "Rest paused, ${clock(remaining)} left")
+            else -> Lang.tr("Pause, noch ${clock(remaining)}", "Rest, ${clock(remaining)} left")
         }
     }
 
-    /** Neu zeichnen nur, wenn sich am Stand etwas geändert hat; die Restzeit tickt separat. */
+    /** Redraw only when the state changed; the remaining rest ticks separately. */
     private fun strengthKey(state: JSONObject?): String =
         state?.let { "${it.optString("sessionId")}:${it.optLong("updatedAt")}" } ?: ""
 
     private fun clock(seconds: Long) = "%d:%02d".format(seconds / 60, seconds % 60)
+
+    private fun kmLabel(meters: Double) = String.format(Lang.locale(), "%.2f km", meters / 1000)
 
     private fun row(vararg items: Triple<String, Boolean, () -> Unit>, descriptions: List<String>? = null) {
         val line = LinearLayout(this).apply {
@@ -471,50 +490,53 @@ class MainActivity : Activity() {
     private fun updateMetrics(active: JSONObject?) {
         if (active == null) return
         timer?.text = formatDuration(active.optDouble("durationSeconds", active.optDouble("durationSec")).toLong())
-        distance?.text = String.format(Locale.GERMANY, "%.2f km", active.optDouble("distanceMeters", active.optDouble("distanceM")) / 1000)
+        distance?.text = kmLabel(active.optDouble("distanceMeters", active.optDouble("distanceM")))
         sensors?.text = sensorLine(active, System.currentTimeMillis())
     }
 
-    /** „Puls 142 · GPS“: Puls und GPS nur, solange sie gerade Werte liefern. Pausiert misst nichts. */
+    /** "Heart rate 142 · GPS": heart rate and GPS only while they give values. Paused measures nothing. */
     private fun sensorLine(active: JSONObject, now: Long): String {
         if (active.optString("status") != "recording") return ""
         val heartAt = active.optLong("lastHeartRateAt", 0L)
         val bpm = active.optDouble("lastHeartRate", Double.NaN)
-        val heart = if (bpm.isFinite() && now - heartAt in 0..LIVE_SENSOR_MS) "Puls ${bpm.roundToInt()}" else "Puls –"
+        val heart = if (bpm.isFinite() && now - heartAt in 0..LIVE_SENSOR_MS) {
+            Lang.tr("Puls ${bpm.roundToInt()}", "Heart rate ${bpm.roundToInt()}")
+        } else Lang.tr("Puls –", "Heart rate –")
         val gpsAt = active.optLong("lastGpsAt", 0L)
-        val gps = if (gpsAt > 0 && now - gpsAt in 0..LIVE_SENSOR_MS) "GPS" else "GPS sucht"
+        val gps = if (gpsAt > 0 && now - gpsAt in 0..LIVE_SENSOR_MS) "GPS" else Lang.tr("GPS sucht", "GPS searching")
         return "$heart · $gps"
     }
 
-    /** Läufe und Krafteinheiten dieser Uhr, neueste zuerst, mit Übertragungsstand. */
+    /** Runs and strength sessions on this watch, newest first, with transfer status. */
     private fun history() {
-        text("VERLAUF", 12, green, true)
+        text(Lang.tr("VERLAUF", "HISTORY"), 12, green, true)
         val items = mutableListOf<Pair<Long, () -> Unit>>()
         val runs = store.listRuns(50)
         for (index in 0 until runs.length()) {
             val run = runs.getJSONObject(index)
             if (run.optString("status") != "completed") continue
             items += run.optLong("startedAt") to {
-                val km = String.format(Locale.GERMANY, "%.2f km", run.optDouble("distanceMeters", run.optDouble("distanceM")) / 1000)
+                val km = kmLabel(run.optDouble("distanceMeters", run.optDouble("distanceM")))
                 val time = formatDuration(run.optDouble("durationSeconds", run.optDouble("durationSec")).toLong())
-                button("${day(run.optLong("startedAt"))} · Lauf\n$km · $time\n${mark(runDelivered(run.getString("id")))}", false, 8, small = true) { details(run) }
+                button("${day(run.optLong("startedAt"))} · ${Lang.tr("Lauf", "Run")}\n$km · $time\n${mark(runDelivered(run.getString("id")))}", false, 8, small = true) { details(run) }
             }
         }
         MotionSync.history(this).forEach { entry ->
             items += entry.optLong("startedAt") to {
                 val minutes = ((entry.optLong("endedAt") - entry.optLong("startedAt")) / 60_000L).coerceAtLeast(0)
                 val heart = entry.optLong("averageBpm").takeIf { entry.has("averageBpm") }?.let { " · Ø $it bpm" } ?: ""
-                button("${day(entry.optLong("startedAt"))} · ${entry.optString("name")}\n$minutes min$heart\n${mark(MotionSync.delivered(this, entry.optString("id")))}",
+                button("${day(entry.optLong("startedAt"))} · ${DisplayNames.session(entry.optString("name"))}\n$minutes min$heart\n${mark(MotionSync.delivered(this, entry.optString("id")))}",
                     false, 8, small = true) { strengthDetails(entry) }
             }
         }
         items.sortedByDescending { it.first }.take(30).forEach { it.second() }
-        if (items.isEmpty()) text("Hier erscheinen Trainings, die diese Uhr aufgezeichnet hat.", 13, muted, margin = 14)
-        button("Zurück", false, 12) { page = PAGE_HOME; render() }
+        if (items.isEmpty()) text(Lang.tr("Hier erscheinen Trainings, die diese Uhr aufgezeichnet hat.", "Workouts recorded on this watch appear here."), 13, muted, margin = 14)
+        button(Lang.tr("Zurück", "Back"), false, 12) { page = PAGE_HOME; render() }
     }
 
-    private fun mark(delivered: Boolean) = if (delivered) "✓ Auf dem Handy" else "Wartet aufs Handy"
-    private fun day(time: Long) = SimpleDateFormat("EE d.M.", Locale.GERMANY).format(Date(time))
+    private fun mark(delivered: Boolean) =
+        if (delivered) Lang.tr("✓ Auf dem Handy", "✓ On phone") else Lang.tr("Wartet aufs Handy", "Waiting for phone")
+    private fun day(time: Long) = SimpleDateFormat(Lang.tr("EE d.M.", "EEE M/d"), Lang.locale()).format(Date(time))
     private fun runDelivered(id: String) = store.getDocument("sync_$id")?.optString("status") == "acknowledged"
 
     private fun pendingRuns(): Int {
@@ -529,52 +551,55 @@ class MainActivity : Activity() {
         page = PAGE_DETAIL
         content.removeAllViews()
         scroll.scrollTo(0, 0)
-        text(day(run.optLong("startedAt")).uppercase(Locale.GERMANY), 12, green, true)
-        text(String.format(Locale.GERMANY, "%.2f km", run.optDouble("distanceMeters", run.optDouble("distanceM")) / 1000), 28, ink, true, 8)
+        text(day(run.optLong("startedAt")).uppercase(Lang.locale()), 12, green, true)
+        text(kmLabel(run.optDouble("distanceMeters", run.optDouble("distanceM"))), 28, ink, true, 8)
         text(formatDuration(run.optDouble("durationSeconds", run.optDouble("durationSec")).toLong()), 20, ink, margin = 2)
         text(purposeLabel(run.optString("purpose")), 13, muted, margin = 6)
         transferState(runDelivered(run.getString("id")))
-        button("Zurück", false, 10) { page = PAGE_HISTORY; render() }
+        button(Lang.tr("Zurück", "Back"), false, 10) { page = PAGE_HISTORY; render() }
     }
 
     private fun strengthDetails(entry: JSONObject) {
         page = PAGE_DETAIL
         content.removeAllViews()
         scroll.scrollTo(0, 0)
-        text(day(entry.optLong("startedAt")).uppercase(Locale.GERMANY), 12, green, true)
-        text(entry.optString("name"), 18, ink, true, 8)
+        text(day(entry.optLong("startedAt")).uppercase(Lang.locale()), 12, green, true)
+        text(DisplayNames.session(entry.optString("name")), 18, ink, true, 8)
         val minutes = ((entry.optLong("endedAt") - entry.optLong("startedAt")) / 60_000L).coerceAtLeast(0)
-        text("$minutes min" + (if (entry.has("completedSets")) " · ${entry.optInt("completedSets")} Sätze" else ""), 16, ink, margin = 4)
+        text("$minutes min" + (if (entry.has("completedSets")) " · ${entry.optInt("completedSets")} ${Lang.tr("Sätze", "sets")}" else ""), 16, ink, margin = 4)
         val heart = when {
-            entry.has("averageBpm") -> "Puls Ø ${entry.optLong("averageBpm")} · max ${entry.optLong("maxBpm")}"
-            entry.optBoolean("heart") -> "Kein gültiger Puls"
-            else -> "Ohne Puls"
+            entry.has("averageBpm") -> Lang.tr(
+                "Puls Ø ${entry.optLong("averageBpm")} · max ${entry.optLong("maxBpm")}",
+                "Heart rate Ø ${entry.optLong("averageBpm")} · max ${entry.optLong("maxBpm")}",
+            )
+            entry.optBoolean("heart") -> Lang.tr("Kein gültiger Puls", "No valid heart rate")
+            else -> Lang.tr("Ohne Puls", "No heart rate")
         }
         text(heart, 14, muted, margin = 4)
         transferState(MotionSync.delivered(this, entry.optString("id")))
-        button("Zurück", false, 10) { page = PAGE_HISTORY; render() }
+        button(Lang.tr("Zurück", "Back"), false, 10) { page = PAGE_HISTORY; render() }
     }
 
-    /** Auf dem Handy oder noch nicht — und der Weg, es jetzt zu versuchen. */
+    /** On the phone or not yet — and the way to try now. */
     private fun transferState(delivered: Boolean) {
         if (delivered) {
-            text("✓ Auf dem Handy", 13, green, margin = 10)
+            text(Lang.tr("✓ Auf dem Handy", "✓ On phone"), 13, green, margin = 10)
             return
         }
-        val status = text("Wartet aufs Handy", 13, muted, margin = 10)
-        button("Jetzt übertragen", true, 8) {
-            status.text = "Verbindung wird geprüft …"
+        val status = text(Lang.tr("Wartet aufs Handy", "Waiting for phone"), 13, muted, margin = 10)
+        button(Lang.tr("Jetzt übertragen", "Sync now"), true, 8) {
+            status.text = Lang.tr("Verbindung wird geprüft …", "Checking connection …")
             MotionSync.retry(this)
             WearSync.retry(this) { runOnUiThread { status.text = WearSync.status } }
         }
     }
 
     private fun runOptions() {
-        text("LAUFOPTIONEN", 12, green, true)
-        button("Ziel · ${targetLabel()}", false, 8) { chooseTarget() }
-        button("Stimme & Vibration", false, 6) { chooseGuidance() }
-        button("Zwischenstände", false, 6) { chooseAnnouncements() }
-        button("Zurück", false, 12) { page = PAGE_HOME; render() }
+        text(Lang.tr("LAUFOPTIONEN", "RUN OPTIONS"), 12, green, true)
+        button("${Lang.tr("Ziel", "Goal")} · ${targetLabel()}", false, 8) { chooseTarget() }
+        button(Lang.tr("Stimme & Vibration", "Voice & vibration"), false, 6) { chooseGuidance() }
+        button(Lang.tr("Zwischenstände", "Progress updates"), false, 6) { chooseAnnouncements() }
+        button(Lang.tr("Zurück", "Back"), false, 12) { page = PAGE_HOME; render() }
     }
 
     private fun vibrate(ms: Long) {
@@ -582,20 +607,23 @@ class MainActivity : Activity() {
     }
 
     private fun requestStart() {
-        // Alles schon erlaubt: sofort starten, kein Hinweis vor jedem Lauf.
+        // Everything already allowed: start at once, no notice before every run.
         if (startPermissions().all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED } &&
             backgroundPermissions().all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
         ) {
             startRun()
             return
         }
-        AlertDialog.Builder(this).setTitle("Lokal aufzeichnen")
-            .setMessage("Standort für die Strecke, Körpersensoren für den Puls. Ohne Freigabe bleiben diese Messwerte leer.")
-            .setPositiveButton("Weiter") { _, _ ->
+        AlertDialog.Builder(this).setTitle(Lang.tr("Lokal aufzeichnen", "Record on the watch"))
+            .setMessage(Lang.tr(
+                "Standort für die Strecke, Körpersensoren für den Puls. Ohne Freigabe bleiben diese Messwerte leer.",
+                "Location for the route, body sensors for heart rate. Without permission, these readings stay empty.",
+            ))
+            .setPositiveButton(Lang.tr("Weiter", "Continue")) { _, _ ->
                 pendingStart = true
                 permissionStage = 1
                 requestPermissionStage(startPermissions(), 42) { requestBackgroundPermissions() }
-            }.setNegativeButton("Zurück", null).show()
+            }.setNegativeButton(Lang.tr("Zurück", "Back"), null).show()
     }
 
     private fun startPermissions() = listOfNotNull(
@@ -673,7 +701,9 @@ class MainActivity : Activity() {
             vibrate(60)
             handler.postDelayed({ render() }, 250)
         } catch (e: Exception) {
-            AlertDialog.Builder(this).setTitle("Nicht gestartet").setMessage(e.message ?: "Berechtigungen und verfügbaren Speicher prüfen.").setPositiveButton("OK", null).show()
+            AlertDialog.Builder(this).setTitle(Lang.tr("Nicht gestartet", "Not started"))
+                .setMessage(e.message ?: Lang.tr("Berechtigungen und verfügbaren Speicher prüfen.", "Check permissions and free storage."))
+                .setPositiveButton("OK", null).show()
         }
     }
 
@@ -713,7 +743,7 @@ class MainActivity : Activity() {
         }
         if (alreadyApplied) {
             WearCommandGate.markApplied(store, runId, commandId, commandSequence)
-            sendRemoteAck(uri, action, runId, commandId, commandSequence, "accepted", "Aufzeichnungsbefehl bereits angewendet.")
+            sendRemoteAck(uri, action, runId, commandId, commandSequence, "accepted", Lang.tr("Aufzeichnungsbefehl bereits angewendet.", "Recording command already applied."))
             return
         }
         try {
@@ -733,13 +763,13 @@ class MainActivity : Activity() {
             confirmRemoteCommand(uri, runId, action, commandId, commandSequence)
         } catch (error: Exception) {
             WearCommandGate.release(store, runId, commandId, commandSequence)
-            sendRemoteAck(uri, action, runId, commandId, commandSequence, "error", error.message ?: "Aufzeichnung konnte nicht synchronisiert werden.")
+            sendRemoteAck(uri, action, runId, commandId, commandSequence, "error", error.message ?: Lang.tr("Aufzeichnung konnte nicht synchronisiert werden.", "Recording could not be synced."))
         }
     }
 
     /**
-     * Das Handy öffnet die Uhr-App, wenn es eine Krafteinheit mit Puls- oder
-     * Bewegungsaufzeichnung startet: Aus dem Hintergrund darf der Dienst nicht immer starten.
+     * The phone opens the watch app when it starts a strength session with heart
+     * rate or motion recording: the service may not always start from the background.
      */
     private fun handleRemoteMotionIntent(intent: Intent?) {
         val uri = intent?.data ?: return
@@ -751,8 +781,8 @@ class MainActivity : Activity() {
         val autoSets = uri.getQueryParameter("autoSets") == "true"
         val autoConfirm = uri.getQueryParameter("autoConfirm") == "true"
         runCatching { MotionCaptureService.send(this, MotionCaptureService.START, sessionId, wrist, motion, heartRate, autoSets, autoConfirm) }
-            .onFailure { MotionSync.reportStatus(this, sessionId, "error", "Uhr konnte die Aufzeichnung nicht starten.") }
-        // Der Dienst startet auf seinem eigenen Thread; danach zeigt die Startseite den Hinweis.
+            .onFailure { MotionSync.reportStatus(this, sessionId, "error", Lang.tr("Uhr konnte die Aufzeichnung nicht starten.", "Watch could not start recording.")) }
+        // The service starts on its own thread; afterwards the home screen shows the hint.
         handler.postDelayed({ if (page == PAGE_HOME && store.active() == null) render() }, 800L)
     }
 
@@ -765,12 +795,12 @@ class MainActivity : Activity() {
         }
         if (applied) {
             WearCommandGate.markApplied(RunStore(this), runId, commandId, sequence)
-            sendRemoteAck(uri, action, runId, commandId, sequence, "accepted", "Aufzeichnung auf der Uhr synchronisiert.")
+            sendRemoteAck(uri, action, runId, commandId, sequence, "accepted", Lang.tr("Aufzeichnung auf der Uhr synchronisiert.", "Recording synced on the watch."))
         } else if (attempt < 100) {
             handler.postDelayed({ confirmRemoteCommand(uri, runId, action, commandId, sequence, attempt + 1) }, 100L)
         } else {
             WearCommandGate.release(RunStore(this), runId, commandId, sequence)
-            sendRemoteAck(uri, action, runId, commandId, sequence, "error", "Die Uhr hat nicht rechtzeitig reagiert.")
+            sendRemoteAck(uri, action, runId, commandId, sequence, "error", Lang.tr("Die Uhr hat nicht rechtzeitig reagiert.", "The watch did not respond in time."))
         }
     }
 
@@ -804,10 +834,10 @@ class MainActivity : Activity() {
         return null
     }
     private fun confirmFinish() {
-        AlertDialog.Builder(this).setTitle("Lauf beenden?")
-            .setMessage("Der Lauf wird auf der Uhr gespeichert und später zum Handy übertragen.")
-            .setNegativeButton("Zurück", null)
-            .setPositiveButton("Speichern") { _, _ ->
+        AlertDialog.Builder(this).setTitle(Lang.tr("Lauf beenden?", "Finish run?"))
+            .setMessage(Lang.tr("Der Lauf wird auf der Uhr gespeichert und später zum Handy übertragen.", "The run is saved on the watch and sent to the phone later."))
+            .setNegativeButton(Lang.tr("Zurück", "Back"), null)
+            .setPositiveButton(Lang.tr("Speichern", "Save")) { _, _ ->
                 command(RecordingService.FINISH)
                 page = PAGE_HOME
                 handler.postDelayed({ WearSync.retry(this); render() }, 600)
@@ -815,7 +845,7 @@ class MainActivity : Activity() {
     }
     private fun choosePurpose() {
         val values = arrayOf("free", "easy", "long", "intervals", "race")
-        AlertDialog.Builder(this).setTitle("Wie willst du laufen?")
+        AlertDialog.Builder(this).setTitle(Lang.tr("Wie willst du laufen?", "How do you want to run?"))
             .setItems(values.map(::purposeLabel).toTypedArray()) { _, index ->
                 purpose = values[index]
                 store.saveSettings(store.settings().put("wearPurpose", purpose))
@@ -823,8 +853,8 @@ class MainActivity : Activity() {
             }.show()
     }
     private fun chooseTarget() {
-        val labels = arrayOf("Ohne Ziel", "Tempo", "Pulsbereich")
-        AlertDialog.Builder(this).setTitle("Laufen nach")
+        val labels = arrayOf(Lang.tr("Ohne Ziel", "No goal"), Lang.tr("Tempo", "Pace"), Lang.tr("Pulsbereich", "Heart rate range"))
+        AlertDialog.Builder(this).setTitle(Lang.tr("Laufen nach", "Run by"))
             .setItems(labels) { _, index ->
                 when (index) {
                     0 -> saveTarget(JSONObject().put("kind", "none").put("version", 1))
@@ -840,15 +870,15 @@ class MainActivity : Activity() {
             setSelectAllOnFocus(true)
             hint = "5:30"
         }
-        AlertDialog.Builder(this).setTitle("Tempo in min/km").setView(input)
-            .setNegativeButton("Zurück", null)
-            .setPositiveButton("Übernehmen") { _, _ ->
+        AlertDialog.Builder(this).setTitle(Lang.tr("Tempo in min/km", "Pace in min/km")).setView(input)
+            .setNegativeButton(Lang.tr("Zurück", "Back"), null)
+            .setPositiveButton(Lang.tr("Übernehmen", "Apply")) { _, _ ->
                 val match = Regex("^(\\d{1,2}):([0-5]\\d)$").matchEntire(input.text.toString().trim())
                 val value = match?.let { it.groupValues[1].toInt() * 60 + it.groupValues[2].toInt() }
                 if (value != null && value in 120..1200) {
                     saveTarget(JSONObject().put("kind", "pace").put("version", 1)
                         .put("secondsPerKm", value).put("mode", "range").put("output", target.optString("output", "both")))
-                } else invalidTarget("Gib das Tempo zum Beispiel als 5:30 ein.")
+                } else invalidTarget(Lang.tr("Gib das Tempo zum Beispiel als 5:30 ein.", "Enter a pace like 5:30."))
             }.show()
     }
     private fun editHeartTarget() {
@@ -857,14 +887,14 @@ class MainActivity : Activity() {
             setSelectAllOnFocus(true)
             hint = "130–150"
         }
-        AlertDialog.Builder(this).setTitle("Pulsbereich in bpm").setView(input)
-            .setNegativeButton("Zurück", null)
-            .setPositiveButton("Übernehmen") { _, _ ->
+        AlertDialog.Builder(this).setTitle(Lang.tr("Pulsbereich in bpm", "Heart rate range in bpm")).setView(input)
+            .setNegativeButton(Lang.tr("Zurück", "Back"), null)
+            .setPositiveButton(Lang.tr("Übernehmen", "Apply")) { _, _ ->
                 val values = input.text.toString().trim().split(Regex("[–—-]")).mapNotNull { it.trim().toIntOrNull() }
                 if (values.size == 2 && values[0] >= 40 && values[1] <= 240 && values[1] - values[0] >= 5) {
                     saveTarget(JSONObject().put("kind", "heart_rate").put("version", 1)
                         .put("minBpm", values[0]).put("maxBpm", values[1]).put("output", target.optString("output", "both")))
-                } else invalidTarget("Gib den Bereich zum Beispiel als 130–150 ein.")
+                } else invalidTarget(Lang.tr("Gib den Bereich zum Beispiel als 130–150 ein.", "Enter the range like 130–150."))
             }.show()
     }
     private fun saveTarget(next: JSONObject) {
@@ -876,31 +906,31 @@ class MainActivity : Activity() {
         render()
     }
     private fun chooseGuidance() {
-        AlertDialog.Builder(this).setTitle("Stimme & Vibration")
-            .setItems(arrayOf("Hinweisabstand", "Ausgabe")) { _, index ->
+        AlertDialog.Builder(this).setTitle(Lang.tr("Stimme & Vibration", "Voice & vibration"))
+            .setItems(arrayOf(Lang.tr("Hinweisabstand", "Cue interval"), Lang.tr("Ausgabe", "Output"))) { _, index ->
                 if (index == 0) {
                     val intervals = intArrayOf(5, 10, 15, 30, 60, 120, 300)
-                    AlertDialog.Builder(this).setTitle("Abstand in Sekunden")
-                        .setSingleChoiceItems(intervals.map { "$it Sekunden" }.toTypedArray(),
+                    AlertDialog.Builder(this).setTitle(Lang.tr("Abstand in Sekunden", "Interval in seconds"))
+                        .setSingleChoiceItems(intervals.map { Lang.tr("$it Sekunden", "$it seconds") }.toTypedArray(),
                             intervals.indexOf(target.optInt("cueIntervalSeconds", 30))) { dialog, selected ->
                             saveTarget(JSONObject(target.toString()).put("cueIntervalSeconds", intervals[selected]))
                             dialog.dismiss()
-                        }.setNegativeButton("Zurück", null).show()
+                        }.setNegativeButton(Lang.tr("Zurück", "Back"), null).show()
                 } else {
                     val outputs = arrayOf("both", "vibration", "voice")
-                    AlertDialog.Builder(this).setTitle("Ausgabe der Hinweise")
-                        .setSingleChoiceItems(arrayOf("Vibration & Stimme", "Vibration", "Stimme"),
+                    AlertDialog.Builder(this).setTitle(Lang.tr("Ausgabe der Hinweise", "Cue output"))
+                        .setSingleChoiceItems(arrayOf(Lang.tr("Vibration & Stimme", "Vibration & voice"), Lang.tr("Vibration", "Vibration"), Lang.tr("Stimme", "Voice")),
                             outputs.indexOf(target.optString("output", "both"))) { dialog, selected ->
                             saveTarget(JSONObject(target.toString()).put("output", outputs[selected]))
                             dialog.dismiss()
-                        }.setNegativeButton("Zurück", null).show()
+                        }.setNegativeButton(Lang.tr("Zurück", "Back"), null).show()
                 }
             }.show()
     }
     private fun chooseAnnouncements() {
         val triggers = arrayOf("off", "distance", "time")
-        AlertDialog.Builder(this).setTitle("Zwischenstände ansagen")
-            .setItems(arrayOf("Aus", "Nach Kilometern", "Nach Minuten")) { _, index ->
+        AlertDialog.Builder(this).setTitle(Lang.tr("Zwischenstände ansagen", "Announce progress"))
+            .setItems(arrayOf(Lang.tr("Aus", "Off"), Lang.tr("Nach Kilometern", "By kilometers"), Lang.tr("Nach Minuten", "By minutes"))) { _, index ->
                 val config = target.optJSONObject("announcements")?.let { JSONObject(it.toString()) }
                     ?: JSONObject().put("version", 1).put("interval", 1)
                         .put("kilometer", true).put("distance", true).put("lastKilometerPace", true)
@@ -908,7 +938,7 @@ class MainActivity : Activity() {
                 config.put("trigger", triggers[index])
                 if (index == 0) saveTarget(JSONObject(target.toString()).put("announcements", config))
                 else editAnnouncementInterval(config)
-            }.setNegativeButton("Zurück", null).show()
+            }.setNegativeButton(Lang.tr("Zurück", "Back"), null).show()
     }
     private fun editAnnouncementInterval(config: JSONObject) {
         val time = config.optString("trigger") == "time"
@@ -917,25 +947,32 @@ class MainActivity : Activity() {
             setText(if (time) "10" else "1")
             setSelectAllOnFocus(true)
         }
-        AlertDialog.Builder(this).setTitle(if (time) "Abstand in Minuten" else "Abstand in Kilometern")
-            .setView(input).setNegativeButton("Zurück", null).setPositiveButton("Weiter") { _, _ ->
+        AlertDialog.Builder(this)
+            .setTitle(if (time) Lang.tr("Abstand in Minuten", "Interval in minutes") else Lang.tr("Abstand in Kilometern", "Interval in kilometers"))
+            .setView(input).setNegativeButton(Lang.tr("Zurück", "Back"), null).setPositiveButton(Lang.tr("Weiter", "Continue")) { _, _ ->
                 val interval = input.text.toString().replace(',', '.').toDoubleOrNull()
                 if (interval == null || !interval.isFinite() || interval < 1 || interval > if (time) 60 else 10) {
-                    invalidTarget("Wähle 1 bis 10 Kilometer oder 1 bis 60 Minuten.")
+                    invalidTarget(Lang.tr("Wähle 1 bis 10 Kilometer oder 1 bis 60 Minuten.", "Choose 1 to 10 kilometers or 1 to 60 minutes."))
                 } else {
                     config.put("interval", interval)
                     val keys = arrayOf("kilometer", "distance", "lastKilometerPace", "averagePace", "heartRate")
-                    AlertDialog.Builder(this).setTitle("Wähle die Angaben")
-                        .setMultiChoiceItems(arrayOf("Kilometermarke", "Strecke", "Letzter Kilometer", "Durchschnittstempo", "Aktueller Puls"),
+                    AlertDialog.Builder(this).setTitle(Lang.tr("Wähle die Angaben", "Choose what to announce"))
+                        .setMultiChoiceItems(arrayOf(
+                            Lang.tr("Kilometermarke", "Kilometer mark"),
+                            Lang.tr("Strecke", "Distance"),
+                            Lang.tr("Letzter Kilometer", "Last kilometer"),
+                            Lang.tr("Durchschnittstempo", "Average pace"),
+                            Lang.tr("Aktueller Puls", "Current heart rate"),
+                        ),
                             keys.map { config.optBoolean(it) }.toBooleanArray()) { _, which, checked -> config.put(keys[which], checked) }
-                        .setNegativeButton("Zurück", null).setPositiveButton("Übernehmen") { _, _ ->
+                        .setNegativeButton(Lang.tr("Zurück", "Back"), null).setPositiveButton(Lang.tr("Übernehmen", "Apply")) { _, _ ->
                             saveTarget(JSONObject(target.toString()).put("announcements", config))
                         }.show()
                 }
             }.show()
     }
     private fun invalidTarget(message: String) {
-        AlertDialog.Builder(this).setTitle("Nicht gespeichert").setMessage(message).setPositiveButton("OK", null).show()
+        AlertDialog.Builder(this).setTitle(Lang.tr("Nicht gespeichert", "Not saved")).setMessage(message).setPositiveButton("OK", null).show()
     }
     private fun targetLabel() = when (target.optString("kind")) {
         "pace" -> {
@@ -944,13 +981,18 @@ class MainActivity : Activity() {
             "$prefix${seconds / 60}:${(seconds % 60).toString().padStart(2, '0')} /km"
         }
         "heart_rate" -> "${target.optInt("minBpm")}–${target.optInt("maxBpm")} bpm"
-        else -> "Ohne Ziel"
+        else -> Lang.tr("Ohne Ziel", "No goal")
     }
-    // Gleiche Wörter wie RUN_PURPOSES in src/domain/runTitle.ts.
+    // Same words as RUN_PURPOSES in src/domain/runTitle.ts.
     private fun purposeLabel(value: String) = when (normalizePurpose(value)) {
-        "easy" -> "Ruhig"; "long" -> "Lange Runde"; "intervals" -> "Tempowechsel"; "race" -> "Auf Zeit"; "free" -> "Einfach laufen"; else -> "Noch offen"
+        "easy" -> Lang.tr("Ruhig", "Easy")
+        "long" -> Lang.tr("Lange Runde", "Long run")
+        "intervals" -> Lang.tr("Tempowechsel", "Pace changes")
+        "race" -> Lang.tr("Auf Zeit", "Time trial")
+        "free" -> Lang.tr("Einfach laufen", "Just run")
+        else -> Lang.tr("Noch offen", "Not set yet")
     }
-    // Ältere Versionen speicherten Tempowechsel als "quality".
+    // Older versions stored pace changes as "quality".
     private fun normalizePurpose(value: String) = if (value == "quality" || value == "interval") "intervals" else value
     private fun formatDuration(seconds: Long): String = if (seconds >= 3600) "%d:%02d:%02d".format(seconds / 3600, seconds / 60 % 60, seconds % 60) else "%02d:%02d".format(seconds / 60, seconds % 60)
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
@@ -986,15 +1028,15 @@ class MainActivity : Activity() {
         const val EXTRA_PAGE = "page"
         const val PAGE_STRENGTH = "strength"
         private const val PAGE_HOME = "home"
-        /** Startseite, obwohl ein Krafttraining läuft: Der Nutzer wollte sie sehen. */
+        /** Home screen even though a strength session is running: the user wanted to see it. */
         private const val PAGE_OVERVIEW = "start"
         private const val PAGE_PICK = "pick"
         private const val PAGE_HISTORY = "history"
         private const val PAGE_DETAIL = "detail"
         private const val PAGE_OPTIONS = "options"
-        /** Kommt so lange kein Stand vom Handy, zeigt die Auswahl wieder die Vorlagen. */
+        /** If no state arrives from the phone for this long, the picker shows the templates again. */
         private const val START_TIMEOUT_MS = 15_000L
-        /** Puls und GPS gelten auf der Laufseite so lange als aktuell. */
+        /** Heart rate and GPS count as current on the run screen for this long. */
         private const val LIVE_SENSOR_MS = 15_000L
     }
 }

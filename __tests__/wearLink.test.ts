@@ -46,7 +46,7 @@ it('waits until the watch answers for this run', () => {
       ),
     ).toBe('waiting');
   }
-  // Eine Bestätigung für einen früheren Lauf zählt nicht.
+  // A confirmation for an earlier run does not count.
   expect(
     wearRecordingLink(
       connected({ status: 'live', runId: 'old', lastLiveAt: now }),
@@ -128,7 +128,7 @@ describe('strength watch', () => {
       state: 'measuring',
       bpm: 128,
     });
-    // Ein alter Puls wird nicht als jetzt ausgegeben.
+    // An old pulse is not reported as current.
     expect(
       strengthWatchLive(live(now - STRENGTH_WATCH_HEART_MS - 1), now),
     ).toEqual({ state: 'measuring' });
@@ -138,7 +138,7 @@ describe('strength watch', () => {
     expect(
       strengthWatchLive(info({ live: { receivedAt: now - 1_000 } }), now),
     ).toEqual({ state: 'measuring' });
-    // Ältere Uhren melden nichts live.
+    // Older watches report nothing live.
     expect(strengthWatchLive(info(), now)).toEqual({ state: 'measuring' });
   });
 

@@ -1,10 +1,10 @@
 import { html, raw, type Html } from './html';
+import type { Translator } from './i18n';
 
 /**
- * Diagramme als SVG, auf dem Server gezeichnet. Wie in der App: Balken für
- * Kennzahlen mit echtem Nullpunkt, Punkte für Tempo und Gefühl. Ein Balken ist
- * ein Link; der gewählte ist grün und seine Details stehen darunter.
- * Fehlende Werte bleiben eine Lücke, nie eine Null.
+ * Charts as SVG, drawn on the server. As in the app: bars for measures with a
+ * true zero, dots for pace and effort. A bar is a link; the selected one is
+ * green and its details appear below. Missing values stay a gap, never a zero.
  */
 
 export interface BarPoint {
@@ -21,6 +21,7 @@ const H = 220;
 const PAD = { top: 12, right: 8, bottom: 28, left: 8 };
 
 export function bucketChart(
+  tx: Translator,
   points: BarPoint[],
   {
     shape,
@@ -37,7 +38,7 @@ export function bucketChart(
   const slot = innerW / points.length;
   const max = values.length ? Math.max(...values) : 0;
   const min = values.length ? Math.min(...values) : 0;
-  // Punkte brauchen keinen Nullpunkt; die Spanne zeigt die Unterschiede.
+  // Points need no zero line; the range shows the differences.
   const low =
     shape === 'bar' ? 0 : min - (max - min || Math.abs(max) * 0.1 || 1) * 0.15;
   const high =
@@ -105,7 +106,12 @@ export function bucketChart(
     class="chart bucket-chart"
     viewBox="0 0 ${W} ${H}"
     role="group"
-    aria-label="${title} je Zeitraum, ${points.length} Werte"
+    aria-label="${tx.t(
+      `${title} je Zeitraum, ${points.length} Werte`,
+      `${title} by period, ${points.length} ${
+        points.length === 1 ? 'value' : 'values'
+      }`,
+    )}"
   >
     <line
       class="grid-line"
@@ -119,18 +125,19 @@ export function bucketChart(
 }
 
 export interface LineSeries {
-  /** x in Metern oder Sekunden. */
+  /** x in meters or seconds. */
   points: { x: number; y: number | undefined }[];
   className?: string;
-  /** Tempo: schneller ist oben. */
+  /** Pace: faster is higher. */
   invert?: boolean;
   label: string;
   format: (value: number) => string;
   average?: number;
 }
 
-/** Verlauf eines Laufs über die Strecke; Lücken bleiben Lücken. */
+/** A run's trace along the route; gaps stay gaps. */
 export function lineChart(
+  tx: Translator,
   series: LineSeries,
   xLabel: (x: number) => string,
 ): Html {
@@ -144,7 +151,7 @@ export function lineChart(
   const xs = series.points.map(p => p.x);
   const minX = Math.min(...xs);
   const maxX = Math.max(...xs);
-  // Ausreißer (Stehen an der Ampel) sollen die Achse nicht sprengen.
+  // Outliers (standing at a traffic light) must not stretch the axis.
   const sorted = defined.map(p => p.y).sort((a, b) => a - b);
   const q = (f: number) =>
     sorted[
@@ -187,7 +194,10 @@ export function lineChart(
     class="chart"
     viewBox="0 0 ${W} ${height}"
     role="img"
-    aria-label="${series.label} über die Strecke"
+    aria-label="${tx.t(
+      `${series.label} über die Strecke`,
+      `${series.label} along the route`,
+    )}"
   >
     ${ticks.map(
       tick =>
@@ -233,8 +243,9 @@ export function lineChart(
   </svg>`;
 }
 
-/** Strecke als Linie ohne Kartenkacheln: keine Koordinate geht an einen Kartendienst. */
+/** Route as a line without map tiles: no coordinate goes to a map service. */
 export function routeShape(
+  tx: Translator,
   points: { latitude: number; longitude: number; gap?: boolean }[],
 ): Html {
   if (points.length < 2) return html``;
@@ -262,7 +273,7 @@ export function routeShape(
     class="route"
     viewBox="0 0 ${size} ${size}"
     role="img"
-    aria-label="Form der Strecke"
+    aria-label="${tx.t('Form der Strecke', 'Route shape')}"
     width="100%"
     style="max-width:${size}px"
   >

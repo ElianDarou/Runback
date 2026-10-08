@@ -9,17 +9,15 @@ import {
 import type { Store } from './db';
 
 /**
- * Zugänge. Ein Server gehört genau einer Person:
+ * Access. One server belongs to exactly one person:
  *
- * - **Passwort** für die Website. Steht in `RUNBACK_PASSWORD` oder wird beim
- *   ersten Start erzeugt und einmal ins Log geschrieben.
- * - **Telefon** bekommt beim Koppeln ein eigenes Token (`rbd_…`). Es darf
- *   übertragen und lesen.
- * - **Lese-Tokens** (`rbr_…`) für Skripte, Notebooks und Grafana. Sie dürfen
- *   nur lesen.
+ * - **Password** for the website. It comes from `RUNBACK_PASSWORD`, or is
+ *   generated on first start and written to the log once.
+ * - **Phone** gets its own token (`rbd_…`) when paired. It may upload and read.
+ * - **Read tokens** (`rbr_…`) for scripts, notebooks and Grafana. They may only
+ *   read.
  *
- * Gespeichert werden nur Hashes. Ein Token steht genau einmal im Klartext auf
- * dem Bildschirm.
+ * Only hashes are stored. A token appears in plain text exactly once, on screen.
  */
 
 export type Scope = 'ingest' | 'read' | 'admin';
@@ -65,9 +63,9 @@ function verifyPassword(password: string, stored: string): boolean {
 }
 
 /**
- * Sorgt für ein Passwort. Ist `RUNBACK_PASSWORD` gesetzt, gilt immer dieses.
- * Sonst entsteht beim ersten Start eins; der Rückgabewert ist es dann im
- * Klartext, damit `main` es genau einmal ausgibt.
+ * Makes sure a password exists. If `RUNBACK_PASSWORD` is set, it always wins.
+ * Otherwise one is generated on first start; the return value is that password
+ * in plain text, so `main` prints it exactly once.
  */
 export function ensurePassword(
   store: Store,
@@ -76,7 +74,7 @@ export function ensurePassword(
   const stored = store.meta('password');
   if (fromEnv) {
     if (fromEnv.length < 8) {
-      throw new Error('RUNBACK_PASSWORD braucht mindestens 8 Zeichen.');
+      throw new Error('RUNBACK_PASSWORD must be at least 8 characters.');
     }
     if (!stored || !verifyPassword(fromEnv, stored)) {
       store.setMeta('password', hashPassword(fromEnv));
@@ -95,14 +93,16 @@ export function checkPassword(store: Store, password: string): boolean {
   return !!stored && verifyPassword(password, stored);
 }
 
+/** Why a password change was refused; the page shows the matching text. */
+export type PasswordProblem = 'wrong-current' | 'too-short';
+
 export function changePassword(
   store: Store,
   current: string,
   next: string,
-): string | null {
-  if (!checkPassword(store, current))
-    return 'Das aktuelle Passwort stimmt nicht.';
-  if (next.length < 8) return 'Das neue Passwort braucht mindestens 8 Zeichen.';
+): PasswordProblem | null {
+  if (!checkPassword(store, current)) return 'wrong-current';
+  if (next.length < 8) return 'too-short';
   store.transaction(() => {
     store.setMeta('password', hashPassword(next));
     store.db.prepare('DELETE FROM sessions').run();
@@ -180,8 +180,8 @@ export function bearerPrincipal(
 }
 
 /**
- * Neuer Kopplungscode, acht Ziffern, zehn Minuten gültig, fünf Versuche.
- * Ein neuer Code ersetzt den alten.
+ * New pairing code: eight digits, valid for ten minutes, five attempts.
+ * A new code replaces the old one.
  */
 export function createPairingCode(
   store: Store,
@@ -210,9 +210,9 @@ export function pairingExpiry(store: Store, now: number): number | null {
 }
 
 /**
- * Löst einen Kopplungscode ein. Jeder falsche Versuch zählt gegen den offenen
- * Code; nach fünf ist er verbraucht. Ein Server gehört einer Person, also
- * ersetzt ein neues Telefon das alte.
+ * Redeems a pairing code. Every wrong attempt counts against the open code;
+ * after five it is used up. A server belongs to one person, so a new phone
+ * replaces the old one.
  */
 export function redeemPairingCode(
   store: Store,
@@ -251,6 +251,7 @@ export function redeemPairingCode(
       )
       .run(
         deviceId,
+        // Stored default name, kept in German for existing data.
         deviceName.slice(0, 80) || 'Telefon',
         sha256(token),
         now,
@@ -273,6 +274,7 @@ export function createReadToken(
     )
     .run(
       randomUUID(),
+      // Stored default name, kept in German for existing data.
       name.trim().slice(0, 80) || 'Lese-Token',
       sha256(token),
       now,
@@ -289,8 +291,8 @@ export function removeDevice(store: Store, id: string) {
 }
 
 /**
- * Bremst Rateversuche am Login und beim Koppeln: höchstens zehn Fehlversuche
- * je Adresse in 15 Minuten. Nur im Speicher; ein Neustart setzt zurück.
+ * Slows down guessing at sign-in and pairing: at most ten failed attempts per
+ * address within 15 minutes. Kept in memory only; a restart resets it.
  */
 export class Throttle {
   private failures = new Map<string, number[]>();

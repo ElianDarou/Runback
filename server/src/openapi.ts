@@ -1,7 +1,7 @@
 import { SERVER_SYNC_PROTOCOL } from '../../src/domain/serverLink';
 import { PUBLIC_VIEWS } from './db';
 
-/** Beschreibung der API für Werkzeuge (Swagger UI, Codegeneratoren, Grafana). */
+/** API description for tools (Swagger UI, code generators, Grafana). */
 export function openApi(version: string) {
   const list = (summary: string, extra: Record<string, unknown>[] = []) => ({
     get: {
@@ -12,13 +12,13 @@ export function openApi(version: string) {
           name: 'from',
           in: 'query',
           schema: { type: 'string', format: 'date-time' },
-          description: 'Ab hier (einschließlich).',
+          description: 'From here (inclusive).',
         },
         {
           name: 'to',
           in: 'query',
           schema: { type: 'string', format: 'date-time' },
-          description: 'Bis hier (ausschließlich).',
+          description: 'Up to here (exclusive).',
         },
         {
           name: 'limit',
@@ -64,7 +64,7 @@ export function openApi(version: string) {
       title: 'Runback Server',
       version,
       description:
-        'Lesende API deines eigenen Runback-Servers. Die App überträgt eine Kopie; der Server ändert nichts an deinen Daten. Unbekannte Werte sind null.',
+        'Read-only API of your own Runback server. The app sends a copy; the server changes nothing in your data. Unknown values are null.',
     },
     servers: [{ url: '/api/v1' }],
     components: {
@@ -72,67 +72,60 @@ export function openApi(version: string) {
         bearer: {
           type: 'http',
           scheme: 'bearer',
-          description:
-            'Lese-Token (rbr_…) aus „Daten“ oder das Token des Telefons.',
+          description: 'Read token (rbr_…) from “Data”, or the phone’s token.',
         },
       },
     },
     paths: {
       '/hello': {
         get: {
-          summary: 'Erreichbarkeit und Version, ohne Anmeldung',
+          summary: 'Reachability and version, no sign-in needed',
           responses: { 200: { description: 'JSON' } },
         },
       },
-      '/documents': list(
-        'Alle freigegebenen Dokumente mit Herkunft und Inhalt',
-        [
-          query('kind', 'Datenart, z. B. settings oder soreness.'),
-          query('key', 'Ein Dokument, z. B. settings oder run/id.'),
-        ],
-      ),
-      '/status': get('Stand der Kopie'),
-      '/runs': list('Läufe und Radfahrten (v1_runs)', [
-        query('sport', 'running, cycling …'),
-        query('purpose', 'Laufart'),
+      '/documents': list('All shared documents with origin and content', [
+        query('kind', 'Data kind, e.g. settings or soreness.'),
+        query('key', 'One document, e.g. settings or run/id.'),
       ]),
-      '/runs/{id}': get(
-        'Ein Lauf mit Verlauf und, falls freigegeben, Strecke',
-        [
-          {
-            name: 'id',
-            in: 'path',
-            required: true,
-            schema: { type: 'string' },
-          },
-        ],
-      ),
-      '/strength/sessions': list('Krafteinheiten (v1_strength_sessions)', [
+      '/status': get('Stand der Kopie'),
+      '/runs': list('Runs and cycling (v1_runs)', [
+        query('sport', 'running, cycling …'),
+        query('purpose', 'Run type'),
+      ]),
+      '/runs/{id}': get('A run with its trace and, if shared, its route', [
+        {
+          name: 'id',
+          in: 'path',
+          required: true,
+          schema: { type: 'string' },
+        },
+      ]),
+      '/strength/sessions': list('Strength sessions (v1_strength_sessions)', [
         query('status', 'finished, interrupted'),
       ]),
-      '/strength/sessions/{id}': get('Eine Krafteinheit mit allen Sätzen', [
+      '/strength/sessions/{id}': get('A strength session with all sets', [
         { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
       ]),
-      '/strength/sets': list('Sätze (v1_strength_sets)', [
-        query('exercise', 'Übungskennung'),
-        query('session', 'Einheit'),
+      '/strength/sets': list('Sets (v1_strength_sets)', [
+        query('exercise', 'Exercise id'),
+        query('session', 'Workout'),
       ]),
-      '/wellness': list('Gesundheitswerte (v1_wellness)', [
-        query('kind', 'Art des Werts'),
+      '/wellness': list('Health values (v1_wellness)', [
+        query('kind', 'Kind of value'),
       ]),
-      '/recommendations': list('Empfehlungen (v1_recommendations)', [
+      '/recommendations': list('Recommendations (v1_recommendations)', [
         query('area', 'running oder strength'),
         query('status', 'active …'),
       ]),
-      '/plan': get('Gespeicherte Termine und Vorlagen aus der App'),
-      '/soreness': get('Gemeldeter Muskelkater aus der App'),
-      '/coach': get('Ziel, Fokus und Empfehlungen je Bereich'),
-      '/stats/running': get('Laufstatistik wie in der App', [range]),
-      '/stats/strength': get('Kraftstatistik wie in der App', [range]),
+      '/plan': get('Saved appointments and templates from the app'),
+      '/soreness': get('Reported soreness from the app'),
+      '/coach': get('Goal, focus and recommendations per area'),
+      '/stats/running': get('Running statistics, as in the app', [range]),
+      '/stats/strength': get('Strength statistics, as in the app', [range]),
       '/sql': {
         post: {
           summary:
-            'Lesende SQL-Abfrage (nur SELECT/WITH, 5 s, höchstens 5000 Zeilen)',
+            'Read-only SQL query (SELECT or WITH only, 5 s, at most 5000 rows)',
           security: [{ bearer: [] }],
           requestBody: {
             content: {
@@ -150,7 +143,7 @@ export function openApi(version: string) {
           },
         },
       },
-      '/export/{view}.{format}': get('Ganze Sicht als Datei', [
+      '/export/{view}.{format}': get('Whole view as a file', [
         {
           name: 'view',
           in: 'path',
@@ -164,7 +157,7 @@ export function openApi(version: string) {
           schema: { type: 'string', enum: ['csv', 'jsonl'] },
         },
       ]),
-      '/export/runback.sqlite': get('Ganze Datenbank ohne Zugangsdaten'),
+      '/export/runback.sqlite': get('Whole database without credentials'),
     },
     'x-runback-sync-protocol': SERVER_SYNC_PROTOCOL,
   };

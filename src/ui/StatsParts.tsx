@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { StatsDelta } from '../domain/statisticsView';
+import { fixed, percentSign, tr } from '../domain/i18n';
 import {
   Chevron,
   Row,
@@ -12,16 +13,14 @@ import {
 } from './components';
 
 /**
- * Bausteine der Statistikseite, geteilt von Laufen und Krafttraining:
- * Kennzahl mit Vergleich, ein Diagramm mit antippbaren Balken, eingeklappte
- * Abschnitte und Wertzeilen. Beide Bereiche sollen gleich aussehen und sich
- * gleich bedienen lassen.
+ * Building blocks of the statistics page, shared by running and strength:
+ * a figure with comparison, a chart with tappable bars, collapsible sections
+ * and value rows. Both areas should look the same and work the same way.
  */
 
 export const DASH = '–';
 
-export const decimal = (value: number, digits = 1) =>
-  value.toFixed(digits).replace('.', ',');
+export const decimal = (value: number, digits = 1) => fixed(value, digits);
 
 export const formatDuration = (seconds: number) => {
   const whole = Math.max(0, Math.round(seconds));
@@ -30,8 +29,8 @@ export const formatDuration = (seconds: number) => {
   return hours ? `${hours} h ${minutes} min` : `${minutes} min`;
 };
 
-/** Kennzahl mit Vergleich. Der Pfeil ist die Richtung, der Prozentwert die
- *  Größe — Farbe trägt hier keine Information. */
+/** Figure with comparison. The arrow shows the direction, the percentage the
+ *  size; color carries no information here. */
 export function Tile({
   value,
   unit,
@@ -48,15 +47,15 @@ export function Tile({
   const percent =
     delta.changeRatio === null
       ? DASH
-      : `${Math.abs(Math.round(delta.changeRatio * 100))} %`;
+      : `${Math.abs(Math.round(delta.changeRatio * 100))}${percentSign()}`;
   const spoken =
     delta.direction === 'up'
-      ? `${percent} mehr`
+      ? tr(`${percent} mehr`, `${percent} more`)
       : delta.direction === 'down'
-      ? `${percent} weniger`
+      ? tr(`${percent} weniger`, `${percent} less`)
       : delta.direction === 'flat'
-      ? 'unverändert'
-      : 'kein Vergleich möglich';
+      ? tr('unverändert', 'unchanged')
+      : tr('kein Vergleich möglich', 'no comparison possible');
   return (
     <View
       accessible
@@ -64,10 +63,12 @@ export function Tile({
       style={statsStyles.tile}
     >
       <Stat value={value} label={unit ? `${label} · ${unit}` : label} />
-      {/* Ohne Vergleichszeitraum gibt es keinen Pfeil — und keinen Platzhalter. */}
+      {/* Without a comparison period there is no arrow and no placeholder. */}
       {delta.direction === 'unknown' ? null : (
         <Text style={statsStyles.tileDelta}>
-          {delta.direction === 'flat' ? '± 0 %' : `${arrow} ${percent}`}
+          {delta.direction === 'flat'
+            ? tr('± 0 %', '±0%')
+            : `${arrow} ${percent}`}
         </Text>
       )}
     </View>
@@ -75,15 +76,15 @@ export function Tile({
 }
 
 /**
- * Ein Diagramm, eine Achse. Balken für Kennzahlen mit echtem Nullpunkt,
- * Punkte für Tempo und Gefühl — dort wäre ein Balken ab null eine Lüge über
- * die Größenordnung. Der ausgewählte Wert ist grün, alle anderen sind Fläche.
+ * One chart, one axis. Bars for figures with a true zero, points for pace and
+ * feel: there a bar starting at zero would misstate the magnitude. The selected
+ * value is green, all others are area.
  */
 export interface ChartPoint {
   key: number;
-  /** Kurze Achsenbeschriftung. */
+  /** Short axis label. */
   label: string;
-  /** Ausgeschrieben für Vorlesetext. */
+  /** Spelled out, for screen readers. */
   fullLabel: string;
   value: number | null;
 }
@@ -97,9 +98,9 @@ export function Chart({
   onSelect,
 }: {
   points: ChartPoint[];
-  /** Name der Kennzahl, für den Vorlesetext. */
+  /** Name of the figure, for screen readers. */
   title: string;
-  /** Wert und Einheit als Text; `null` wird zu „–“. */
+  /** Value and unit as text; `null` becomes "–". */
   format: (value: number | null) => { value: string; unit: string };
   shape: 'bar' | 'point';
   selected: number | null;
@@ -111,8 +112,7 @@ export function Chart({
   );
   const max = present.length ? Math.max(...present) : 0;
   const min = present.length ? Math.min(...present) : 0;
-  // Punkte bekommen etwas Luft, damit der beste und der schlechteste Wert
-  // nicht auf dem Rand kleben.
+  // Points get some room so the best and worst values don't sit on the edge.
   const padding =
     shape === 'point' ? Math.max((max - min) * 0.2, max * 0.02) : 0;
   const low = shape === 'bar' ? 0 : min - padding;
@@ -124,18 +124,21 @@ export function Chart({
   const share = (value: number) =>
     span > 0 ? Math.min(Math.max((value - low) / span, 0), 1) : 0.5;
 
-  // Bei vielen Balken trägt nicht jeder eine Beschriftung, sonst überlappen sie.
+  // With many bars, not every one gets a label, or they would overlap.
   const step = Math.ceil(buckets.length / 7);
   const scale = present.length
     ? shape === 'bar'
-      ? `0 bis ${format(max).value}`
-      : `${format(min).value} bis ${format(max).value}`
-    : 'keine Werte';
+      ? tr(`0 bis ${format(max).value}`, `0 to ${format(max).value}`)
+      : tr(
+          `${format(min).value} bis ${format(max).value}`,
+          `${format(min).value} to ${format(max).value}`,
+        )
+    : tr('keine Werte', 'no values');
 
   return (
     <View style={statsStyles.chartBlock}>
       <View style={statsStyles.chartHead}>
-        <Text style={statsStyles.chartScale}>{`Skala ${scale} ${
+        <Text style={statsStyles.chartScale}>{`${tr('Skala', 'Scale')} ${scale} ${
           format(max).unit
         }`}</Text>
         {mean === null ? null : (
@@ -144,7 +147,10 @@ export function Chart({
       </View>
       <View
         accessibilityRole="adjustable"
-        accessibilityLabel={`${title} je Zeitraum, ${buckets.length} Werte`}
+        accessibilityLabel={tr(
+          `${title} je Zeitraum, ${buckets.length} Werte`,
+          `${title} per period, ${buckets.length} ${buckets.length === 1 ? 'value' : 'values'}`,
+        )}
         style={statsStyles.chart}
       >
         {buckets.map((bucket, index) => {
@@ -190,8 +196,8 @@ export function Chart({
           );
         })}
         {mean === null ? null : (
-          // Liegt über den Marken und deckt genau die Zeichenfläche ab, nicht
-          // die Spalte samt Beschriftung.
+          // Sits above the ticks and covers exactly the plot area, not the
+          // column including its label.
           <View pointerEvents="none" style={statsStyles.meanLayer}>
             <View style={[statsStyles.mean, { bottom: `${share(mean) * 100}%` }]} />
           </View>
@@ -201,8 +207,8 @@ export function Chart({
   );
 }
 
-/** Eingeklappter Abschnitt. Der Titel trägt schon einen Wert, damit auch der
- *  geschlossene Zustand etwas sagt; `⌄` verspricht Inhalt an dieser Stelle. */
+/** Collapsed section. The title already carries a value so the closed state
+ *  says something too; `⌄` promises content at this spot. */
 export function Panel({
   title,
   summary,
@@ -229,8 +235,8 @@ export function Panel({
   );
 }
 
-/** Beschriftung und Wert. `Row` ist der Baustein; der Wert hängt als
- *  `trailing` daran, damit keine zweite Zeilenvariante entsteht. */
+/** Label and value. `Row` is the building block; the value hangs off it as
+ *  `trailing` so no second row variant is needed. */
 export function ValueRow({
   label,
   value,
@@ -255,7 +261,7 @@ export function ValueRow({
   );
 }
 
-/** Ein Anteil als Balken mit Beschriftung — Farbe ist nie die einzige Angabe. */
+/** A share as a labeled bar — color is never the only cue. */
 export function ShareRow({
   label,
   value,
@@ -264,7 +270,7 @@ export function ShareRow({
 }: {
   label: string;
   value: string;
-  /** 0 bis 1. */
+  /** 0 to 1. */
   share: number;
   meta?: string;
 }) {
@@ -287,7 +293,7 @@ export function ShareRow({
   );
 }
 
-/** Was hinter einem angetippten Balken steckt — an Ort und Stelle. */
+/** What sits behind a tapped bar, shown in place. */
 export function ChartDetail({
   title,
   value,
@@ -349,8 +355,8 @@ export const statsStyles = StyleSheet.create({
     backgroundColor: color.line,
   },
   markSelected: { backgroundColor: color.green },
-  // Breiter als die Spalte, damit „13.09.“ nicht abgeschnitten wird; es
-  // trägt ohnehin nur jede zweite oder dritte Spalte eine Beschriftung.
+  // Wider than the column so "13.09." isn't cut off; only every second or
+  // third column carries a label anyway.
   tick: {
     width: 56,
     textAlign: 'center',

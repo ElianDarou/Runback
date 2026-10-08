@@ -31,11 +31,12 @@ import {
   type EdgeInsets,
 } from 'react-native-safe-area-context';
 import type { RoutePoint } from '../native';
+import { percentSign, tr } from '../domain/i18n';
 
 /**
- * Bausteine der gesamten Oberfläche. Verbindliche Regeln zu Verwendung, Text
- * und Affordanzen stehen in docs/design-language.md. Bildschirme definieren
- * keine eigenen Farben, Abstände oder Schriftgrößen.
+ * Shared building blocks for the whole interface. The binding rules for use,
+ * text, and affordances are in docs/design-language.md. Screens don't define
+ * their own colors, spacing, or font sizes.
  */
 // BEGIN SHARED DESIGN TOKENS
 export const color = {
@@ -49,14 +50,14 @@ export const color = {
   greenSoft: '#26331E',
   ink: '#14200E',
   danger: '#E4796B',
-  /** Etwas schlechter als sonst: nur für Text, nie als Fläche. */
+  /** Slightly worse than usual: text only, never as a surface. */
   caution: '#E8B04B',
   mapOverlay: '#101210D9',
   mapLine: '#F2F4EF3D',
   /**
-   * Linien der Laufgraphen. Der Akzent bleibt Tempo; Puls, Kadenz und Wind
-   * brauchen eigene, gegen `surface` geprüfte Töne, weil sie nebeneinander
-   * lesbar sein müssen. Höhe ist Hintergrund und bleibt `muted`.
+   * Lines of the run graphs. The accent stays pace; heart rate, cadence, and
+   * wind need their own tones, checked against `surface`, because they must
+   * read side by side. Elevation is background and stays `muted`.
    */
   series: {
     heart: '#E66767',
@@ -90,25 +91,25 @@ export const type = {
 };
 // END SHARED DESIGN TOKENS
 
-/** Ab dieser Strecke (oder 40 % der Breite) löscht ein Wischen nach links. */
+/** From this distance (or 40 % of the width), a swipe to the left deletes. */
 const SWIPE_DELETE_MIN = 96;
 
 /**
- * Zeile, die sich von rechts nach links wegwischen lässt. Dahinter steht, was
- * passiert („Löschen“); ein kurzer Wisch springt zurück. Für Bildschirmleser
- * gibt es dieselbe Aktion als `accessibilityActions`.
+ * Row that can be swiped away from right to left. Behind it sits what happens
+ * ("Delete"); a short swipe springs back. Screen readers get the same action
+ * as `accessibilityActions`.
  */
 export function SwipeToDelete({
   children,
   onDelete,
   enabled = true,
-  label = 'Löschen',
+  label = tr('Löschen', 'Delete'),
   surface = color.raised,
 }: PropsWithChildren<{
   onDelete: () => void;
   enabled?: boolean;
   label?: string;
-  /** Fläche der Zeile; deckt das Label dahinter ab. */
+  /** Surface of the row; covers the label behind it. */
   surface?: string;
 }>) {
   const width = useRef(0);
@@ -119,7 +120,7 @@ export function SwipeToDelete({
     const back = () =>
       Animated.spring(offset, { toValue: 0, useNativeDriver: true }).start();
     return PanResponder.create({
-      // Nur deutlich waagerechte Bewegungen; senkrecht scrollt die Liste.
+      // Only clearly horizontal movement; vertical movement scrolls the list.
       onMoveShouldSetPanResponderCapture: (_, gesture) =>
         latest.current.enabled &&
         gesture.dx < -12 &&
@@ -201,7 +202,7 @@ export function Button({
   danger?: boolean;
   disabled?: boolean;
   small?: boolean;
-  /** Vorlesetext, wenn die Beschriftung allein nicht eindeutig ist. */
+  /** Text read aloud when the visible label alone is ambiguous. */
   label?: string;
 }) {
   const outlined = secondary || danger;
@@ -234,8 +235,8 @@ export function Button({
 }
 
 /**
- * Minus und Plus für einen Wert, der schrittweise verstellt wird. Steht als
- * `trailing` in einer `Row`, die den aktuellen Wert nennt.
+ * Minus and plus for a value that is adjusted step by step. Goes in a `Row`'s
+ * `trailing` slot, and the row names the current value.
  */
 export function Stepper({
   onDecrease,
@@ -248,7 +249,7 @@ export function Stepper({
 }: {
   onDecrease: () => void;
   onIncrease: () => void;
-  /** Vorlesetext, z. B. „5 Sekunden schneller“. */
+  /** Text read aloud, e.g. "5 seconds faster". */
   decreaseLabel: string;
   increaseLabel: string;
   canDecrease?: boolean;
@@ -351,7 +352,7 @@ export function Row({
   );
 }
 
-/** Die Textfläche öffnet Details; der Schalter daneben bleibt eine eigene Aktion. */
+/** The text area opens details; the switch next to it stays its own action. */
 export function FeatureRow({
   title,
   subtitle,
@@ -369,7 +370,7 @@ export function FeatureRow({
     <View style={s.row}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${title} einstellen`}
+        accessibilityLabel={tr(`${title} einstellen`, `Set ${title}`)}
         accessibilityState={{ disabled }}
         disabled={disabled}
         onPress={onPress}
@@ -390,8 +391,8 @@ export function FeatureRow({
 }
 
 /**
- * Zeile einer Mehrfachauswahl, wenn ein Chip zu wenig Platz für die
- * Erklärung hat: ✓ in einem Kästchen rechts, `checked` für Screenreader.
+ * Row for a multi-select when a chip has too little room for the
+ * explanation: ✓ in a box on the right, `checked` for screen readers.
  */
 export function CheckRow({
   title,
@@ -431,8 +432,8 @@ export function CheckRow({
 }
 
 /**
- * Einfachauswahl direkt auf der Seite. Ersetzt Dialoge, deren Optionen in eine
- * Zeile passen — ein Chip sieht auswählbar aus und verhält sich auch so.
+ * Single choice directly on the page. Replaces dialogs whose options fit on
+ * one line — a chip looks selectable and behaves that way too.
  */
 export function ChipGroup<T extends string>({
   options,
@@ -486,8 +487,8 @@ export function ChipGroup<T extends string>({
 }
 
 /**
- * Mehrfachauswahl als Chips, z. B. Wochentage. Jeder Chip schaltet für sich;
- * gewählt heißt grüner Rahmen plus `checked`.
+ * Multi-select as chips, e.g. weekdays. Each chip toggles on its own; selected
+ * means a green border plus `checked`.
  */
 export function ToggleChips<T extends string>({
   options,
@@ -574,7 +575,7 @@ export function Notice({
   return onDismiss ? (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel="Meldung schließen"
+      accessibilityLabel={tr('Meldung schließen', 'Dismiss message')}
       accessibilityLiveRegion="polite"
       onPress={onDismiss}
       style={({ pressed }) => [s.notice, pressed && s.pressed]}
@@ -588,7 +589,7 @@ export function Notice({
   );
 }
 
-/** Leerer Zustand: Titel, ein Satz, genau eine Aktion. */
+/** Empty state: a title, one sentence, exactly one action. */
 export function EmptyState({
   title,
   copy,
@@ -609,7 +610,7 @@ export function EmptyState({
   );
 }
 
-/** Wie eine Zahl gegenüber den letzten Läufen steht. Farbe nie allein: der Pfeil trägt dieselbe Aussage. */
+/** How a number compares with recent runs. Never color alone: the arrow says the same thing. */
 export type StatTone = 'better' | 'same' | 'slightly_worse' | 'worse';
 const TONE_MARK: Record<StatTone, string> = {
   better: '▲',
@@ -617,11 +618,20 @@ const TONE_MARK: Record<StatTone, string> = {
   slightly_worse: '▽',
   worse: '▼',
 };
-const TONE_WORD: Record<StatTone, string> = {
-  better: 'besser als zuletzt',
-  same: 'wie zuletzt',
-  slightly_worse: 'etwas schlechter als zuletzt',
-  worse: 'schlechter als zuletzt',
+const toneWord = (tone: StatTone): string => {
+  switch (tone) {
+    case 'better':
+      return tr('besser als zuletzt', 'Better than last time');
+    case 'same':
+      return tr('wie zuletzt', 'Same as last time');
+    case 'slightly_worse':
+      return tr(
+        'etwas schlechter als zuletzt',
+        'Slightly worse than last time',
+      );
+    case 'worse':
+      return tr('schlechter als zuletzt', 'Worse than last time');
+  }
 };
 export function toneColor(tone: StatTone | undefined): string {
   return tone === 'better'
@@ -643,9 +653,9 @@ export function Stat({
   value: string;
   label: string;
   large?: boolean;
-  /** Vergleich zu den letzten Läufen; färbt den Wert und setzt einen Pfeil. */
+  /** Comparison with recent runs; colors the value and adds an arrow. */
   tone?: StatTone;
-  /** Kurzer Vergleichstext unter dem Label, z. B. „−0:08 /km“. */
+  /** Short comparison text under the label, e.g. "−0:08 /km". */
   delta?: string;
 }) {
   const mark = tone ? TONE_MARK[tone] : '';
@@ -653,7 +663,7 @@ export function Stat({
     <View
       style={s.stat}
       accessibilityLabel={
-        tone ? `${value} ${label}, ${TONE_WORD[tone]}` : undefined
+        tone ? `${value} ${label}, ${toneWord(tone)}` : undefined
       }
     >
       <Text
@@ -675,9 +685,9 @@ export function Stat({
 }
 
 /**
- * Ein Balken aus mehreren Anteilen, z. B. das Zeitbudget eines Laufs. Jeder
- * Anteil hat Farbe und Beschriftung; die Legende darunter nennt die Werte,
- * damit die Farbe nicht die einzige Information ist.
+ * A bar made of several shares, e.g. a run's time budget. Each share has a
+ * color and a label; the legend below names the values so color isn't the
+ * only information.
  */
 export function StackedBar({
   label,
@@ -724,9 +734,9 @@ export function StackedBar({
 }
 
 /**
- * Umschalter zwischen zwei oder drei gleichwertigen Ansichten derselben Seite
- * (Einheiten · Statistik, Laufen · Krafttraining). Anders als `ChipGroup` steht
- * er für Ansichten, nicht für Eingaben, und füllt die ganze Breite.
+ * Switch between two or three equal views of the same page (Workouts ·
+ * Statistics, Running · Strength training). Unlike `ChipGroup`, it stands for
+ * views, not inputs, and fills the full width.
  */
 export function Segmented<T extends string>({
   options,
@@ -775,12 +785,26 @@ export function Segmented<T extends string>({
   );
 }
 
-/** Im Kopf zusätzlich im Buttonlabel benannt; Farbe ist nie die einzige Information. */
-export function ConnectionMark({ mark }: { mark: 'connected' | 'attention' | null }) {
-  return mark ? <Text accessible={false} style={{ color: mark === 'attention' ? color.danger : color.green, ...type.label }}>●</Text> : null;
+/** Also named in the button label in the header; color is never the only information. */
+export function ConnectionMark({
+  mark,
+}: {
+  mark: 'connected' | 'attention' | null;
+}) {
+  return mark ? (
+    <Text
+      accessible={false}
+      style={{
+        color: mark === 'attention' ? color.danger : color.green,
+        ...type.label,
+      }}
+    >
+      ●
+    </Text>
+  ) : null;
 }
 
-/** Sichtbarer Zustand als kleines Etikett: Vorschlag · Aktiv · Pausiert. */
+/** Visible state as a small label: Suggestion · Active · Paused. */
 export function Badge({
   children,
   muted = false,
@@ -792,7 +816,7 @@ export function Badge({
   );
 }
 
-/** Fortschritt einer Prüfung als Balken. `value` zwischen 0 und 1. */
+/** Progress of a check as a bar. `value` between 0 and 1. */
 export function Progress({ value, label }: { value: number; label: string }) {
   const clamped = Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
   return (
@@ -808,9 +832,9 @@ export function Progress({ value, label }: { value: number; label: string }) {
 }
 
 /**
- * Zielnähe als Ring, der sich füllt. `value` zwischen 0 und 1; in der Mitte
- * die Zahl als Text, damit die Farbe nicht die einzige Information ist. Ohne
- * Wert bleibt der Ring leer und zeigt „–“.
+ * Goal progress as a ring that fills. `value` between 0 and 1; the number in
+ * the middle as text, so color isn't the only information. Without a value the
+ * ring stays empty and shows "–".
  */
 export function Ring({
   value,
@@ -820,7 +844,7 @@ export function Ring({
 }: {
   value: number | null;
   label: string;
-  /** Kurzer Text unter der Zahl, z. B. „Zielnähe“. */
+  /** Short text under the number, e.g. "Goal progress". */
   caption?: string;
   size?: number;
 }) {
@@ -839,7 +863,12 @@ export function Ring({
       accessibilityValue={
         percent === null
           ? undefined
-          : { min: 0, max: 100, now: percent, text: `${percent} %` }
+          : {
+              min: 0,
+              max: 100,
+              now: percent,
+              text: `${percent}${percentSign()}`,
+            }
       }
       style={[s.ring, { width: size, height: size }]}
     >
@@ -869,7 +898,7 @@ export function Ring({
       </Svg>
       <View style={s.ringCenter} pointerEvents="none">
         <Text style={s.ringValue}>
-          {percent === null ? '–' : `${percent} %`}
+          {percent === null ? '–' : `${percent}${percentSign()}`}
         </Text>
         {caption ? <Text style={s.ringCaption}>{caption}</Text> : null}
       </View>
@@ -878,8 +907,8 @@ export function Ring({
 }
 
 /**
- * Klappt Inhalt an Ort und Stelle auf (Symbol `⌄`). Für Nebenwege, die auf der
- * Seite bleiben sollen: Details, Verwalten, weitere Kennzahlen.
+ * Expands content in place (symbol `⌄`). For side paths that should stay on
+ * the page: details, managing, more figures.
  */
 export function Disclosure({
   title,
@@ -922,8 +951,8 @@ export function Disclosure({
 }
 
 /**
- * Das Aufklapp-Symbol `⌄`, gezeichnet als gedrehtes `›`: Die Systemschrift
- * setzt `⌄` klein auf die Grundlinie, wo es wie ein „v“ aussieht.
+ * The expand symbol `⌄`, drawn as a rotated `›`: the system font sets `⌄`
+ * small on the baseline, where it looks like a "v".
  */
 export function Chevron({ open = false }: { open?: boolean }) {
   return (
@@ -937,14 +966,13 @@ export function Chevron({ open = false }: { open?: boolean }) {
   );
 }
 
-// Ohne Provider (Tests mit Attrappe) gelten Abstände von null.
+// Without a provider (tests with a stub), insets count as zero.
 const InsetsContext: React.Context<EdgeInsets | null> =
   SafeAreaInsetsContext ?? React.createContext<EdgeInsets | null>(null);
 
 /**
- * Bottom-Sheet für Entscheidungen im Moment des Tuns: Start einer Einheit,
- * Bearbeiten einer Einheit. Die Seite darunter bleibt sichtbar, damit klar
- * ist, wohin man zurückkehrt.
+ * Bottom sheet for decisions made in the moment: starting a workout, editing a
+ * workout. The page underneath stays visible so it's clear where you return.
  */
 export function Sheet({
   visible,
@@ -962,30 +990,30 @@ export function Sheet({
     <Modal
       visible={visible}
       transparent
-      // Volle Bildschirmhöhe; den Abstand unten setzt das Sheet selbst.
+      // Full screen height; the sheet sets its own bottom spacing.
       statusBarTranslucent
       navigationBarTranslucent
       animationType="slide"
       onRequestClose={onClose}
     >
-      {/* Android passt das Modal-Fenster selbst an die Tastatur an. */}
+      {/* Android adjusts the modal window to the keyboard by itself. */}
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={s.sheetBackdrop}
       >
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`${title} schließen`}
+          accessibilityLabel={tr(`${title} schließen`, `Close ${title}`)}
           onPress={onClose}
           style={s.sheetScrim}
         />
         <ScrollView
-          // Als Zahl: Ein Prozentwert hielt auf Android nicht, lange Sheets
-          // ragten dann unter den Bildschirmrand und ihr Ende war unerreichbar.
+          // A number, not a percentage: on Android a percentage didn't hold, so
+          // long sheets reached below the screen edge and their end was out of reach.
           style={[s.sheetScroll, { maxHeight: height * 0.88 }]}
           contentContainerStyle={[
             s.sheetCard,
-            // Das Sheet reicht bis unter die Navigationsleiste.
+            // The sheet reaches below the navigation bar.
             { paddingBottom: space.lg + (insets?.bottom ?? 0) },
           ]}
           keyboardShouldPersistTaps="handled"
@@ -1009,24 +1037,24 @@ export function Icon({
   selected?: boolean;
 }) {
   const paths: Record<string, string> = {
-    Heute: 'M4 12L12 5L20 12M6 10V21H18V10M10 21V15H14V21',
-    Plan: 'M8 2V6M16 2V6M3 10H21M5 4H19A2 2 0 0 1 21 6V20A2 2 0 0 1 19 22H5A2 2 0 0 1 3 20V6A2 2 0 0 1 5 4M8 14H8.01M12 14H12.01M16 14H16.01M8 18H8.01M12 18H12.01',
-    Verlauf: 'M4 20V13M10 20V7M16 20V10M3 20H21',
-    Coach:
+    today: 'M4 12L12 5L20 12M6 10V21H18V10M10 21V15H14V21',
+    plan: 'M8 2V6M16 2V6M3 10H21M5 4H19A2 2 0 0 1 21 6V20A2 2 0 0 1 19 22H5A2 2 0 0 1 3 20V6A2 2 0 0 1 5 4M8 14H8.01M12 14H12.01M16 14H16.01M8 18H8.01M12 18H12.01',
+    history: 'M4 20V13M10 20V7M16 20V10M3 20H21',
+    coach:
       'M12 21A9 9 0 1 0 12 3A9 9 0 0 0 12 21M12 16A4 4 0 1 0 12 8A4 4 0 0 0 12 16M12 12H12.01',
-    Einstellungen:
+    settings:
       'M12 15A3 3 0 1 0 12 9A3 3 0 0 0 12 15M19.4 15A1.65 1.65 0 0 0 19.73 16.82L19.79 16.88A2 2 0 1 1 16.96 19.71L16.9 19.65A1.65 1.65 0 0 0 15.08 19.32A1.65 1.65 0 0 0 14.08 20.83V21A2 2 0 1 1 10.08 21V20.91A1.65 1.65 0 0 0 9 19.4A1.65 1.65 0 0 0 7.18 19.73L7.12 19.79A2 2 0 1 1 4.29 16.96L4.35 16.9A1.65 1.65 0 0 0 4.68 15.08A1.65 1.65 0 0 0 3.17 14.08H3A2 2 0 1 1 3 10.08H3.09A1.65 1.65 0 0 0 4.6 9A1.65 1.65 0 0 0 4.27 7.18L4.21 7.12A2 2 0 1 1 7.04 4.29L7.1 4.35A1.65 1.65 0 0 0 8.92 4.68H9A1.65 1.65 0 0 0 10 3.17V3A2 2 0 1 1 14 3V3.09A1.65 1.65 0 0 0 15 4.6A1.65 1.65 0 0 0 16.82 4.27L16.88 4.21A2 2 0 1 1 19.71 7.04L19.65 7.1A1.65 1.65 0 0 0 19.32 8.92V9A1.65 1.65 0 0 0 20.83 10H21A2 2 0 1 1 21 14H20.91A1.65 1.65 0 0 0 19.4 15',
-    Statistik: 'M4 20V13M10 20V7M16 20V10M3 20H21',
-    Routen: 'M6 20C6 15 18 17 18 11S6 10 6 4M4 4H8M4 20H8',
-    Vorlagen: 'M6 3H21V19H6ZM3 7V22H17M10 7H17M10 11H17M10 15H14',
-    Muskelkater:
+    statistics: 'M4 20V13M10 20V7M16 20V10M3 20H21',
+    routes: 'M6 20C6 15 18 17 18 11S6 10 6 4M4 4H8M4 20H8',
+    templates: 'M6 3H21V19H6ZM3 7V22H17M10 7H17M10 11H17M10 15H14',
+    soreness:
       'M10 4A2 2 0 1 0 14 4A2 2 0 1 0 10 4M8 8H16L18 14M6 14L8 8M10 8V15L8 21M14 8V15L16 21',
-    Mehr: 'M4 7H20M4 12H20M4 17H20',
+    more: 'M4 7H20M4 12H20M4 17H20',
   };
   return (
     <Svg width={23} height={23} viewBox="0 0 24 24">
       <Path
-        d={paths[name] || paths.Mehr}
+        d={paths[name] || paths.more}
         stroke={selected ? color.green : color.muted}
         strokeWidth={1.65}
         strokeLinecap="round"
@@ -1064,7 +1092,7 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-/** Web-Mercator-Projektion in Pixeln. Nur für die Kartenkacheln, nicht für Analyse. */
+/** Web Mercator projection in pixels. Only for map tiles, not for analysis. */
 function worldPixel(latitude: number, longitude: number, zoom: number): Point {
   const safeLatitude = clamp(latitude, -85.05112878, 85.05112878);
   const scale = TILE_SIZE * 2 ** zoom;
@@ -1118,7 +1146,7 @@ function routeZoom(points: MapPoint[]): number {
   return TILE_MIN_ZOOM;
 }
 
-/** Behält Anfang, Ende und Unterbrechungen, ohne bei langen Läufen das Ziel abzuschneiden. */
+/** Keeps start, end, and gaps without cutting off the finish on long runs. */
 function sampleRoute(points: RoutePoint[]): RoutePoint[] {
   const valid = points.filter(
     point =>
@@ -1248,7 +1276,7 @@ function mapProjection(points: MapPoint[]) {
   };
 }
 
-/** Berührung in Ansichts-Pixeln → viewBox-Koordinaten (Svg füllt zentriert, „meet“). */
+/** Touch in view pixels → viewBox coordinates (the Svg fills centered, "meet"). */
 function svgPointFromTouch(
   x: number,
   y: number,
@@ -1266,16 +1294,16 @@ function svgPointFromTouch(
   ];
 }
 
-/** Zusätzliche Kartenebenen der Detailseite: aktiver Moment, Kilometer, markierter Abschnitt. */
+/** Extra map layers for the detail page: active moment, kilometers, highlighted section. */
 export interface RouteOverlay {
-  /** Aktiver Moment; weißer Ring, damit er sich von Start/Ziel und Kilometern abhebt. */
+  /** Active moment; white ring so it stands out from start/finish and kilometers. */
   focus?: MapPoint;
-  /** Abschnitt (z. B. ein Kilometer), der hervorgehoben wird. */
+  /** Section (e.g. one kilometer) that is highlighted. */
   highlight?: MapPoint[];
   markers?: { point: MapPoint; label: string }[];
-  /** Kurzer Hinweis oben rechts, z. B. Wind. */
+  /** Short note in the top right, e.g. wind. */
   note?: string;
-  /** Antippen oder Ziehen auf der Karte: nächster Streckenpunkt. */
+  /** Tap or drag on the map: nearest route point. */
   onPick?: (point: RoutePoint) => void;
 }
 
@@ -1326,12 +1354,20 @@ function RouteSurface({
         <View pointerEvents="none" style={s.mapFallback} />
         <View pointerEvents="none" style={s.routeEmptyContent}>
           <Text style={s.routeEmptyTitle}>
-            {hasRecordedTrack ? 'Keine GPS-Strecke' : 'Route wird geladen'}
+            {hasRecordedTrack
+              ? tr('Keine GPS-Strecke', 'No GPS route')
+              : tr('Route wird geladen', 'Loading route')}
           </Text>
           <Text style={s.routeEmptyCopy}>
             {hasRecordedTrack
-              ? 'Für diese Einheit wurde keine Route gespeichert.'
-              : 'Die Kartendaten werden vorbereitet.'}
+              ? tr(
+                  'Für diese Einheit wurde keine Route gespeichert.',
+                  'No route was saved for this workout.',
+                )
+              : tr(
+                  'Die Kartendaten werden vorbereitet.',
+                  'Map data is being prepared.',
+                )}
           </Text>
         </View>
       </View>
@@ -1344,8 +1380,8 @@ function RouteSurface({
     return index >= 0 ? xy[index] : project(point);
   };
   const onPick = overlay?.onPick;
-  // Antippen/Ziehen: nächster Streckenpunkt in Bildkoordinaten. Die Geste
-  // bleibt bei der Karte, damit die Liste darunter nicht scrollt.
+  // Tap/drag: nearest route point in image coordinates. The gesture stays on
+  // the map so the list below doesn't scroll.
   const pick = (event: GestureResponderEvent) => {
     if (!onPick || !size || validTrack.length < 2) return;
     const { locationX, locationY } = event.nativeEvent;
@@ -1439,7 +1475,9 @@ function RouteSurface({
       </View>
       <View pointerEvents="none" style={s.routeBadge}>
         <Text style={s.routeBadgeText}>
-          {mode === 'live' ? 'Live-Route' : 'GPS-Route'}
+          {mode === 'live'
+            ? tr('Live-Route', 'Live route')
+            : tr('GPS-Route', 'GPS route')}
         </Text>
       </View>
       {overlay?.note ? (
@@ -1576,7 +1614,7 @@ function RouteSurface({
           : markerLabel(start, 'Start', 48, 'above')}
         {overlay?.markers?.length
           ? null
-          : markerLabel(finish, 'Ziel', 42, 'below')}
+          : markerLabel(finish, tr('Ziel', 'Finish'), 42, 'below')}
         {focus ? (
           <>
             <Circle
@@ -1610,7 +1648,9 @@ function RouteSurface({
         ) : null}
       </Svg>
       <View pointerEvents="none" style={s.mapAttribution}>
-        <Text style={s.mapAttributionText}>© OpenStreetMap-Mitwirkende</Text>
+        <Text style={s.mapAttributionText}>
+          {tr('© OpenStreetMap-Mitwirkende', '© OpenStreetMap contributors')}
+        </Text>
       </View>
     </View>
   );
@@ -1633,18 +1673,24 @@ export const Route = memo(function Route({
       accessibilityLabel={
         valid.length >= 2
           ? overlay?.onPick
-            ? 'Aufgezeichnete GPS-Strecke mit OpenStreetMap-Karte. Antippen wählt einen Moment des Laufs.'
-            : 'Aufgezeichnete GPS-Strecke mit OpenStreetMap-Karte. Start und Ziel sind markiert.'
-          : 'Keine GPS-Strecke aufgezeichnet'
+            ? tr(
+                'Aufgezeichnete GPS-Strecke mit OpenStreetMap-Karte. Antippen wählt einen Moment des Laufs.',
+                'Recorded GPS route on an OpenStreetMap map. Tap to pick a moment of the run.',
+              )
+            : tr(
+                'Aufgezeichnete GPS-Strecke mit OpenStreetMap-Karte. Start und Ziel sind markiert.',
+                'Recorded GPS route on an OpenStreetMap map. Start and finish are marked.',
+              )
+          : tr('Keine GPS-Strecke aufgezeichnet', 'No GPS route recorded')
       }
     />
   );
 });
 
 /**
- * Kartenansicht für geplante und laufende Routen. Die Straßenkarte kommt als
- * normale React-Native-Bildkachel mit identifizierendem User-Agent; das
- * verhindert die 403-Sperre des öffentlichen OSM-Tileservers.
+ * Map view for planned and running routes. The street map comes as normal
+ * React Native image tiles with an identifying User-Agent; that prevents the
+ * 403 block of the public OSM tile server.
  */
 export const RouteMap = memo(function RouteMap({
   planned,
@@ -1661,7 +1707,10 @@ export const RouteMap = memo(function RouteMap({
       track={track}
       current={current}
       mode={track.length > 1 || current ? 'live' : 'planned'}
-      accessibilityLabel="Geplante Laufstrecke auf einer OpenStreetMap-Karte mit Start, Ziel und bisheriger Position"
+      accessibilityLabel={tr(
+        'Geplante Laufstrecke auf einer OpenStreetMap-Karte mit Start, Ziel und bisheriger Position',
+        'Planned running route on an OpenStreetMap map with start, finish, and current position',
+      )}
     />
   );
 });
@@ -1675,32 +1724,42 @@ export function RouteOpenActions({
   onGoogleMaps: () => void;
   onCoMaps: () => void;
   disabled?: boolean;
-  /** Ohne eigene Überschrift, z. B. innerhalb einer `Disclosure`. */
+  /** Without its own heading, e.g. inside a `Disclosure`. */
   embedded?: boolean;
 }) {
   const actions = (
     <>
       <Button
         secondary
-        title="In Google Maps öffnen"
+        title={tr('In Google Maps öffnen', 'Open in Google Maps')}
         onPress={onGoogleMaps}
         disabled={disabled}
       />
       <Button
         secondary
-        title="In CoMaps oder anderer App öffnen"
+        title={tr(
+          'In CoMaps oder anderer App öffnen',
+          'Open in CoMaps or another app',
+        )}
         onPress={onCoMaps}
         disabled={disabled}
       />
       <Copy muted>
-        Google Maps rechnet die Route neu, CoMaps übernimmt sie genau.
+        {tr(
+          'Google Maps rechnet die Route neu, CoMaps übernimmt sie genau.',
+          'Google Maps recalculates the route, CoMaps uses it exactly.',
+        )}
       </Copy>
     </>
   );
   return embedded ? (
     actions
   ) : (
-    <Section title="Route in Karten-App öffnen">{actions}</Section>
+    <Section
+      title={tr('Route in Karten-App öffnen', 'Open route in a maps app')}
+    >
+      {actions}
+    </Section>
   );
 }
 

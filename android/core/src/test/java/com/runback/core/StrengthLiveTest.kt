@@ -7,9 +7,12 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 
 class StrengthLiveTest {
+    @Before fun setUp() { Lang.set("de") }
+
     private fun set(id: String, planned: JSONObject, completedAt: Long? = null) = JSONObject()
         .put("id", id).put("planned", planned).also { if (completedAt != null) it.put("completedAt", completedAt) }
 
@@ -20,7 +23,7 @@ class StrengthLiveTest {
         .also { if (rest != null) it.put("restSeconds", rest) }
 
     private fun session(vararg exercises: JSONObject) = JSONObject()
-        .put("id", "session-1").put("kind", "strength").put("name", "Oberkörper").put("status", "active")
+        .put("id", "session-1").put("kind", "strength").put("name", "Upper body").put("status", "active")
         .put("startTime", 1_000L).put("currentExercise", 0).put("exercises", JSONArray(exercises.toList()))
 
     private fun exercise(id: String, name: String, vararg sets: JSONObject) = JSONObject()
@@ -30,15 +33,15 @@ class StrengthLiveTest {
         .put("action", action).put("sessionId", "session-1").apply { fields.forEach { (key, value) -> put(key, value) } }
 
     @Test fun completeSetUsesPlanThenHistoryAndStartsRest() {
-        val bench = exercise("bench", "Bankdrücken",
+        val bench = exercise("bench", "Bench press",
             set("a", planned(reps = 8)), set("b", planned(reps = 8)))
-        val previous = session(exercise("bench", "Bankdrücken",
+        val previous = session(exercise("bench", "Bench press",
             set("x", planned(), 10L).put("actualWeightKg", 80.0).put("actualReps", 6)))
         val next = StrengthLive.apply(session(bench), command(StrengthLive.COMPLETE_SET, "setId" to "a"), 50_000L, listOf(previous))!!
 
         val done = next.getJSONArray("exercises").getJSONObject(0).getJSONArray("sets").getJSONObject(0)
         assertEquals(80.0, done.getDouble("actualWeightKg"), 0.0)
-        // Die Vorgabe schlägt den Wert aus der letzten Einheit.
+        // The plan beats the value from the last session.
         assertEquals(8, done.getInt("actualReps"))
         assertEquals(50_000L, done.getLong("completedAt"))
         assertEquals(50_000L, next.getLong("restStartedAt"))
@@ -46,20 +49,20 @@ class StrengthLiveTest {
     }
 
     @Test fun completeSetFromTheWatchUsesTheConfirmedRepCount() {
-        val bench = exercise("bench", "Bankdrücken", set("a", planned(reps = 8, weight = 60.0)))
+        val bench = exercise("bench", "Bench press", set("a", planned(reps = 8, weight = 60.0)))
         val next = StrengthLive.apply(session(bench),
             command(StrengthLive.COMPLETE_SET, "setId" to "a", "reps" to 11, "detectionId" to "d-1"), 9_000L, emptyList())!!
         val done = next.getJSONArray("exercises").getJSONObject(0).getJSONArray("sets").getJSONObject(0)
         assertEquals(11, done.getInt("actualReps"))
         assertEquals(60.0, done.getDouble("actualWeightKg"), 0.0)
         assertEquals(9_000L, next.getLong("restStartedAt"))
-        // Eine unsinnige Zahl ändert nichts an der Vorbelegung.
+        // A nonsense number changes nothing in the prefill.
         val odd = StrengthLive.apply(session(bench), command(StrengthLive.COMPLETE_SET, "setId" to "a", "reps" to -3), 9_000L, emptyList())!!
         assertEquals(8, odd.getJSONArray("exercises").getJSONObject(0).getJSONArray("sets").getJSONObject(0).getInt("actualReps"))
     }
 
     @Test fun completeSetWithoutAnyValueLeavesValuesUnknown() {
-        val free = exercise("row", "Rudern", set("a", JSONObject().put("kind", "normal").put("loadKind", "kg")))
+        val free = exercise("row", "Row", set("a", JSONObject().put("kind", "normal").put("loadKind", "kg")))
         val next = StrengthLive.apply(session(free), command(StrengthLive.COMPLETE_SET), 5_000L, emptyList())!!
         val done = next.getJSONArray("exercises").getJSONObject(0).getJSONArray("sets").getJSONObject(0)
         assertFalse(done.has("actualWeightKg"))
@@ -96,20 +99,20 @@ class StrengthLiveTest {
     }
 
     @Test fun completingAnAlreadyCompletedSetChangesNothing() {
-        val bench = exercise("bench", "Bankdrücken", set("a", planned(reps = 8), 10L))
+        val bench = exercise("bench", "Bench press", set("a", planned(reps = 8), 10L))
         assertNull(StrengthLive.apply(session(bench), command(StrengthLive.COMPLETE_SET, "setId" to "a"), 20L, emptyList()))
         assertNull(StrengthLive.apply(session(bench), command(StrengthLive.COMPLETE_SET), 20L, emptyList()))
     }
 
     @Test fun commandsForAnotherOrFinishedSessionAreIgnored() {
-        val bench = exercise("bench", "Bankdrücken", set("a", planned(reps = 8)))
+        val bench = exercise("bench", "Bench press", set("a", planned(reps = 8)))
         val other = command(StrengthLive.COMPLETE_SET).put("sessionId", "session-2")
         assertNull(StrengthLive.apply(session(bench), other, 20L, emptyList()))
         assertNull(StrengthLive.apply(session(bench).put("status", "finished"), command(StrengthLive.COMPLETE_SET), 20L, emptyList()))
     }
 
     @Test fun pausedRestKeepsItsRemainingTimeAndResumesLater() {
-        val bench = exercise("bench", "Bankdrücken", set("a", planned(reps = 8, rest = 120)), set("b", planned(reps = 8)))
+        val bench = exercise("bench", "Bench press", set("a", planned(reps = 8, rest = 120)), set("b", planned(reps = 8)))
         val resting = StrengthLive.apply(session(bench), command(StrengthLive.COMPLETE_SET), 0L, emptyList())!!
         val paused = StrengthLive.apply(resting, command(StrengthLive.PAUSE_REST), 30_000L, emptyList())!!
         assertEquals(90L, StrengthLive.restRemaining(paused, 30_000L))
@@ -124,7 +127,7 @@ class StrengthLiveTest {
     }
 
     @Test fun skipRestClearsTheTimerOnce() {
-        val bench = exercise("bench", "Bankdrücken", set("a", planned(reps = 8)), set("b", planned(reps = 8)))
+        val bench = exercise("bench", "Bench press", set("a", planned(reps = 8)), set("b", planned(reps = 8)))
         val resting = StrengthLive.apply(session(bench), command(StrengthLive.COMPLETE_SET), 0L, emptyList())!!
         val skipped = StrengthLive.apply(resting, command(StrengthLive.SKIP_REST), 1_000L, emptyList())!!
         assertFalse(skipped.has("restStartedAt"))
@@ -133,10 +136,10 @@ class StrengthLiveTest {
     }
 
     @Test fun restCommandsOnlyHitTheRestTheSenderSaw() {
-        val bench = exercise("bench", "Bankdrücken", set("a", planned(reps = 8)), set("b", planned(reps = 8)), set("c", planned(reps = 8)))
+        val bench = exercise("bench", "Bench press", set("a", planned(reps = 8)), set("b", planned(reps = 8)), set("c", planned(reps = 8)))
         val first = StrengthLive.apply(session(bench), command(StrengthLive.COMPLETE_SET), 1_000L, emptyList())!!
         val second = StrengthLive.apply(first, command(StrengthLive.COMPLETE_SET), 5_000L, emptyList())!!
-        // Die Uhr zeigt noch die erste Pause.
+        // The watch still shows the first rest.
         assertNull(StrengthLive.apply(second, command(StrengthLive.SKIP_REST, "restStartedAt" to 1_000L), 6_000L, emptyList()))
         assertNull(StrengthLive.apply(second, command(StrengthLive.PAUSE_REST, "restStartedAt" to 1_000L), 6_000L, emptyList()))
         assertFalse(StrengthLive.apply(second, command(StrengthLive.SKIP_REST, "restStartedAt" to 5_000L), 6_000L, emptyList())!!
@@ -153,27 +156,46 @@ class StrengthLiveTest {
     }
 
     @Test fun mirrorShowsNextSetLabelProgressAndRest() {
-        val bench = exercise("bench", "Bankdrücken",
+        val bench = exercise("bench", "Bench press",
             set("a", planned(reps = 8, weight = 82.5), 1_000L).put("actualReps", 8).put("actualWeightKg", 82.5),
             set("b", planned(reps = 8, weight = 82.5)),
             set("c", planned(reps = 8)).put("skipped", true))
-        val workout = session(bench, exercise("row", "Rudern", set("d", planned(reps = 10))))
+        val workout = session(bench, exercise("row", "Row", set("d", planned(reps = 10))))
             .put("restStartedAt", 1_000L).put("restSeconds", 90)
         val mirror = StrengthLive.mirror(workout, emptyList(), 31_000L, restTimer = true)
 
         assertTrue(mirror.getBoolean("active"))
         assertEquals(1, mirror.getInt("completedSets"))
         assertEquals(3, mirror.getInt("totalSets"))
-        assertEquals("Bankdrücken", mirror.getJSONObject("exercise").getString("name"))
+        assertEquals("Bench press", mirror.getJSONObject("exercise").getString("name"))
         assertEquals("b", mirror.getJSONObject("set").getString("id"))
         assertEquals(2, mirror.getJSONObject("set").getInt("number"))
         assertEquals("82,5 kg × 8 Wdh.", mirror.getJSONObject("set").getString("label"))
-        // Die Uhr wählt damit die Parameter der Satzerkennung; Zeitsätze zählt sie nicht.
+        // The watch picks the set-detection parameters from this; it does not count timed sets.
         assertEquals("bench", mirror.getJSONObject("exercise").getString("exerciseId"))
         assertFalse(mirror.getJSONObject("set").getBoolean("timed"))
         assertEquals(60L, mirror.getJSONObject("rest").getLong("remaining"))
         assertEquals(91_000L, mirror.getJSONObject("rest").getLong("endsAt"))
         assertFalse(StrengthLive.mirror(workout, emptyList(), 31_000L, restTimer = false).has("rest"))
+    }
+
+    @Test fun mirrorKeepsStoredNamesAndCarriesTheNamesOfThePhoneLanguage() {
+        val store = FakeDocuments()
+        val english = JSONObject().put("language", "en").put("names", JSONObject().put("Bankdrücken", "Bench press"))
+        DisplayNames.update(store, english)
+        try {
+            Lang.set("en")
+            val workout = session(exercise("bench", "Bankdrücken", set("a", planned(reps = 8))))
+                .put("name", "Freies Training")
+            val mirror = StrengthLive.mirror(workout, emptyList(), 1_000L, restTimer = false)
+            assertEquals("Freies Training", mirror.getString("name"))
+            assertEquals("Free training", mirror.getString("displayName"))
+            assertEquals("Bankdrücken", mirror.getJSONObject("exercise").getString("name"))
+            assertEquals("Bench press", mirror.getJSONObject("exercise").getString("displayName"))
+        } finally {
+            Lang.set("de")
+            DisplayNames.update(store, JSONObject().put("language", "de").put("names", JSONObject()))
+        }
     }
 
     @Test fun labelsFollowTheAppWording() {
@@ -212,15 +234,15 @@ class StrengthLiveTest {
         assertTrue(pattern[1] == pattern[3] && pattern[5] > pattern[1] * 3)
         val pcm = RestCue.pcm(8_000)
         assertEquals((RestCue.DURATION_MS * 8).toInt(), pcm.size)
-        // In den Lücken ist es still, im Ton nicht.
+        // Silent in the gaps, not in the tone.
         assertEquals(0, pcm[(pattern[1] * 8 + 40).toInt()].toInt())
         assertTrue(pcm.any { it > 1000 })
     }
 
-    // Gleiche Vorlage und Zeit wie in __tests__/strengthWatchStart.test.ts; beide Seiten müssen dieselben Kennungen bilden.
+    // Same template and time as in __tests__/strengthWatchStart.test.ts; both sides must build the same IDs.
     private val template = JSONObject().put("id", "tpl-push").put("name", "Push").put("days", JSONArray(listOf(1, 4)))
         .put("exercises", JSONArray(listOf(
-            JSONObject().put("exerciseId", "bench").put("name", "Bankdrücken").put("sets", JSONArray(listOf(
+            JSONObject().put("exerciseId", "bench").put("name", "Bench press").put("sets", JSONArray(listOf(
                 planned(reps = 8, weight = 80.0), planned(reps = 8, weight = 80.0)))),
             JSONObject().put("exerciseId", "dip").put("name", "Dips").put("sets", JSONArray(listOf(planned(reps = 10)))),
         )))
@@ -253,7 +275,7 @@ class StrengthLiveTest {
     }
 
     @Test fun templateListKeepsOnlyWhatTheWatchShows() {
-        val list = StrengthLive.templateList(JSONArray(listOf(template, JSONObject().put("name", "ohne Kennung"))), 9L)
+        val list = StrengthLive.templateList(JSONArray(listOf(template, JSONObject().put("name", "no ID"))), 9L)
         val only = list.getJSONArray("templates")
         assertEquals(1, only.length())
         val item = only.getJSONObject(0)
@@ -261,12 +283,12 @@ class StrengthLiveTest {
         assertEquals(2, item.getInt("exercises"))
         assertEquals(3, item.getInt("sets"))
         assertEquals(JSONArray(listOf(1, 4)).toString(), item.getJSONArray("days").toString())
-        // Keine Sätze, keine Gewichte: gestartet wird auf dem Handy.
+        // No sets, no weights: the session is started on the phone.
         assertFalse(item.toString().contains("weightKg"))
     }
 
     @Test fun startIsNotAnEditOfARunningSession() {
-        val bench = exercise("bench", "Bankdrücken", set("a", planned(reps = 8)))
+        val bench = exercise("bench", "Bench press", set("a", planned(reps = 8)))
         assertNull(StrengthLive.apply(session(bench), command(StrengthLive.START_SESSION), 20L, emptyList()))
     }
 }

@@ -4,7 +4,7 @@ import com.runback.core.WellnessRow
 import org.json.JSONArray
 import java.util.Locale
 
-/** Only explicitly labelled weight records are supported in generic JSON. */
+/** Only explicitly labeled weight records are supported in generic JSON. */
 internal object GenericWellnessJson {
     fun parse(text: String, checkCancelled: () -> Unit = {}): List<WellnessRow> {
         if (!text.trimStart().startsWith("[")) return emptyList()

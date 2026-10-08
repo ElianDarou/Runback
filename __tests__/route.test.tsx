@@ -11,8 +11,8 @@ const points: RoutePoint[] = [
   { latitude: 48.002, longitude: 7.81 },
 ];
 
-describe('GPS-Strecke', () => {
-  it('zeigt Kartenkacheln, kontrastreiche Linien und Start/Ziel an', async () => {
+describe('GPS route', () => {
+  it('shows map tiles, high-contrast lines and start/finish', async () => {
     let tree!: TestRenderer.ReactTestRenderer;
     await act(async () => {
       tree = TestRenderer.create(<Route points={points} />);
@@ -34,7 +34,7 @@ describe('GPS-Strecke', () => {
     expect(paths[1].props.d).toMatch(/L/);
   });
 
-  it('zeigt auch ohne Route eine erkennbare leere Kartenfläche', async () => {
+  it('shows a recognizable empty map area even without a route', async () => {
     let tree!: TestRenderer.ReactTestRenderer;
     await act(async () => {
       tree = TestRenderer.create(<Route points={[]} />);
@@ -50,7 +50,7 @@ describe('GPS-Strecke', () => {
     ).toContain('Keine GPS-Strecke');
   });
 
-  it('zeigt auch geplante Routen auf echten Kartentiles statt auf einem Raster', async () => {
+  it('shows planned routes on real map tiles instead of a grid', async () => {
     let tree!: TestRenderer.ReactTestRenderer;
     await act(async () => {
       tree = TestRenderer.create(<RouteMap planned={points} />);

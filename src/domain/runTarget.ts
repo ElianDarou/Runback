@@ -1,3 +1,4 @@
+import { tr } from './i18n';
 import type { RunPurpose } from './types';
 import {
   normalizeRunAnnouncements,
@@ -37,7 +38,7 @@ export const NO_RUN_TARGET: RunTarget = {
 const validOutput = (value: unknown): value is RunTargetOutput =>
   value === 'voice' || value === 'vibration' || value === 'both';
 
-/** Alte oder unvollständige Einstellungen aktivieren niemals still Hinweise. */
+/** Old or incomplete settings never silently switch cues on. */
 export function normalizeRunTarget(value: unknown): RunTarget {
   if (!value || typeof value !== 'object') return NO_RUN_TARGET;
   const raw = value as Record<string, unknown>;
@@ -109,13 +110,13 @@ export function parsePaceInput(value: string): number | null {
   return seconds >= 120 && seconds <= 1200 ? seconds : null;
 }
 
-/** Schrittweite der Plus-/Minus-Tasten für das Zieltempo während des Laufs. */
+/** Step size of the plus/minus buttons for the target pace during a run. */
 export const PACE_STEP_SECONDS = 5;
 
 /**
- * Nächstes Zieltempo nach einem Tastendruck: `+1` erhöht die Zahl (langsamer),
- * `-1` senkt sie (schneller). Außerhalb des gültigen Bereichs gibt es keinen
- * Schritt; ein krummer Wert rastet auf das nächste 5-Sekunden-Raster ein.
+ * Next target pace after a button press: `+1` raises the number (slower),
+ * `-1` lowers it (faster). Outside the valid range there is no step; an odd
+ * value snaps to the next 5-second grid.
  */
 export function stepTargetPace(
   secondsPerKm: number,
@@ -141,16 +142,19 @@ export function formatTargetPace(seconds: number): string {
 export function runTargetLabel(target: RunTarget): string {
   if (target.kind === 'pace') {
     return target.mode === 'ceiling'
-      ? `Nicht schneller als ${formatTargetPace(target.secondsPerKm)}`
+      ? tr(
+          `Nicht schneller als ${formatTargetPace(target.secondsPerKm)}`,
+          `Not faster than ${formatTargetPace(target.secondsPerKm)}`,
+        )
       : formatTargetPace(target.secondsPerKm);
   }
   if (target.kind === 'heart_rate') {
     return `${target.minBpm}–${target.maxBpm} bpm`;
   }
-  return 'Ohne Ziel';
+  return tr('Ohne Ziel', 'No target');
 }
 
-/** Locker und lang bleiben Obergrenzen; ein Pacemaker darf den Zweck nicht verdrängen. */
+/** Easy and long runs stay capped; a pacer must not override their purpose. */
 export function targetForPurpose(
   target: RunTarget,
   purpose: RunPurpose,

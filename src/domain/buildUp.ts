@@ -4,19 +4,20 @@ import { startOfWeek } from './schedule';
 import { peakLongRunKm, formatDistanceKm } from './raceGoal';
 import { validRun } from './statistics';
 import { median } from './inference';
+import { tr } from './i18n';
 
 /**
- * Aufbau zum Wettkampf: welcher lange Lauf in welche Woche gehört.
+ * Build-up to a race: which long run goes into which week.
  *
- * Feste, versionierte Regeln — kein lernendes Profil:
- * - Der lange Lauf wächst um höchstens zehn Prozent je Woche, ausgehend vom
- *   Median der längsten Läufe der letzten vier Wochen.
- * - Jede vierte Aufbauwoche ist eine Erholungswoche mit vier Fünfteln.
- * - Die Woche vor dem Wettkampf ist Entlastung (60 %), die Wettkampfwoche
- *   enthält nur den Wettkampf und einen kurzen lockeren Lauf.
- * - Der Aufbau endet beim angepeilten langen Lauf (`peakLongRunKm`).
- * Reicht das bis zum Zieldatum nicht, sagt der Aufbau, wie weit er kommt —
- * er verkürzt weder die Regel noch die Zeit.
+ * Fixed, versioned rules, not a learning profile:
+ * - The long run grows by at most ten percent per week, starting from the
+ *   median of the longest runs of the last four weeks.
+ * - Every fourth build-up week is a recovery week at four fifths.
+ * - The week before the race is a taper (60 %); the race week only contains
+ *   the race and a short easy run.
+ * - The build-up ends at the targeted long run (`peakLongRunKm`).
+ * If that doesn't reach the target date, the build-up says how far it gets;
+ * it neither shortens the rule nor the time.
  */
 export const BUILD_UP_VERSION = 'buildup-v1';
 export const MAX_WEEKLY_GROWTH = 1.1;
@@ -24,7 +25,7 @@ export const RECOVERY_SHARE = 0.8;
 export const TAPER_SHARE = 0.6;
 export const BASE_WINDOW_DAYS = 28;
 export const PACE_WINDOW_DAYS = 56;
-/** Kurzer lockerer Lauf in der Wettkampfwoche, in Minuten. */
+/** Short easy run in the race week, in minutes. */
 export const RACE_WEEK_EASY_MINUTES = 30;
 
 const DAY = 86400000;
@@ -51,13 +52,13 @@ export type BuildUpStatus =
 export interface BuildUpWeek {
   version: typeof BUILD_UP_VERSION;
   status: BuildUpStatus;
-  /** Wochen von dieser Woche bis zur Wettkampfwoche; 0 ist die Wettkampfwoche. */
+  /** Weeks from this week to the race week; 0 is the race week. */
   weeksToGo: number;
   phase?: BuildUpPhase;
   peakLongRunKm: number;
   baseLongRunKm?: number;
   longRunKm?: number;
-  /** Was der Aufbau bis zur letzten Aufbauwoche erreicht. */
+  /** What the build-up reaches by the last build-up week. */
   reachableKm?: number;
   paceSecondsPerKm?: number;
   slots: RunSlotPlan[];
@@ -70,7 +71,7 @@ const roundMinutes = (value: number) => Math.max(10, Math.round(value / 5) * 5);
 
 const weekKeyOf = (run: Run) => startOfWeek(run.startTime);
 
-/** Median der längsten Läufe je Woche im Fenster; braucht zwei Wochen. */
+/** Median of the longest runs per week in the window; needs two weeks. */
 export function baseLongRunKm(
   runs: Run[],
   now: number,
@@ -91,7 +92,7 @@ export function baseLongRunKm(
   return { km: round1(median(values)), weeks: values.length };
 }
 
-/** Median-Tempo ruhiger Läufe ab 5 km in den letzten acht Wochen. */
+/** Median pace of easy runs from 5 km in the last eight weeks. */
 export function longRunPace(runs: Run[], now: number): number | undefined {
   const windowStart = now - PACE_WINDOW_DAYS * DAY;
   const paces = runs
@@ -123,8 +124,8 @@ const weekdayOf = (date: ScheduleDate): number => {
 };
 
 /**
- * Lange Läufe je Aufbauwoche ab der aktuellen Woche, bis zur letzten
- * Aufbauwoche vor der Entlastung. Index 0 ist die aktuelle Woche.
+ * Long runs per build-up week, from the current week to the last build-up
+ * week before the taper. Index 0 is the current week.
  */
 export function longRunSequence(
   baseKm: number,
@@ -162,7 +163,12 @@ export function buildUpWeek(input: BuildUpInput): BuildUpWeek {
     return {
       ...base,
       status: 'past_target',
-      rationale: ['Das Zieldatum liegt vor dieser Woche; die Routine gilt wie gewohnt.'],
+      rationale: [
+        tr(
+          'Das Zieldatum liegt vor dieser Woche; die Routine gilt wie gewohnt.',
+          'The target date is before this week; the routine applies as usual.',
+        ),
+      ],
     };
   }
   const runDays = [...new Set(input.routine.days)].sort((a, b) => a - b);
@@ -170,7 +176,12 @@ export function buildUpWeek(input: BuildUpInput): BuildUpWeek {
     return {
       ...base,
       status: 'no_days',
-      limits: ['Lege unter „Zeit & Rhythmus“ deine Lauftage fest, dann plant Runback den Aufbau.'],
+      limits: [
+        tr(
+          'Lege unter „Zeit & Rhythmus“ deine Lauftage fest, dann plant Runback den Aufbau.',
+          'Set your running days under “Time & routine”, then Runback plans the build-up.',
+        ),
+      ],
     };
   }
   const baseline = baseLongRunKm(input.runs, input.now);
@@ -178,11 +189,19 @@ export function buildUpWeek(input: BuildUpInput): BuildUpWeek {
   const missing: string[] = [];
   if (baseline.km === undefined) {
     missing.push(
-      'Für den Aufbau fehlen Läufe aus mindestens zwei der letzten vier Wochen.',
+      tr(
+        'Für den Aufbau fehlen Läufe aus mindestens zwei der letzten vier Wochen.',
+        'The build-up needs runs from at least two of the last four weeks.',
+      ),
     );
   }
   if (pace === undefined) {
-    missing.push('Für die Dauer fehlt ein Lauf ab 5 km aus den letzten acht Wochen.');
+    missing.push(
+      tr(
+        'Für die Dauer fehlt ein Lauf ab 5 km aus den letzten acht Wochen.',
+        'The duration needs a run of 5 km or more from the last eight weeks.',
+      ),
+    );
   }
   if (baseline.km === undefined || pace === undefined) {
     return { ...base, status: 'insufficient_data', baseLongRunKm: baseline.km, limits: missing };
@@ -190,7 +209,7 @@ export function buildUpWeek(input: BuildUpInput): BuildUpWeek {
   const easy: Omit<RunSlotPlan, 'routineDay'> = {
     minutes: input.routine.minutes,
     purpose: 'easy',
-    title: 'Ruhige Runde',
+    title: tr('Ruhige Runde', 'Easy run'),
     effort: 'easy',
   };
   const minutesFor = (km: number) => roundMinutes((km * pace) / 60);
@@ -222,13 +241,16 @@ export function buildUpWeek(input: BuildUpInput): BuildUpWeek {
       paceSecondsPerKm: pace,
       slots,
       rationale: [
-        `Wettkampfwoche: ${input.goal.name} am ${input.goal.targetDate}, davor nur kurz und locker.`,
+        tr(
+          `Wettkampfwoche: ${input.goal.name} am ${input.goal.targetDate}, davor nur kurz und locker.`,
+          `Race week: ${input.goal.name} on ${input.goal.targetDate}, only short and easy before it.`,
+        ),
       ],
     };
   }
 
-  // Wochen bis zur Entlastung, gerechnet ab der aktuellen Woche, damit ein
-  // erneuter Vorschlag nach neuen Läufen vom echten Stand ausgeht.
+  // Weeks until the taper, counted from the current week, so a new suggestion
+  // after new runs starts from the real state.
   const buildWeeksTotal = Math.max(0, weeksBetween(currentWeekStart, raceWeekStart) - 1);
   const sequence = longRunSequence(baseline.km, peak, buildWeeksTotal);
   const reachable = sequence.length ? sequence[sequence.length - 1].km : baseline.km;
@@ -236,9 +258,14 @@ export function buildUpWeek(input: BuildUpInput): BuildUpWeek {
   const limits: string[] = [];
   if (reachable < peak) {
     limits.push(
-      `Mit höchstens 10 % mehr pro Woche kommst du bis zum Ziel auf lange Läufe von etwa ${formatDistanceKm(
-        reachable,
-      )} statt ${formatDistanceKm(peak)}.`,
+      tr(
+        `Mit höchstens 10 % mehr pro Woche kommst du bis zum Ziel auf lange Läufe von etwa ${formatDistanceKm(
+          reachable,
+        )} statt ${formatDistanceKm(peak)}.`,
+        `With at most 10% more per week, you reach long runs of about ${formatDistanceKm(
+          reachable,
+        )} by the target instead of ${formatDistanceKm(peak)}.`,
+      ),
     );
   }
   let longKm: number;
@@ -257,7 +284,10 @@ export function buildUpWeek(input: BuildUpInput): BuildUpWeek {
           routineDay: day,
           minutes: minutesFor(longKm),
           purpose: 'long',
-          title: `Langer Lauf · ${formatDistanceKm(longKm)}`,
+          title: tr(
+            `Langer Lauf · ${formatDistanceKm(longKm)}`,
+            `Long run · ${formatDistanceKm(longKm)}`,
+          ),
           effort: phase === 'taper' ? 'easy' : 'hard',
           distanceKm: longKm,
           stretch: true,
@@ -266,13 +296,28 @@ export function buildUpWeek(input: BuildUpInput): BuildUpWeek {
   );
   const rationale =
     phase === 'taper'
-      ? [`Entlastung: noch eine Woche bis ${input.goal.name}, langer Lauf ${formatDistanceKm(longKm)}.`]
+      ? [
+          tr(
+            `Entlastung: noch eine Woche bis ${input.goal.name}, langer Lauf ${formatDistanceKm(longKm)}.`,
+            `Taper: one week to ${input.goal.name}, long run ${formatDistanceKm(longKm)}.`,
+          ),
+        ]
       : phase === 'recovery'
-      ? [`Erholungswoche im Aufbau zu ${input.goal.name}: langer Lauf ${formatDistanceKm(longKm)}.`]
+      ? [
+          tr(
+            `Erholungswoche im Aufbau zu ${input.goal.name}: langer Lauf ${formatDistanceKm(longKm)}.`,
+            `Recovery week in the build-up to ${input.goal.name}: long run ${formatDistanceKm(longKm)}.`,
+          ),
+        ]
       : [
-          `Aufbau zu ${input.goal.name}: noch ${weeksToGo} Wochen, langer Lauf ${formatDistanceKm(
-            longKm,
-          )} von ${formatDistanceKm(peak)}.`,
+          tr(
+            `Aufbau zu ${input.goal.name}: noch ${weeksToGo} Wochen, langer Lauf ${formatDistanceKm(
+              longKm,
+            )} von ${formatDistanceKm(peak)}.`,
+            `Build-up to ${input.goal.name}: ${weeksToGo} weeks to go, long run ${formatDistanceKm(
+              longKm,
+            )} of ${formatDistanceKm(peak)}.`,
+          ),
         ];
   return {
     ...base,

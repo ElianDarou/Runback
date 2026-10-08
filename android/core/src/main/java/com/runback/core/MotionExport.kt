@@ -11,35 +11,35 @@ import kotlin.math.abs
 import kotlin.math.roundToLong
 
 /**
- * Export der Bewegungsdaten als ZIP mit CSV-Dateien, gedacht fürs Trainieren
- * am PC (Anleitung: docs/bewegungsdaten.md). Zeit überall in ms relativ zum
- * Start der Einheit auf der Handyuhr; die Messwerte der Uhr werden dafür um
- * den gemessenen Uhrenversatz verschoben. Ist er unbekannt, bleibt die Uhrzeit
- * der Uhr stehen und `clock_aligned` ist 0. Unbekannte Werte bleiben leer.
+ * Export of the motion data as a ZIP with CSV files, meant for training on a
+ * PC (guide: docs/motion-data.md). Time everywhere in ms relative to the start
+ * of the session on the phone clock; the watch's readings are shifted by the
+ * measured clock offset. If it is unknown, the watch's time stays as it is and
+ * `clock_aligned` is 0. Unknown values stay empty.
  */
 object MotionExport {
     const val FORMAT = "runback-motion-export"
     /**
-     * 2: `heart.csv` und Spalte `heart_samples` (Rohdatei ab Version 2).
-     * 3: Erkennungen der Uhr (`detections.csv`, `detected_reps.csv`,
-     * `detections.jsonl`), Spalten `label`, `detection_id`, `detected_reps` in
-     * `sets.csv` und `detections` in `sessions.csv`.
+     * 2: `heart.csv` and column `heart_samples` (raw file from version 2).
+     * 3: watch detections (`detections.csv`, `detected_reps.csv`,
+     * `detections.jsonl`), columns `label`, `detection_id`, `detected_reps` in
+     * `sets.csv` and `detections` in `sessions.csv`.
      */
     const val VERSION = 3
 
     class Session(
-        /** Dokument `motion_<id>` vom Handy: Ereignisse, Pings, Status. */
+        /** Document `motion_<id>` from the phone: events, pings, status. */
         val meta: JSONObject,
-        /** Abgeschlossene Krafteinheit; `null`, wenn sie gelöscht wurde oder noch läuft. */
+        /** Completed strength session; `null` if it was deleted or is still running. */
         val strength: JSONObject?,
-        /** Öffnet die unkomprimierte Rohdatei der Uhr; `null`, wenn sie (noch) fehlt. */
+        /** Opens the uncompressed raw file from the watch; `null` if it is (still) missing. */
         val raw: (() -> InputStream)?,
     )
 
     /**
-     * Liest eine Rohdatei einmal ganz. `false`, wenn sie sich nicht lesen
-     * lässt (fremd, beschädigt): Der Export lässt sie dann weg, statt
-     * mittendrin abzubrechen. Ein abgeschnittenes Ende gilt als lesbar.
+     * Reads a raw file completely once. `false` if it cannot be read
+     * (foreign, damaged): the export then leaves it out instead of
+     * aborting midway. A truncated end counts as readable.
      */
     fun readable(open: () -> InputStream): Boolean = try {
         open().use { input -> MotionFormat.Reader(input).use { reader -> while (reader.next() != null) Unit } }
@@ -49,11 +49,13 @@ object MotionExport {
     }
 
     /**
-     * `directory` (leer oder mit `/` am Ende) legt den Export in einen Ordner,
-     * z. B. `bewegungsdaten/` im Krafttraining-Export; darunter bleibt alles gleich.
+     * `directory` (empty or ending with `/`) puts the export into a folder,
+     * e.g. `bewegungsdaten/` (the German folder name) in the strength export; everything below stays the same.
      */
     fun write(zip: ZipOutputStream, sessions: List<Session>, exportedAt: Long, directory: String = "") {
-        require(directory.isEmpty() || directory.matches(Regex("[A-Za-z0-9_-]{1,40}/"))) { "Ungültiger Ordner im Export" }
+        require(directory.isEmpty() || directory.matches(Regex("[A-Za-z0-9_-]{1,40}/"))) {
+            Lang.tr("Ungültiger Ordner im Export", "Invalid folder in the export")
+        }
         val summary = StringBuilder(SESSION_COLUMNS.joinToString(",")).append('\n')
         for (session in sessions) {
             val row = writeSession(zip, session, directory)
@@ -70,8 +72,9 @@ object MotionExport {
                 .put("detectionLogVersion", SetDetectionLog.VERSION)
                 .put("exportedAt", exportedAt)
                 .put("sessions", sessions.size)
+                // Export text values stay German: they are part of the exported file's content.
                 .put("timeBase", "t_ms = Millisekunden seit Start der Einheit, Handyuhr")
-                .put("guide", "docs/bewegungsdaten.md im Runback-Repository")
+                .put("guide", "docs/motion-data.md im Runback-Repository")
                 .toString(2))
         }
     }
@@ -85,7 +88,7 @@ object MotionExport {
     private fun writeSession(zip: ZipOutputStream, session: Session, directory: String): List<String> {
         val meta = session.meta
         val id = meta.optString("sessionId").also {
-            require(it.matches(Regex("[A-Za-z0-9_-]{1,100}"))) { "Ungültige Einheit im Export" }
+            require(it.matches(Regex("[A-Za-z0-9_-]{1,100}"))) { Lang.tr("Ungültige Einheit im Export", "Invalid session in the export") }
         }
         val dir = "$directory$id"
         val strength = session.strength
@@ -98,8 +101,8 @@ object MotionExport {
         var detections: List<SetDetectionLog.Entry>? = null
         var toMs: ((Long) -> Double)? = null
         session.raw?.let { open ->
-            // Je Messart ein Durchgang: zwei ZIP-Einträge lassen sich nicht gleichzeitig schreiben,
-            // und eine Stunde Gyroskop soll nicht im Speicher landen.
+            // One pass per sensor kind: two ZIP entries cannot be written at the same time,
+            // and an hour of gyroscope must not end up in memory.
             for (kind in listOf(MotionFormat.KIND_ACCEL, MotionFormat.KIND_GYRO)) {
                 open().use { input ->
                     MotionFormat.Reader(input).use { reader ->
@@ -109,13 +112,13 @@ object MotionExport {
                     }
                 }
             }
-            // Puls gibt es erst ab Version 2 der Rohdatei; ältere Dateien bekommen keine leere Tabelle.
+            // Heart rate exists only from version 2 of the raw file; older files get no empty table.
             open().use { input ->
                 MotionFormat.Reader(input).use { reader ->
                     if (reader.version >= 2) counts[MotionFormat.KIND_HEART.toInt()] = writeHeart(zip, "$dir/heart.csv", reader, start, clock)
                 }
             }
-            // Erkennungen der Uhr ab Version 3; auch ohne Erkennung eine leere Tabelle, damit „keine“ von „unbekannt“ trennbar bleibt.
+            // The watch's detections from version 3; even without detections an empty table, so “none” stays distinguishable from “unknown”.
             open().use { input ->
                 MotionFormat.Reader(input).use { reader ->
                     if (reader.version >= 3) {
@@ -171,7 +174,7 @@ object MotionExport {
         )
     }
 
-    /** Schreibt eine Messart als `t_ms,x,y,z`; gibt die Zeilenzahl zurück. */
+    /** Writes one sensor kind as `t_ms,x,y,z`; returns the row count. */
     private fun writeImu(
         zip: ZipOutputStream,
         name: String,
@@ -194,7 +197,7 @@ object MotionExport {
                     anchorWall = record.wallMs
                     continue
                 }
-                // Ohne Anker gibt es keine Wanduhrzeit; die Uhr schreibt ihn immer zuerst.
+                // Without an anchor there is no wall clock time; the watch always writes it first.
                 if (record.kind != kind || anchorElapsed == Long.MIN_VALUE) continue
                 val watchWall = anchorWall + (record.time - anchorElapsed) / 1_000_000.0
                 line.setLength(0)
@@ -207,7 +210,7 @@ object MotionExport {
         return count
     }
 
-    /** Puls als `t_ms,bpm,accuracy`, ungefiltert; `accuracy` ist der Sensorstatus von Android. */
+    /** Heart rate as `t_ms,bpm,accuracy`, unfiltered; `accuracy` is the Android sensor status. */
     private fun writeHeart(
         zip: ZipOutputStream,
         name: String,
@@ -244,9 +247,9 @@ object MotionExport {
     )
 
     /**
-     * Endstand jedes Satzes. Werte, die der Nutzer nicht angegeben hat, bleiben leer.
-     * `label`: `detected` (von der Uhr erkannt und bestätigt oder korrigiert),
-     * `single` (einzeln abgehakt) oder `batch` (nachgetragen, schwaches Label).
+     * Final state of each set. Values the user did not enter stay empty.
+     * `label`: `detected` (detected by the watch and confirmed or corrected),
+     * `single` (checked off individually) or `batch` (entered later, weak label).
      */
     private fun writeSets(
         zip: ZipOutputStream,
@@ -257,8 +260,8 @@ object MotionExport {
         detections: List<SetDetectionLog.Entry>?,
         current: Map<String, String>,
     ): Pair<Int, Int> {
-        // Nur die Erkennung, mit der das Handy den Satz zuletzt abgehakt hat; eine Bestätigung, die nie
-        // ankam, oder eine, deren Abhaken zurückgenommen wurde, ist kein Label für diesen Satz.
+        // Only the detection the phone last checked the set off with counts; a confirmation that
+        // never arrived, or one whose check-off was undone, is no label for this set.
         val byId = detections.orEmpty().filter { entry ->
             entry.detected != null && entry.reviewed?.optString("decision") in setOf("confirmed", "corrected")
         }.associateBy { it.detected!!.optString("detectionId") }
@@ -311,9 +314,9 @@ object MotionExport {
     }
 
     /**
-     * Je Satz die Erkennung seines letzten Abhakens: `set_detected` folgt
-     * unmittelbar auf das `set_completed`, das sie ausgelöst hat; ein späteres
-     * Abhaken ohne Erkennung oder ein Zurücknehmen löst die Zuordnung.
+     * For each set, the detection of its last check-off: `set_detected` directly
+     * follows the `set_completed` it triggered; a later check-off without detection
+     * or an undo releases the link.
      */
     private fun currentDetections(events: JSONArray): Map<String, String> {
         val current = mutableMapOf<String, String>()
@@ -328,13 +331,13 @@ object MotionExport {
         return current
     }
 
-    /** Erkennungen, die das Handy beim Abhaken je übernommen hat (`set_detected` in den Ereignissen). */
+    /** Detections the phone ever took over when checking off (`set_detected` in the events). */
     private fun appliedDetections(events: JSONArray): Set<String> = (0 until events.length()).mapNotNull { index ->
         events.optJSONObject(index)?.takeIf { it.optString("type") == "set_detected" }?.optString("detectionId")
             ?.takeIf { it.isNotBlank() }
     }.toSet()
 
-    /** Ereignisse der Rohdatei mit Sensorzeit und Umrechnung in `t_ms` (wie die Messwerte). */
+    /** Events of the raw file with sensor time and conversion to `t_ms` (like the readings). */
     private fun readEvents(
         reader: MotionFormat.Reader,
         start: Long,
@@ -350,7 +353,7 @@ object MotionExport {
                 MotionFormat.KIND_EVENT -> runCatching { JSONObject(record.json ?: "") }.getOrNull()?.let { events += record.time to it }
             }
         }
-        // Letzter Anker davor; vor dem ersten Anker der erste.
+        // Last anchor before it; before the first anchor, the first one.
         val convert = { nanos: Long ->
             val anchor = anchors.lastOrNull { it.first <= nanos } ?: anchors.firstOrNull()
             if (anchor == null) Double.NaN else anchor.second + (nanos - anchor.first) / 1_000_000.0 - offset - start
@@ -365,12 +368,12 @@ object MotionExport {
     )
 
     /**
-     * Je Erkennung eine Zeile mit Zählung und Entscheidung (`kind = detected`),
-     * dazu jeder Satz, den der Nutzer abgehakt hat, ohne dass die Uhr ihn
-     * erkannt hatte (`kind = closed`). Erkannte und korrigierte Zahl stehen
-     * nebeneinander. Wiederholungen einzeln in `detected_reps.csv`, alle
-     * Merkmale in `detections.jsonl`. `applied`: Das Handy hat den Satz mit
-     * dieser Erkennung abgehakt — nur dann gilt sie als Label des Satzes.
+     * One row per detection with count and decision (`kind = detected`), plus
+     * every set the user checked off without the watch having detected it
+     * (`kind = closed`). Detected and corrected counts sit side by side. Reps
+     * individually in `detected_reps.csv`, all features in `detections.jsonl`.
+     * `applied`: the phone checked the set off with this detection — only then
+     * does it count as the set's label.
      */
     private fun writeDetections(
         zip: ZipOutputStream,
@@ -468,7 +471,7 @@ object MotionExport {
 
     private fun entry(zip: ZipOutputStream, name: String, block: (Writer) -> Unit) {
         zip.putNextEntry(ZipEntry(name))
-        // Den ZIP-Strom nicht schließen; nur diesen Eintrag.
+        // Don't close the ZIP stream; only this entry.
         val writer = OutputStreamWriter(object : java.io.FilterOutputStream(zip) {
             override fun write(b: ByteArray, off: Int, len: Int) = zip.write(b, off, len)
             override fun close() = flush()
@@ -478,7 +481,7 @@ object MotionExport {
         zip.closeEntry()
     }
 
-    /** Dezimalzahl mit Punkt und höchstens drei Nachkommastellen, ohne Locale. */
+    /** Decimal number with a dot and at most three decimals, without a locale. */
     internal fun decimal(value: Double): String {
         val scaled = (value * 1000.0).roundToLong()
         val whole = abs(scaled) / 1000

@@ -16,7 +16,11 @@ import {
   View,
 } from 'react-native';
 import type { Run } from '../native';
-import type { StrengthSession, WorkoutTemplate } from '../domain/strength';
+import {
+  displaySessionName,
+  type StrengthSession,
+  type WorkoutTemplate,
+} from '../domain/strength';
 import type { RunPurpose } from '../domain/types';
 import { RUN_PURPOSES, runTitle } from '../domain/runTitle';
 import { buildUpWeek } from '../domain/buildUp';
@@ -29,7 +33,9 @@ import {
   localDateKey,
   moveSession as applyDomainMove,
   proposeMove,
+  scheduleTitle,
   setAvailability,
+  storedScheduleTitle,
   setRoutine,
   startOfWeek,
   suggestWeek,
@@ -59,6 +65,7 @@ import {
   space,
   type as typography,
 } from './components';
+import { dateFormat, getLanguage, tr } from '../domain/i18n';
 
 export type { ScheduleState, ScheduledSession } from '../domain/schedule';
 
@@ -73,14 +80,14 @@ export interface PlanningScreenProps {
   onStartStrength: (session: ScheduledSession) => Promise<void>;
   onDevelopment?: () => void;
   onManageTemplates?: () => void;
-  /** Öffnet den Routenplaner. Fehlt er, gibt es keinen Einstieg. */
+  /** Opens the route planner. Without it, there is no entry point. */
   onOpenRoutePlanner?: () => void;
   busy?: boolean;
-  /** „Woche vorschlagen lassen“ anbieten. Wer selbst plant, blendet es aus. */
+  /** Offer "suggest week". People who plan on their own hide it. */
   showSuggest?: boolean;
-  /** Monatsansicht anbieten. */
+  /** Offer the month view. */
   showMonth?: boolean;
-  /** Krafteinheiten planbar. Ohne Bereich Krafttraining nur Läufe. */
+  /** Strength sessions can be planned. Without the strength area, runs only. */
   showStrength?: boolean;
 }
 
@@ -107,42 +114,74 @@ interface PendingSave {
   trackUndo: boolean;
 }
 
-const WEEKDAY_SHORT = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
-const WEEKDAY_LONG = [
-  'Montag',
-  'Dienstag',
-  'Mittwoch',
-  'Donnerstag',
-  'Freitag',
-  'Samstag',
-  'Sonntag',
+// Labels are built per call: the language can change at runtime.
+const weekdayShort = () =>
+  getLanguage() === 'en'
+    ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    : ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+const weekdayLong = () =>
+  getLanguage() === 'en'
+    ? [
+        'Monday',
+        'Tuesday',
+        'Wednesday',
+        'Thursday',
+        'Friday',
+        'Saturday',
+        'Sunday',
+      ]
+    : [
+        'Montag',
+        'Dienstag',
+        'Mittwoch',
+        'Donnerstag',
+        'Freitag',
+        'Samstag',
+        'Sonntag',
+      ];
+const monthNames = () =>
+  getLanguage() === 'en'
+    ? [
+        'January',
+        'February',
+        'March',
+        'April',
+        'May',
+        'June',
+        'July',
+        'August',
+        'September',
+        'October',
+        'November',
+        'December',
+      ]
+    : [
+        'Januar',
+        'Februar',
+        'März',
+        'April',
+        'Mai',
+        'Juni',
+        'Juli',
+        'August',
+        'September',
+        'Oktober',
+        'November',
+        'Dezember',
+      ];
+const purposeOptions = () =>
+  RUN_PURPOSES.map(({ value, label }) => ({ value, label }));
+const kindOptions = (): { value: ScheduleKind; label: string }[] => [
+  { value: 'run', label: tr('Lauf', 'Run') },
+  { value: 'strength', label: tr('Kraft', 'Strength') },
 ];
-const MONTH_NAMES = [
-  'Januar',
-  'Februar',
-  'März',
-  'April',
-  'Mai',
-  'Juni',
-  'Juli',
-  'August',
-  'September',
-  'Oktober',
-  'November',
-  'Dezember',
+const effortOptions = (): { value: ScheduleEffort; label: string }[] => [
+  { value: 'easy', label: tr('Locker', 'Easy') },
+  { value: 'hard', label: tr('Anstrengend', 'Hard') },
 ];
-const PURPOSES = RUN_PURPOSES.map(({ value, label }) => ({ value, label }));
-const KIND_OPTIONS: { value: ScheduleKind; label: string }[] = [
-  { value: 'run', label: 'Lauf' },
-  { value: 'strength', label: 'Kraft' },
-];
-const EFFORT_OPTIONS: { value: ScheduleEffort; label: string }[] = [
-  { value: 'easy', label: 'Locker' },
-  { value: 'hard', label: 'Anstrengend' },
-];
-const SCOPE_OPTIONS: { value: PlanningScope; label: string }[] = [
-  { value: 'week', label: 'Diese Woche' },
-  { value: 'routine', label: 'Rhythmus' },
+const scopeOptions = (): { value: PlanningScope; label: string }[] => [
+  { value: 'week', label: tr('Diese Woche', 'This week') },
+  { value: 'routine', label: tr('Rhythmus', 'Routine') },
 ];
 
 let nextSessionNumber = 0;
@@ -171,19 +210,29 @@ function firstOfMonth(value: Date): Date {
 }
 
 function dateLabel(value: Date): string {
-  return `${
-    WEEKDAY_SHORT[(value.getDay() + 6) % 7]
-  }, ${value.getDate()}. ${MONTH_NAMES[value.getMonth()].slice(0, 3)}.`;
+  const weekday = weekdayShort()[(value.getDay() + 6) % 7];
+  const month = monthNames()[value.getMonth()].slice(0, 3);
+  return tr(
+    `${weekday}, ${value.getDate()}. ${month}.`,
+    dateFormat({ weekday: 'short', day: 'numeric', month: 'short' }).format(
+      value,
+    ),
+  );
 }
 
 function fullDateLabel(value: Date): string {
-  return `${WEEKDAY_LONG[(value.getDay() + 6) % 7]}, ${value.getDate()}. ${
-    MONTH_NAMES[value.getMonth()]
-  }`;
+  const weekday = weekdayLong()[(value.getDay() + 6) % 7];
+  const month = monthNames()[value.getMonth()];
+  return tr(
+    `${weekday}, ${value.getDate()}. ${month}`,
+    dateFormat({ weekday: 'long', day: 'numeric', month: 'long' }).format(
+      value,
+    ),
+  );
 }
 
 function monthLabel(value: Date): string {
-  return `${MONTH_NAMES[value.getMonth()]} ${value.getFullYear()}`;
+  return `${monthNames()[value.getMonth()]} ${value.getFullYear()}`;
 }
 
 function parseMinutes(value: string): number | undefined {
@@ -296,18 +345,18 @@ function actualSessionStatus(
 function statusLabel(status: ActivityStatus): string {
   switch (status) {
     case 'done':
-      return 'Erledigt';
+      return tr('Erledigt', 'Done');
     case 'started':
-      return 'Gestartet';
+      return tr('Gestartet', 'Started');
     case 'skipped':
-      return 'Ausgelassen';
+      return tr('Ausgelassen', 'Skipped');
     default:
-      return 'Geplant';
+      return tr('Geplant', 'Planned');
   }
 }
 
 function sessionKindLabel(session: ScheduledSession): string {
-  return session.kind === 'run' ? 'Lauf' : 'Kraft';
+  return session.kind === 'run' ? tr('Lauf', 'Run') : tr('Kraft', 'Strength');
 }
 
 function createSessionDraft(
@@ -317,7 +366,7 @@ function createSessionDraft(
   return {
     id: session?.id,
     date,
-    title: session?.title ?? '',
+    title: session ? scheduleTitle(session) : '',
     kind: session?.kind ?? 'run',
     minutes: session ? String(session.minutes) : '30',
     purpose: session?.purpose ?? 'easy',
@@ -367,10 +416,10 @@ function actualIsFinishedRun(run: Run): boolean {
 }
 
 /**
- * Mit Wettkampfziel und Datum ersetzt der Aufbau die gleichförmige Routine:
- * ein langer Lauf je Woche, Entlastung vor dem Ziel, der Wettkampf am
- * Zieldatum. Fehlt ihm die Grundlage, sagt der Vorschlag, was fehlt, und
- * schlägt die Routine wie gewohnt vor.
+ * With a race goal and date, the build-up replaces the uniform routine: one
+ * long run per week, easing off before the goal, the race on the goal date.
+ * Without the basis, the suggestion says what is missing and proposes the
+ * routine as usual.
  */
 function suggestTrainingWeek(
   state: ScheduleState,
@@ -570,7 +619,7 @@ export function PlanningScreen({
         const reason =
           caught instanceof Error
             ? caught.message
-            : 'Bitte versuche es erneut.';
+            : tr('Bitte versuche es erneut.', 'Please try again.');
         setDisplayState(cloneState(previous));
         saveExpectation.current = null;
         setPending({
@@ -579,7 +628,12 @@ export function PlanningScreen({
           message: saveMessage,
           trackUndo,
         });
-        setError(`Änderung nicht gespeichert. ${reason}`);
+        setError(
+          tr(
+            `Änderung nicht gespeichert. ${reason}`,
+            `Change not saved. ${reason}`,
+          ),
+        );
         return false;
       } finally {
         setSaving(false);
@@ -610,7 +664,7 @@ export function PlanningScreen({
     if (!undoState || working) return;
     void persist(
       undoState,
-      'Letzte Änderung zurückgenommen.',
+      tr('Letzte Änderung zurückgenommen.', 'Last change undone.'),
       false,
       displayState,
     ).then(ok => {
@@ -641,14 +695,22 @@ export function PlanningScreen({
     if (scope === 'routine') {
       const minutes = parseDuration(routineMinutesDraft);
       if (minutes === undefined) {
-        setValidation('Der Rhythmus braucht 1 bis 1.440 Minuten.');
+        setValidation(
+          tr(
+            'Der Rhythmus braucht 1 bis 1.440 Minuten.',
+            'The routine needs 1 to 1,440 minutes.',
+          ),
+        );
         return;
       }
       const next = setRoutine(displayState, {
         days: routineDaysDraft,
         minutes,
       });
-      const ok = await persist(next, 'Rhythmus gespeichert.');
+      const ok = await persist(
+        next,
+        tr('Rhythmus gespeichert.', 'Routine saved.'),
+      );
       if (ok) setAdjusting(false);
       return;
     }
@@ -657,16 +719,21 @@ export function PlanningScreen({
     for (const date of weekDateKeys) {
       const minutes = parseMinutes(availabilityDraft[date] ?? '');
       if (minutes === undefined) {
+        const day = fullDateLabel(localDateFrom(date));
         setValidation(
-          `Bitte trage für ${fullDateLabel(
-            localDateFrom(date),
-          )} eine Zahl zwischen 0 und 1.440 ein.`,
+          tr(
+            `Bitte trage für ${day} eine Zahl zwischen 0 und 1.440 ein.`,
+            `Enter a number from 0 to 1,440 for ${day}.`,
+          ),
         );
         return;
       }
       next = setAvailability(next, date, minutes);
     }
-    const ok = await persist(next, 'Verfügbarkeit gespeichert.');
+    const ok = await persist(
+      next,
+      tr('Verfügbarkeit gespeichert.', 'Availability saved.'),
+    );
     if (ok) setAdjusting(false);
   }, [
     availabilityDraft,
@@ -698,12 +765,18 @@ export function PlanningScreen({
     const next = applyWeekSuggestion(displayState, proposal, { today });
     if (next === displayState) {
       setError(
-        'Der Plan hat sich geändert. Erstelle den Vorschlag bitte erneut.',
+        tr(
+          'Der Plan hat sich geändert. Erstelle den Vorschlag bitte erneut.',
+          'The plan has changed. Please create the suggestion again.',
+        ),
       );
       setProposal(null);
       return;
     }
-    const ok = await persist(next, 'Vorschlag übernommen.');
+    const ok = await persist(
+      next,
+      tr('Vorschlag übernommen.', 'Suggestion applied.'),
+    );
     if (ok) setProposal(null);
   }, [displayState, persist, proposal, today, working]);
 
@@ -719,26 +792,44 @@ export function PlanningScreen({
 
   const saveEditor = useCallback(async () => {
     if (!editor) return;
-    const title = editor.title.trim();
+    const title = storedScheduleTitle(editor.title.trim());
     const minutes = parseDuration(editor.minutes);
     if (!title) {
-      setValidation('Bitte gib der Einheit einen Namen.');
+      setValidation(
+        tr(
+          'Bitte gib der Einheit einen Namen.',
+          'Enter a name for the workout.',
+        ),
+      );
       return;
     }
     if (minutes === undefined) {
-      setValidation('Die Dauer muss zwischen 1 und 1.440 Minuten liegen.');
+      setValidation(
+        tr(
+          'Die Dauer muss zwischen 1 und 1.440 Minuten liegen.',
+          'The duration must be between 1 and 1,440 minutes.',
+        ),
+      );
       return;
     }
     const current = editor.id
       ? displayState.sessions.find(session => session.id === editor.id)
       : undefined;
     if (current?.locked) {
-      setValidation('Eine gesperrte Einheit kann nicht geändert werden.');
+      setValidation(
+        tr(
+          'Eine gesperrte Einheit kann nicht geändert werden.',
+          "A locked workout can't be changed.",
+        ),
+      );
       return;
     }
     if (current?.activityId && editor.kind !== current.kind) {
       setValidation(
-        'Eine gestartete Einheit kann nicht in eine andere Art geaendert werden.',
+        tr(
+          'Eine gestartete Einheit kann nicht in eine andere Art geaendert werden.',
+          "A started workout can't be changed to another kind.",
+        ),
       );
       return;
     }
@@ -774,13 +865,18 @@ export function PlanningScreen({
       : addScheduledSession(displayState, session, { today });
     if (next === displayState) {
       setValidation(
-        'Die Einheit konnte nicht geändert werden. Prüfe Datum und Sperre.',
+        tr(
+          'Die Einheit konnte nicht geändert werden. Prüfe Datum und Sperre.',
+          "The workout couldn't be changed. Check the date and lock.",
+        ),
       );
       return;
     }
     const ok = await persist(
       next,
-      current ? 'Einheit geändert.' : 'Einheit hinzugefügt.',
+      current
+        ? tr('Einheit geändert.', 'Workout changed.')
+        : tr('Einheit hinzugefügt.', 'Workout added.'),
     );
     if (ok) setEditor(null);
   }, [displayState, editor, persist, today]);
@@ -796,15 +892,29 @@ export function PlanningScreen({
         const explanation = proposalForMove.conflicts
           .map(conflict => conflict.message)
           .join(' ');
-        setValidation(explanation || 'Dieser Tag passt nicht für die Einheit.');
+        setValidation(
+          explanation ||
+            tr(
+              'Dieser Tag passt nicht für die Einheit.',
+              "This day doesn't fit the workout.",
+            ),
+        );
         return;
       }
       const next = applyDomainMove(displayState, proposalForMove);
       if (next === displayState) {
-        setValidation('Die Einheit konnte nicht verschoben werden.');
+        setValidation(
+          tr(
+            'Die Einheit konnte nicht verschoben werden.',
+            "The workout couldn't be moved.",
+          ),
+        );
         return;
       }
-      const ok = await persist(next, 'Einheit verschoben.');
+      const ok = await persist(
+        next,
+        tr('Einheit verschoben.', 'Workout moved.'),
+      );
       if (ok) {
         setMoveId(null);
         setDetailsId(null);
@@ -826,14 +936,19 @@ export function PlanningScreen({
             )
           : cancelSession(displayState, session.id, { today });
       if (next === displayState) {
-        setValidation('Diese Einheit kann nicht mehr geändert werden.');
+        setValidation(
+          tr(
+            'Diese Einheit kann nicht mehr geändert werden.',
+            "This workout can't be changed anymore.",
+          ),
+        );
         return;
       }
       const ok = await persist(
         next,
         session.status === 'skipped'
-          ? 'Einheit wieder eingeplant.'
-          : 'Einheit ausgelassen.',
+          ? tr('Einheit wieder eingeplant.', 'Workout scheduled again.')
+          : tr('Einheit ausgelassen.', 'Workout skipped.'),
       );
       if (ok) setDetailsId(null);
     },
@@ -867,12 +982,19 @@ export function PlanningScreen({
         );
       }
       if (next === displayState) {
-        setValidation('Die Sperre konnte nicht geändert werden.');
+        setValidation(
+          tr(
+            'Die Sperre konnte nicht geändert werden.',
+            "The lock couldn't be changed.",
+          ),
+        );
         return;
       }
       const ok = await persist(
         next,
-        session.locked ? 'Einheit wieder flexibel.' : 'Einheit gesperrt.',
+        session.locked
+          ? tr('Einheit wieder flexibel.', 'Workout is flexible again.')
+          : tr('Einheit gesperrt.', 'Workout locked.'),
       );
       if (ok) setDetailsId(null);
     },
@@ -884,21 +1006,36 @@ export function PlanningScreen({
       if (working || startingId) return;
       const handler = session.kind === 'run' ? onStartRun : onStartStrength;
       if (session.date !== today) {
-        setValidation('Verschiebe die Einheit zuerst auf heute.');
+        setValidation(
+          tr(
+            'Verschiebe die Einheit zuerst auf heute.',
+            'Move the workout to today first.',
+          ),
+        );
         return;
       }
       setError('');
       setStartingId(session.id);
       try {
         await handler(session);
-        setMessage(`${session.title} kann jetzt gestartet werden.`);
+        setMessage(
+          tr(
+            `${session.title} kann jetzt gestartet werden.`,
+            `${scheduleTitle(session)} can be started now.`,
+          ),
+        );
         setDetailsId(null);
       } catch (caught) {
         const reason =
           caught instanceof Error
             ? caught.message
-            : 'Bitte versuche es erneut.';
-        setError(`Einheit konnte nicht gestartet werden. ${reason}`);
+            : tr('Bitte versuche es erneut.', 'Please try again.');
+        setError(
+          tr(
+            `Einheit konnte nicht gestartet werden. ${reason}`,
+            `Couldn't start the workout. ${reason}`,
+          ),
+        );
       } finally {
         setStartingId(null);
       }
@@ -950,9 +1087,14 @@ export function PlanningScreen({
       <Pressable
         key={session.id}
         accessibilityRole="button"
-        accessibilityLabel={`Einheit ${session.title}, ${fullDateLabel(
-          localDateFrom(session.date),
-        )}`}
+        accessibilityLabel={tr(
+          `Einheit ${session.title}, ${fullDateLabel(
+            localDateFrom(session.date),
+          )}`,
+          `Workout ${scheduleTitle(session)}, ${fullDateLabel(
+            localDateFrom(session.date),
+          )}`,
+        )}
         accessibilityState={{ disabled: working }}
         disabled={working}
         onPress={() => setDetailsId(session.id)}
@@ -965,7 +1107,7 @@ export function PlanningScreen({
               session.status === 'skipped' && styles.struck,
             ]}
           >
-            {session.title}
+            {scheduleTitle(session)}
           </Text>
           <Text style={styles.sessionMeta}>
             {sessionKindLabel(session)} · {formatMinutes(session.minutes)} ·{' '}
@@ -975,7 +1117,7 @@ export function PlanningScreen({
         <Text
           style={session.locked ? styles.sessionLocked : styles.sessionMark}
         >
-          {session.locked ? 'Gesperrt' : '›'}
+          {session.locked ? tr('Gesperrt', 'Locked') : '›'}
         </Text>
       </Pressable>
     );
@@ -986,8 +1128,8 @@ export function PlanningScreen({
     const sessions = sessionsByDate[key] ?? [];
     const available = availableMinutes(key, index);
     const past = key < today;
-    // Das Zeitbudget steht nur an Tagen, an denen es etwas sagt: Rhythmustage
-    // und eigens gesetzte Ausnahmen.
+    // The time budget only shows on days where it says something: routine days
+    // and exceptions set on purpose.
     const budgetShown =
       displayState.routine.days.includes(index) ||
       Object.prototype.hasOwnProperty.call(displayState.availability, key);
@@ -996,7 +1138,10 @@ export function PlanningScreen({
         <Pressable
           key={key}
           accessibilityRole="button"
-          accessibilityLabel={`Einheit am ${WEEKDAY_LONG[index]} hinzufügen`}
+          accessibilityLabel={tr(
+            `Einheit am ${weekdayLong()[index]} hinzufügen`,
+            `Add workout on ${weekdayLong()[index]}`,
+          )}
           accessibilityState={{ disabled: working || past }}
           disabled={working || past}
           onPress={() => openEditor(undefined, key)}
@@ -1011,7 +1156,10 @@ export function PlanningScreen({
             </Text>
             {budgetShown && !past ? (
               <Text style={styles.dayMeta}>
-                {formatMinutes(available)} verfügbar
+                {tr(
+                  `${formatMinutes(available)} verfügbar`,
+                  `${formatMinutes(available)} available`,
+                )}
               </Text>
             ) : null}
           </View>
@@ -1026,14 +1174,20 @@ export function PlanningScreen({
             <Text style={styles.dayTitle}>{fullDateLabel(date)}</Text>
             {budgetShown && !past ? (
               <Text style={styles.dayMeta}>
-                {formatMinutes(available)} verfügbar
+                {tr(
+                  `${formatMinutes(available)} verfügbar`,
+                  `${formatMinutes(available)} available`,
+                )}
               </Text>
             ) : null}
           </View>
           {past ? null : (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`Einheit am ${WEEKDAY_LONG[index]} hinzufügen`}
+              accessibilityLabel={tr(
+                `Einheit am ${weekdayLong()[index]} hinzufügen`,
+                `Add workout on ${weekdayLong()[index]}`,
+              )}
               accessibilityState={{ disabled: working }}
               disabled={working}
               onPress={() => openEditor(undefined, key)}
@@ -1061,7 +1215,14 @@ export function PlanningScreen({
         key={key}
         accessibilityRole="button"
         accessibilityLabel={`${fullDateLabel(date)}${
-          sessions.length ? `, ${sessions.length} Einheiten` : ''
+          sessions.length
+            ? tr(
+                `, ${sessions.length} Einheiten`,
+                `, ${sessions.length} ${
+                  sessions.length === 1 ? 'workout' : 'workouts'
+                }`,
+              )
+            : ''
         }`}
         accessibilityState={{ selected }}
         onPress={() => {
@@ -1094,29 +1255,37 @@ export function PlanningScreen({
   const renderActuals = () => {
     if (!freeRuns.length && !freeStrength.length) return null;
     return (
-      <Section title="Ohne Plan trainiert">
+      <Section title={tr('Ohne Plan trainiert', 'Trained without a plan')}>
         <Card>
           {freeRuns.map(run => (
             <Row
               key={`run-${run.id}`}
               title={runTitle(run)}
               subtitle={`${formatActivityDate(run.startTime)} · ${
-                actualIsFinishedRun(run) ? 'Erledigt' : 'Gestartet'
+                actualIsFinishedRun(run)
+                  ? statusLabel('done')
+                  : statusLabel('started')
               }`}
-              trailing={<Text style={styles.activityType}>Lauf</Text>}
+              trailing={
+                <Text style={styles.activityType}>{tr('Lauf', 'Run')}</Text>
+              }
             />
           ))}
           {freeStrength.map(session => (
             <Row
               key={`strength-${session.id}`}
-              title={session.name}
+              title={displaySessionName(session.name)}
               subtitle={`${formatActivityDate(session.startTime)} · ${
                 session.status === 'finished' &&
                 (session.endTime ?? 0) > session.startTime
-                  ? 'Erledigt'
-                  : 'Gestartet'
+                  ? statusLabel('done')
+                  : statusLabel('started')
               }`}
-              trailing={<Text style={styles.activityType}>Kraft</Text>}
+              trailing={
+                <Text style={styles.activityType}>
+                  {tr('Kraft', 'Strength')}
+                </Text>
+              }
             />
           ))}
         </Card>
@@ -1131,14 +1300,14 @@ export function PlanningScreen({
         {working ? (
           <ActivityIndicator
             color={color.green}
-            accessibilityLabel="Speichern läuft"
+            accessibilityLabel={tr('Speichern läuft', 'Saving')}
           />
         ) : null}
       </View>
 
       {error ? (
         <Notice
-          title="Aktion nicht abgeschlossen"
+          title={tr('Aktion nicht abgeschlossen', 'Action not completed')}
           onDismiss={() => setError('')}
         >
           {error}
@@ -1148,18 +1317,23 @@ export function PlanningScreen({
         <Notice onDismiss={() => setMessage('')}>{message}</Notice>
       ) : null}
       {pending ? (
-        <Notice title="Speichern erneut versuchen">
-          <Text>Deine Eingaben sind noch offen.</Text>
+        <Notice title={tr('Speichern erneut versuchen', 'Try saving again')}>
+          <Text>
+            {tr(
+              'Deine Eingaben sind noch offen.',
+              'Your changes are still open.',
+            )}
+          </Text>
           <View style={styles.noticeAction}>
             <Button
-              title="Erneut speichern"
+              title={tr('Erneut speichern', 'Save again')}
               secondary
               small
               disabled={saving || Boolean(busy)}
               onPress={retrySave}
             />
             <Button
-              title="Änderung verwerfen"
+              title={tr('Änderung verwerfen', 'Discard change')}
               secondary
               small
               disabled={saving || Boolean(busy)}
@@ -1176,7 +1350,10 @@ export function PlanningScreen({
         </Notice>
       ) : null}
       {validation ? (
-        <Notice title="Bitte prüfen" onDismiss={() => setValidation('')}>
+        <Notice
+          title={tr('Bitte prüfen', 'Please check')}
+          onDismiss={() => setValidation('')}
+        >
           {validation}
         </Notice>
       ) : null}
@@ -1186,7 +1363,7 @@ export function PlanningScreen({
           <View style={styles.periodNavigation}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Vorherige Woche"
+              accessibilityLabel={tr('Vorherige Woche', 'Previous week')}
               accessibilityState={{ disabled: working }}
               disabled={working}
               onPress={() => navigateWeek(-1)}
@@ -1196,7 +1373,7 @@ export function PlanningScreen({
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Aktuelle Woche"
+              accessibilityLabel={tr('Aktuelle Woche', 'Current week')}
               accessibilityState={{ disabled: working }}
               disabled={working}
               onPress={jumpToToday}
@@ -1207,17 +1384,20 @@ export function PlanningScreen({
               </Text>
               <Text style={styles.periodMeta}>
                 {weekSessionCount === 0
-                  ? 'Nichts geplant'
-                  : `${
+                  ? tr('Nichts geplant', 'Nothing planned')
+                  : `${tr(
                       weekSessionCount === 1
                         ? '1 Einheit'
-                        : `${weekSessionCount} Einheiten`
-                    } · ${formatMinutes(summaryMinutes)}`}
+                        : `${weekSessionCount} Einheiten`,
+                      weekSessionCount === 1
+                        ? '1 workout'
+                        : `${weekSessionCount} workouts`,
+                    )} · ${formatMinutes(summaryMinutes)}`}
               </Text>
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Nächste Woche"
+              accessibilityLabel={tr('Nächste Woche', 'Next week')}
               accessibilityState={{ disabled: working }}
               disabled={working}
               onPress={() => navigateWeek(1)}
@@ -1229,17 +1409,20 @@ export function PlanningScreen({
           <Card style={styles.weekCard}>{weekDates.map(renderDayRow)}</Card>
           {showSuggest ? (
             <Button
-              title="Woche vorschlagen lassen"
+              title={tr('Woche vorschlagen lassen', 'Suggest a week')}
               secondary={Boolean(weekSessionCount)}
               disabled={working}
               onPress={createProposal}
-              label="Trainingswoche aus Rhythmus und Kraftvorlagen vorschlagen"
+              label={tr(
+                'Trainingswoche aus Rhythmus und Kraftvorlagen vorschlagen',
+                'Suggest a training week from your routine and strength templates',
+              )}
             />
           ) : null}
           {showMonth ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Monat"
+              accessibilityLabel={tr('Monat', 'Month')}
               accessibilityState={{ disabled: working }}
               disabled={working}
               onPress={() => setView('month')}
@@ -1248,7 +1431,9 @@ export function PlanningScreen({
                 pressed && styles.pressed,
               ]}
             >
-              <Text style={styles.monthLinkText}>Monat ansehen ›</Text>
+              <Text style={styles.monthLinkText}>
+                {tr('Monat ansehen ›', 'View month ›')}
+              </Text>
             </Pressable>
           ) : null}
         </>
@@ -1257,7 +1442,7 @@ export function PlanningScreen({
           <View style={styles.periodNavigation}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Vorheriger Monat"
+              accessibilityLabel={tr('Vorheriger Monat', 'Previous month')}
               accessibilityState={{ disabled: working }}
               disabled={working}
               onPress={() => navigateMonth(-1)}
@@ -1267,17 +1452,17 @@ export function PlanningScreen({
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Aktuellen Monat"
+              accessibilityLabel={tr('Aktuellen Monat', 'Current month')}
               accessibilityState={{ disabled: working }}
               disabled={working}
               onPress={jumpToToday}
               style={styles.periodLabel}
             >
-              <Text style={styles.periodTitle}>Heute</Text>
+              <Text style={styles.periodTitle}>{tr('Heute', 'Today')}</Text>
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Nächster Monat"
+              accessibilityLabel={tr('Nächster Monat', 'Next month')}
               accessibilityState={{ disabled: working }}
               disabled={working}
               onPress={() => navigateMonth(1)}
@@ -1287,7 +1472,7 @@ export function PlanningScreen({
             </Pressable>
           </View>
           <View style={styles.calendarWeekdays}>
-            {WEEKDAY_SHORT.map(day => (
+            {weekdayShort().map(day => (
               <Text key={day} style={styles.calendarWeekday}>
                 {day}
               </Text>
@@ -1301,10 +1486,10 @@ export function PlanningScreen({
             ))}
           </View>
           <Button
-            title="Zurück zur Woche"
+            title={tr('Zurück zur Woche', 'Back to week')}
             secondary
             small
-            label="Woche"
+            label={tr('Woche', 'Week')}
             onPress={() => setView('week')}
           />
         </Section>
@@ -1312,9 +1497,9 @@ export function PlanningScreen({
 
       {undoState ? (
         <View style={styles.undoRow}>
-          <Copy muted>Änderung gespeichert.</Copy>
+          <Copy muted>{tr('Änderung gespeichert.', 'Change saved.')}</Copy>
           <Button
-            title="Rückgängig"
+            title={tr('Rückgängig', 'Undo')}
             secondary
             small
             disabled={working}
@@ -1325,42 +1510,58 @@ export function PlanningScreen({
 
       {renderActuals()}
 
-      <Section title="Mehr">
+      <Section title={tr('Mehr', 'More')}>
         <Row
-          title="Zeit & Rhythmus"
+          title={tr('Zeit & Rhythmus', 'Time & routine')}
           subtitle={`${
             displayState.routine.days.length
               ? displayState.routine.days
-                  .map(day => WEEKDAY_SHORT[day])
+                  .map(day => weekdayShort()[day])
                   .join(' · ')
-              : 'Keine festen Tage'
-          } · ${formatMinutes(displayState.routine.minutes)} üblich`}
+              : tr('Keine festen Tage', 'No fixed days')
+          } · ${tr(
+            `${formatMinutes(displayState.routine.minutes)} üblich`,
+            `${formatMinutes(displayState.routine.minutes)} usual`,
+          )}`}
           onPress={openAdjustment}
         />
         {onManageTemplates ? (
           <Row
-            title="Vorlagen"
+            title={tr('Vorlagen', 'Templates')}
             subtitle={
               templates.length
-                ? `${templates.length} ${
-                    templates.length === 1 ? 'Kraftvorlage' : 'Kraftvorlagen'
-                  } · Laufvorlagen`
-                : 'Kraft- und Laufvorlagen'
+                ? tr(
+                    `${templates.length} ${
+                      templates.length === 1 ? 'Kraftvorlage' : 'Kraftvorlagen'
+                    } · Laufvorlagen`,
+                    `${templates.length} ${
+                      templates.length === 1
+                        ? 'strength template'
+                        : 'strength templates'
+                    } · Run templates`,
+                  )
+                : tr('Kraft- und Laufvorlagen', 'Strength and run templates')
             }
             onPress={onManageTemplates}
           />
         ) : null}
         {onOpenRoutePlanner ? (
           <Row
-            title="Route planen"
-            subtitle="Strecke festlegen und beim Lauf folgen"
+            title={tr('Route planen', 'Plan route')}
+            subtitle={tr(
+              'Strecke festlegen und beim Lauf folgen',
+              'Set the distance and follow it on your run',
+            )}
             onPress={onOpenRoutePlanner}
           />
         ) : null}
         {onDevelopment ? (
           <Row
-            title="Entwicklung"
-            subtitle="Ziel, Planstand und tatsächliches Training"
+            title={tr('Entwicklung', 'Progress')}
+            subtitle={tr(
+              'Ziel, Planstand und tatsächliches Training',
+              'Goal, plan status, and actual training',
+            )}
             onPress={onDevelopment}
           />
         ) : null}
@@ -1380,11 +1581,14 @@ export function PlanningScreen({
           >
             <View style={styles.modalHeader}>
               <Text accessibilityRole="header" style={styles.modalTitle}>
-                Wochenvorschlag
+                {tr('Wochenvorschlag', 'Week suggestion')}
               </Text>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Vorschlag schließen"
+                accessibilityLabel={tr(
+                  'Vorschlag schließen',
+                  'Close suggestion',
+                )}
                 onPress={() => setProposal(null)}
                 style={styles.closeButton}
               >
@@ -1398,16 +1602,25 @@ export function PlanningScreen({
                     {proposal.addedSessions.length +
                       proposal.movedSessions.length ===
                     1
-                      ? '1 Änderung für diese Woche.'
-                      : `${
-                          proposal.addedSessions.length +
-                          proposal.movedSessions.length
-                        } Änderungen für diese Woche.`}
+                      ? tr(
+                          '1 Änderung für diese Woche.',
+                          '1 change for this week.',
+                        )
+                      : tr(
+                          `${
+                            proposal.addedSessions.length +
+                            proposal.movedSessions.length
+                          } Änderungen für diese Woche.`,
+                          `${
+                            proposal.addedSessions.length +
+                            proposal.movedSessions.length
+                          } changes for this week.`,
+                        )}
                   </Copy>
                   {proposal.addedSessions.map(session => (
                     <Row
                       key={session.id}
-                      title={session.title}
+                      title={scheduleTitle(session)}
                       subtitle={`${fullDateLabel(
                         localDateFrom(session.date),
                       )} · ${formatMinutes(session.minutes)}`}
@@ -1416,7 +1629,7 @@ export function PlanningScreen({
                   {proposal.moves.map(move => (
                     <Row
                       key={move.id}
-                      title={move.title}
+                      title={scheduleTitle(move)}
                       subtitle={`${dateLabel(
                         localDateFrom(move.from),
                       )} → ${dateLabel(
@@ -1427,9 +1640,9 @@ export function PlanningScreen({
                   {proposal.warnings.map(warning => (
                     <Notice key={warning}>{warning}</Notice>
                   ))}
-                  {/* Datierte Einträge sind das Protokoll der Routine („2026-09-28:
-                      …“); was sich ändert, steht schon in den Zeilen darüber.
-                      Ein Satz zum Aufbau trägt dagegen eine Begründung. */}
+                  {/* Dated entries are the routine's log ("2026-09-28: …"); what
+                      changes is already in the rows above. A build-up sentence
+                      carries a reason instead. */}
                   {proposal.rationale
                     .filter(line => !/^\d{4}-\d{2}-\d{2}:/.test(line))
                     .slice(0, 1)
@@ -1439,23 +1652,29 @@ export function PlanningScreen({
                       </Copy>
                     ))}
                   <Button
-                    title="Vorschlag übernehmen"
+                    title={tr('Vorschlag übernehmen', 'Apply suggestion')}
                     disabled={working}
                     onPress={() => void applyProposal()}
                   />
                 </>
               ) : (
                 <EmptyState
-                  title="Keine neue Einheit"
+                  title={tr('Keine neue Einheit', 'No new workout')}
                   copy={
                     proposal.warnings[0] ??
                     (displayState.routine.days.length ||
                     templates.some(template => template.days.length)
-                      ? 'Der vorhandene Plan passt bereits.'
-                      : 'Lege unter „Zeit & Rhythmus“ deine üblichen Tage fest oder füge eine Einheit direkt hinzu.')
+                      ? tr(
+                          'Der vorhandene Plan passt bereits.',
+                          'The existing plan already fits.',
+                        )
+                      : tr(
+                          'Lege unter „Zeit & Rhythmus“ deine üblichen Tage fest oder füge eine Einheit direkt hinzu.',
+                          'Set your usual days under “Time & routine”, or add a workout directly.',
+                        ))
                   }
                   action={{
-                    title: 'Schließen',
+                    title: tr('Schließen', 'Close'),
                     onPress: () => setProposal(null),
                   }}
                 />
@@ -1479,11 +1698,11 @@ export function PlanningScreen({
           >
             <View style={styles.modalHeader}>
               <Text accessibilityRole="header" style={styles.modalTitle}>
-                Einheit
+                {tr('Einheit', 'Workout')}
               </Text>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Details schließen"
+                accessibilityLabel={tr('Details schließen', 'Close details')}
                 onPress={() => setDetailsId(null)}
                 style={styles.closeButton}
               >
@@ -1492,7 +1711,9 @@ export function PlanningScreen({
             </View>
             {detailsSession ? (
               <>
-                <Text style={styles.detailTitle}>{detailsSession.title}</Text>
+                <Text style={styles.detailTitle}>
+                  {scheduleTitle(detailsSession)}
+                </Text>
                 <Text style={styles.detailMeta}>
                   {fullDateLabel(localDateFrom(detailsSession.date))} ·{' '}
                   {sessionKindLabel(detailsSession)} ·{' '}
@@ -1502,14 +1723,14 @@ export function PlanningScreen({
                   {statusLabel(
                     actualSessionStatus(detailsSession, runs, strengthSessions),
                   )}
-                  {detailsSession.locked ? ' · Gesperrt' : ''}
+                  {detailsSession.locked ? tr(' · Gesperrt', ' · Locked') : ''}
                 </Text>
                 <View style={styles.modalActions}>
                   <Button
                     title={
                       detailsSession.date === today
-                        ? 'Einheit starten'
-                        : 'Heute einplanen'
+                        ? tr('Einheit starten', 'Start workout')
+                        : tr('Heute einplanen', 'Schedule for today')
                     }
                     secondary
                     disabled={
@@ -1520,7 +1741,7 @@ export function PlanningScreen({
                     onPress={() => void startSession(detailsSession)}
                   />
                   <Button
-                    title="Einheit bearbeiten"
+                    title={tr('Einheit bearbeiten', 'Edit workout')}
                     secondary
                     disabled={
                       working ||
@@ -1532,7 +1753,7 @@ export function PlanningScreen({
                     }
                   />
                   <Button
-                    title="Einheit verschieben"
+                    title={tr('Einheit verschieben', 'Move workout')}
                     secondary
                     disabled={
                       working ||
@@ -1544,8 +1765,11 @@ export function PlanningScreen({
                   <Button
                     title={
                       detailsSession.status === 'skipped'
-                        ? 'Einheit wieder einplanen'
-                        : 'Einheit auslassen'
+                        ? tr(
+                            'Einheit wieder einplanen',
+                            'Schedule workout again',
+                          )
+                        : tr('Einheit auslassen', 'Skip workout')
                     }
                     secondary
                     disabled={
@@ -1559,8 +1783,8 @@ export function PlanningScreen({
                   <Button
                     title={
                       detailsSession.locked
-                        ? 'Einheit entsperren'
-                        : 'Einheit sperren'
+                        ? tr('Einheit entsperren', 'Unlock workout')
+                        : tr('Einheit sperren', 'Lock workout')
                     }
                     secondary
                     disabled={working || detailsSession.date < today}
@@ -1587,11 +1811,11 @@ export function PlanningScreen({
           >
             <View style={styles.modalHeader}>
               <Text accessibilityRole="header" style={styles.modalTitle}>
-                Einheit verschieben
+                {tr('Einheit verschieben', 'Move workout')}
               </Text>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Verschieben schließen"
+                accessibilityLabel={tr('Verschieben schließen', 'Close move')}
                 onPress={() => setMoveId(null)}
                 style={styles.closeButton}
               >
@@ -1600,12 +1824,15 @@ export function PlanningScreen({
             </View>
             {moveSessionDraft ? (
               <>
-                <Copy>{moveSessionDraft.title}</Copy>
+                <Copy>{scheduleTitle(moveSessionDraft)}</Copy>
                 <View style={styles.periodNavigation}>
                   <Button
                     title="‹"
                     secondary
-                    label="Vorherige Woche zum Verschieben"
+                    label={tr(
+                      'Vorherige Woche zum Verschieben',
+                      'Previous week to move to',
+                    )}
                     disabled={working}
                     onPress={() =>
                       setMoveWeekStart(current => addDays(current, -7))
@@ -1618,7 +1845,10 @@ export function PlanningScreen({
                   <Button
                     title="›"
                     secondary
-                    label="Nächste Woche zum Verschieben"
+                    label={tr(
+                      'Nächste Woche zum Verschieben',
+                      'Next week to move to',
+                    )}
                     disabled={working}
                     onPress={() =>
                       setMoveWeekStart(current => addDays(current, 7))
@@ -1639,7 +1869,7 @@ export function PlanningScreen({
                       key={key}
                       accessibilityRole="button"
                       accessibilityLabel={`${fullDateLabel(date)}${
-                        selected ? ', aktueller Tag' : ''
+                        selected ? tr(', aktueller Tag', ', current day') : ''
                       }`}
                       accessibilityState={{
                         disabled: working || selected || !candidate.allowed,
@@ -1660,10 +1890,10 @@ export function PlanningScreen({
                       </Text>
                       <Text style={styles.moveChoiceMeta}>
                         {selected
-                          ? 'Aktuell'
+                          ? tr('Aktuell', 'Current')
                           : candidate.allowed
-                          ? 'Passt'
-                          : 'Nicht möglich'}
+                          ? tr('Passt', 'Fits')
+                          : tr('Nicht möglich', 'Not possible')}
                       </Text>
                     </Pressable>
                   );
@@ -1671,7 +1901,7 @@ export function PlanningScreen({
                 {error ? <Notice>{error}</Notice> : null}
                 {pending ? (
                   <Button
-                    title="Speicherung wiederholen"
+                    title={tr('Speicherung wiederholen', 'Retry saving')}
                     secondary
                     disabled={saving || Boolean(busy)}
                     onPress={retrySave}
@@ -1698,11 +1928,13 @@ export function PlanningScreen({
           >
             <View style={styles.modalHeader}>
               <Text accessibilityRole="header" style={styles.modalTitle}>
-                {editor?.id ? 'Einheit bearbeiten' : 'Einheit hinzufügen'}
+                {editor?.id
+                  ? tr('Einheit bearbeiten', 'Edit workout')
+                  : tr('Einheit hinzufügen', 'Add workout')}
               </Text>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Bearbeiten schließen"
+                accessibilityLabel={tr('Bearbeiten schließen', 'Close editor')}
                 onPress={() => setEditor(null)}
                 style={styles.closeButton}
               >
@@ -1711,21 +1943,24 @@ export function PlanningScreen({
             </View>
             {editor ? (
               <>
-                <Field label="Name">
+                <Field label={tr('Name', 'Name')}>
                   <Input
-                    label="Name der Einheit"
+                    label={tr('Name der Einheit', 'Workout name')}
                     value={editor.title}
                     onChangeText={title =>
                       setEditor(current =>
                         current ? { ...current, title } : current,
                       )
                     }
-                    placeholder="Zum Beispiel Ruhige Runde"
+                    placeholder={tr(
+                      'Zum Beispiel Ruhige Runde',
+                      'For example, Easy loop',
+                    )}
                   />
                 </Field>
-                <Field label="Dauer in Minuten">
+                <Field label={tr('Dauer in Minuten', 'Duration in minutes')}>
                   <Input
-                    label="Dauer in Minuten"
+                    label={tr('Dauer in Minuten', 'Duration in minutes')}
                     keyboardType="numeric"
                     value={editor.minutes}
                     onChangeText={minutes =>
@@ -1735,12 +1970,12 @@ export function PlanningScreen({
                     }
                   />
                 </Field>
-                <Field label="Art">
+                <Field label={tr('Art', 'Type')}>
                   <ChipGroup
                     options={
                       showStrength
-                        ? KIND_OPTIONS
-                        : KIND_OPTIONS.filter(item => item.value === 'run')
+                        ? kindOptions()
+                        : kindOptions().filter(item => item.value === 'run')
                     }
                     value={editor.kind}
                     onChange={kind =>
@@ -1748,13 +1983,13 @@ export function PlanningScreen({
                         current ? { ...current, kind } : current,
                       )
                     }
-                    label="Art der Einheit"
+                    label={tr('Art der Einheit', 'Workout type')}
                   />
                 </Field>
                 {editor.kind === 'run' ? (
-                  <Field label="Laufart">
+                  <Field label={tr('Laufart', 'Run type')}>
                     <ChipGroup
-                      options={PURPOSES}
+                      options={purposeOptions()}
                       value={editor.purpose}
                       onChange={purpose =>
                         setEditor(current =>
@@ -1770,11 +2005,11 @@ export function PlanningScreen({
                             : current,
                         )
                       }
-                      label="Laufart"
+                      label={tr('Laufart', 'Run type')}
                     />
                   </Field>
                 ) : (
-                  <Field label="Kraftvorlage">
+                  <Field label={tr('Kraftvorlage', 'Strength template')}>
                     {templates.length ? (
                       <ChipGroup
                         options={templates.map(template => ({
@@ -1787,29 +2022,34 @@ export function PlanningScreen({
                             current ? { ...current, templateId } : current,
                           )
                         }
-                        label="Kraftvorlage"
+                        label={tr('Kraftvorlage', 'Strength template')}
                       />
                     ) : (
-                      <Copy muted>Lege zuerst eine Kraftvorlage an.</Copy>
+                      <Copy muted>
+                        {tr(
+                          'Lege zuerst eine Kraftvorlage an.',
+                          'Create a strength template first.',
+                        )}
+                      </Copy>
                     )}
                   </Field>
                 )}
-                <Field label="Belastung">
+                <Field label={tr('Belastung', 'Load')}>
                   <ChipGroup
-                    options={EFFORT_OPTIONS}
+                    options={effortOptions()}
                     value={editor.effort}
                     onChange={effort =>
                       setEditor(current =>
                         current ? { ...current, effort } : current,
                       )
                     }
-                    label="Belastung der Einheit"
+                    label={tr('Belastung der Einheit', 'Workout load')}
                   />
                 </Field>
                 {error ? <Notice>{error}</Notice> : null}
                 {pending ? (
                   <Button
-                    title="Speicherung wiederholen"
+                    title={tr('Speicherung wiederholen', 'Retry saving')}
                     secondary
                     disabled={saving || Boolean(busy)}
                     onPress={retrySave}
@@ -1818,13 +2058,13 @@ export function PlanningScreen({
                 {validation ? <Notice>{validation}</Notice> : null}
                 <View style={styles.modalActions}>
                   <Button
-                    title="Speichern"
+                    title={tr('Speichern', 'Save')}
                     secondary
                     disabled={working}
                     onPress={() => void saveEditor()}
                   />
                   <Button
-                    title="Abbrechen"
+                    title={tr('Abbrechen', 'Cancel')}
                     secondary
                     disabled={working}
                     onPress={() => setEditor(null)}
@@ -1850,11 +2090,14 @@ export function PlanningScreen({
           >
             <View style={styles.modalHeader}>
               <Text accessibilityRole="header" style={styles.modalTitle}>
-                Zeitbudget
+                {tr('Zeitbudget', 'Time budget')}
               </Text>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Zeitbudget schließen"
+                accessibilityLabel={tr(
+                  'Zeitbudget schließen',
+                  'Close time budget',
+                )}
                 onPress={() => setAdjusting(false)}
                 style={styles.closeButton}
               >
@@ -1862,18 +2105,26 @@ export function PlanningScreen({
               </Pressable>
             </View>
             <Segmented
-              options={SCOPE_OPTIONS}
+              options={scopeOptions()}
               value={scope}
               onChange={setScope}
-              label="Zeitbudget ändern für"
+              label={tr('Zeitbudget ändern für', 'Change time budget for')}
             />
             {scope === 'week' ? (
               <>
-                <Copy muted>Gilt nur für diese Woche.</Copy>
+                <Copy muted>
+                  {tr(
+                    'Gilt nur für diese Woche.',
+                    'Applies to this week only.',
+                  )}
+                </Copy>
                 {weekDateKeys.map((date, index) => (
-                  <Field key={date} label={WEEKDAY_LONG[index]}>
+                  <Field key={date} label={weekdayLong()[index]}>
                     <Input
-                      label={`${WEEKDAY_LONG[index]} verfügbare Minuten`}
+                      label={tr(
+                        `${weekdayLong()[index]} verfügbare Minuten`,
+                        `${weekdayLong()[index]} available minutes`,
+                      )}
                       keyboardType="numeric"
                       value={availabilityDraft[date] ?? ''}
                       onChangeText={value =>
@@ -1888,9 +2139,9 @@ export function PlanningScreen({
               </>
             ) : (
               <>
-                <Field label="Wöchentliche Tage">
+                <Field label={tr('Wöchentliche Tage', 'Weekly days')}>
                   <ToggleChips
-                    options={WEEKDAY_SHORT.map((label, value) => ({
+                    options={weekdayShort().map((label, value) => ({
                       value: String(value),
                       label,
                     }))}
@@ -1903,12 +2154,17 @@ export function PlanningScreen({
                           : [...current, day].sort((a, b) => a - b),
                       );
                     }}
-                    label="Wochentage im Rhythmus"
+                    label={tr('Wochentage im Rhythmus', 'Weekdays in routine')}
                   />
                 </Field>
-                <Field label="Übliches Zeitbudget in Minuten">
+                <Field
+                  label={tr(
+                    'Übliches Zeitbudget in Minuten',
+                    'Usual time budget in minutes',
+                  )}
+                >
                   <Input
-                    label="Übliche Minuten"
+                    label={tr('Übliche Minuten', 'Usual minutes')}
                     keyboardType="numeric"
                     value={routineMinutesDraft}
                     onChangeText={setRoutineMinutesDraft}
@@ -1919,7 +2175,7 @@ export function PlanningScreen({
             {error ? <Notice>{error}</Notice> : null}
             {pending ? (
               <Button
-                title="Speicherung wiederholen"
+                title={tr('Speicherung wiederholen', 'Retry saving')}
                 secondary
                 disabled={saving || Boolean(busy)}
                 onPress={retrySave}
@@ -1930,14 +2186,14 @@ export function PlanningScreen({
               <Button
                 title={
                   scope === 'week'
-                    ? 'Verfügbarkeit speichern'
-                    : 'Rhythmus speichern'
+                    ? tr('Verfügbarkeit speichern', 'Save availability')
+                    : tr('Rhythmus speichern', 'Save routine')
                 }
                 disabled={working}
                 onPress={() => void saveAdjustment()}
               />
               <Button
-                title="Abbrechen"
+                title={tr('Abbrechen', 'Cancel')}
                 secondary
                 disabled={working}
                 onPress={() => setAdjusting(false)}

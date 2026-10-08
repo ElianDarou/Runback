@@ -1,6 +1,7 @@
 import { analyzeRun } from './analysis';
 import { couplingGate, isRunRecommendation } from './areas';
-import { FOCUS_TYPES, type TrainingFocus } from './focus';
+import { focusTypeLabel, type TrainingFocus } from './focus';
+import { tr } from './i18n';
 import { relevance, RELEVANCE_VERSION } from './prioritization';
 import type { Experiment, Recommendation, RunSummary } from './types';
 
@@ -43,7 +44,7 @@ export function selectRecommendations(
   runs: RunSummary[],
   options: {
     active?: Experiment<Recommendation>;
-    /** Aktive Empfehlungen anderer Bereiche für die Kopplungssperre. */
+    /** Active recommendations of other areas for the coupling lock. */
     otherActive?: Experiment[];
     experiments?: Experiment[];
     dismissed?: string[];
@@ -62,7 +63,7 @@ export function selectRecommendations(
   const alternatives: ConsideredRecommendation[] = [];
   const eligible: { recommendation: Recommendation; quality: number }[] = [];
   // A follow-up preview must never recycle evidence from before acceptance —
-  // weder als auslösender Lauf noch in der Vergleichsbasis.
+  // neither as the triggering run nor in the comparison basis.
   const history = options.active
     ? ordered.filter(
         run => run.startTime > (options.active as Experiment).acceptedAt,
@@ -92,12 +93,15 @@ export function selectRecommendations(
       )
     ) {
       reject(
-        'Diese Daten wurden bereits für eine angenommene Empfehlung verwendet.',
+        tr(
+          'Diese Daten wurden bereits für eine angenommene Empfehlung verwendet.',
+          'This data has already been used for an accepted recommendation.',
+        ),
       );
       continue;
     }
     if (options.dismissed?.includes(recommendation.id)) {
-      reject('Diesen Vorschlag hast du abgelehnt.');
+      reject(tr('Diesen Vorschlag hast du abgelehnt.', 'You declined this suggestion.'));
       continue;
     }
     if (
@@ -105,7 +109,10 @@ export function selectRecommendations(
       sameRecommendation(recommendation, options.active.recommendation)
     ) {
       reject(
-        'Das ist bereits deine laufende Empfehlung, mit vergleichbaren Vorgaben.',
+        tr(
+          'Das ist bereits deine laufende Empfehlung, mit vergleichbaren Vorgaben.',
+          'This is already your running recommendation, with comparable targets.',
+        ),
       );
       continue;
     }
@@ -125,7 +132,12 @@ export function selectRecommendations(
       continue;
     }
     if (options.postponedUntil && options.postponedUntil > options.now) {
-      reject('Du hast die Entscheidung auf später verschoben.');
+      reject(
+        tr(
+          'Du hast die Entscheidung auf später verschoben.',
+          'You postponed the decision.',
+        ),
+      );
       continue;
     }
     eligible.push({
@@ -134,8 +146,8 @@ export function selectRecommendations(
         priority: {
           version: RELEVANCE_VERSION,
           focusLabel:
-            FOCUS_TYPES.find(item => item.value === options.focus?.kind)
-              ?.label || 'Kein Fokus',
+            focusTypeLabel(options.focus?.kind) ||
+            tr('Kein Fokus', 'No focus'),
           weight: priority.weight,
         },
       },
@@ -163,8 +175,14 @@ export function selectRecommendations(
       recommendation: item.recommendation,
       reason:
         item.quality < eligible[0].quality
-          ? 'Für den gewählten Vorschlag ist ein größerer Anteil der Tempoabschnitte nutzbar.'
-          : 'Gleich gut geeignet. Bei Gleichstand entscheidet eine feste Reihenfolge, damit die Auswahl stabil bleibt.',
+          ? tr(
+              'Für den gewählten Vorschlag ist ein größerer Anteil der Tempoabschnitte nutzbar.',
+              'For the chosen suggestion, a larger share of the pace segments is usable.',
+            )
+          : tr(
+              'Gleich gut geeignet. Bei Gleichstand entscheidet eine feste Reihenfolge, damit die Auswahl stabil bleibt.',
+              'Equally suitable. A fixed order breaks ties, so the choice stays stable.',
+            ),
     });
   }
   return { selected, alternatives };

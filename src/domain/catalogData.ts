@@ -1,4 +1,5 @@
 import database from './data/freeExerciseDb.json';
+import { tr } from './i18n';
 import type { Equipment, Exercise } from './strength';
 
 export const EXERCISE_DATABASE = {
@@ -8,19 +9,33 @@ export const EXERCISE_DATABASE = {
   license: database.license,
 } as const;
 
-export const EQUIPMENT_LABEL: Record<Equipment, string> = {
-  barbell: 'Langhantel',
-  dumbbell: 'Kurzhantel',
-  machine: 'Maschine',
-  cable: 'Kabel',
-  bodyweight: 'Eigengewicht',
-  band: 'Band',
-  kettlebell: 'Kettlebell',
-  ez_bar: 'SZ-Stange',
-  ball: 'Ball',
-  other: 'Weiteres Gerät',
-  unknown: 'Gerät unbekannt',
-};
+/** Visible name of an equipment type in the active language. */
+export function equipmentLabel(equipment: Equipment): string {
+  switch (equipment) {
+    case 'barbell':
+      return tr('Langhantel', 'Barbell');
+    case 'dumbbell':
+      return tr('Kurzhantel', 'Dumbbell');
+    case 'machine':
+      return tr('Maschine', 'Machine');
+    case 'cable':
+      return tr('Kabel', 'Cable');
+    case 'bodyweight':
+      return tr('Eigengewicht', 'Bodyweight');
+    case 'band':
+      return tr('Band', 'Band');
+    case 'kettlebell':
+      return tr('Kettlebell', 'Kettlebell');
+    case 'ez_bar':
+      return tr('SZ-Stange', 'EZ bar');
+    case 'ball':
+      return tr('Ball', 'Ball');
+    case 'other':
+      return tr('Weiteres Gerät', 'Other equipment');
+    case 'unknown':
+      return tr('Gerät unbekannt', 'Equipment unknown');
+  }
+}
 
 const equipment: Record<string, Equipment> = {
   barbell: 'barbell',
@@ -35,27 +50,42 @@ const equipment: Record<string, Equipment> = {
   'medicine ball': 'ball',
   other: 'other',
 };
-const muscles: Record<string, string> = {
-  abdominals: 'Bauch',
-  abductors: 'Hüfte außen',
-  adductors: 'Oberschenkel innen',
-  biceps: 'Bizeps',
-  calves: 'Waden',
-  chest: 'Brust',
-  forearms: 'Unterarme',
-  glutes: 'Gesäß',
-  hamstrings: 'Oberschenkel hinten',
-  lats: 'Latissimus',
-  'lower back': 'Unterer Rücken',
-  'middle back': 'Mittlerer Rücken',
-  neck: 'Nacken',
-  quadriceps: 'Oberschenkel vorn',
-  shoulders: 'Schultern',
-  traps: 'Trapez',
-  triceps: 'Trizeps',
+/**
+ * Database muscle names (English, the stored key) with their visible names.
+ * Stored `muscleGroups` hold these keys, not the labels.
+ */
+const muscles: Record<string, { de: string; en: string }> = {
+  abdominals: { de: 'Bauch', en: 'Abs' },
+  abductors: { de: 'Hüfte außen', en: 'Outer hips' },
+  adductors: { de: 'Oberschenkel innen', en: 'Inner thighs' },
+  biceps: { de: 'Bizeps', en: 'Biceps' },
+  calves: { de: 'Waden', en: 'Calves' },
+  chest: { de: 'Brust', en: 'Chest' },
+  forearms: { de: 'Unterarme', en: 'Forearms' },
+  glutes: { de: 'Gesäß', en: 'Glutes' },
+  hamstrings: { de: 'Oberschenkel hinten', en: 'Hamstrings' },
+  lats: { de: 'Latissimus', en: 'Lats' },
+  'lower back': { de: 'Unterer Rücken', en: 'Lower back' },
+  'middle back': { de: 'Mittlerer Rücken', en: 'Middle back' },
+  neck: { de: 'Nacken', en: 'Neck' },
+  quadriceps: { de: 'Oberschenkel vorn', en: 'Quads' },
+  shoulders: { de: 'Schultern', en: 'Shoulders' },
+  traps: { de: 'Trapez', en: 'Traps' },
+  triceps: { de: 'Trizeps', en: 'Triceps' },
 };
 
-// Bereits gespeicherte Vorlagen behalten ihre Kennungen; gleiche Varianten werden nicht verdoppelt.
+/** Visible name of a database muscle key; unknown keys are shown as they are. */
+export function databaseMuscleLabel(muscle: string): string {
+  const label = muscles[muscle];
+  return label ? tr(label.de, label.en) : muscle;
+}
+
+/** Visible muscle names of a catalog exercise, in the active language. */
+export function exerciseMuscleLabels(exercise: Exercise): string[] {
+  return (exercise.muscleGroups ?? []).map(databaseMuscleLabel);
+}
+
+// Templates already saved keep their IDs; equivalent variants are not doubled.
 const legacy: Record<string, string> = {
   Barbell_Full_Squat: 'barbell_back_squat',
   Front_Barbell_Squat: 'barbell_front_squat',
@@ -97,7 +127,7 @@ const legacy: Record<string, string> = {
   Standing_Cable_Wood_Chop: 'cable_woodchop',
 };
 
-/** Nur Namen, Geräte und Muskelgruppen stammen aus der Datenbank, keine Rechenparameter. */
+/** Only names, equipment and muscle groups come from the database, not calculation parameters. */
 export function databaseCatalog(
   reviewed: Exercise[],
   catalogVersion: string,
@@ -113,6 +143,7 @@ export function databaseCatalog(
         equipment: equipment[row.equipment ?? ''] ?? 'unknown',
         shares: {},
       }),
+      en: previous?.en ?? row.englishName,
       origin: 'catalog',
       catalogVersion,
       aliases: [...(previous?.aliases ?? []), row.englishName],
@@ -121,13 +152,13 @@ export function databaseCatalog(
         revision: database.revision,
         id: row.id,
       },
-      muscleGroups: row.primaryMuscles.map(muscle => muscles[muscle]),
+      muscleGroups: row.primaryMuscles.filter(muscle => muscles[muscle]),
     });
   }
   return Array.from(result.values());
 }
 
-/** Explizite App-Namen; unscharfe Treffer dürfen keine importierte Übung umdeuten. */
+/** Explicit app names; fuzzy matches must not reinterpret an imported exercise. */
 export const IMPORT_EXERCISE_ALIASES: Record<string, string[]> = {
   barbell_back_squat: ['Squat (Barbell)', 'Barbell Squat', 'Back Squat'],
   barbell_front_squat: ['Front Squat (Barbell)'],

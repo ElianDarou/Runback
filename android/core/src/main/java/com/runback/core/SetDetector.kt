@@ -9,37 +9,36 @@ import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 /**
- * Erkennt auf der Uhr einen Satz der gewählten Übung und zählt seine
- * Wiederholungen — klassische Signalverarbeitung, kein gelerntes Modell.
+ * Detects a set of the selected exercise on the watch and counts its
+ * reps — classic signal processing, no learned model.
  *
- * Ablauf: Beschleunigung und Gyroskop auf 50 Hz bringen und in einem
- * Ringpuffer halten (200 s). In Ruhe nur billig auf Bewegung achten. Bei
- * Bewegung alle 0,5 s die letzten 15 s prüfen: Hauptachse je Sensor,
- * Autokorrelation; gleichmäßige Bewegung mit Wiederholungsdauer zwischen
- * `minPeriodS` und `maxPeriodS`, möglichst von beiden Sensoren bestätigt.
- * Schnelle Periodik um 1,2 s (Gehen, Armschwung) sperrt. Ist die Bewegung
- * zweimal hintereinander regelmäßig, sucht der Detektor im Puffer rückwärts
- * die ersten Wiederholungen derselben Form (Satzanfang) und zählt von dort
- * Spitzen im Abstand einer Periode, deren Form zur Vorlage passt. Kurzes
- * Stocken überbrückt er; bleibt die nächste passende Wiederholung länger
- * aus, endet der Satz.
+ * How it works: bring acceleration and gyroscope to 50 Hz and keep them in a
+ * ring buffer (200 s). At rest only check for motion cheaply. When moving,
+ * every 0.5 s check the last 15 s: main axis per sensor, autocorrelation;
+ * even motion with a repeat period between `minPeriodS` and `maxPeriodS`,
+ * ideally confirmed by both sensors. Fast periodicity around 1.2 s (walking,
+ * arm swing) blocks it. If the motion is regular twice in a row, the detector
+ * searches the buffer backwards for the first reps of the same shape (set
+ * start) and counts from there peaks spaced one period apart whose shape fits
+ * the template. It bridges a brief hitch; if the next matching rep stays away
+ * longer, the set ends.
  *
- * Zustände wie in der Vorgabe: IDLE → SET_CANDIDATE → SET_ACTIVE →
- * SET_END_CANDIDATE → (Ergebnis). Aus SET_END_CANDIDATE führt eine weitere
- * passende Wiederholung zurück nach SET_ACTIVE.
+ * States as specified: IDLE → SET_CANDIDATE → SET_ACTIVE →
+ * SET_END_CANDIDATE → (result). From SET_END_CANDIDATE, another matching rep
+ * leads back to SET_ACTIVE.
  *
- * Gleiche Messwerte → gleiches Ergebnis. Zeiten sind Sensorzeit in ns
- * (`elapsedRealtimeNanos`), wie in der Rohdatei.
+ * Same sensor values → same result. Times are sensor time in ns
+ * (`elapsedRealtimeNanos`), as in the raw file.
  */
 class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = true) {
-    /** Parameter der gerade gewählten Übung; ein Wechsel behält den Puffer (`retarget`). */
+    /** Parameters of the currently selected exercise; a change keeps the buffer (`retarget`). */
     var profile = profile
         private set
     enum class State { IDLE, SET_CANDIDATE, SET_ACTIVE, SET_END_CANDIDATE }
 
     class Rep(val startNanos: Long, val endNanos: Long, val peakNanos: Long, val similarity: Double)
 
-    /** Ein erkannter Satz. `features` beschreibt, worauf die Zählung beruht. */
+    /** A detected set. `features` describes what the count is based on. */
     class DetectedSet(
         val startNanos: Long,
         val endNanos: Long,
@@ -48,39 +47,39 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
         val features: JSONObject,
     ) {
         val count get() = reps.size
-        /** Unter dieser Schwelle zeigt die Uhr die Zahl als ungefähr („~8“). */
+        /** Below this threshold the watch shows the count as approximate (“~8”). */
         val uncertain get() = confidence < UNCERTAIN_BELOW
     }
 
     var state = State.IDLE
         private set
-    /** Bisher gezählte Wiederholungen im laufenden Satz, für die Anzeige. */
+    /** Reps counted so far in the running set, for display. */
     var provisionalReps = 0
         private set
 
-    // --- Ringpuffer der 50-Hz-Rahmen: absolute Rahmennummer → Position.
+    // --- Ring buffer of the 50 Hz frames: absolute frame number → position.
     private val capacity = RING_SECONDS * RepSignal.RATE_HZ
     private val ring = Array(6) { DoubleArray(capacity) }
     private val ringTimes = LongArray(capacity)
     private var total = 0L
-    /** Älteste Rahmennummer, die zu den aktuellen Messwerten gehört (nach einer Lücke neu). */
+    /** Oldest frame number that belongs to the current sensor values (new after a gap). */
     private var validFrom = 0L
 
-    // --- Zusammenführen der beiden Sensorströme auf ein gemeinsames Raster.
+    // --- Merging the two sensor streams onto a common grid.
     private val accelQueue = ArrayDeque<DoubleArray>()
     private val gyroQueue = ArrayDeque<DoubleArray>()
     private var gridNanos = Long.MIN_VALUE
     private var lastAccel = Long.MIN_VALUE
     private var lastGyro = Long.MIN_VALUE
 
-    // --- Billige Ruheerkennung.
+    // --- Cheap rest detection.
     private var gravity = DoubleArray(3)
     private var gravityReady = false
     private var accelEnergy = 0.0
     private var gyroEnergy = 0.0
     private var quietSince = 0L
 
-    // --- Zustand eines Satzes.
+    // --- State of a set.
     private var hits = 0
     private var misses = 0
     private var candidateAt = 0L
@@ -112,7 +111,7 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
 
     private class Segment(val set: DetectedSet, val amplitude: Double, val firstPeak: Long, val endFrame: Long)
 
-    /** Messwert der Beschleunigung (m/s², mit Schwerkraft). */
+    /** Acceleration sample (m/s², including gravity). */
     fun accel(timeNanos: Long, x: Float, y: Float, z: Float): DetectedSet? {
         if (lastAccel != Long.MIN_VALUE && (timeNanos <= lastAccel || timeNanos - lastAccel > MAX_GAP_NANOS)) {
             if (timeNanos - lastAccel > MAX_GAP_NANOS) restart() else return null
@@ -122,7 +121,7 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
         return drain()
     }
 
-    /** Messwert des Gyroskops (rad/s). */
+    /** Gyroscope sample (rad/s). */
     fun gyro(timeNanos: Long, x: Float, y: Float, z: Float): DetectedSet? {
         if (!hasGyro) return null
         if (lastGyro != Long.MIN_VALUE && (timeNanos <= lastGyro || timeNanos - lastGyro > MAX_GAP_NANOS)) {
@@ -134,9 +133,8 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
     }
 
     /**
-     * Nach einer Entscheidung des Nutzers (oder einem Satz, der anders
-     * abgehakt wurde): neu anfangen, der Puffer bleibt. Was davor lag, wird
-     * nicht noch einmal als Satz gemeldet.
+     * After a user decision (or a set that was checked off another way): start
+     * over, the buffer stays. What lay before is not reported as a set again.
      */
     fun reset() {
         state = State.IDLE
@@ -148,9 +146,9 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
     }
 
     /**
-     * Anderes Ziel (Übung oder Satz) oder Erkennung wieder an: alles Offene
-     * gehört zum alten Ziel und wird verworfen; erkannt wird erst, was danach
-     * beginnt. Der Puffer davor bleibt als Vorlauf für die Analyse.
+     * Another target (exercise or set), or detection back on: everything open
+     * belongs to the old target and is discarded; only what starts afterwards is
+     * detected. The buffer before it stays as lead-in for the analysis.
      */
     fun retarget(next: RepProfiles.Profile) {
         profile = next
@@ -159,19 +157,19 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
     }
 
     /**
-     * Keine unterstützte Übung dran: nur puffern, nichts rechnen, nichts
-     * melden. So steht beim nächsten Ziel schon Vorlauf bereit.
+     * No supported exercise up: only buffer, compute nothing, report nothing.
+     * That way lead-in is already ready at the next target.
      */
     fun pause() {
         listening = false
         reset()
     }
 
-    /** Ob der Detektor gerade auswertet (`retarget`) oder nur puffert (`pause`). */
+    /** Whether the detector is currently evaluating (`retarget`) or only buffering (`pause`). */
     var listening = true
         private set
 
-    /** Lücke in den Messwerten: Was im Puffer liegt, passt nicht mehr zusammen. */
+    /** Gap in the sensor values: what is in the buffer no longer fits together. */
     private fun restart() {
         accelQueue.clear(); gyroQueue.clear()
         gridNanos = Long.MIN_VALUE
@@ -180,7 +178,7 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
         state = State.IDLE
         active = null
         hits = 0; misses = 0; provisionalReps = 0
-        // Ein offener einarmiger Abschnitt ist schon fertig gezählt; er bleibt.
+        // An open one-arm section has already been counted; it stays.
         pendingSide?.let { output.addLast(it.set) }
         pendingSide = null
         validFrom = total
@@ -202,7 +200,7 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
             frame(gridNanos, a, g)
             gridNanos += FRAME_NANOS
         }
-        // Nie mehr als ein paar Sekunden vorhalten, falls ein Sensor schweigt.
+        // Never hold more than a few seconds, in case a sensor goes silent.
         while (accelQueue.size > MAX_QUEUE) accelQueue.removeFirst()
         while (gyroQueue.size > MAX_QUEUE) gyroQueue.removeFirst()
         return output.removeFirstOrNull()
@@ -246,7 +244,7 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
 
     private fun oldest() = max(validFrom, total - capacity + 1)
 
-    /** Kanäle der Rahmen `[from, to)`; 0–2 Beschleunigung, 3–5 Gyroskop. */
+    /** Channels of the frames `[from, to)`; 0–2 acceleration, 3–5 gyroscope. */
     private fun channels(from: Long, to: Long): Array<DoubleArray> {
         val n = (to - from).toInt()
         return Array(6) { c -> DoubleArray(n) { i -> ring[c][((from + i) % capacity).toInt()] } }
@@ -261,11 +259,11 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
         flushPendingSide()
     }
 
-    // ------------------------------------------------------------ Suche
+    // ------------------------------------------------------------ Search
 
     private class SensorInfo(
         val r: Double, val periodS: Double?, val amplitude: Double, val axis: RepSignal.Axis, val fast: Double,
-        /** Autokorrelation bei halber Periode: hoch, wenn der Sensor je Wiederholung zweimal schwingt. */
+        /** Autocorrelation at half the period: high if the sensor swings twice per rep. */
         val half: Double,
     )
 
@@ -287,11 +285,11 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
     private fun harmonic(p: Double?, q: Double?) =
         p != null && q != null && abs(max(p, q) - 2 * min(p, q)) / max(p, q) < 0.2
 
-    /** Sensor, dessen Bewegung regelmäßig genug für einen Satz ist, oder `null`. */
+    /** Sensor whose motion is regular enough for a set, or `null`. */
     private fun periodicSensor(info: Array<SensorInfo>): Int? {
-        // Gehen und Armschwung: starke Periodik schneller als jede Wiederholung — am Gyroskop,
-        // das den Armschwung sieht. Die Beschleunigung schwingt bei manchen Übungen selbst
-        // doppelt so schnell wie die Wiederholung (Hin- und Rückweg); sie sperrt nur ohne Gyroskop.
+        // Walking and arm swing: strong periodicity faster than any rep — on the gyroscope,
+        // which sees the arm swing. For some exercises the acceleration itself swings
+        // twice as fast as the rep (out and back); it only blocks without a gyroscope.
         if ((if (hasGyro) info[GYRO].fast else info[ACCEL].fast) >= FAST_BLOCK) return null
         var best: Int? = null
         var bestScore = 0.0
@@ -301,13 +299,13 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
             if (m.periodS == null || m.amplitude < minAmplitude(me)) continue
             val support = o.periodS != null && o.r >= 0.4 && (close(m.periodS, o.periodS) || harmonic(m.periodS, o.periodS))
             if ((m.r >= 0.6 && support) || m.r >= 0.8) {
-                // Schwingt ein Sensor je Wiederholung zweimal, sind seine Spitzen mehrdeutig: der andere zählt.
+                // If a sensor swings twice per rep, its peaks are ambiguous: the other one counts.
                 val score = m.r + (if (support) 0.1 else 0.0) - (if (m.half >= 0.5) 0.3 else 0.0)
                 if (best == null || score > bestScore) { best = me; bestScore = score }
             }
         }
         val chosen = best ?: return null
-        // Zählt der eine Sensor doppelt so schnell wie der andere, ist das meist Hin- und Rückweg: die längere Periode gilt.
+        // If one sensor counts twice as fast as the other, it is usually out and back: the longer period applies.
         val other = 1 - chosen
         val o = info[other]
         if (o.periodS != null && o.r >= 0.5 && o.amplitude >= minAmplitude(other) &&
@@ -318,7 +316,7 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
     private fun scan() {
         val window = (WINDOW_S * RepSignal.RATE_HZ).toLong()
         if (total - window < oldest()) return
-        // Ruhe: kein Satz möglich, keine Rechnung.
+        // Rest: no set possible, no computation.
         if (total - quietSince > QUIET_FRAMES) {
             if (state == State.SET_CANDIDATE) misses++
             if (misses >= 2) { state = State.IDLE; hits = 0 }
@@ -343,9 +341,9 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
     }
 
     /**
-     * Legt Achse, Polarität, Vorlage und Satzanfang fest. Die letzten drei
-     * Spitzen müssen gleich aussehen und im Takt liegen; davor wird zurück
-     * erweitert, solange Form, Abstand und Höhe passen.
+     * Fixes the axis, polarity, template and set start. The last three peaks
+     * must look alike and be in step; before them it extends backwards as long
+     * as shape, spacing and height fit.
      */
     private fun activate(info: Array<SensorInfo>, sensor: Int): Active? {
         val periodS = info[sensor].periodS ?: return null
@@ -434,18 +432,18 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
         }
 
     /**
-     * Passt die Höhe einer Spitze zum Satz? Einarmig enger: Der andere Arm
-     * bewegt die Uhr deutlich schwächer, sein Abschnitt ist eine eigene Seite
-     * und keine Fortsetzung — sonst würden beide Seiten zusammengezählt.
+     * Does a peak's height fit the set? Stricter for one arm: the other arm
+     * moves the watch much less, and its section is a separate side, not a
+     * continuation — otherwise both sides would be added together.
      */
     private fun heightFits(value: Double, height: Double) =
         if (profile.unilateral) value >= 0.45 * height && value <= 2.2 * height
         else value >= 0.35 * height && value <= 2.5 * height
 
-    /** Längste Pause zwischen zwei Wiederholungen, die noch zum Satz gehört. */
+    /** Longest pause between two reps that still belongs to the set. */
     private fun bridge(periodS: Double) = (2.2 * periodS).coerceIn(BRIDGE_MIN_S, BRIDGE_MAX_S)
 
-    // ------------------------------------------------------------ Satz verfolgen
+    // ------------------------------------------------------------ Follow the set
 
     private class Chain(val peaks: List<Long>, val similarities: List<Double>, val heights: List<Double>, val skipped: Int)
 
@@ -462,7 +460,7 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
         val earliest = a.firstPeak - (0.3 * a.periodS * RepSignal.RATE_HZ).toLong()
         for (i in peaks) {
             if (a.lo + i < earliest) continue
-            // Die letzte Spitze zählt erst, wenn eine halbe Periode danach vorliegt.
+            // The last peak only counts once half a period after it is available.
             val shape = RepSignal.shape(v, i, a.periodS) ?: continue
             val similarity = RepSignal.dot(shape, a.template)
             val heightOk = heightFits(p[i], a.height)
@@ -497,11 +495,11 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
         }
         if (c.peaks.size > a.countAtEnd) { state = State.SET_ACTIVE; resumes++; return }
         if (since <= bridge(a.periodS) + 0.5 * a.periodS) return
-        // Satz vorbei.
+        // Set is over.
         state = State.IDLE; active = null; hits = 0; misses = 0; provisionalReps = 0
         if (c.peaks.size < MIN_REPS) return
         val (set, endFrame) = finish(a, c)
-        // Die zweite Seite eines einarmigen Satzes beginnt oft, bevor die erste fertig erkannt ist.
+        // The second side of a one-arm set often starts before the first is fully detected.
         minStart = endFrame
         val segment = Segment(set, a.amplitude, c.peaks.first(), total)
         if (!profile.unilateral) { output.addLast(set); return }
@@ -513,7 +511,7 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
         else { output.addLast(first.set); pendingSide = segment }
     }
 
-    /** Einarmig: Wartet die erste Seite zu lange auf die zweite, gilt sie allein. */
+    /** One arm: if the first side waits too long for the second, it counts on its own. */
     private fun flushPendingSide() {
         val side = pendingSide ?: return
         val waited = (total - side.endFrame).toDouble() / RepSignal.RATE_HZ
@@ -558,10 +556,9 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
     }
 
     /**
-     * 0–1 aus Periodizität, Bestätigung durch den anderen Sensor,
-     * Gleichmäßigkeit der Abstände, Formtreue und Zahl der Wiederholungen.
-     * Ausgelassene Spitzen im Satz senken sie. Keine Wahrscheinlichkeit, nur
-     * eine Rangfolge für „ungefähr“.
+     * 0–1 from periodicity, confirmation by the other sensor, evenness of the
+     * spacing, shape fidelity and the number of reps. Skipped peaks in the set
+     * lower it. Not a probability, only a ranking for “approximately”.
      */
     private fun confidence(a: Active, count: Int, cv: Double, similarity: Double, skipped: Int): Double {
         val periodicity = ((a.evidence.optDouble("periodicity") - 0.4) / 0.5).coerceIn(0.0, 1.0)
@@ -573,7 +570,7 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
         return round((score - 0.08 * skipped).coerceIn(0.0, 1.0))
     }
 
-    /** Beide Seiten eines einarmigen Satzes: Es gilt die höhere Zahl, die Abweichung senkt die Sicherheit. */
+    /** Both sides of a one-arm set: the higher count applies; the difference lowers the confidence. */
     private fun mergeSides(first: Segment, second: Segment): DetectedSet {
         val main = if (second.set.count > first.set.count ||
             (second.set.count == first.set.count && second.amplitude >= first.amplitude)) second else first
@@ -614,8 +611,8 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
         private const val SIDE_WAIT_IDLE_S = 12.0
         private const val SIDE_WAIT_MAX_S = 40.0
         /**
-         * Ruhe: Handgelenk über ein ganzes Prüffenster kaum bewegt (gleitender
-         * Effektivwert). Erst dann liegt sicher kein Satz mehr im Fenster.
+         * Rest: wrist barely moved across a whole check window (rolling RMS).
+         * Only then is it certain that no set is left in the window.
          */
         private const val QUIET_ACCEL = 0.15
         private const val QUIET_GYRO = 0.08

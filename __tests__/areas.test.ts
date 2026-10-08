@@ -79,7 +79,7 @@ const run = (id: string, startTime: number): RunSummary => ({
     gradePercent: 0,
   })),
 });
-/** Zwei vergleichbare Vorläufe: erst der Median mehrerer Läufe trägt eine Empfehlung. */
+/** Two comparable earlier runs: only the median of several runs supports a recommendation. */
 const runHistory = (startTime: number) => [
   run('prev-1', startTime - 7 * DAY),
   run('prev-2', startTime - 14 * DAY),
@@ -104,8 +104,8 @@ const benchSessions = [
 const now = 34 * DAY;
 const options = { today: '2026-09-12', now };
 
-describe('Zwei Bereiche', () => {
-  it('ordnet Empfehlungen ihrem Bereich zu; ohne Feld gilt Laufen', () => {
+describe('Two areas', () => {
+  it('assigns recommendations to their area; without a field it means running', () => {
     const running = runRecommendation('r', 30 * DAY);
     const strength = strengthRecommendationFor(
       legSessions,
@@ -122,7 +122,7 @@ describe('Zwei Bereiche', () => {
     expect(strength.criteria.minimumObservations).toBe(6);
   });
 
-  it('erlaubt je Bereich eine aktive Empfehlung, aber nie zwei im selben', () => {
+  it('allows one active recommendation per area, but never two in the same area', () => {
     const running = acceptRecommendation(
       runRecommendation('r', 30 * DAY),
       1000,
@@ -132,18 +132,18 @@ describe('Zwei Bereiche', () => {
       'barbell_bench_press',
       now,
     ).recommendation!;
-    // Anderer Bereich blockiert die Annahme nicht.
+    // A different area does not block acceptance.
     const strength = acceptRecommendation(bench, 2000, running);
     const all = [running, strength];
     expect(activeExperimentFor(all, 'running')?.id).toBe(running.id);
     expect(activeExperimentFor(all, 'strength')?.id).toBe(strength.id);
-    // Gleicher Bereich: erst beenden.
+    // Same area: finish it first.
     expect(() => acceptRecommendation(bench, 3000, strength)).toThrow(
       'Zuerst die bestehende Empfehlung beenden.',
     );
   });
 
-  it('sperrt Beinlast-Empfehlungen, solange eine Laufempfehlung geprüft wird', () => {
+  it('locks leg-load recommendations while a running recommendation is being checked', () => {
     const running = acceptRecommendation(
       runRecommendation('r', 30 * DAY),
       1000,
@@ -162,7 +162,7 @@ describe('Zwei Bereiche', () => {
     expect(influencedAreas(bench)).toEqual([]);
     expect(couplingGate(squat, [running]).blocked).toMatch(/Laufen/);
     expect(couplingGate(bench, [running]).blocked).toBeUndefined();
-    // Symmetrisch: eine laufende Beinlast-Empfehlung sperrt Laufvorschläge.
+    // Symmetric: a running leg-load recommendation locks running suggestions.
     const legs = acceptRecommendation(squat, 1000);
     expect(
       couplingGate(runRecommendation('r2', 30 * DAY), [legs]).blocked,
@@ -178,7 +178,7 @@ describe('Zwei Bereiche', () => {
     expect(selection.alternatives[0].reason).toMatch(/Krafttraining/);
   });
 
-  it('wählt im Krafttraining höchstens eine Empfehlung und zeigt den Rest als Alternative', () => {
+  it('picks at most one recommendation in strength training and shows the rest as alternatives', () => {
     const result = selectStrengthRecommendation(
       [...legSessions, ...benchSessions],
       {
@@ -198,7 +198,7 @@ describe('Zwei Bereiche', () => {
       weight: 5,
     });
     expect(result.alternatives).toHaveLength(1);
-    // Reihenfolge der Eingabe ändert die Auswahl nicht.
+    // The order of the input does not change the selection.
     expect(
       selectStrengthRecommendation([...benchSessions, ...legSessions], options)
         .selected?.id,
@@ -208,7 +208,7 @@ describe('Zwei Bereiche', () => {
     );
   });
 
-  it('prüft eine Lastempfehlung an späteren Einheiten mit getrennter Umsetzung', () => {
+  it('checks a load recommendation against later sessions with separate follow-through', () => {
     const squat = strengthRecommendationFor(
       legSessions,
       'barbell_back_squat',
@@ -228,9 +228,9 @@ describe('Zwei Bereiche', () => {
     expect(evaluation.eligibleRunIds).toEqual(['s6', 's7', 's8']);
     expect(evaluation.adherence.every(item => item.value === 'yes')).toBe(true);
     expect(evaluation.causalClaim).toBe(false);
-    // Drei Einheiten können den Vorzeichentest nie erreichen.
+    // Three sessions can never reach the sign test.
     expect(evaluation.verdict).toBe('insufficient_evidence');
-    // Nicht umgesetzt heißt nicht widerlegt.
+    // Not carried out does not mean disproven.
     const skipped = evaluateStrengthExperiment(experiment, [
       ...legSessions,
       session('s6', 35, 50),
@@ -243,7 +243,7 @@ describe('Zwei Bereiche', () => {
     ).toBe(evaluation.verdict);
   });
 
-  it('hat je Bereich eigene Fokus-Arten und Vorschläge', () => {
+  it('has its own focus types and suggestions per area', () => {
     expect(focusTypesFor('strength').map(item => item.value)).toContain(
       'strength',
     );
@@ -258,12 +258,12 @@ describe('Zwei Bereiche', () => {
   });
 });
 
-// Typprobe: die Snapshot-Struktur bleibt serialisierbar.
+// Type check: the snapshot structure stays serializable.
 const _probe: StrengthRecommendation['criteria']['method'] = 'strength-e1rm-v2';
 void _probe;
 
 
-it('sperrt eine parallele Prüfung auch bei unbekannten Muskelregionen', () => {
+it('locks a parallel check even with unknown muscle regions', () => {
   const recommendation = strengthRecommendationFor(legSessions, 'barbell_back_squat', now).recommendation!;
   const unknown = { ...recommendation, regions: [] };
   const running = acceptRecommendation(runRecommendation('r', 30 * DAY), 1000);

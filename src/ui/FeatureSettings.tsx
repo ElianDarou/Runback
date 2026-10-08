@@ -10,26 +10,28 @@ import {
   visibleTabs,
   type FeatureId,
   type OptionalTab,
-  AFTER_RUN_LABELS,
   AFTER_RUN_OPTIONS,
-  HOME_SECTION_LABELS,
   RECOMMENDATION_MODES,
-  RECOMMENDATION_MODE_LABELS,
   RECORDING_PRIMARIES,
-  RECORDING_PRIMARY_LABELS,
   REST_SECONDS_OPTIONS,
   SORENESS_PROMPTS,
-  SORENESS_PROMPT_LABELS,
   STATS_MODULES,
-  STATS_MODULE_LABELS,
+  afterRunLabel,
+  homeSectionLabel,
+  recommendationModeLabel,
+  recordingPrimaryLabel,
+  sorenessPromptLabel,
+  statsModuleLabel,
   availableHomeSections,
   visibleHomeSections,
   withArea,
+  tabLabel,
   type Area,
   type FeatureSettings as Features,
   type RecordingMetric,
   type StatsModule,
 } from '../domain/features';
+import { tr } from '../domain/i18n';
 import {
   Button,
   Card,
@@ -48,9 +50,9 @@ import {
 } from './components';
 
 /**
- * Eine Seite, ein Satz je Zeile: Was Runback zeigt und wann es fragt.
- * Abschalten wirkt sofort und versteckt nur; Daten bleiben. Die Zeile nennt
- * die Funktion, der Untertitel den aktuellen Wert — keine Erklärtexte.
+ * One page, one sentence per row: what Runback shows and when it asks.
+ * Switching off takes effect at once and only hides; data stays. The row
+ * names the feature, the subtitle shows the current value — no explanations.
  */
 export function FeatureSettings({
   features,
@@ -126,18 +128,20 @@ export function FeatureSettings({
     const available = availableHomeSections(features);
     return (
       <>
-        <Title>Blöcke auf Heute</Title>
+        <Title>{tr('Blöcke auf Heute', 'Blocks on Today')}</Title>
         <Copy muted>
-          Die Startkarte bleibt immer; aktive Funktionen bleiben unter Alle
-          Funktionen erreichbar.
+          {tr(
+            'Die Startkarte bleibt immer; aktive Funktionen bleiben unter Alle Funktionen erreichbar.',
+            'The start card always stays; active features stay reachable under All features.',
+          )}
         </Copy>
-        <Section title="Sichtbar">
+        <Section title={tr('Sichtbar', 'Visible')}>
           {available.map(section => (
             <Row
               key={section}
-              title={HOME_SECTION_LABELS[section]}
+              title={homeSectionLabel(section)}
               trailing={toggle(
-                HOME_SECTION_LABELS[section],
+                homeSectionLabel(section),
                 features.home.sections.includes(section),
                 value =>
                   patch('home', {
@@ -154,10 +158,10 @@ export function FeatureSettings({
   const selected = pinnedTabs(features);
   const navigationTabs = (
     <Segmented
-      label="Einstellungen bearbeiten"
+      label={tr('Einstellungen bearbeiten', 'Edit settings')}
       options={[
-        { value: 'main', label: 'Funktionen' },
-        { value: 'navigation', label: 'Navigation' },
+        { value: 'main', label: tr('Funktionen', 'Features') },
+        { value: 'navigation', label: tr('Navigation', 'Navigation') },
       ]}
       value={screen === 'navigation' ? 'navigation' : 'main'}
       onChange={value => (value === 'main' ? onOpenMain() : onOpenNavigation())}
@@ -178,27 +182,38 @@ export function FeatureSettings({
     };
     return (
       <>
-        <Title>Navigation</Title>
+        <Title>{tr('Navigation', 'Navigation')}</Title>
         {navigationTabs}
         <Card>
           <Copy>{visibleTabs(features).join(' · ')}</Copy>
-          <Copy muted>{selected.length} von 2 eigenen Plätzen belegt.</Copy>
+          <Copy muted>
+            {tr(
+              `${selected.length} von 2 eigenen Plätzen belegt.`,
+              `${selected.length} of 2 own spots taken.`,
+            )}
+          </Copy>
         </Card>
         <Copy muted>
-          Heute und Verlauf bleiben fest; wähle bis zu zwei weitere Funktionen.
+          {tr(
+            'Heute und Verlauf bleiben fest; wähle bis zu zwei weitere Funktionen.',
+            'Today and History stay fixed; choose up to two more features.',
+          )}
         </Copy>
-        <Section title="In der Leiste">
+        <Section title={tr('In der Leiste', 'In the tab bar')}>
           {selected.length ? (
             selected.map((tab, index) => (
               <Row
                 key={tab}
-                title={tab}
-                subtitle={`Platz ${index + 2}`}
+                title={tabLabel(tab)}
+                subtitle={tr(`Platz ${index + 2}`, `Spot ${index + 2}`)}
                 trailing={
                   <Button
                     secondary
                     small
-                    title={`${tab} entfernen`}
+                    title={tr(
+                      `${tabLabel(tab)} entfernen`,
+                      `Remove ${tabLabel(tab)}`,
+                    )}
                     disabled={disabled}
                     onPress={() => choose(tab, false)}
                   />
@@ -206,13 +221,13 @@ export function FeatureSettings({
               />
             ))
           ) : (
-            <Copy muted>Beide Plätze sind frei.</Copy>
+            <Copy muted>{tr('Beide Plätze sind frei.', 'Both spots are free.')}</Copy>
           )}
           {selected.length === 2 ? (
             <Button
               secondary
               small
-              title="Reihenfolge tauschen"
+              title={tr('Reihenfolge tauschen', 'Swap order')}
               disabled={disabled}
               onPress={() =>
                 onChange(withNavigation(features, [...selected].reverse()))
@@ -220,15 +235,15 @@ export function FeatureSettings({
             />
           ) : null}
         </Section>
-        <Section title="Aktive Funktionen">
+        <Section title={tr('Aktive Funktionen', 'Active features')}>
           {availableTabs(features).map(tab => (
             <CheckRow
               key={tab}
-              title={tab}
+              title={tabLabel(tab)}
               subtitle={
                 selected.includes(tab)
-                  ? 'In der Leiste'
-                  : 'Unter Alle Funktionen erreichbar'
+                  ? tr('In der Leiste', 'In the tab bar')
+                  : tr('Unter Alle Funktionen erreichbar', 'Reachable under All features')
               }
               checked={selected.includes(tab)}
               disabled={disabled}
@@ -236,31 +251,36 @@ export function FeatureSettings({
             />
           ))}
         </Section>
-        <Section title="Ausgeschaltet">
+        <Section title={tr('Ausgeschaltet', 'Turned off')}>
           {FEATURE_CATALOG.filter(
             entry => entry.tab && !featureEnabled(features, entry.id),
           ).map(entry => (
             <Row
               key={entry.id}
               title={entry.title}
-              subtitle="Schalte die Funktion zuerst ein."
+              subtitle={tr(
+                'Schalte die Funktion zuerst ein.',
+                'Turn the feature on first.',
+              )}
               onPress={() => onOpenDetails(entry.id)}
             />
           ))}
         </Section>
         <Sheet
           visible={replacement !== null}
-          title="Platz ersetzen"
+          title={tr('Platz ersetzen', 'Replace spot')}
           onClose={() => setReplacement(null)}
         >
           <Copy muted>
-            Wähle den Platz für {replacement}; die ersetzte Funktion bleibt
-            aktiv.
+            {tr(
+              `Wähle den Platz für ${replacement ? tabLabel(replacement) : ''}; die ersetzte Funktion bleibt aktiv.`,
+              `Choose the spot for ${replacement ? tabLabel(replacement) : ''}; the replaced feature stays active.`,
+            )}
           </Copy>
           {selected.map(tab => (
             <Row
               key={tab}
-              title={`${tab} ersetzen`}
+              title={tr(`${tabLabel(tab)} ersetzen`, `Replace ${tabLabel(tab)}`)}
               disabled={disabled}
               onPress={() => {
                 if (replacement)
@@ -290,20 +310,23 @@ export function FeatureSettings({
               onPress={() => onOpenDetails(entry.id)}
               subtitle={`${
                 entry.id === 'routes' && !running
-                  ? 'Laufen aus'
+                  ? tr('Laufen aus', 'Running off')
                   : enabled
-                  ? 'An'
-                  : 'Aus'
+                  ? tr('An', 'On')
+                  : tr('Aus', 'Off')
               } · ${
                 enabled && entry.tab && selected.includes(entry.tab)
-                  ? 'In der Leiste'
+                  ? tr('In der Leiste', 'In the tab bar')
                   : enabled
-                  ? 'Unter Alle Funktionen'
+                  ? tr('Unter Alle Funktionen', 'In All features')
                   : entry.description
               }`}
               trailing={
                 <Switch
-                  accessibilityLabel={`${entry.title} einschalten`}
+                  accessibilityLabel={tr(
+                    `${entry.title} einschalten`,
+                    `Turn on ${entry.title}`,
+                  )}
                   accessibilityState={{
                     checked: enabled,
                     disabled: disabled || (entry.id === 'routes' && !running),
@@ -323,57 +346,65 @@ export function FeatureSettings({
       });
     return (
       <>
-        <Title>Funktionen</Title>
+        <Title>{tr('Funktionen', 'Features')}</Title>
         {navigationTabs}
         <Copy muted>
-          Schalte ein, was du nutzen möchtest; deine Daten bleiben erhalten.
+          {tr(
+            'Schalte ein, was du nutzen möchtest; deine Daten bleiben erhalten.',
+            'Turn on what you want to use; your data stays.',
+          )}
         </Copy>
-        <Section title="Training begleiten">
+        <Section title={tr('Training begleiten', 'Support training')}>
           {functionRows(['coach', 'planning', 'goals'])}
         </Section>
-        <Section title="Auswerten und vorbereiten">
+        <Section title={tr('Auswerten und vorbereiten', 'Analyze and prepare')}>
           {functionRows(['statistics', 'routes', 'templates', 'soreness'])}
         </Section>
-        <Section title="Bereiche">
+        <Section title={tr('Bereiche', 'Areas')}>
           <Row
-            title="Laufen"
-            trailing={toggle('Laufen', running, value =>
+            title={tr('Laufen', 'Running')}
+            trailing={toggle(tr('Laufen', 'Running'), running, value =>
               setArea('running', value),
             )}
           />
           <Row
-            title="Krafttraining"
-            trailing={toggle('Krafttraining', strength, value =>
+            title={tr('Krafttraining', 'Strength training')}
+            trailing={toggle(tr('Krafttraining', 'Strength training'), strength, value =>
               setArea('strength', value),
             )}
           />
           <Row
-            title="Radfahren in der Auswahl"
+            title={tr('Radfahren in der Auswahl', 'Offer cycling')}
             trailing={toggle(
-              'Radfahren in der Auswahl',
+              tr('Radfahren in der Auswahl', 'Offer cycling'),
               features.sports.cycling,
               value => patch('sports', { cycling: value }),
             )}
           />
-          <Copy muted>Ein Bereich bleibt immer an.</Copy>
+          <Copy muted>{tr('Ein Bereich bleibt immer an.', 'One area always stays on.')}</Copy>
         </Section>
-        <Section title="Anzeige und Training">
+        <Section title={tr('Anzeige und Training', 'Display and training')}>
           <Row
-            title="Heute gestalten"
-            subtitle={`${visibleHomeSections(features).length} Blöcke sichtbar`}
+            title={tr('Heute gestalten', 'Customize Today')}
+            subtitle={tr(
+              `${visibleHomeSections(features).length} Blöcke sichtbar`,
+              `${visibleHomeSections(features).length} ${
+                visibleHomeSections(features).length === 1 ? 'block' : 'blocks'
+              } visible`,
+            )}
             onPress={onOpenHomeSections}
           />
           {recordsSomething ? (
             <Row
-              title="Aufzeichnung"
-              subtitle="Kennzahlen und Laufvorgaben"
+              title={tr('Aufzeichnung', 'Recording')}
+              subtitle={tr('Kennzahlen und Laufvorgaben', 'Metrics and run targets')}
               onPress={() => onOpenDetails('recording')}
             />
           ) : null}
           {strength ? (
             <Row
-              title="Krafttraining einstellen"
-              subtitle="Pausen und Satzangaben"
+              title={tr('Krafttraining einstellen', 'Set up strength training')}
+              subtitle={tr('Pausen und Satzangaben', 'Rest and set details')}
               onPress={() => onOpenDetails('strength')}
             />
           ) : null}
@@ -386,12 +417,16 @@ export function FeatureSettings({
     <>
       <Title>
         {entry?.title ??
-          (screen === 'recording' ? 'Aufzeichnung' : 'Krafttraining')}
+          (screen === 'recording'
+            ? tr('Aufzeichnung', 'Recording')
+            : tr('Krafttraining', 'Strength training'))}
       </Title>
       {entry && !(entry.id === 'routes' && !running) ? (
         <Row
           title={entry.title}
-          subtitle={featureEnabled(features, entry.id) ? 'An' : 'Aus'}
+          subtitle={
+            featureEnabled(features, entry.id) ? tr('An', 'On') : tr('Aus', 'Off')
+          }
           trailing={toggle(
             entry.title,
             featureEnabled(features, entry.id),
@@ -402,20 +437,29 @@ export function FeatureSettings({
       {entry && !featureEnabled(features, entry.id) ? (
         <Copy muted>
           {entry.id === 'routes' && !running
-            ? 'Schalte Laufen ein, um Routen zu nutzen.'
-            : 'Schalte die Funktion ein, um ihre Details zu bearbeiten.'}
+            ? tr(
+                'Schalte Laufen ein, um Routen zu nutzen.',
+                'Turn on running to use routes.',
+              )
+            : tr(
+                'Schalte die Funktion ein, um ihre Details zu bearbeiten.',
+                'Turn on the feature to edit its details.',
+              )}
         </Copy>
       ) : null}
       {screen === 'soreness' && features.soreness.enabled ? (
-        <Section title="Muskelkater">
+        <Section title={tr('Muskelkater', 'Soreness')}>
           {features.soreness.enabled ? (
             <>
-              <Field label="Wann Runback fragt">
+              <Field label={tr('Wann Runback fragt', 'When Runback asks')}>
                 <ChipGroup
-                  label="Wann Runback nach Muskelkater fragt"
+                  label={tr(
+                    'Wann Runback nach Muskelkater fragt',
+                    'When Runback asks about soreness',
+                  )}
                   options={SORENESS_PROMPTS.map(value => ({
                     value,
-                    label: SORENESS_PROMPT_LABELS[value],
+                    label: sorenessPromptLabel(value),
                   }))}
                   value={features.soreness.prompt}
                   onChange={prompt => patch('soreness', { prompt })}
@@ -423,17 +467,25 @@ export function FeatureSettings({
                 />
               </Field>
               <Row
-                title="Muskelkarte"
-                subtitle="Gemeldeter Muskelkater und Frische je Region"
-                trailing={toggle('Muskelkarte', features.soreness.map, value =>
-                  patch('soreness', { map: value }),
+                title={tr('Muskelkarte', 'Soreness map')}
+                subtitle={tr(
+                  'Gemeldeter Muskelkater und Frische je Region',
+                  'Reported soreness and freshness per region',
+                )}
+                trailing={toggle(
+                  tr('Muskelkarte', 'Soreness map'),
+                  features.soreness.map,
+                  value => patch('soreness', { map: value }),
                 )}
               />
               <Row
-                title="Spracheingabe beim Melden"
-                subtitle="Mikrofon in der Muskelkater-Erfassung"
+                title={tr('Spracheingabe beim Melden', 'Voice input when reporting')}
+                subtitle={tr(
+                  'Mikrofon in der Muskelkater-Erfassung',
+                  'Microphone in soreness logging',
+                )}
                 trailing={toggle(
-                  'Spracheingabe beim Melden',
+                  tr('Spracheingabe beim Melden', 'Voice input when reporting'),
                   features.soreness.voice,
                   value => patch('soreness', { voice: value }),
                 )}
@@ -443,21 +495,21 @@ export function FeatureSettings({
         </Section>
       ) : null}
       {screen === 'planning' && features.planning.enabled ? (
-        <Section title="Planung">
+        <Section title={tr('Planung', 'Planning')}>
           {features.planning.enabled ? (
             <>
               <Row
-                title="Woche vorschlagen"
+                title={tr('Woche vorschlagen', 'Suggest week')}
                 trailing={toggle(
-                  'Woche vorschlagen',
+                  tr('Woche vorschlagen', 'Suggest week'),
                   features.planning.suggest,
                   value => patch('planning', { suggest: value }),
                 )}
               />
               <Row
-                title="Monatsansicht"
+                title={tr('Monatsansicht', 'Month view')}
                 trailing={toggle(
-                  'Monatsansicht',
+                  tr('Monatsansicht', 'Month view'),
                   features.planning.month,
                   value => patch('planning', { month: value }),
                 )}
@@ -470,31 +522,31 @@ export function FeatureSettings({
         {screen === 'coach' && features.coach.enabled ? (
           <Disclosure
             defaultOpen
-            title="Empfehlungen"
+            title={tr('Empfehlungen', 'Recommendations')}
             subtitle={[
               running
-                ? `Laufen: ${
-                    RECOMMENDATION_MODE_LABELS[features.recommendations.running]
-                  }`
+                ? tr(
+                    `Laufen: ${recommendationModeLabel(features.recommendations.running)}`,
+                    `Running: ${recommendationModeLabel(features.recommendations.running)}`,
+                  )
                 : '',
               strength
-                ? `Kraft: ${
-                    RECOMMENDATION_MODE_LABELS[
-                      features.recommendations.strength
-                    ]
-                  }`
+                ? tr(
+                    `Kraft: ${recommendationModeLabel(features.recommendations.strength)}`,
+                    `Strength: ${recommendationModeLabel(features.recommendations.strength)}`,
+                  )
                 : '',
             ]
               .filter(Boolean)
               .join(' · ')}
           >
             {running ? (
-              <Field label="Laufen">
+              <Field label={tr('Laufen', 'Running')}>
                 <ChipGroup
-                  label="Empfehlungen fürs Laufen"
+                  label={tr('Empfehlungen fürs Laufen', 'Recommendations for running')}
                   options={RECOMMENDATION_MODES.map(value => ({
                     value,
-                    label: RECOMMENDATION_MODE_LABELS[value],
+                    label: recommendationModeLabel(value),
                   }))}
                   value={features.recommendations.running}
                   onChange={mode => patch('recommendations', { running: mode })}
@@ -503,12 +555,15 @@ export function FeatureSettings({
               </Field>
             ) : null}
             {strength ? (
-              <Field label="Krafttraining">
+              <Field label={tr('Krafttraining', 'Strength training')}>
                 <ChipGroup
-                  label="Empfehlungen fürs Krafttraining"
+                  label={tr(
+                    'Empfehlungen fürs Krafttraining',
+                    'Recommendations for strength training',
+                  )}
                   options={RECOMMENDATION_MODES.map(value => ({
                     value,
-                    label: RECOMMENDATION_MODE_LABELS[value],
+                    label: recommendationModeLabel(value),
                   }))}
                   value={features.recommendations.strength}
                   onChange={mode =>
@@ -519,34 +574,43 @@ export function FeatureSettings({
               </Field>
             ) : null}
             <Row
-              title="„Danach vorgesehen“ anzeigen"
-              subtitle="Die wartende nächste Empfehlung"
+              title={tr('„Danach vorgesehen“ anzeigen', 'Show “Up next”')}
+              subtitle={tr(
+                'Die wartende nächste Empfehlung',
+                'The next recommendation waiting',
+              )}
               trailing={toggle(
-                '„Danach vorgesehen“ anzeigen',
+                tr('„Danach vorgesehen“ anzeigen', 'Show “Up next”'),
                 features.recommendations.showQueued,
                 value => patch('recommendations', { showQueued: value }),
               )}
             />
             <Copy muted>
-              Nur auf Nachfrage: Die Empfehlung steht im Coach, nicht auf Heute.
-              Aus: Eine laufende Empfehlung wird pausiert, nicht abgebrochen.
+              {tr(
+                'Nur auf Nachfrage: Die Empfehlung steht im Coach, nicht auf Heute. Aus: Eine laufende Empfehlung wird pausiert, nicht abgebrochen.',
+                'Only on request: the recommendation is in Coach, not on Today. Off: a running recommendation is paused, not cancelled.',
+              )}
             </Copy>
           </Disclosure>
         ) : null}
         {screen === 'recording' && recordsSomething ? (
           <Disclosure
             defaultOpen
-            title="Aufzeichnung"
-            subtitle={`Groß: ${
-              RECORDING_PRIMARY_LABELS[features.recording.primary]
-            } · Danach: ${AFTER_RUN_LABELS[features.recording.afterRun]}`}
+            title={tr('Aufzeichnung', 'Recording')}
+            subtitle={tr(
+              `Groß: ${recordingPrimaryLabel(features.recording.primary)} · Danach: ${afterRunLabel(features.recording.afterRun)}`,
+              `Large: ${recordingPrimaryLabel(features.recording.primary)} · After: ${afterRunLabel(features.recording.afterRun)}`,
+            )}
           >
-            <Field label="Groß angezeigt">
+            <Field label={tr('Groß angezeigt', 'Shown large')}>
               <ChipGroup
-                label="Große Kennzahl während der Aufzeichnung"
+                label={tr(
+                  'Große Kennzahl während der Aufzeichnung',
+                  'Large metric during recording',
+                )}
                 options={RECORDING_PRIMARIES.map(value => ({
                   value,
-                  label: RECORDING_PRIMARY_LABELS[value],
+                  label: recordingPrimaryLabel(value),
                 }))}
                 value={features.recording.primary}
                 onChange={primary => patch('recording', { primary })}
@@ -554,43 +618,49 @@ export function FeatureSettings({
               />
             </Field>
             <Row
-              title="Kilometer"
-              trailing={toggle('Kilometer', hasMetric('distance'), value =>
+              title={tr('Kilometer', 'Kilometers')}
+              trailing={toggle(tr('Kilometer', 'Kilometers'), hasMetric('distance'), value =>
                 setMetric('distance', value),
               )}
             />
             <Row
-              title="Tempo"
-              trailing={toggle('Tempo', hasMetric('pace'), value =>
+              title={tr('Tempo', 'Pace')}
+              trailing={toggle(tr('Tempo', 'Pace'), hasMetric('pace'), value =>
                 setMetric('pace', value),
               )}
             />
             <Row
-              title="Herzfrequenz"
-              subtitle="Nur mit vorhandenen Messdaten"
-              trailing={toggle('Herzfrequenz', hasMetric('heartRate'), value =>
+              title={tr('Herzfrequenz', 'Heart rate')}
+              subtitle={tr('Nur mit vorhandenen Messdaten', 'Only with existing measurements')}
+              trailing={toggle(tr('Herzfrequenz', 'Heart rate'), hasMetric('heartRate'), value =>
                 setMetric('heartRate', value),
               )}
             />
             {running ? (
               <>
                 <Row
-                  title="Laufen nach Tempo oder Puls"
-                  subtitle="Zielvorgabe vor dem Start anbieten"
+                  title={tr('Laufen nach Tempo oder Puls', 'Run by pace or heart rate')}
+                  subtitle={tr(
+                    'Zielvorgabe vor dem Start anbieten',
+                    'Offer a target before the start',
+                  )}
                   trailing={toggle(
-                    'Laufen nach Tempo oder Puls',
+                    tr('Laufen nach Tempo oder Puls', 'Run by pace or heart rate'),
                     features.recording.targets,
                     value => patch('recording', { targets: value }),
                   )}
                 />
               </>
             ) : null}
-            <Field label="Nach dem Beenden">
+            <Field label={tr('Nach dem Beenden', 'After stopping')}>
               <ChipGroup
-                label="Was nach dem Beenden einer Aufzeichnung passiert"
+                label={tr(
+                  'Was nach dem Beenden einer Aufzeichnung passiert',
+                  'What happens after a recording stops',
+                )}
                 options={AFTER_RUN_OPTIONS.map(value => ({
                   value,
-                  label: AFTER_RUN_LABELS[value],
+                  label: afterRunLabel(value),
                 }))}
                 value={features.recording.afterRun}
                 onChange={afterRun => patch('recording', { afterRun })}
@@ -602,16 +672,24 @@ export function FeatureSettings({
         {screen === 'strength' && strength ? (
           <Disclosure
             defaultOpen
-            title="Krafttraining"
-            subtitle={`Pause ${features.strength.defaultRestSeconds} s${
-              features.strength.restTimer ? '' : ' · Timer aus'
-            }`}
+            title={tr('Krafttraining', 'Strength training')}
+            subtitle={tr(
+              `Pause ${features.strength.defaultRestSeconds} s${
+                features.strength.restTimer ? '' : ' · Timer aus'
+              }`,
+              `Rest ${features.strength.defaultRestSeconds} s${
+                features.strength.restTimer ? '' : ' · Timer off'
+              }`,
+            )}
           >
             <Row
-              title="Pausentimer"
-              subtitle="Balken nach jedem bestätigten Satz"
+              title={tr('Pausentimer', 'Rest timer')}
+              subtitle={tr(
+                'Balken nach jedem bestätigten Satz',
+                'Bar after each confirmed set',
+              )}
               trailing={toggle(
-                'Pausentimer',
+                tr('Pausentimer', 'Rest timer'),
                 features.strength.restTimer,
                 value => patch('strength', { restTimer: value }),
               )}
@@ -619,28 +697,34 @@ export function FeatureSettings({
             {features.strength.restTimer ? (
               <>
                 <Row
-                  title="Vibration am Pausenende"
-                  subtitle="Kurz, kurz, lang — auf der Uhr, sonst am Handy"
+                  title={tr('Vibration am Pausenende', 'Vibration at rest end')}
+                  subtitle={tr(
+                    'Kurz, kurz, lang — auf der Uhr, sonst am Handy',
+                    'Short, short, long — on the watch, otherwise on the phone',
+                  )}
                   trailing={toggle(
-                    'Vibration am Pausenende',
+                    tr('Vibration am Pausenende', 'Vibration at rest end'),
                     features.strength.restVibration,
                     value => patch('strength', { restVibration: value }),
                   )}
                 />
                 <Row
-                  title="Ton am Pausenende"
-                  subtitle="Kurz, kurz, lang am Handy"
+                  title={tr('Ton am Pausenende', 'Sound at rest end')}
+                  subtitle={tr(
+                    'Kurz, kurz, lang am Handy',
+                    'Short, short, long on the phone',
+                  )}
                   trailing={toggle(
-                    'Ton am Pausenende',
+                    tr('Ton am Pausenende', 'Sound at rest end'),
                     features.strength.restSound,
                     value => patch('strength', { restSound: value }),
                   )}
                 />
               </>
             ) : null}
-            <Field label="Standardpause für neue Sätze">
+            <Field label={tr('Standardpause für neue Sätze', 'Default rest for new sets')}>
               <ChipGroup
-                label="Standardpause für neue Sätze"
+                label={tr('Standardpause für neue Sätze', 'Default rest for new sets')}
                 options={REST_SECONDS_OPTIONS.map(value => ({
                   value: String(value),
                   label: `${value} s`,
@@ -653,19 +737,22 @@ export function FeatureSettings({
               />
             </Field>
             <Row
-              title="Wiederholungen im Tank"
-              subtitle="Feld je Satz, freiwillig"
+              title={tr('Wiederholungen im Tank', 'Reps in reserve')}
+              subtitle={tr('Feld je Satz, freiwillig', 'Field per set, optional')}
               trailing={toggle(
-                'Wiederholungen im Tank',
+                tr('Wiederholungen im Tank', 'Reps in reserve'),
                 features.strength.rir,
                 value => patch('strength', { rir: value }),
               )}
             />
             <Row
-              title="Tagesvorlage auf Heute"
-              subtitle="Vorlage nach Wochentag vorschlagen"
+              title={tr('Tagesvorlage auf Heute', 'Day template on Today')}
+              subtitle={tr(
+                'Vorlage nach Wochentag vorschlagen',
+                'Suggest template by weekday',
+              )}
               trailing={toggle(
-                'Tagesvorlage auf Heute',
+                tr('Tagesvorlage auf Heute', 'Day template on Today'),
                 features.strength.templateOfDay,
                 value => patch('strength', { templateOfDay: value }),
               )}
@@ -675,24 +762,25 @@ export function FeatureSettings({
         {screen === 'statistics' && features.statistics.enabled ? (
           <Disclosure
             defaultOpen
-            title="Statistik · Tiefer schauen"
-            subtitle={`${
-              STATS_MODULES.filter(module => hasModule(module)).length
-            } von ${STATS_MODULES.length} Blöcken`}
+            title={tr('Statistik · Tiefer schauen', 'Statistics · Look deeper')}
+            subtitle={tr(
+              `${STATS_MODULES.filter(module => hasModule(module)).length} von ${STATS_MODULES.length} Blöcken`,
+              `${STATS_MODULES.filter(module => hasModule(module)).length} of ${STATS_MODULES.length} blocks`,
+            )}
           >
             {STATS_MODULES.map(module => (
               <Row
                 key={module}
                 title={
-                  // Laufen verteilt nach Laufart, Krafttraining nach Muskelgruppe.
+                  // Running splits by run type, strength by muscle group.
                   module === 'distribution' && strength
                     ? running
-                      ? 'Verteilung und Muskeln'
-                      : 'Muskeln'
-                    : STATS_MODULE_LABELS[module]
+                      ? tr('Verteilung und Muskeln', 'Distribution and muscles')
+                      : tr('Muskeln', 'Muscles')
+                    : statsModuleLabel(module)
                 }
                 trailing={toggle(
-                  STATS_MODULE_LABELS[module],
+                  statsModuleLabel(module),
                   hasModule(module),
                   value => setModule(module, value),
                 )}
@@ -703,19 +791,25 @@ export function FeatureSettings({
       </>
       {screen === 'goals' && features.goals.enabled ? (
         <Copy muted>
-          Wähle Ziel und Fokus je Bereich unter Alle Funktionen.
+          {tr(
+            'Wähle Ziel und Fokus je Bereich unter Alle Funktionen.',
+            'Choose goal and focus per area under All features.',
+          )}
         </Copy>
       ) : null}
       {screen === 'routes' && featureEnabled(features, 'routes') ? (
         <Copy muted>
-          Öffne Routen unter Alle Funktionen oder setze sie in die Navigation.
+          {tr(
+            'Öffne Routen unter Alle Funktionen oder setze sie in die Navigation.',
+            'Open Routes under All features or put them in the navigation.',
+          )}
         </Copy>
       ) : null}
       {screen === 'templates' && features.templates.enabled ? (
         <Row
-          title="Tagesvorlage auf Heute"
+          title={tr('Tagesvorlage auf Heute', 'Day template on Today')}
           trailing={toggle(
-            'Tagesvorlage auf Heute',
+            tr('Tagesvorlage auf Heute', 'Day template on Today'),
             features.strength.templateOfDay,
             value => patch('strength', { templateOfDay: value }),
           )}

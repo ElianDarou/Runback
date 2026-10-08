@@ -18,7 +18,7 @@ const imports = parseStrongCsvPreview(
 ).workouts;
 imports[0].id = 'strong:test';
 
-it('lädt und sortiert Importe zusammen mit lokalen Einheiten über die vorhandene Brücke', async () => {
+it('loads and sorts imports together with local sessions via the existing bridge', async () => {
   const local = strengthSession('local', imports[0].time - 86400000, []);
   module.getStrengthSessions.mockResolvedValue({ sessions: [local], imports });
   const sessions = await native.strengthSessions(500);
@@ -32,7 +32,7 @@ it('lädt und sortiert Importe zusammen mit lokalen Einheiten über die vorhande
   expect(await native.strengthSessions(500)).toHaveLength(1);
 });
 
-it('öffnet importierte Details und unterstützt Antworten älterer Builds', async () => {
+it('opens imported details and supports answers from older builds', async () => {
   module.getStrengthSession.mockResolvedValue(imports[0]);
   expect(
     (await native.strengthSession('strong:test')).importSource?.workoutId,

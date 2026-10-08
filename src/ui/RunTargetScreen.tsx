@@ -12,6 +12,7 @@ import {
 import { normalizeRunAnnouncements } from '../domain/runAnnouncements';
 import type { RunPurpose } from '../domain/types';
 import { nativeCall } from '../native';
+import { tr } from '../domain/i18n';
 import {
   Button,
   ChipGroup,
@@ -51,7 +52,7 @@ export function RunTargetScreen({
   value: RunTarget;
   purpose: RunPurpose;
   onSave: (target: RunTarget) => Promise<void>;
-  /** Aus den Einstellungen („Stimme & Vibration“) statt aus dem Start-Sheet. */
+  /** From settings ("Voice & vibration") instead of the start sheet. */
   settings?: boolean;
 }) {
   const normalized = normalizeRunTarget(value);
@@ -106,7 +107,10 @@ export function RunTargetScreen({
       const secondsPerKm = parsePaceInput(paceInput);
       if (secondsPerKm === null) {
         setError(
-          'Gib das Tempo als Minuten und Sekunden ein, zum Beispiel 5:30.',
+          tr(
+            'Gib das Tempo als Minuten und Sekunden ein, zum Beispiel 5:30.',
+            'Enter the pace as minutes and seconds, for example 5:30.',
+          ),
         );
         return;
       }
@@ -128,11 +132,21 @@ export function RunTargetScreen({
         maxBpm > 240 ||
         maxBpm - minBpm < 5
       ) {
-        setError('Gib einen Pulsbereich zwischen 40 und 240 bpm ein.');
+        setError(
+          tr(
+            'Gib einen Pulsbereich zwischen 40 und 240 bpm ein.',
+            'Enter a heart rate range between 40 and 240 bpm.',
+          ),
+        );
         return;
       }
       if (!heartRateAvailable) {
-        setError('Verbinde zuerst einen Bluetooth-Pulssensor.');
+        setError(
+          tr(
+            'Verbinde zuerst einen Bluetooth-Pulssensor.',
+            'Connect a Bluetooth heart rate sensor first.',
+          ),
+        );
         return;
       }
       next = {
@@ -150,7 +164,12 @@ export function RunTargetScreen({
       cueIntervalSeconds < 5 ||
       cueIntervalSeconds > 300
     ) {
-      setError('Wähle einen Hinweisabstand zwischen 5 und 300 Sekunden.');
+      setError(
+        tr(
+          'Wähle einen Hinweisabstand zwischen 5 und 300 Sekunden.',
+          'Choose a cue interval between 5 and 300 seconds.',
+        ),
+      );
       return;
     }
     if (
@@ -159,7 +178,12 @@ export function RunTargetScreen({
         interval < 1 ||
         interval > (announcements.trigger === 'distance' ? 10 : 60))
     ) {
-      setError('Wähle 1 bis 10 Kilometer oder 1 bis 60 Minuten.');
+      setError(
+        tr(
+          'Wähle 1 bis 10 Kilometer oder 1 bis 60 Minuten.',
+          'Choose 1 to 10 kilometers or 1 to 60 minutes.',
+        ),
+      );
       return;
     }
     next = {
@@ -177,7 +201,10 @@ export function RunTargetScreen({
       setError(
         failure instanceof Error
           ? failure.message
-          : 'Das Laufziel konnte nicht gespeichert werden.',
+          : tr(
+              'Das Laufziel konnte nicht gespeichert werden.',
+              'The run goal could not be saved.',
+            ),
       );
     } finally {
       setBusy(false);
@@ -185,11 +212,11 @@ export function RunTargetScreen({
   };
 
   const kindOptions = [
-    { value: 'none' as const, label: 'Ohne Ziel' },
-    { value: 'pace' as const, label: 'Tempo' },
+    { value: 'none' as const, label: tr('Ohne Ziel', 'No goal') },
+    { value: 'pace' as const, label: tr('Tempo', 'Pace') },
     {
       value: 'heart_rate' as const,
-      label: 'Puls',
+      label: tr('Puls', 'Heart rate'),
       disabled: !heartRateAvailable,
     },
   ];
@@ -197,11 +224,13 @@ export function RunTargetScreen({
   return (
     <>
       <Title>
-        {settings ? 'Stimme & Vibration' : 'Wie möchtest du laufen?'}
+        {settings
+          ? tr('Stimme & Vibration', 'Voice & vibration')
+          : tr('Wie möchtest du laufen?', 'How do you want to run?')}
       </Title>
-      <Field label="Laufen nach">
+      <Field label={tr('Laufen nach', 'Run to')}>
         <ChipGroup
-          label="Laufziel"
+          label={tr('Laufziel', 'Run goal')}
           options={kindOptions}
           value={kind}
           onChange={setKind}
@@ -210,21 +239,33 @@ export function RunTargetScreen({
       </Field>
       {!checkingSensor && !heartRateAvailable ? (
         <Copy muted>
-          Puls wird nach dem Verbinden eines Bluetooth-Sensors wählbar.
+          {tr(
+            'Puls wird nach dem Verbinden eines Bluetooth-Sensors wählbar.',
+            'Heart rate becomes available after you connect a Bluetooth sensor.',
+          )}
         </Copy>
       ) : null}
       {kind === 'pace' ? (
-        <Section title="Tempo">
+        <Section title={tr('Tempo', 'Pace')}>
           <Field
-            label="Minuten pro Kilometer"
+            label={tr('Minuten pro Kilometer', 'Minutes per kilometer')}
             hint={
               purpose === 'easy' || purpose === 'long'
-                ? 'Runback bremst nur, wenn du schneller wirst.'
-                : 'Runback meldet, wenn du deutlich schneller oder langsamer wirst.'
+                ? tr(
+                    'Runback bremst nur, wenn du schneller wirst.',
+                    'Runback only slows you down when you get faster.',
+                  )
+                : tr(
+                    'Runback meldet, wenn du deutlich schneller oder langsamer wirst.',
+                    'Runback speaks up when you get clearly faster or slower.',
+                  )
             }
           >
             <Input
-              label="Zieltempo in Minuten pro Kilometer"
+              label={tr(
+                'Zieltempo in Minuten pro Kilometer',
+                'Target pace in minutes per kilometer',
+              )}
               value={paceInput}
               onChangeText={setPaceInput}
               placeholder="5:30"
@@ -235,11 +276,11 @@ export function RunTargetScreen({
         </Section>
       ) : null}
       {kind === 'heart_rate' ? (
-        <Section title="Pulsbereich">
+        <Section title={tr('Pulsbereich', 'Heart rate range')}>
           <View>
-            <Field label="Untergrenze">
+            <Field label={tr('Untergrenze', 'Lower limit')}>
               <Input
-                label="Untere Pulsgrenze"
+                label={tr('Untere Pulsgrenze', 'Lower heart rate limit')}
                 value={minInput}
                 onChangeText={setMinInput}
                 keyboardType="number-pad"
@@ -247,53 +288,72 @@ export function RunTargetScreen({
               />
             </Field>
           </View>
-          <Field label="Obergrenze">
+          <Field label={tr('Obergrenze', 'Upper limit')}>
             <Input
-              label="Obere Pulsgrenze"
+              label={tr('Obere Pulsgrenze', 'Upper heart rate limit')}
               value={maxInput}
               onChangeText={setMaxInput}
               keyboardType="number-pad"
               editable={!busy}
             />
           </Field>
-          <Copy muted>Runback schätzt keine persönlichen Pulszonen.</Copy>
+          <Copy muted>
+            {tr(
+              'Runback schätzt keine persönlichen Pulszonen.',
+              'Runback does not estimate personal heart rate zones.',
+            )}
+          </Copy>
         </Section>
       ) : null}
       {kind !== 'none' ? (
-        <Section title="Hinweise">
+        <Section title={tr('Hinweise', 'Cues')}>
           <ChipGroup
-            label="Ausgabe der Hinweise"
+            label={tr('Ausgabe der Hinweise', 'Cue output')}
             options={[
-              { value: 'both', label: 'Vibration & Stimme' },
-              { value: 'vibration', label: 'Vibration' },
-              { value: 'voice', label: 'Stimme' },
+              {
+                value: 'both',
+                label: tr('Vibration & Stimme', 'Vibration & voice'),
+              },
+              { value: 'vibration', label: tr('Vibration', 'Vibration') },
+              { value: 'voice', label: tr('Stimme', 'Voice') },
             ]}
             value={output}
             onChange={setOutput}
             disabled={busy}
           />
           <Field
-            label="Abstand in Sekunden"
-            hint="Beim Gehen und Stehen bleiben Tempohinweise stumm."
+            label={tr('Abstand in Sekunden', 'Interval in seconds')}
+            hint={tr(
+              'Beim Gehen und Stehen bleiben Tempohinweise stumm.',
+              'Pace cues stay silent while you walk or stand.',
+            )}
           >
             <Input
-              label="Hinweisabstand in Sekunden"
+              label={tr(
+                'Hinweisabstand in Sekunden',
+                'Cue interval in seconds',
+              )}
               value={intervalInput}
               onChangeText={setIntervalInput}
               keyboardType="number-pad"
               editable={!busy}
             />
           </Field>
-          <Copy muted>Die Vibration kommt von dem Gerät, das aufzeichnet.</Copy>
+          <Copy muted>
+            {tr(
+              'Die Vibration kommt von dem Gerät, das aufzeichnet.',
+              'The vibration comes from the device that records.',
+            )}
+          </Copy>
         </Section>
       ) : null}
-      <Section title="Zwischenstände ansagen">
+      <Section title={tr('Zwischenstände ansagen', 'Announce progress')}>
         <ChipGroup
-          label="Auslöser für Durchsagen"
+          label={tr('Auslöser für Durchsagen', 'Trigger for announcements')}
           options={[
-            { value: 'off', label: 'Aus' },
-            { value: 'distance', label: 'Kilometer' },
-            { value: 'time', label: 'Minuten' },
+            { value: 'off', label: tr('Aus', 'Off') },
+            { value: 'distance', label: tr('Kilometer', 'Kilometers') },
+            { value: 'time', label: tr('Minuten', 'Minutes') },
           ]}
           value={announcements.trigger}
           onChange={trigger => {
@@ -307,12 +367,12 @@ export function RunTargetScreen({
             <Field
               label={
                 announcements.trigger === 'time'
-                  ? 'Abstand in Minuten'
-                  : 'Abstand in Kilometern'
+                  ? tr('Abstand in Minuten', 'Interval in minutes')
+                  : tr('Abstand in Kilometern', 'Interval in kilometers')
               }
             >
               <Input
-                label="Abstand der Durchsagen"
+                label={tr('Abstand der Durchsagen', 'Announcement interval')}
                 value={announcementInterval}
                 onChangeText={setAnnouncementInterval}
                 keyboardType="decimal-pad"
@@ -321,11 +381,17 @@ export function RunTargetScreen({
             </Field>
             {(
               [
-                ['kilometer', 'Kilometermarke'],
-                ['distance', 'Zurückgelegte Strecke'],
-                ['lastKilometerPace', 'Tempo des letzten Kilometers'],
-                ['averagePace', 'Durchschnittstempo'],
-                ['heartRate', 'Aktueller Puls'],
+                ['kilometer', tr('Kilometermarke', 'Kilometer mark')],
+                ['distance', tr('Zurückgelegte Strecke', 'Distance covered')],
+                [
+                  'lastKilometerPace',
+                  tr(
+                    'Tempo des letzten Kilometers',
+                    'Pace of the last kilometer',
+                  ),
+                ],
+                ['averagePace', tr('Durchschnittstempo', 'Average pace')],
+                ['heartRate', tr('Aktueller Puls', 'Current heart rate')],
               ] as [
                 (
                   | 'kilometer'
@@ -341,8 +407,8 @@ export function RunTargetScreen({
                 <ChipGroup
                   label={label}
                   options={[
-                    { value: 'on', label: 'An' },
-                    { value: 'off', label: 'Aus' },
+                    { value: 'on', label: tr('An', 'On') },
+                    { value: 'off', label: tr('Aus', 'Off') },
                   ]}
                   value={announcements[key] === true ? 'on' : 'off'}
                   disabled={busy}
@@ -358,14 +424,18 @@ export function RunTargetScreen({
           </>
         ) : null}
       </Section>
-      {error ? <Notice title="Prüfe deine Angabe">{error}</Notice> : null}
+      {error ? (
+        <Notice title={tr('Prüfe deine Angabe', 'Check your entry')}>
+          {error}
+        </Notice>
+      ) : null}
       <Button
         title={
           settings
-            ? 'Speichern'
+            ? tr('Speichern', 'Save')
             : kind === 'none'
-            ? 'Ohne Ziel übernehmen'
-            : 'Ziel übernehmen'
+            ? tr('Ohne Ziel übernehmen', 'Use no goal')
+            : tr('Ziel übernehmen', 'Use goal')
         }
         onPress={save}
         disabled={busy || checkingSensor}

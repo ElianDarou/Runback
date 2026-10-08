@@ -1,30 +1,31 @@
 /**
- * Ob die Uhr eine laufende Aufzeichnung des Telefons mitschreibt.
+ * Whether the watch records along with a running recording on the phone.
  *
- * Grundlage ist `getWearStatus`: verbundene Uhren plus `lastCommand`, der
- * letzte Stand, den Kotlin als `wearLinkStatus` ablegt — Befehl gesendet,
- * Bestätigung der Uhr (`accepted`/`error`/`retry`) oder eingehende
- * Uhrdaten (`live`). Ein Stand eines anderen Laufs zählt nicht.
+ * Based on `getWearStatus`: connected watches plus `lastCommand`, the latest
+ * state Kotlin stores as `wearLinkStatus` — command sent, the watch's
+ * confirmation (`accepted`/`error`/`retry`), or incoming watch data (`live`).
+ * A state from another run does not count.
  */
+import { tr } from './i18n';
 
 export type WearRecordingLink =
-  /** Uhr hat bestätigt oder schickt gerade Daten. */
+  /** Watch has confirmed or is sending data right now. */
   | 'recording'
-  /** Befehl ist unterwegs, die Uhr hat noch nicht bestätigt. */
+  /** Command is on its way; the watch has not confirmed yet. */
   | 'waiting'
-  /** Uhr hat bestätigt, schickt aber während der Aufzeichnung nichts mehr. */
+  /** Watch has confirmed but sends nothing during the recording anymore. */
   | 'silent'
-  /** Uhr hat den Befehl abgelehnt oder war nicht erreichbar. */
+  /** Watch declined the command or could not be reached. */
   | 'failed'
-  /** Keine Uhr verbunden; das Telefon zeichnet allein auf. */
+  /** No watch connected; the phone records alone. */
   | 'disconnected';
 
-/** Die Uhr sendet GPS sofort und Sensoren gebündelt; länger still heißt: keine Daten. */
+/** The watch sends GPS immediately and sensors in batches; silent for longer means: no data. */
 export const WEAR_LIVE_SILENCE_MS = 20_000;
 
 /**
- * `null`, solange der Status unbekannt ist oder das Telefon kein Wear OS hat —
- * dann gibt es nichts Ehrliches über die Uhr zu sagen.
+ * `null` while the status is unknown or the phone has no Wear OS — then there
+ * is nothing honest to say about the watch.
  */
 export function wearRecordingLink(
   wear: unknown,
@@ -48,7 +49,7 @@ export function wearRecordingLink(
   if (!link || link.runId !== run.id) {
     return 'waiting';
   }
-  // Pausiert schickt die Uhr nichts; Stille zählt nur bei laufender Aufnahme.
+  // Paused, the watch sends nothing; silence only counts during a running recording.
   const silentSince = (at: unknown) =>
     run.status === 'recording' &&
     (typeof at !== 'number' ||
@@ -62,31 +63,32 @@ export function wearRecordingLink(
     case 'error':
       return 'failed';
     default:
-      // sent, pending, queued, retry, disconnected: das Telefon versucht es erneut.
+      // sent, pending, queued, retry, disconnected: the phone tries again.
       return 'waiting';
   }
 }
 
 /**
- * Was die Uhr zu einer Krafteinheit misst und schon ans Handy gegeben hat
- * (Kotlin `MotionSessions.watchInfo`). Fehlt es, war die Uhr nicht beteiligt.
+ * What the watch measures for a strength session and has already handed to
+ * the phone (Kotlin `MotionSessions.watchInfo`). If missing, the watch was not
+ * involved.
  */
 export interface StrengthWatchInfo {
   sessionId: string;
-  /** `recording` während der Einheit, `stopped` bis die Datei da ist, dann `received`. */
+  /** `recording` during the session, `stopped` until the file is there, then `received`. */
   status: string;
   capture: { motion: boolean; heartRate: boolean };
-  /** Letzte Meldung der Uhr: `sent`, `recording`, `waiting`, `error`, `disconnected`. */
+  /** Latest message from the watch: `sent`, `recording`, `waiting`, `error`, `disconnected`. */
   watch: { status?: string; message?: string; updatedAt?: number };
   file?: { receivedAt?: number; present?: boolean };
-  /** Letzter Live-Wert in Handyzeit; der Puls fehlt, wenn die Uhr keinen gültigen hatte. */
+  /** Latest live value in phone time; the heart rate is missing if the watch had no valid one. */
   live?: { receivedAt: number; motion?: boolean; bpm?: number; bpmAt?: number };
 }
 
 const finite = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value);
 
-/** Liest die Bridge-Antwort; Unlesbares ist „keine Uhr“, nicht ein Fehler. */
+/** Reads the bridge response; unreadable means "no watch", not an error. */
 export function readStrengthWatchInfo(raw: unknown): StrengthWatchInfo | null {
   if (!raw || typeof raw !== 'object') return null;
   const value = raw as Record<string, any>;
@@ -136,25 +138,25 @@ export function readStrengthWatchInfo(raw: unknown): StrengthWatchInfo | null {
 }
 
 export type StrengthWatchLive =
-  /** Uhr misst und meldet sich. */
+  /** Watch is measuring and reporting. */
   | 'measuring'
-  /** Start ist unterwegs oder die Uhr-App muss geöffnet werden. */
+  /** Start is on its way or the watch app has to be opened. */
   | 'starting'
-  /** Uhr hat gemeldet, schweigt aber seit einer Weile. */
+  /** Watch has reported but has been silent for a while. */
   | 'silent'
-  /** Uhr hat den Start abgelehnt. */
+  /** Watch declined the start. */
   | 'failed'
-  /** Beim Start war keine Uhr verbunden. */
+  /** No watch was connected at the start. */
   | 'disconnected';
 
-/** Die Uhr meldet sich alle 5 s; nach 20 s ohne Meldung gilt sie als still. */
+/** The watch reports every 5 s; after 20 s without a report it counts as silent. */
 export const STRENGTH_WATCH_SILENCE_MS = 20_000;
-/** Ein Puls ist so lange eine Live-Anzeige; danach steht „–“. */
+/** A heart rate stays a live reading this long; afterwards it shows "–". */
 export const STRENGTH_WATCH_HEART_MS = 15_000;
 
 /**
- * Zustand der Uhr während einer laufenden Krafteinheit und der Puls jetzt.
- * `null`, wenn die Uhr nicht beteiligt ist oder die Einheit nicht mehr läuft.
+ * State of the watch during a running strength session, and the heart rate now.
+ * `null` if the watch is not involved or the session is no longer running.
  */
 export function strengthWatchLive(
   info: StrengthWatchInfo | null,
@@ -169,20 +171,23 @@ export function strengthWatchLive(
     case 'recording':
       break;
     default:
-      // `sent` oder `waiting`: Android ließ den Start im Hintergrund nicht zu.
+      // `sent` or `waiting`: Android did not allow the start in the background.
       return {
         state: 'starting',
         hint:
           info.watch.status === 'waiting'
-            ? 'Öffne Runback auf der Uhr.'
+            ? tr('Öffne Runback auf der Uhr.', 'Open Runback on the watch.')
             : undefined,
       };
   }
   const live = info.live;
-  // Ältere Uhren melden nichts live; dann bleibt es beim bestätigten Start.
+  // Older watches report nothing live; then the confirmed start stays.
   if (!live) return { state: 'measuring' };
   if (now - live.receivedAt > STRENGTH_WATCH_SILENCE_MS) {
-    return { state: 'silent', hint: 'Prüfe, ob die Uhr in der Nähe ist.' };
+    return {
+      state: 'silent',
+      hint: tr('Prüfe, ob die Uhr in der Nähe ist.', 'Check that the watch is nearby.'),
+    };
   }
   const fresh =
     live.bpm !== undefined &&
@@ -192,29 +197,30 @@ export function strengthWatchLive(
 }
 
 export type StrengthWatchTransfer =
-  /** Daten der Uhr sind auf dem Handy. */
+  /** The watch's data is on the phone. */
   | 'received'
-  /** Einheit ist beendet, die Datei der Uhr fehlt noch. */
+  /** Session has ended; the watch's file is still missing. */
   | 'waiting'
-  /** Die Uhr hat nicht aufgezeichnet. */
+  /** The watch did not record. */
   | 'missing';
 
-/** Übertragungsstand einer beendeten Einheit; `null` ohne Uhr oder solange sie läuft. */
+/** Transfer status of an ended session; `null` without a watch or while it runs. */
 export function strengthWatchTransfer(
   info: StrengthWatchInfo | null,
 ): StrengthWatchTransfer | null {
   if (!info || info.status === 'recording') return null;
   if (info.status === 'received') return 'received';
-  // Gestartet hat die Uhr nie: Es kommt nichts mehr.
+  // The watch never started: nothing more will come.
   if (info.watch.status === 'error' || info.watch.status === 'disconnected') {
     return 'missing';
   }
   return 'waiting';
 }
 
-/** „Puls und Bewegungen“, „Puls“ oder „Bewegungen“ — was angefordert war. */
+/** "Heart rate and motion", "Heart rate" or "Motion" — what was requested. */
 export function strengthWatchCaptureLabel(info: StrengthWatchInfo): string {
   const { heartRate, motion } = info.capture;
-  if (heartRate && motion) return 'Puls und Bewegungen';
-  return heartRate ? 'Puls' : 'Bewegungen';
+  if (heartRate && motion)
+    return tr('Puls und Bewegungen', 'Heart rate and motion');
+  return heartRate ? tr('Puls', 'Heart rate') : tr('Bewegungen', 'Motion');
 }

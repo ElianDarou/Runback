@@ -15,32 +15,32 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /**
- * Laufende Krafteinheit außerhalb der App-Oberfläche: Benachrichtigung
- * (StrengthSessionService), Uhr und Pausenende.
+ * Active strength session outside the app screen: notification
+ * (StrengthSessionService), watch, and rest-timer end.
  *
- * Jede Änderung an `strength_active` läuft hier durch — aus der App
- * (`save`, `finish`) wie von Uhr und Benachrichtigung (`command`). Ein Stand
- * aus der App trägt `baseRevision`; baut er nicht auf dem gespeicherten auf,
- * wird er abgelehnt und die App wiederholt ihre Änderung auf dem neueren.
+ * Every change to `strength_active` goes through here — from the app
+ * (`save`, `finish`) and from the watch and notification (`command`). A state
+ * from the app carries `baseRevision`; if it does not build on the stored one,
+ * it is rejected and the app repeats its change on the newer state.
  */
 object StrengthWorkout {
     const val EVENT = "runbackStrengthChanged"
     private const val ACTIVE = "strength_active"
-    /** Welche Uhr die laufende Einheit zuletzt angezeigt hat (`seen`). */
+    /** Which watch last showed the active session (`seen`). */
     private const val WATCH = "strength_watch"
     private const val TAG = "RunbackStrength"
     private val lock = Any()
     private val sender = Executors.newSingleThreadExecutor()
 
-    /** Meldet der App einen Stand, den nicht sie selbst geschrieben hat. */
+    /** Reports to the app a state it did not write itself. */
     @Volatile var listener: ((JSONObject) -> Unit)? = null
 
     /**
-     * Baut `next` auf dem gespeicherten Stand auf? Mit `baseRevision` muss genau
-     * dieser Stand gespeichert sein — ein Nachzügler belebt so keine beendete
-     * oder fremde Einheit. Ohne Angabe nur, wenn er eine neue Einheit beginnt
-     * oder eine ältere ohne Revision fortschreibt. Eine neue Einheit ersetzt
-     * keine laufende: Die Uhr kann gerade eine gestartet haben.
+     * Does `next` build on the stored state? With `baseRevision` exactly that
+     * state must be stored — a straggler must not revive a finished or foreign
+     * session. Without it, only if it starts a new session or continues an older
+     * one that has no revision. A new session does not replace a running one:
+     * the watch may have just started one.
      */
     internal fun fits(stored: JSONObject?, next: JSONObject): Boolean {
         val base = next.optString("baseRevision").takeIf { next.has("baseRevision") && it.isNotBlank() }
@@ -52,7 +52,7 @@ object StrengthWorkout {
         return stored.optString("revision").isBlank()
     }
 
-    /** Speichert aus der App. `false`: veralteter Stand, nichts geschrieben. */
+    /** Saves from the app. `false`: stale state, nothing written. */
     fun save(context: Context, store: RunStore, session: JSONObject): Boolean {
         val previous = synchronized(lock) {
             val stored = store.getDocument(ACTIVE)
@@ -66,7 +66,7 @@ object StrengthWorkout {
         return true
     }
 
-    /** Beendet aus der App. `null`: veralteter Stand; sonst der Stand davor. */
+    /** Finishes from the app. `null`: stale state; otherwise the state before. */
     fun finish(store: RunStore, session: JSONObject, summary: JSONObject): Pair<JSONObject?, Boolean> = synchronized(lock) {
         val stored = store.getDocument(ACTIVE)
         if (!fits(stored, session)) return@synchronized stored to false
@@ -79,13 +79,13 @@ object StrengthWorkout {
         store.getDocument(ACTIVE).also { store.deleteDocument(ACTIVE) }
     }
 
-    /** Einheit beendet oder verworfen: `strength_active` ist schon gelöscht. */
+    /** Session finished or discarded: `strength_active` is already deleted. */
     fun ended(context: Context, store: RunStore, sessionId: String?) {
         sync(context, sessionId)
         if (sessionId != null && store.getDocument(WATCH)?.optString("sessionId") == sessionId) store.deleteDocument(WATCH)
     }
 
-    /** Befehl von Uhr oder Benachrichtigung. `false`, wenn er nicht (mehr) passt. */
+    /** Command from the watch or notification. `false` if it no longer fits. */
     fun command(context: Context, command: JSONObject): Boolean {
         if (command.optString("action") == StrengthLive.START_SESSION) return start(context, command)
         val store = RunStore(context)
@@ -96,21 +96,21 @@ object StrengthWorkout {
                 ?.put("revision", UUID.randomUUID().toString())
                 ?: return@synchronized active to null
             store.putDocument(ACTIVE, next)
-            // Im Schloss, damit die App die Stände in derselben Reihenfolge bekommt.
-            runCatching { listener?.invoke(next) }.onFailure { Log.w(TAG, "App konnte nicht benachrichtigt werden", it) }
+            // Inside the lock, so the app receives states in the same order.
+            runCatching { listener?.invoke(next) }.onFailure { Log.w(TAG, "Could not notify the app", it) }
             active to next
         }
         if (next != null) runCatching { MotionSessions.onStrengthSaved(context, store, previous, next, now) }
         if (next != null && command.has("detectionId")) runCatching { MotionSessions.onWatchDetection(store, command, now) }
-        // Auch ein veralteter Befehl bekommt den aktuellen Stand zurück.
+        // Even a stale command gets the current state back.
         sync(context, command.optString("sessionId"))
         return next != null
     }
 
     /**
-     * Start von der Uhr. Läuft schon eine Einheit, bleibt sie; die Uhr bekommt
-     * deren Stand. Eine Vorlage, die es nicht mehr gibt, startet nichts — der
-     * Nutzer hat sie gewählt, nicht ein freies Training.
+     * Start from the watch. If a session is already running, it stays; the watch
+     * gets its state. A template that no longer exists starts nothing — the user
+     * picked it, not a free workout.
      */
     internal fun start(context: Context, command: JSONObject): Boolean {
         val store = RunStore(context)
@@ -125,7 +125,7 @@ object StrengthWorkout {
             } else {
                 StrengthLive.startSession(template, now, sessionId).put("revision", UUID.randomUUID().toString()).also {
                     store.putDocument(ACTIVE, it)
-                    runCatching { listener?.invoke(it) }.onFailure { error -> Log.w(TAG, "App konnte nicht benachrichtigt werden", error) }
+                    runCatching { listener?.invoke(it) }.onFailure { error -> Log.w(TAG, "Could not notify the app", error) }
                 }
             }
         }
@@ -140,7 +140,7 @@ object StrengthWorkout {
         return (0 until list.length()).mapNotNull { list.optJSONObject(it) }
     }
 
-    /** Vorlagenliste für die Uhr; nach jedem Speichern der Vorlagen und beim Öffnen der App. */
+    /** Template list for the watch; after every template save and when the app opens. */
     fun publishTemplates(context: Context) {
         sender.execute {
             runCatching {
@@ -149,11 +149,11 @@ object StrengthWorkout {
                 val request = PutDataMapRequest.create(WearProtocol.STRENGTH_TEMPLATES_PATH)
                 request.dataMap.putString("templates", list.toString())
                 Tasks.await(Wearable.getDataClient(context).putDataItem(request.asPutDataRequest()), 10, TimeUnit.SECONDS)
-            }.onFailure { Log.w(TAG, "Vorlagen für die Uhr fehlgeschlagen", it) }
+            }.onFailure { Log.w(TAG, "Sending templates to the watch failed", it) }
         }
     }
 
-    /** Die App ist offen und findet eine laufende Einheit: Benachrichtigung und Uhr nachziehen. */
+    /** The app is open and finds a running session: catch up the notification and the watch. */
     fun resume(context: Context, store: RunStore) {
         if (store.getDocument(ACTIVE) != null) sync(context)
     }
@@ -165,17 +165,17 @@ object StrengthWorkout {
             .put("seenAt", System.currentTimeMillis()))
     }
 
-    /** Uhr, die diese Einheit zeigt und gerade verbunden sein sollte; sonst `null`. */
+    /** Watch that shows this session and should be connected right now; otherwise `null`. */
     fun watchNode(store: RunStore, sessionId: String): String? =
         store.getDocument(WATCH)?.takeIf { it.optString("sessionId") == sessionId }?.optString("nodeId")?.takeIf { it.isNotBlank() }
 
-    /** Neueste abgeschlossene Einheiten zuerst, wie `recentSessions` in der App. */
+    /** Newest completed sessions first, like `recentSessions` in the app. */
     fun history(store: RunStore): List<JSONObject> {
         val sessions = store.strengthSessions(5)
         return (0 until sessions.length()).mapNotNull { sessions.optJSONObject(it) }
     }
 
-    /** Pausentimer, Vibration, Ton aus den Einstellungen (`features.strength`). */
+    /** Rest timer, vibration, and sound from the settings (`features.strength`). */
     data class Alerts(val restTimer: Boolean, val vibration: Boolean, val sound: Boolean)
 
     fun alerts(store: RunStore): Alerts {
@@ -191,9 +191,9 @@ object StrengthWorkout {
         StrengthLive.mirror(session, history(store), now, alerts(store).restTimer)
 
     /**
-     * Benachrichtigung und Uhr folgen dem gespeicherten Stand. Die Uhr bekommt
-     * ihn erst beim Senden gelesen, damit ein später gesendeter Auftrag nie
-     * einen älteren Stand (etwa eine schon beendete Einheit) zurückbringt.
+     * Notification and watch follow the stored state. The watch's state is read
+     * only at send time, so a job sent later never brings back an older state
+     * (such as an already finished session).
      */
     private fun sync(context: Context, endedId: String? = null) {
         StrengthSessionService.refresh(context)
@@ -203,20 +203,20 @@ object StrengthWorkout {
                 val active = store.getDocument(ACTIVE)?.takeIf { it.optString("status") == "active" }
                 put(context, if (active != null) mirror(store, active)
                     else StrengthLive.ended(endedId, System.currentTimeMillis()))
-            }.onFailure { Log.w(TAG, "Trainingsstand für die Uhr fehlgeschlagen", it) }
+            }.onFailure { Log.w(TAG, "Sending session state to the watch failed", it) }
         }
     }
 
-    /** Nach dem Pausenende: Die Uhr nimmt den Timer weg. */
+    /** After the rest ends: the watch removes the timer. */
     fun republish(context: Context) = sync(context)
 
-    /** Ein DataItem je Telefon: Die Uhr bekommt den letzten Stand auch nach einer Funkpause. */
+    /** One DataItem per phone: the watch gets the latest state even after a radio gap. */
     private fun put(context: Context, state: JSONObject) {
         runCatching {
             val request = PutDataMapRequest.create(WearProtocol.STRENGTH_STATE_PATH)
             request.dataMap.putString("state", state.toString())
             request.dataMap.putLong("updatedAt", System.currentTimeMillis())
             Tasks.await(Wearable.getDataClient(context).putDataItem(request.asPutDataRequest().setUrgent()), 10, TimeUnit.SECONDS)
-        }.onFailure { Log.w(TAG, "Uhr konnte den Trainingsstand nicht bekommen", it) }
+        }.onFailure { Log.w(TAG, "The watch could not receive the session state", it) }
     }
 }

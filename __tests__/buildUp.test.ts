@@ -26,7 +26,7 @@ const runAt = (id: string, date: string, km: number, paceSeconds = 360): Run => 
   };
 };
 
-// Montag, 21.09.2026; Halbmarathon Sonntag, 15.11.2026 (8 Wochen).
+// Monday, 21.09.2026; half marathon Sunday, 15.11.2026 (8 weeks).
 const TODAY = '2026-09-22';
 const NOW = localAt(TODAY, 18);
 const goal = { name: 'Halbmarathon', distanceKm: 21.0975, targetDate: '2026-11-15' };
@@ -38,20 +38,20 @@ const runs = [
   runAt('w4', '2026-09-20', 12),
 ];
 
-describe('Aufbau', () => {
-  it('nimmt den Median der längsten Wochenläufe als Basis', () => {
+describe('Build-up', () => {
+  it('uses the median of the longest weekly runs as the base', () => {
     expect(baseLongRunKm(runs, NOW)).toEqual({ km: 10.5, weeks: 4 });
     expect(baseLongRunKm([runs[3]], NOW).km).toBeUndefined();
   });
 
-  it('wächst um höchstens zehn Prozent und legt jede vierte Woche Erholung ein', () => {
+  it('grows by at most ten percent and inserts recovery every fourth week', () => {
     const sequence = longRunSequence(10, 19, 7);
     expect(sequence.map(item => item.km)).toEqual([11, 12.1, 13.3, 10.6, 14.6, 16.1, 17.7]);
     expect(sequence[3].recovery).toBe(true);
     expect(longRunSequence(18, 19, 3).map(item => item.km)).toEqual([19, 19, 19]);
   });
 
-  it('plant den langen Lauf auf den letzten Routinetag und sagt, wie weit der Aufbau reicht', () => {
+  it('schedules the long run on the last routine day and says how far the build-up reaches', () => {
     const week = buildUpWeek({ goal, runs, routine, weekStart: '2026-09-21', today: TODAY, now: NOW });
     expect(week.status).toBe('ready');
     expect(week.phase).toBe('build');
@@ -61,12 +61,12 @@ describe('Aufbau', () => {
     expect(long?.routineDay).toBe(6);
     expect(long?.minutes).toBe(70);
     expect(week.slots.filter(slot => slot.purpose === 'easy')).toHaveLength(2);
-    // 7 Aufbauwochen à 10 % ab 10,5 km enden unter 19 km.
+    // 7 build-up weeks at 10 % from 10.5 km end below 19 km.
     expect(week.reachableKm).toBeLessThan(19);
     expect(week.limits[0]).toContain('statt 19 km');
   });
 
-  it('entlastet in der Vorwoche und setzt den Wettkampf auf das Zieldatum', () => {
+  it('eases off in the week before and sets the race on the goal date', () => {
     const taper = buildUpWeek({ goal, runs, routine, weekStart: '2026-11-02', today: TODAY, now: NOW });
     expect(taper.phase).toBe('taper');
     expect(taper.longRunKm).toBeCloseTo((taper.reachableKm as number) * 0.6, 0);
@@ -74,12 +74,12 @@ describe('Aufbau', () => {
     expect(race.phase).toBe('race');
     const raceSlot = race.slots.find(slot => slot.purpose === 'race');
     expect(raceSlot).toMatchObject({ routineDay: 6, title: 'Halbmarathon', effort: 'hard' });
-    // Routinetag Samstag (5) liegt zu nah am Wettkampf, Montag und Mittwoch bleiben kurz.
+    // Routine day Saturday (5) is too close to the race; Monday and Wednesday stay short.
     expect(race.slots.filter(slot => slot.purpose === 'easy').map(slot => slot.routineDay)).toEqual([1, 3]);
     expect(race.slots.every(slot => slot.purpose !== 'easy' || slot.minutes <= 30)).toBe(true);
   });
 
-  it('bleibt ohne Lauftage oder Datenbasis ehrlich', () => {
+  it('stays honest without running days or a data base', () => {
     expect(
       buildUpWeek({ goal, runs, routine: { days: [], minutes: 40 }, weekStart: '2026-09-21', today: TODAY, now: NOW }).status,
     ).toBe('no_days');
@@ -92,7 +92,7 @@ describe('Aufbau', () => {
     ).toBe('past_target');
   });
 
-  it('fließt als Lauf-Slots in den Wochenvorschlag ein', () => {
+  it('flows into the week suggestion as run slots', () => {
     const week = buildUpWeek({ goal, runs, routine, weekStart: '2026-09-21', today: TODAY, now: NOW });
     const state: ScheduleState = { version: 1, sessions: [], availability: {}, routine };
     const suggestion = suggestWeek(state, '2026-09-21', { today: TODAY, runSlots: week.slots });
@@ -102,8 +102,8 @@ describe('Aufbau', () => {
       ['2026-09-27', 'long', 70],
     ]);
     expect(suggestion.addedSessions[2].title).toBe('Langer Lauf · 11,6 km');
-    // Eine ausdrücklich knappe Verfügbarkeit bleibt eine Grenze: der lange
-    // Lauf weicht auf einen anderen Tag aus.
+    // An explicitly tight availability stays a limit: the long
+    // run moves to another day.
     const tight = suggestWeek(
       { ...state, availability: { '2026-09-27': 30 } },
       '2026-09-21',

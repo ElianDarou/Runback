@@ -8,30 +8,30 @@ import java.io.InputStream
 import java.io.OutputStream
 
 /**
- * Rohformat der Bewegungsaufzeichnung im Krafttraining (Uhr → Handy → Export).
+ * Raw format of the motion recording during strength training (watch → phone → export).
  *
- * Die Uhr schreibt nur an, nie um: ein Absturz kostet höchstens den letzten,
- * halb geschriebenen Datensatz. Aufbau, alles Big Endian:
+ * The watch only appends, never rewrites: a crash costs at most the last,
+ * half-written record. Layout, all big endian:
  *
- *   "RBMOTION" · int32 Formatversion · int32 Kopf-Länge · Kopf als UTF-8-JSON
- *   danach Datensätze, je ein Byte Art:
- *     0 Uhrzeit-Anker: int64 elapsedRealtimeNanos · int64 Wanduhr der Uhr in ms
- *     1 Beschleunigung (m/s², inkl. Schwerkraft): int64 Sensorzeit ns · 3 × float32
- *     2 Gyroskop (rad/s): int64 Sensorzeit ns · 3 × float32
- *     3 Puls (ab Version 2): int64 Sensorzeit ns · float32 bpm · int8 Genauigkeit des Sensors
- *     4 Ereignis (ab Version 3): int64 Sensorzeit ns · int32 Länge · UTF-8-JSON, z. B. ein
- *       erkannter Satz und die Entscheidung des Nutzers dazu (`SetDetectionLog`)
+ *   "RBMOTION" · int32 format version · int32 header length · header as UTF-8 JSON
+ *   then records, one kind byte each:
+ *     0 time anchor: int64 elapsedRealtimeNanos · int64 watch wall clock in ms
+ *     1 acceleration (m/s², incl. gravity): int64 sensor time ns · 3 × float32
+ *     2 gyroscope (rad/s): int64 sensor time ns · 3 × float32
+ *     3 heart rate (from version 2): int64 sensor time ns · float32 bpm · int8 sensor accuracy
+ *     4 event (from version 3): int64 sensor time ns · int32 length · UTF-8 JSON, e.g. a
+ *       detected set and the user's decision on it (`SetDetectionLog`)
  *
- * Sensorzeit und Anker teilen die Zeitbasis `elapsedRealtimeNanos`; die
- * Wanduhrzeit eines Messwerts folgt aus dem letzten Anker davor.
+ * Sensor time and anchors share the time base `elapsedRealtimeNanos`; the
+ * wall clock time of a reading follows from the last anchor before it.
  *
- * Version 2 ergänzt nur die Pulsart, Version 3 nur die Ereignisse; ältere
- * Dateien bleiben lesbar.
- * Welche Arten eine Datei enthält, steht im Kopf unter `capture`.
+ * Version 2 only adds the heart rate kind, version 3 only the events; older
+ * files stay readable.
+ * Which kinds a file contains is listed in the header under `capture`.
  */
 object MotionFormat {
     const val VERSION = 3
-    /** Älteste Version, die der Leser noch versteht. */
+    /** Oldest version the reader still understands. */
     const val MIN_READ_VERSION = 1
     const val FORMAT = "runback-motion"
     const val KIND_ANCHOR: Byte = 0
@@ -49,7 +49,7 @@ object MotionFormat {
         init {
             val bytes = JSONObject(header.toString()).put("format", FORMAT).put("formatVersion", VERSION)
                 .toString().toByteArray(Charsets.UTF_8)
-            require(bytes.size <= MAX_HEADER_BYTES) { "Kopf der Bewegungsdatei ist zu groß" }
+            require(bytes.size <= MAX_HEADER_BYTES) { "Header of the motion file is too large" }
             data.write(MAGIC)
             data.writeInt(VERSION)
             data.writeInt(bytes.size)
@@ -63,7 +63,7 @@ object MotionFormat {
         }
 
         fun sample(kind: Byte, timestampNanos: Long, x: Float, y: Float, z: Float) {
-            require(kind == KIND_ACCEL || kind == KIND_GYRO) { "Unbekannte Messart" }
+            require(kind == KIND_ACCEL || kind == KIND_GYRO) { "Unknown sample kind" }
             data.writeByte(kind.toInt())
             data.writeLong(timestampNanos)
             data.writeFloat(x)
@@ -71,7 +71,7 @@ object MotionFormat {
             data.writeFloat(z)
         }
 
-        /** Pulswert der Uhr; `accuracy` ist `SensorManager.SENSOR_STATUS_*`, ungefiltert. */
+        /** Heart rate value from the watch; `accuracy` is `SensorManager.SENSOR_STATUS_*`, unfiltered. */
         fun heart(timestampNanos: Long, bpm: Float, accuracy: Int) {
             data.writeByte(KIND_HEART.toInt())
             data.writeLong(timestampNanos)
@@ -79,10 +79,10 @@ object MotionFormat {
             data.writeByte(accuracy.coerceIn(-128, 127))
         }
 
-        /** Ereignis zur Sensorzeit `timestampNanos`; der Inhalt ist JSON. */
+        /** Event at sensor time `timestampNanos`; the content is JSON. */
         fun event(timestampNanos: Long, payload: JSONObject) {
             val bytes = payload.toString().toByteArray(Charsets.UTF_8)
-            require(bytes.size <= MAX_EVENT_BYTES) { "Ereignis ist zu groß" }
+            require(bytes.size <= MAX_EVENT_BYTES) { "Event is too large" }
             data.writeByte(KIND_EVENT.toInt())
             data.writeLong(timestampNanos)
             data.writeInt(bytes.size)
@@ -93,18 +93,18 @@ object MotionFormat {
         override fun close() = data.close()
     }
 
-    /** Ein Datensatz; beim Lesen wiederverwendet, damit große Dateien nicht den Speicher füllen. */
+    /** One record; reused while reading so large files don't fill memory. */
     class Record {
         var kind: Byte = KIND_ANCHOR
         var time: Long = 0L
-        /** Nur für Anker: Wanduhr der Uhr in ms. */
+        /** Anchors only: the watch's wall clock in ms. */
         var wallMs: Long = 0L
         var x = 0f
         var y = 0f
         var z = 0f
-        /** Nur für Puls: Genauigkeit des Sensors; der Wert steht in `x`. */
+        /** Heart rate only: sensor accuracy; the value is in `x`. */
         var accuracy = 0
-        /** Nur für Ereignisse: Inhalt als JSON-Text. */
+        /** Events only: content as JSON text. */
         var json: String? = null
     }
 
@@ -112,7 +112,7 @@ object MotionFormat {
         private val data = DataInputStream(input.buffered())
         val header: JSONObject
         val version: Int
-        /** Wahr, wenn die Datei mitten in einem Datensatz endet (z. B. Akku leer). */
+        /** True if the file ends in the middle of a record (e.g. battery died). */
         var truncated = false
             private set
         private val record = Record()
@@ -120,17 +120,17 @@ object MotionFormat {
         init {
             val magic = ByteArray(MAGIC.size)
             data.readFully(magic)
-            require(magic.contentEquals(MAGIC)) { "Keine Runback-Bewegungsdatei" }
+            require(magic.contentEquals(MAGIC)) { "Not a Runback motion file" }
             version = data.readInt()
-            require(version in MIN_READ_VERSION..VERSION) { "Unbekannte Version der Bewegungsdatei: $version" }
+            require(version in MIN_READ_VERSION..VERSION) { "Unknown motion file version: $version" }
             val length = data.readInt()
-            require(length in 2..MAX_HEADER_BYTES) { "Ungültiger Kopf der Bewegungsdatei" }
+            require(length in 2..MAX_HEADER_BYTES) { "Invalid header in motion file" }
             val bytes = ByteArray(length)
             data.readFully(bytes)
             header = JSONObject(bytes.toString(Charsets.UTF_8))
         }
 
-        /** Nächster Datensatz oder `null` am Dateiende. */
+        /** Next record, or `null` at the end of the file. */
         fun next(): Record? {
             val kind = data.read()
             if (kind < 0) return null
@@ -148,21 +148,21 @@ object MotionFormat {
                         record.z = data.readFloat()
                     }
                     KIND_HEART -> {
-                        require(version >= 2) { "Puls in einer Datei der Version $version" }
+                        require(version >= 2) { "Heart rate in a version $version file" }
                         record.time = data.readLong()
                         record.x = data.readFloat()
                         record.accuracy = data.readByte().toInt()
                     }
                     KIND_EVENT -> {
-                        require(version >= 3) { "Ereignis in einer Datei der Version $version" }
+                        require(version >= 3) { "Event in a version $version file" }
                         record.time = data.readLong()
                         val length = data.readInt()
-                        require(length in 0..MAX_EVENT_BYTES) { "Ungültiges Ereignis" }
+                        require(length in 0..MAX_EVENT_BYTES) { "Invalid event" }
                         val bytes = ByteArray(length)
                         data.readFully(bytes)
                         record.json = bytes.toString(Charsets.UTF_8)
                     }
-                    else -> throw IllegalArgumentException("Unbekannte Datensatzart $kind")
+                    else -> throw IllegalArgumentException("Unknown record kind $kind")
                 }
             } catch (_: EOFException) {
                 truncated = true

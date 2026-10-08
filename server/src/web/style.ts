@@ -1,9 +1,9 @@
 import { color, radius, space, type } from '../../.generated/tokens';
 
 /**
- * Stylesheet der Website, erzeugt aus denselben Token wie die App
- * (`src/ui/components.tsx`). Die Klassen heißen wie die Bausteine in
- * `src/ui/components.tsx` und sehen genauso aus. Regeln: docs/design-language.md.
+ * Stylesheet of the website, generated from the same tokens as the app
+ * (`src/ui/components.tsx`). The classes are named after the building blocks in
+ * `src/ui/components.tsx` and look the same. Rules: docs/design-language.md.
  */
 
 const font = (entry: {

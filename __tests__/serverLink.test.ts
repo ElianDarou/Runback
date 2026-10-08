@@ -10,8 +10,8 @@ import {
   serverStateLabel,
 } from '../src/domain/serverLink';
 
-describe('Eigener Server', () => {
-  it('wählt HTTP nur im Heimnetz und HTTPS für öffentliche Domains', () => {
+describe('Own server', () => {
+  it('uses HTTP only on the home network and HTTPS for public domains', () => {
     expect(normalizeServerAddress(' nas.local:8080/ ')).toEqual({
       ok: true,
       url: 'http://nas.local:8080',
@@ -72,14 +72,14 @@ describe('Eigener Server', () => {
   ])('kennt öffentliche Adressen: %s', host =>
     expect(isLocalHost(host)).toBe(false),
   );
-  it('gibt GPS und Gesundheitswerte nur ausdrücklich frei', () => {
+  it('releases GPS and health values only explicitly', () => {
     expect(readServerScope(null)).toEqual(DEFAULT_SERVER_SCOPE);
     expect(readServerScope({ gps: 'true', health: 1 })).toEqual(
       DEFAULT_SERVER_SCOPE,
     );
     expect(readServerScope({ runs: false, gps: true }).gps).toBe(true);
   });
-  it('bewahrt unbekannte Zeitpunkte und den Offline-Status ohne Training zu verändern', () => {
+  it('keeps unknown times and the offline status without changing training', () => {
     const offline = readServerLinkStatus({
       url: 'http://nas.local',
       state: 'offline',

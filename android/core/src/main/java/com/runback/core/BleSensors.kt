@@ -96,10 +96,11 @@ class BleSensors private constructor(context: Context) {
     private fun scanAllowed() = if (Build.VERSION.SDK_INT >= 31) permitted(Manifest.permission.BLUETOOTH_SCAN) && connectAllowed()
                                else permitted(Manifest.permission.ACCESS_FINE_LOCATION)
     private fun availability(): String? = when {
-        !app.packageManager.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE) -> "Bluetooth LE ist auf diesem Gerät nicht verfügbar."
-        !connectAllowed() -> "Bluetooth-Berechtigung fehlt."
-        adapter == null -> "Kein Bluetooth-Adapter verfügbar."
-        !runCatching { adapter?.isEnabled == true }.getOrDefault(false) -> "Bluetooth ist ausgeschaltet."
+        !app.packageManager.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE) ->
+            Lang.tr("Bluetooth LE ist auf diesem Gerät nicht verfügbar.", "Bluetooth LE is not available on this device.")
+        !connectAllowed() -> Lang.tr("Bluetooth-Berechtigung fehlt.", "Bluetooth permission is missing.")
+        adapter == null -> Lang.tr("Kein Bluetooth-Adapter verfügbar.", "No Bluetooth adapter available.")
+        !runCatching { adapter?.isEnabled == true }.getOrDefault(false) -> Lang.tr("Bluetooth ist ausgeschaltet.", "Bluetooth is turned off.")
         else -> null
     }
 
@@ -119,15 +120,22 @@ class BleSensors private constructor(context: Context) {
 
     @Synchronized fun startScan(): JSONObject {
         error = availability()
-        if (error == null && !scanAllowed()) error = "Zum Suchen fehlt die Bluetooth- oder Standortberechtigung."
+        if (error == null && !scanAllowed()) {
+            error = Lang.tr("Zum Suchen fehlt die Bluetooth- oder Standortberechtigung.", "Searching needs Bluetooth or location permission.")
+        }
         if (error != null || scanning) return status()
         try {
-            val scanner = adapter?.bluetoothLeScanner ?: run { error = "Bluetooth-Suche nicht verfügbar."; return status() }
+            val scanner = adapter?.bluetoothLeScanner ?: run {
+                error = Lang.tr("Bluetooth-Suche nicht verfügbar.", "Bluetooth search not available.")
+                return status()
+            }
             // Unfiltered discovery also finds sensors whose advertisements omit the service UUID.
             scanner.startScan(null, ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build(), scanCallback)
             scanning = true
             scanDeadline = Runnable { stopScan() }.also { handler.postDelayed(it, 15_000) }
-        } catch (failure: RuntimeException) { error = "Bluetooth-Suche fehlgeschlagen: ${failure.message.orEmpty()}" }
+        } catch (failure: RuntimeException) {
+            error = Lang.tr("Bluetooth-Suche fehlgeschlagen: ${failure.message.orEmpty()}", "Bluetooth search failed: ${failure.message.orEmpty()}")
+        }
         return status()
     }
 
@@ -148,12 +156,12 @@ class BleSensors private constructor(context: Context) {
         } }
         override fun onBatchScanResults(results: MutableList<ScanResult>) { results.forEach { onScanResult(0, it) } }
         override fun onScanFailed(errorCode: Int) = synchronized(this@BleSensors) {
-            scanning = false; error = "Bluetooth-Suche fehlgeschlagen (Code $errorCode)."
+            scanning = false; error = Lang.tr("Bluetooth-Suche fehlgeschlagen (Code $errorCode).", "Bluetooth search failed (code $errorCode).")
         }
     }
 
     @Synchronized fun connect(address: String): JSONObject {
-        if (!BluetoothAdapter.checkBluetoothAddress(address)) { error = "Ungültige Sensoradresse."; return status() }
+        if (!BluetoothAdapter.checkBluetoothAddress(address)) { error = Lang.tr("Ungültige Sensoradresse.", "Invalid sensor address."); return status() }
         error = availability()
         if (error != null) return status()
         desired.add(address); saveSelected()
@@ -173,9 +181,11 @@ class BleSensors private constructor(context: Context) {
             remote.name?.let { device.name = it }
             device.gatt = remote.connectGatt(app, false, callback, BluetoothDevice.TRANSPORT_LE)
             device.timer = Runnable { synchronized(this) {
-                if (device.state == "connecting") failed(device, "Sensor antwortet nicht.")
+                if (device.state == "connecting") failed(device, Lang.tr("Sensor antwortet nicht.", "Sensor does not respond."))
             } }.also { handler.postDelayed(it, 20_000) }
-        } catch (failure: RuntimeException) { failed(device, "Verbindung fehlgeschlagen: ${failure.message.orEmpty()}") }
+        } catch (failure: RuntimeException) {
+            failed(device, Lang.tr("Verbindung fehlgeschlagen: ${failure.message.orEmpty()}", "Connection failed: ${failure.message.orEmpty()}"))
+        }
     }
 
     @Synchronized fun disconnect(address: String): JSONObject {
@@ -218,22 +228,30 @@ class BleSensors private constructor(context: Context) {
             if (status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothProfile.STATE_CONNECTED) {
                 device.timer?.let(handler::removeCallbacks); device.timer = null
                 device.state = "discovering"
-                if (!runCatching { gatt.discoverServices() }.getOrDefault(false)) failed(device, "Sensordienste konnten nicht gelesen werden.")
-                else device.timer = Runnable { synchronized(this@BleSensors) { failed(device, "Sensordienste antworten nicht.") } }
+                if (!runCatching { gatt.discoverServices() }.getOrDefault(false)) {
+                    failed(device, Lang.tr("Sensordienste konnten nicht gelesen werden.", "Sensor services could not be read."))
+                } else device.timer = Runnable {
+                    synchronized(this@BleSensors) { failed(device, Lang.tr("Sensordienste antworten nicht.", "Sensor services do not respond.")) }
+                }
                     .also { handler.postDelayed(it, 15_000) }
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED || status != BluetoothGatt.GATT_SUCCESS) {
-                failed(device, "Sensor getrennt (Code $status).")
+                failed(device, Lang.tr("Sensor getrennt (Code $status).", "Sensor disconnected (code $status)."))
             }
         }
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) = synchronized(this@BleSensors) {
             val device = current(gatt) ?: return@synchronized
             device.timer?.let(handler::removeCallbacks); device.timer = null
-            if (status != BluetoothGatt.GATT_SUCCESS) { failed(device, "Sensordienste konnten nicht gelesen werden."); return@synchronized }
+            if (status != BluetoothGatt.GATT_SUCCESS) {
+                failed(device, Lang.tr("Sensordienste konnten nicht gelesen werden.", "Sensor services could not be read."))
+                return@synchronized
+            }
             device.services.clear(); gatt.services.forEach { device.services.add(it.uuid.toString()) }
             val heart = gatt.getService(HR_SERVICE)?.getCharacteristic(HR_MEASUREMENT)
             val running = gatt.getService(RSC_SERVICE)?.getCharacteristic(RSC_MEASUREMENT)
             if (heart == null && running == null) {
-                close(device); device.state = "unsupported"; device.error = "Kein Standard-Puls- oder Laufsensor (HR/RSC)."; return@synchronized
+                close(device); device.state = "unsupported"
+                device.error = Lang.tr("Kein Standard-Puls- oder Laufsensor (HR/RSC).", "No standard heart rate or running sensor (HR/RSC).")
+                return@synchronized
             }
             for (characteristic in listOfNotNull(heart, running)) subscribe(device, gatt, characteristic)
             gatt.getService(BATTERY_SERVICE)?.getCharacteristic(BATTERY_LEVEL)?.let { battery ->
@@ -246,7 +264,12 @@ class BleSensors private constructor(context: Context) {
         }
         override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) = synchronized(this@BleSensors) {
             val device = current(gatt) ?: return@synchronized
-            if (status != BluetoothGatt.GATT_SUCCESS) device.error = "Sensorbenachrichtigung konnte nicht aktiviert werden (Code $status)."
+            if (status != BluetoothGatt.GATT_SUCCESS) {
+                device.error = Lang.tr(
+                    "Sensorbenachrichtigung konnte nicht aktiviert werden (Code $status).",
+                    "Sensor notifications could not be enabled (code $status).",
+                )
+            }
             next(device)
         }
         @Deprecated("Used on Android 12 and earlier")
@@ -268,7 +291,10 @@ class BleSensors private constructor(context: Context) {
     @Suppress("DEPRECATION")
     private fun subscribe(device: DeviceState, gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
         val descriptor = characteristic.getDescriptor(CCCD)
-        if (descriptor == null) { device.error = "Sensor unterstützt keine Standard-Benachrichtigungen."; return }
+        if (descriptor == null) {
+            device.error = Lang.tr("Sensor unterstützt keine Standard-Benachrichtigungen.", "Sensor does not support standard notifications.")
+            return
+        }
         device.queue.add {
             if (!gatt.setCharacteristicNotification(characteristic, true)) false
             else {
@@ -283,17 +309,18 @@ class BleSensors private constructor(context: Context) {
         device.operationTimer?.let(handler::removeCallbacks); device.operationTimer = null
         while (device.queue.isNotEmpty()) {
             if (runCatching { device.queue.removeFirst().invoke() }.getOrDefault(false)) {
-                device.operationTimer = Runnable { synchronized(this) { failed(device, "Sensorabfrage hat nicht geantwortet.") } }
-                    .also { handler.postDelayed(it, 10_000) }
+                device.operationTimer = Runnable {
+                    synchronized(this) { failed(device, Lang.tr("Sensorabfrage hat nicht geantwortet.", "Sensor request did not respond.")) }
+                }.also { handler.postDelayed(it, 10_000) }
                 return
             }
-            device.error = "Eine Sensorabfrage konnte nicht gestartet werden."
+            device.error = Lang.tr("Eine Sensorabfrage konnte nicht gestartet werden.", "A sensor request could not be started.")
         }
     }
     @Synchronized private fun read(gatt: BluetoothGatt, uuid: UUID, value: ByteArray, result: Int) {
         val device = current(gatt) ?: return
         if (result == BluetoothGatt.GATT_SUCCESS) receive(device, uuid, value)
-        else device.error = "Sensorwert konnte nicht gelesen werden (Code $result)."
+        else device.error = Lang.tr("Sensorwert konnte nicht gelesen werden (Code $result).", "Sensor value could not be read (code $result).")
         next(device)
     }
     @Synchronized private fun changed(gatt: BluetoothGatt, uuid: UUID, value: ByteArray) {
@@ -331,7 +358,12 @@ class BleSensors private constructor(context: Context) {
             try {
                 val repository = store ?: RunStore(app).also { store = it }
                 repository.appendSamples(runId, listOf(RawSample(time, kind, values)))
-            } catch (failure: Exception) { device.error = "Sensorwert konnte nicht gespeichert werden: ${failure.message.orEmpty()}" }
+            } catch (failure: Exception) {
+                device.error = Lang.tr(
+                    "Sensorwert konnte nicht gespeichert werden: ${failure.message.orEmpty()}",
+                    "Sensor value could not be saved: ${failure.message.orEmpty()}",
+                )
+            }
         }
     }
 

@@ -9,27 +9,27 @@ import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 /**
- * Laufstil aus Beschleunigungssensor und Gyroskop (Modell `gait-1`).
+ * Running form from the accelerometer and gyroscope (model `gait-1`).
  *
- * Gerechnet wird während der Aufzeichnung je 10-s-Fenster; die Rohwerte in
- * hoher Rate (50–100 Hz) werden nicht gespeichert, nur das Ergebnis je
- * Fenster. Was ein Trageort nicht hergibt, bleibt `null`:
- * - Arm (Hand, Oberarm, Handgelenk): Kadenz, Rhythmus, Armschwung, Querbewegung.
- * - Rumpf (Gürtel, Oberkörper): Kadenz, Rhythmus, Auf und Ab, Bodenkontakt,
- *   Aufkommen, Abbremsen; am Oberkörper zusätzlich die Vorlage.
- * - Hosentasche und „weiß nicht“: nur Kadenz und Rhythmus.
- * Alle Werte sind Schätzungen aus Bewegungssensoren, keine Labormessung.
+ * Computed during recording per 10-s window; the raw values at high rate
+ * (50–100 Hz) are not stored, only the result per window. What a carry
+ * position can't provide stays `null`:
+ * - Arm (hand, upper arm, wrist): cadence, rhythm, arm swing, lateral movement.
+ * - Trunk (waist, chest): cadence, rhythm, bounce, ground contact,
+ *   impact, braking; on the chest additionally the forward lean.
+ * - Pocket and “unknown”: only cadence and rhythm.
+ * All values are estimates from motion sensors, not lab measurements.
  */
 object Gait {
     const val VERSION = "gait-1"
     const val WINDOW_MS = 10_000L
 
-    /** Unter dieser Streuung von |a| (m/s²) läuft niemand. */
+    /** Below this spread of |a| (m/s²) nobody is moving. */
     private const val MOVING_ACCEL_STD = 1.0
     private const val STILL_ACCEL_STD = 0.25
-    /** Laufender Arm oder Oberschenkel dreht deutlich schneller als der Rumpf (rad/s, RMS). */
+    /** A swinging arm or thigh turns much faster than the trunk (rad/s, RMS). */
     private const val SWING_RMS = 1.5
-    /** Mindestähnlichkeit eines Doppelschritts mit dem nächsten. */
+    /** Minimum similarity of one double step to the next. */
     private const val MIN_REGULARITY = 0.3
     private const val TEMPLATE_POINTS = 50
 
@@ -47,34 +47,34 @@ object Gait {
         }
     }
 
-    /** Drei gleich lange Achsen, gleichmäßig abgetastet. */
+    /** Three equally long axes, sampled evenly. */
     class Axes(val x: DoubleArray, val y: DoubleArray, val z: DoubleArray) {
         val size get() = x.size
         fun mean() = doubleArrayOf(x.average(), y.average(), z.average())
     }
 
     data class Metrics(
-        /** Streuung reicht für Fortbewegung. */
+        /** Spread is enough for locomotion. */
         val moving: Boolean,
-        /** Gerät lag ruhig; dann ist [gravity] eine brauchbare Stehreferenz. */
+        /** Device lay still; then [gravity] is a usable standing reference. */
         val still: Boolean,
-        /** Signal passt zum angegebenen Trageort; null ohne Gyroskop oder ohne Angabe. */
+        /** Signal fits the given carry position; null without a gyroscope or without a value. */
         val fits: Boolean? = null,
-        /** Mittlere Schwerkraftrichtung im Gerätesystem (Einheitsvektor). */
+        /** Mean gravity direction in the device frame (unit vector). */
         val gravity: DoubleArray? = null,
-        /** Schritte je Minute. */
+        /** Steps per minute. */
         val cadence: Double? = null,
-        /** Ähnlichkeit eines Doppelschritts mit dem nächsten (0–1). */
+        /** Similarity of one double step to the next (0–1). */
         val regularity: Double? = null,
-        /** Winkel von ganz vorn bis ganz hinten je Doppelschritt, Median. */
+        /** Angle from fully forward to fully back per double step, median. */
         val armSwingDeg: Double? = null,
-        /** Anteil der Armdrehung um die Hochachse (0–1). */
+        /** Share of arm rotation around the vertical axis (0–1). */
         val crossShare: Double? = null,
         val oscillationCm: Double? = null,
         val contactMs: Double? = null,
-        /** Spitze der Vertikalbeschleunigung je Schritt in g (inklusive Schwerkraft), Median. */
+        /** Peak vertical acceleration per step in g (including gravity), median. */
         val impactG: Double? = null,
-        /** Tempo-Schwankung vor–zurück je Schritt, m/s. */
+        /** Forward–backward speed variation per step, m/s. */
         val brakingMps: Double? = null,
         val leanDeg: Double? = null,
     )
@@ -115,7 +115,7 @@ object Gait {
         val vertical = DoubleArray(n) {
             acceleration.x[it] * up[0] + acceleration.y[it] * up[1] + acceleration.z[it] * up[2] - gNorm
         }
-        // Arm und Oberschenkel wiederholen sich je Doppelschritt, der Rumpf je Schritt.
+        // Arm and thigh repeat per double step, the trunk per step.
         val useSwing = swing != null && swinging == true &&
             (placement.arm || placement == Placement.POCKET || placement == Placement.UNKNOWN)
         val cadenceSignal = when {
@@ -155,11 +155,11 @@ object Gait {
     data class Stride(val lag: Double, val regularity: Double)
 
     /**
-     * Doppelschrittdauer in Samples aus der Autokorrelation (0,5–1,4 s, also
-     * 86–240 Schritte je Minute). Unter mehreren gleich starken Spitzen gilt die
-     * kürzeste. Mit `requireStepEcho` muss sich schon nach einem halben
-     * Doppelschritt ein Schritt wiederholen — sonst hält der Rumpf beim Gehen
-     * einen einzelnen Schritt für einen Doppelschritt.
+     * Double-step duration in samples from the autocorrelation (0.5–1.4 s, so
+     * 86–240 steps per minute). Among several equally strong peaks the shortest
+     * wins. With `requireStepEcho`, a step must repeat already after half a
+     * double step — otherwise the trunk, while walking, takes a single step for
+     * a double step.
      */
     fun strideLag(signal: DoubleArray, rateHz: Double, requireStepEcho: Boolean): Stride? {
         val n = signal.size
@@ -179,7 +179,7 @@ object Gait {
         return Stride(k + shift, r[k])
     }
 
-    /** Normierte, erwartungstreue Autokorrelation bis `maxLag` einschließlich. */
+    /** Normalized, unbiased autocorrelation up to and including `maxLag`. */
     fun autocorrelation(signal: DoubleArray, maxLag: Int): DoubleArray? {
         val n = signal.size
         if (maxLag >= n) return null
@@ -193,7 +193,7 @@ object Gait {
         }
     }
 
-    /** Spannweite des Schwungwinkels je Doppelschritt; Drift wird linear entfernt. */
+    /** Span of the swing angle per double step; drift is removed linearly. */
     private fun swingAmplitudeDeg(swing: DoubleArray, rateHz: Double, strideLag: Double): Double? {
         val angle = DoubleArray(swing.size)
         var sum = 0.0
@@ -226,9 +226,9 @@ object Gait {
     private class TrunkMetrics(val oscillationCm: Double?, val contactMs: Double?, val impactG: Double?, val brakingMps: Double?)
 
     /**
-     * Schrittgemittelte Vorlage: jeder Schritt von Spitze zu Spitze der
-     * Vertikalbeschleunigung, auf gleiche Länge gebracht und gemittelt.
-     * Seitliches Pendeln wechselt je Schritt die Richtung und mittelt sich weg.
+     * Step-averaged template: each step from peak to peak of the
+     * vertical acceleration, brought to equal length and averaged.
+     * Sideways sway flips direction each step and averages out.
      */
     private fun trunkMetrics(
         acceleration: Axes, up: DoubleArray, gNorm: Double, vertical: DoubleArray, rateHz: Double, stepLag: Double,
@@ -259,7 +259,7 @@ object Gait {
         val dt = stepSeconds / TEMPLATE_POINTS
         val centeredV = centered(v)
         val oscillation = periodicDisplacementRange(centeredV, dt) * 100.0
-        // Grob: Bodenkontakt ≈ Anteil des Schritts, in dem der Rumpf nach oben beschleunigt wird.
+        // Rough: ground contact ≈ share of the step in which the trunk accelerates upward.
         val contact = centeredV.count { it > 0.0 }.toDouble() / TEMPLATE_POINTS * stepSeconds * 1000.0
         val impact = median(steps.map { (a, _) -> (vertical[a] + gNorm) / gNorm })
         val hc = centered(h)
@@ -271,7 +271,7 @@ object Gait {
         return TrunkMetrics(oscillation, contact, impact, braking)
     }
 
-    /** Lokale Maxima über null mit Mindestabstand von 0,35 Schritten zu beiden Seiten. */
+    /** Local maxima above zero with a minimum distance of 0.35 steps on both sides. */
     private fun stepPeaks(signal: DoubleArray, stepLag: Double): List<Int> {
         val reach = (0.35 * stepLag).roundToInt().coerceAtLeast(1)
         val peaks = ArrayList<Int>()
@@ -285,14 +285,14 @@ object Gait {
         return peaks
     }
 
-    /** Doppelt integrierte, periodische Beschleunigung: Spannweite der Lage in m. */
+    /** Twice-integrated periodic acceleration: span of the position in m. */
     fun periodicDisplacementRange(acceleration: DoubleArray, dt: Double): Double {
         val velocity = centered(integrate(acceleration, dt))
         val position = detrend(integrate(velocity, dt))
         return position.max() - position.min()
     }
 
-    /** Einfach integrierte, periodische Beschleunigung: Spannweite der Geschwindigkeit in m/s. */
+    /** Once-integrated periodic acceleration: span of the speed in m/s. */
     fun periodicVelocityRange(acceleration: DoubleArray, dt: Double): Double {
         val velocity = detrend(integrate(centered(acceleration), dt))
         return velocity.max() - velocity.min()
@@ -312,7 +312,7 @@ object Gait {
         return values[i] * (1 - f) + values[j] * f
     }
 
-    /** Hauptachse der Streuung (Potenzmethode auf der 3×3-Kovarianz). */
+    /** Main axis of the spread (power iteration on the 3×3 covariance). */
     private fun dominantAxis(values: Axes): DoubleArray? {
         val m = Array(3) { DoubleArray(3) }
         val columns = arrayOf(values.x, values.y, values.z)
@@ -357,7 +357,7 @@ object Gait {
         return if (sorted.size % 2 == 1) sorted[middle] else (sorted[middle - 1] + sorted[middle]) / 2.0
     }
 
-    /** Ergebnis eines Fensters als Sample-Werte (`kind = "gait"`). */
+    /** A window's result as sample values (`kind = "gait"`). */
     fun json(window: Window, startTime: Long, endTime: Long): JSONObject = JSONObject()
         .put("model", VERSION).put("placement", window.placement.code)
         .put("startTime", startTime).put("endTime", endTime)
@@ -377,9 +377,9 @@ object Gait {
 }
 
 /**
- * Sammelt Sensorereignisse eines Geräts und liefert je vollem 10-s-Fenster ein
- * [Gait.Window]. Die Ereignisse werden auf ein festes Raster umgerechnet;
- * fehlt mehr als die Hälfte eines Sensors, bleibt er für dieses Fenster außen vor.
+ * Collects a device's sensor events and yields one [Gait.Window] per full
+ * 10-s window. The events are resampled to a fixed grid; if more than half of a
+ * sensor's samples are missing, that sensor is left out for this window.
  */
 class GaitRecorder(private val placement: Gait.Placement, private val rateHz: Double) {
     private class Reading(val ns: Long, val x: Double, val y: Double, val z: Double)
@@ -397,7 +397,7 @@ class GaitRecorder(private val placement: Gait.Placement, private val rateHz: Do
         if (windowStart != Long.MIN_VALUE && ns >= windowStart) rotation.add(Reading(ns, x, y, z))
     }
 
-    /** Liefert ein Fenster, sobald die Beschleunigung die Fenstergrenze überschreitet. */
+    /** Yields a window as soon as the acceleration passes the window boundary. */
     fun addAcceleration(ns: Long, x: Double, y: Double, z: Double): Gait.Window? {
         if (windowStart == Long.MIN_VALUE) windowStart = ns
         var result: Gait.Window? = null
@@ -406,7 +406,7 @@ class GaitRecorder(private val placement: Gait.Placement, private val rateHz: Do
             result = analyze(windowStart, end)
             acceleration.removeAll { it.ns < end }
             rotation.removeAll { it.ns < end }
-            // Nach einer langen Lücke beginnt das nächste Fenster jetzt, nicht rückwirkend.
+            // After a long gap the next window starts now, not retroactively.
             windowStart = if (ns - end >= windowNs) ns else end
         }
         acceleration.add(Reading(ns, x, y, z))

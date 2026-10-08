@@ -1,8 +1,8 @@
 import { build } from 'esbuild';
 import { readFileSync } from 'node:fs';
 
-// Ein einziges Bundle: Server plus die geteilte Domain-Logik der App
-// (`../src/domain`). Typ-Importe aus `../src/native` verschwinden dabei.
+// One single bundle: the server plus the app's shared domain logic
+// (`../src/domain`). Type imports from `../src/native` disappear in the process.
 const { version } = JSON.parse(
   readFileSync(new URL('./package.json', import.meta.url)),
 );

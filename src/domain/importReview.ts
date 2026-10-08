@@ -1,9 +1,10 @@
 import { VENDOR_INFOS } from './vendorImports';
+import { locale, numberFormat, tr } from './i18n';
 
 /**
- * Import in zwei Schritten: Kotlin liest die Dateien zuerst nur und meldet,
- * was neu wäre (Vorschau). Der Nutzer wählt, erst dann wird gespeichert —
- * als ein Import, den er später als Ganzes wieder löschen kann.
+ * Import in two steps: Kotlin first only reads the files and reports what
+ * would be new (preview). The user chooses; only then is anything saved — as
+ * one import that can later be deleted as a whole.
  */
 export const IMPORT_CHOICE_VERSION = 'import-choice-v1';
 
@@ -13,18 +14,18 @@ export interface PreviewWorkout {
   name: string;
   source: string;
   sets: number;
-  /** Gemeldete Dauer; `null`, wenn die Datei keine kennt. */
+  /** Reported duration; `null` if the file has none. */
   durationSeconds: number | null;
-  /** Dauer passt zu keiner Satzzahl, vermutlich nicht beendet (strong-duration-v1). */
+  /** Duration fits no set count; probably not finished (strong-duration-v1). */
   durationSuspect: boolean;
   incomplete: boolean;
 }
 
 export interface ImportPreview {
   runs: { new: number; duplicates: number; deleted: number };
-  /** Neue Kontextwerte je Art. */
+  /** New context values per kind. */
   wellness: Record<string, number>;
-  /** Schon gespeicherte Kontextwerte je Art; der Import teilt sie, wenn die Art gewählt ist. */
+  /** Context values already saved per kind; the import shares them when the kind is chosen. */
   wellnessKnown: Record<string, number>;
   strength: { duplicates: number; omitted: number; workouts: PreviewWorkout[] };
 }
@@ -33,10 +34,10 @@ export interface ImportChoice {
   version: typeof IMPORT_CHOICE_VERSION;
   runs: boolean;
   strength: boolean;
-  /** Gewählte Kontextarten; fehlende Arten werden nicht gespeichert. */
+  /** Chosen context kinds; missing kinds are not saved. */
   wellnessKinds: string[];
   excludedStrengthIds: string[];
-  /** Verdächtige Dauern, die der Nutzer trotzdem übernimmt. Sonst bleibt die Dauer unbekannt. */
+  /** Suspicious durations the user keeps anyway. Otherwise the duration stays unknown. */
   keepDurationIds: string[];
   templateSuggestions: boolean;
 }
@@ -99,10 +100,9 @@ export function readImportPreview(raw: unknown): ImportPreview | null {
 }
 
 /**
- * Vorgabe: alles übernehmen, verdächtige Dauern bleiben unbekannt. Bereiche,
- * die nur schon Gespeichertes enthalten, sind mitgewählt: Der Import teilt
- * diese Einträge dann, und das Löschen eines älteren Imports nimmt sie ihm
- * nicht weg.
+ * Default: take everything; suspicious durations stay unknown. Areas that only
+ * contain already-saved data are also chosen: the import then shares these
+ * entries, and deleting an older import does not take them away.
  */
 export function defaultImportChoice(preview: ImportPreview): ImportChoice {
   return {
@@ -125,7 +125,7 @@ export function defaultImportChoice(preview: ImportPreview): ImportChoice {
   };
 }
 
-/** Was mit dieser Wahl tatsächlich neu gespeichert würde. */
+/** What would actually be newly saved with this choice. */
 export function chosenCounts(
   preview: ImportPreview,
   choice: ImportChoice,
@@ -157,40 +157,43 @@ export function toggleIn(list: string[], id: string, on: boolean): string[] {
   return on ? [...rest, id] : rest;
 }
 
-const WELLNESS_LABELS: Record<string, string> = {
-  resting_hr: 'Ruhepuls',
-  heart_rate: 'Puls im Alltag',
-  heart_sample: 'Pulsverlauf',
-  sleep_hr: 'Puls im Schlaf',
-  hrv_rmssd: 'Herzratenvariabilität',
-  hrv_sdnn: 'Herzratenvariabilität',
-  hrv_entropy: 'Herzratenvariabilität',
-  sleep_session: 'Schlaf',
-  sleep_stage: 'Schlaf',
-  sleep_score: 'Schlaf',
-  weight: 'Gewicht',
-  height: 'Körpergröße',
-  body_fat: 'Körperfett',
-  steps: 'Schritte',
-  distance: 'Strecke im Alltag',
-  calories: 'Kalorien',
-  calories_basal: 'Kalorien',
-  calories_intake: 'Gegessene Kalorien',
-  active_minutes: 'Aktive Minuten',
-  stand_count: 'Aktive Minuten',
-  vo2max: 'VO2max',
-  spo2: 'Sauerstoffsättigung',
-  respiratory_rate: 'Atemfrequenz',
-  stress: 'Stress',
+/** Visible names of the wellness kinds; kinds with the same everyday name share one choice. */
+const WELLNESS_LABELS: Record<string, { de: string; en: string }> = {
+  resting_hr: { de: 'Ruhepuls', en: 'Resting heart rate' },
+  heart_rate: { de: 'Puls im Alltag', en: 'Heart rate during the day' },
+  heart_sample: { de: 'Pulsverlauf', en: 'Heart rate trace' },
+  sleep_hr: { de: 'Puls im Schlaf', en: 'Heart rate during sleep' },
+  hrv_rmssd: { de: 'Herzratenvariabilität', en: 'Heart rate variability' },
+  hrv_sdnn: { de: 'Herzratenvariabilität', en: 'Heart rate variability' },
+  hrv_entropy: { de: 'Herzratenvariabilität', en: 'Heart rate variability' },
+  sleep_session: { de: 'Schlaf', en: 'Sleep' },
+  sleep_stage: { de: 'Schlaf', en: 'Sleep' },
+  sleep_score: { de: 'Schlaf', en: 'Sleep' },
+  weight: { de: 'Gewicht', en: 'Weight' },
+  height: { de: 'Körpergröße', en: 'Height' },
+  body_fat: { de: 'Körperfett', en: 'Body fat' },
+  steps: { de: 'Schritte', en: 'Steps' },
+  distance: { de: 'Strecke im Alltag', en: 'Distance during the day' },
+  calories: { de: 'Kalorien', en: 'Calories' },
+  calories_basal: { de: 'Kalorien', en: 'Calories' },
+  calories_intake: { de: 'Gegessene Kalorien', en: 'Calories eaten' },
+  active_minutes: { de: 'Aktive Minuten', en: 'Active minutes' },
+  stand_count: { de: 'Aktive Minuten', en: 'Active minutes' },
+  vo2max: { de: 'VO2max', en: 'VO2max' },
+  spo2: { de: 'Sauerstoffsättigung', en: 'Blood oxygen' },
+  respiratory_rate: { de: 'Atemfrequenz', en: 'Breathing rate' },
+  stress: { de: 'Stress', en: 'Stress' },
 };
 
 export function wellnessLabel(kind: string): string {
-  if (WELLNESS_LABELS[kind]) return WELLNESS_LABELS[kind];
-  if (kind.startsWith('body_')) return 'Körpermaße';
-  return 'Weitere Werte';
+  const label = WELLNESS_LABELS[kind];
+  if (label) return tr(label.de, label.en);
+  if (kind.startsWith('body_'))
+    return tr('Körpermaße', 'Body measurements');
+  return tr('Weitere Werte', 'Other values');
 }
 
-/** Arten mit gleichem Alltagswort erscheinen als eine Wahl. */
+/** Kinds with the same everyday name appear as one choice. */
 export function wellnessGroups(
   wellness: Record<string, number>,
 ): { label: string; kinds: string[]; count: number }[] {
@@ -203,13 +206,13 @@ export function wellnessGroups(
     groups.set(label, group);
   }
   return Array.from(groups, ([label, group]) => ({ label, ...group })).sort(
-    (a, b) => b.count - a.count || a.label.localeCompare(b.label, 'de'),
+    (a, b) => b.count - a.count || a.label.localeCompare(b.label, locale()),
   );
 }
 
 export interface ImportBatch {
   id: string;
-  /** Vor der Importliste angelegt: alle Einträge einer Quelle ohne eigenen Import. */
+  /** Created before the import list: all entries of a source without their own import. */
   legacy: boolean;
   createdAt?: number;
   source?: string;
@@ -249,10 +252,11 @@ export function readImportBatches(raw: unknown): ImportBatch[] {
     );
 }
 
-/** Quellnamen wie in der Anbieterliste; Dateiimporte ohne Anbieter heißen „Dateien“. */
+/** Source names as in the provider list; file imports without a provider are called "Files". */
 export function sourceName(source: string): string {
   const id = source.toLowerCase().replace(/^vendor:/, '');
-  if (id === 'import' || id === 'generic' || id === '') return 'Dateien';
+  if (id === 'import' || id === 'generic' || id === '')
+    return tr('Dateien', 'Files');
   const info = VENDOR_INFOS.find(
     vendor => vendor.id === id || vendor.id.replace('_', '') === id,
   );
@@ -267,26 +271,38 @@ export function importBatchTitle(batch: ImportBatch): string {
       ),
     ),
   );
-  const title = names.length ? names.join(', ') : 'Dateien';
-  return batch.legacy ? `${title} · früherer Import` : title;
+  const title = names.length ? names.join(', ') : tr('Dateien', 'Files');
+  return batch.legacy
+    ? tr(`${title} · früherer Import`, `${title} · earlier import`)
+    : title;
 }
 
-/** Ganze Zahl mit deutschem Tausenderpunkt. */
+/** Whole number with the thousands separator of the active language. */
 export function formatCount(n: number): string {
-  return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return numberFormat().format(Math.round(n));
 }
 
 export function importBatchCounts(batch: ImportBatch): string {
   const { runs, strength, wellness } = batch.counts;
   return [
-    runs ? `${formatCount(runs)} ${runs === 1 ? 'Lauf' : 'Läufe'}` : '',
+    runs
+      ? `${formatCount(runs)} ${
+          runs === 1 ? tr('Lauf', 'run') : tr('Läufe', 'runs')
+        }`
+      : '',
     strength
       ? `${formatCount(strength)} ${
-          strength === 1 ? 'Krafteinheit' : 'Krafteinheiten'
+          strength === 1
+            ? tr('Krafteinheit', 'strength session')
+            : tr('Krafteinheiten', 'strength sessions')
         }`
       : '',
     wellness
-      ? `${formatCount(wellness)} ${wellness === 1 ? 'Kontextwert' : 'Kontextwerte'}`
+      ? `${formatCount(wellness)} ${
+          wellness === 1
+            ? tr('Kontextwert', 'context value')
+            : tr('Kontextwerte', 'context values')
+        }`
       : '',
   ]
     .filter(Boolean)

@@ -24,7 +24,7 @@ async function render(onSave: (template: WorkoutTemplate) => Promise<void> = jes
   await act(async () => { tree = TestRenderer.create(<ImportedTemplates onDismiss={jest.fn()} templates={[]} onSave={onSave} busy={false} />); });
   return tree;
 }
-it('zeigt erst die Vorschau und speichert nur nach der eigenen Übernahmeaktion', async () => {
+it('shows the preview first and saves only after the user’s own accept action', async () => {
   const onSave = jest.fn(async (_template: WorkoutTemplate) => {});
   const tree = await render(onSave);
   expect(nativeCall).toHaveBeenCalledWith('getStrengthImportCandidates');
@@ -39,7 +39,7 @@ it('zeigt erst die Vorschau und speichert nur nach der eigenen Übernahmeaktion'
   expect(onSave.mock.calls[0][0]).toMatchObject({ name: 'Push', days: [], importSource: { source: 'strong' } });
   expect(tree.root.findByType(Sheet).props.visible).toBe(false);
 });
-it('lässt die Vorschau nach einem Speicherfehler zum erneuten Versuch offen', async () => {
+it('keeps the preview open for a retry after a save error', async () => {
   const onSave = jest.fn(async () => { throw new Error('db'); });
   const tree = await render(onSave);
   await act(async () => { tree.root.findByType(Row).props.onPress(); });
@@ -47,7 +47,7 @@ it('lässt die Vorschau nach einem Speicherfehler zum erneuten Versuch offen', a
   expect(tree.root.findByType(Sheet).props.visible).toBe(true);
   expect(texts(tree)).toContain('Vorlage konnte nicht gespeichert werden.');
 });
-it('löscht Vorschläge erst nach Bestätigung und hält sie nach erneutem Öffnen verborgen', async () => {
+it('deletes suggestions only after confirmation and keeps them hidden after reopening', async () => {
   (nativeCall as jest.Mock).mockResolvedValue({ workouts });
   const onSave = jest.fn();
   let dismissedIds: string[] = [];
@@ -99,7 +99,7 @@ it('löscht Vorschläge erst nach Bestätigung und hält sie nach erneutem Öffn
     });
   }
 });
-it('hält beim Löschfehler die Bestätigung offen und erlaubt einen erneuten Versuch', async () => {
+it('keeps the confirmation open after a delete error and allows a retry', async () => {
   (nativeCall as jest.Mock).mockResolvedValue({ workouts });
   const onDismiss = jest
     .fn()
@@ -143,7 +143,7 @@ it('hält beim Löschfehler die Bestätigung offen und erlaubt einen erneuten Ve
     });
   }
 });
-it('sperrt beide Aktionen und das Schließen während des Löschens', async () => {
+it('locks both actions and closing while deleting', async () => {
   (nativeCall as jest.Mock).mockResolvedValue({ workouts });
   let finish!: () => void;
   const onDismiss = jest.fn(
@@ -196,7 +196,7 @@ it('sperrt beide Aktionen und das Schließen während des Löschens', async () =
     });
   }
 });
-it('blendet bereits übernommene Vorlagen nach dem Speichern aus', async () => {
+it('hides already accepted templates after saving', async () => {
   let templates: WorkoutTemplate[] = [];
   const onSave = async (template: WorkoutTemplate) => { templates = [template]; };
   const tree = await render(onSave);
@@ -205,7 +205,7 @@ it('blendet bereits übernommene Vorlagen nach dem Speichern aus', async () => {
   await act(async () => { tree.update(<ImportedTemplates onDismiss={jest.fn()} templates={templates} onSave={onSave} busy={false} />); });
   expect(tree.toJSON()).toBeNull();
 });
-it('zeigt Ladefehler mit einer erneuten Aktion und erfindet keinen leeren Erfolg', async () => {
+it('shows loading errors with a retry action and invents no empty success', async () => {
   (nativeCall as jest.Mock).mockRejectedValueOnce(new Error('bridge'));
   let tree!: TestRenderer.ReactTestRenderer;
   await act(async () => { tree = TestRenderer.create(<ImportedTemplates onDismiss={jest.fn()} templates={[]} onSave={jest.fn()} busy={false} />); });
@@ -214,7 +214,7 @@ it('zeigt Ladefehler mit einer erneuten Aktion und erfindet keinen leeren Erfolg
   await act(async () => { tree.root.findByType(Button).props.onPress(); });
   expect(texts(tree)).toContain('Push');
 });
-it('macht den vollständigen Katalog erreichbar und sucht englische Namen', async () => {
+it('makes the full catalog reachable and searches English names', async () => {
   const onSelect = jest.fn();
   let tree!: TestRenderer.ReactTestRenderer;
   await act(async () => { tree = TestRenderer.create(<ExercisePicker visible onSelect={onSelect} onClose={jest.fn()} />); });
@@ -229,7 +229,7 @@ it('macht den vollständigen Katalog erreichbar und sucht englische Namen', asyn
 });
 
 
-it('aktualisiert eine bereits geöffnete Vorschau, wenn der Import fertig ist', async () => {
+it('updates an open preview when the import finishes', async () => {
   (nativeCall as jest.Mock).mockResolvedValueOnce({ workouts: [] });
   let tree!: TestRenderer.ReactTestRenderer;
   const props = { templates: [], onSave: jest.fn(), onDismiss: jest.fn(), busy: false };

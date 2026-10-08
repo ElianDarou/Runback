@@ -32,7 +32,7 @@ const template = (): WorkoutTemplate => ({
   ],
 });
 
-/** Sammelt jeden dargestellten Textknoten, unabhängig von der Verschachtelung. */
+/** Collects every rendered text node, regardless of nesting. */
 const texts = (tree: ReactTestRenderer.ReactTestRenderer): string[] => {
   const found: string[] = [];
   const walk = (node: any) => {
@@ -127,8 +127,8 @@ const renderEditor = (
 
 const editorHandlers = () => ({ onSave: jest.fn(), onCancel: jest.fn() });
 
-describe('Planeditor', () => {
-  it('zeigt Name, Wochentage und alle Übungen des Plans', () => {
+describe('Plan editor', () => {
+  it('shows the name, weekdays and all exercises of the plan', () => {
     const tree = renderEditor(template(), editorHandlers());
     const shown = texts(tree);
     expect(shown).toContain('Unterkörper');
@@ -138,7 +138,7 @@ describe('Planeditor', () => {
     expect(inputByLabel(tree, 'Name des Plans').props.value).toBe('Unterkörper');
   });
 
-  it('übernimmt einen neuen Namen', () => {
+  it('takes over a new name', () => {
     const handlers = editorHandlers();
     const tree = renderEditor(template(), handlers);
     type(tree, 'Name des Plans', 'Beine schwer');
@@ -147,7 +147,7 @@ describe('Planeditor', () => {
     expect(handlers.onSave.mock.calls[0][0].name).toBe('Beine schwer');
   });
 
-  it('schaltet einen Wochentag an und wieder aus', () => {
+  it('turns a weekday on and off again', () => {
     const handlers = editorHandlers();
     const tree = renderEditor(template(), handlers);
     press(tree, 'Mittwoch');
@@ -158,7 +158,7 @@ describe('Planeditor', () => {
     expect(handlers.onSave.mock.calls[1][0].days).toEqual([1, 4]);
   });
 
-  it('nimmt jede Tagesbindung zurück', () => {
+  it('removes every day assignment', () => {
     const handlers = editorHandlers();
     const tree = renderEditor(template(), handlers);
     press(tree, 'Keinen festen Tag festlegen');
@@ -167,7 +167,7 @@ describe('Planeditor', () => {
     expect(texts(tree)).toContain('Kein fester Tag');
   });
 
-  it('ändert Wiederholungen, Gewicht und Pause eines Satzes', () => {
+  it('changes reps, weight and rest of a set', () => {
     const handlers = editorHandlers();
     const tree = renderEditor(template(), handlers);
     type(tree, 'Wiederholungen für Satz 1 von Kniebeuge (Langhantel)', '3');
@@ -183,7 +183,7 @@ describe('Planeditor', () => {
     });
   });
 
-  it('nimmt eine geleerte Eingabe als nicht vorgegeben', () => {
+  it('treats a cleared input as not set', () => {
     const handlers = editorHandlers();
     const tree = renderEditor(template(), handlers);
     type(tree, 'Gewicht für Satz 1 von Kniebeuge (Langhantel) in Kilogramm', '');
@@ -193,7 +193,7 @@ describe('Planeditor', () => {
     ).toBeUndefined();
   });
 
-  it('schaltet die Satzart weiter', () => {
+  it('cycles the set type', () => {
     const handlers = editorHandlers();
     const tree = renderEditor(template(), handlers);
     press(
@@ -206,7 +206,7 @@ describe('Planeditor', () => {
     );
   });
 
-  it('schaltet die Lastart einer Übung weiter', () => {
+  it('cycles the load type of an exercise', () => {
     const handlers = editorHandlers();
     const tree = renderEditor(template(), handlers);
     press(
@@ -219,7 +219,7 @@ describe('Planeditor', () => {
     );
   });
 
-  it('fügt einen Satz hinzu und entfernt ihn wieder', () => {
+  it('adds a set and removes it again', () => {
     const handlers = editorHandlers();
     const tree = renderEditor(template(), handlers);
     press(tree, 'Satz zu Beinbeuger liegend hinzufügen');
@@ -230,7 +230,7 @@ describe('Planeditor', () => {
     expect(handlers.onSave.mock.calls[1][0].exercises[1].sets).toHaveLength(1);
   });
 
-  it('sortiert Übungen um', () => {
+  it('reorders exercises', () => {
     const handlers = editorHandlers();
     const tree = renderEditor(template(), handlers);
     press(tree, 'Beinbeuger liegend nach oben schieben');
@@ -242,7 +242,7 @@ describe('Planeditor', () => {
     ).toEqual(['lying_leg_curl', 'barbell_back_squat']);
   });
 
-  it('nimmt eine Übung aus dem Plan', () => {
+  it('removes an exercise from the plan', () => {
     const handlers = editorHandlers();
     const tree = renderEditor(template(), handlers);
     press(tree, 'Kniebeuge (Langhantel) aus dem Plan nehmen');
@@ -250,7 +250,7 @@ describe('Planeditor', () => {
     expect(handlers.onSave.mock.calls[0][0].exercises).toHaveLength(1);
   });
 
-  it('fügt eine Übung über die Auswahl hinzu', () => {
+  it('adds an exercise via the picker', () => {
     const handlers = editorHandlers();
     const tree = renderEditor(template(), handlers);
     press(tree, 'Übung zum Plan hinzufügen');
@@ -267,7 +267,7 @@ describe('Planeditor', () => {
     expect(saved.exercises[2].exerciseId).toBe('pull_up');
   });
 
-  it('nennt offene Punkte als ruhigen Hinweis statt als Fehler', () => {
+  it('names open points as a calm hint rather than an error', () => {
     const tree = renderEditor(createTemplate(NOW, ''), editorHandlers());
     const shown = texts(tree);
     expect(shown).toContain('Der Plan braucht einen Namen.');
@@ -275,7 +275,7 @@ describe('Planeditor', () => {
     expect(shown.join(' ').toLowerCase()).not.toContain('fehler');
   });
 
-  it('speichert erst, wenn Name und Übung vorhanden sind', () => {
+  it('saves only once a name and an exercise exist', () => {
     const handlers = editorHandlers();
     const tree = renderEditor(createTemplate(NOW, ''), handlers);
     const save = byLabel(tree, 'Plan speichern');
@@ -284,7 +284,7 @@ describe('Planeditor', () => {
     expect(handlers.onSave).not.toHaveBeenCalled();
   });
 
-  it('bricht ab, ohne zu speichern', () => {
+  it('cancels without saving', () => {
     const handlers = editorHandlers();
     const tree = renderEditor(template(), handlers);
     type(tree, 'Name des Plans', 'Verworfen');
@@ -293,7 +293,7 @@ describe('Planeditor', () => {
     expect(handlers.onSave).not.toHaveBeenCalled();
   });
 
-  it('gibt jedem Bedienelement eine Rolle und eine Beschriftung', () => {
+  it('gives every control a role and a label', () => {
     const tree = renderEditor(template(), editorHandlers());
     const pressables = tree.root.findAll(
       node =>
@@ -332,8 +332,8 @@ const renderList = (
   return tree;
 };
 
-describe('Planübersicht', () => {
-  it('zeigt Wochentag und Umfang jedes Plans', () => {
+describe('Plan overview', () => {
+  it('shows the weekday and size of each plan', () => {
     const tree = renderList([template()], listHandlers());
     const shown = texts(tree);
     expect(shown).toContain('Unterkörper');
@@ -342,14 +342,14 @@ describe('Planübersicht', () => {
     ).toBe(true);
   });
 
-  it('sagt ohne Plan, dass freies Training genügt', () => {
+  it('says without a plan that free training is enough', () => {
     const tree = renderList([], listHandlers());
     const shown = texts(tree).join(' ');
     expect(shown).toContain('Noch kein Plan');
     expect(shown).toContain('jederzeit frei trainieren');
   });
 
-  it('startet, bearbeitet und dupliziert einen Plan', () => {
+  it('starts, edits and duplicates a plan', () => {
     const handlers = listHandlers();
     const tree = renderList([template()], handlers);
     press(tree, 'Unterkörper starten');
@@ -360,7 +360,7 @@ describe('Planübersicht', () => {
     expect(handlers.onDuplicate).toHaveBeenCalledWith('template-1');
   });
 
-  it('löscht erst nach einer Rückfrage', () => {
+  it('deletes only after a confirmation', () => {
     const handlers = listHandlers();
     const tree = renderList([template()], handlers);
     press(tree, 'Unterkörper löschen');
@@ -370,7 +370,7 @@ describe('Planübersicht', () => {
     expect(handlers.onDelete).toHaveBeenCalledWith('template-1');
   });
 
-  it('lässt die Rückfrage folgenlos abbrechen', () => {
+  it('lets the confirmation be cancelled without effect', () => {
     const handlers = listHandlers();
     const tree = renderList([template()], handlers);
     press(tree, 'Unterkörper löschen');
@@ -379,14 +379,14 @@ describe('Planübersicht', () => {
     expect(texts(tree)).toContain('Unterkörper');
   });
 
-  it('legt einen neuen Plan an', () => {
+  it('creates a new plan', () => {
     const handlers = listHandlers();
     const tree = renderList([], handlers);
     press(tree, 'Neuen Trainingsplan anlegen');
     expect(handlers.onCreate).toHaveBeenCalledTimes(1);
   });
 
-  it('nennt den heutigen Tag, ohne ihn zu einer Pflicht zu machen', () => {
+  it('names today without making it mandatory', () => {
     const shown = texts(renderList([template()], listHandlers(), 1)).join(' ');
     expect(shown).toContain('heute Montag');
     for (const word of ['Rückstand', 'verpasst', 'Pflicht', 'Fehler']) {

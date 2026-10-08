@@ -44,7 +44,7 @@ const screenText = (tree: TestRenderer.ReactTestRenderer) =>
   tree.root.findAllByType(Text).map(textContent).join(' ');
 
 describe('GoalProgress', () => {
-  it('zeigt Ring, Schätzung und Ziel getrennt beschriftet', () => {
+  it('shows ring, estimate and goal with separate labels', () => {
     const prediction = predictRace({
       goal: 'Halbmarathon',
       targetDate: '2026-11-15',
@@ -70,7 +70,7 @@ describe('GoalProgress', () => {
     });
   });
 
-  it('bleibt ohne passenden Lauf leer statt zu raten', () => {
+  it('stays empty without a matching run instead of guessing', () => {
     const prediction = predictRace({
       goal: 'Halbmarathon',
       runs: [],

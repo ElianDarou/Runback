@@ -1,7 +1,6 @@
 /**
- * Kleinstes nötiges HTML-Templating: alles wird maskiert, außer es ist
- * ausdrücklich `Html`. So landet kein Text aus den Daten ungefiltert im
- * Dokument.
+ * Minimal HTML templating: everything is escaped unless it is explicitly
+ * `Html`. This way no text from the data reaches the document unfiltered.
  */
 
 export class Html {
@@ -40,7 +39,7 @@ export function html(strings: TemplateStringsArray, ...values: Child[]): Html {
 export const raw = (value: string) => new Html(value);
 export const join = (children: Child[]) => new Html(render(children));
 
-/** Query-String aus festen Parametern; leere Werte fallen weg. */
+/** Query string from fixed parameters; empty values are dropped. */
 export function query(
   params: Record<string, string | number | null | undefined>,
 ): string {

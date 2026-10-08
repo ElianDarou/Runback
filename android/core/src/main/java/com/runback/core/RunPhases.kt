@@ -3,42 +3,41 @@ package com.runback.core
 import kotlin.math.sqrt
 
 /**
- * Bewegungsphasen einer Aufzeichnung: RUN, WALK, STOPPED, PAUSED, UNKNOWN.
+ * Movement phases of a recording: RUN, WALK, STOPPED, PAUSED, UNKNOWN.
  *
- * Arbeitet auf dem festen 5-Sekunden-Raster von RunTimeline. Der Zustand
- * wird über ein Fenster von drei Rasterschritten (15 s) bestimmt, nie aus
- * einem einzelnen Messwert, und eine Phase muss mindestens 20 s halten —
- * kürzere gehen im Nachbarn auf. Kadenz entscheidet vor Tempo: Schwellen in
- * min/km hängen vom Läufer ab, die Schrittfrequenz kaum. Stillstand ohne
- * gültiges GPS ist nur mit ruhigem Beschleunigungssensor STOPPED; sonst
- * bleibt er UNKNOWN. PAUSED sind ausschließlich die vom Nutzer ausgelösten
- * Pausen.
+ * Works on the fixed 5-second grid of RunTimeline. The state is decided over a
+ * window of three grid steps (15 s), never from a single reading, and a phase
+ * must last at least 20 s — shorter ones merge into their neighbor. Cadence
+ * decides before pace: pace thresholds in min/km depend on the runner, step
+ * rate hardly does. Standing still without valid GPS is only STOPPED with a
+ * quiet accelerometer; otherwise it stays UNKNOWN. PAUSED is exclusively the
+ * pauses the user triggered.
  *
- * Daraus folgt ein Zeitbudget, das ohne Rest aufgeht:
+ * This yields a time budget that adds up exactly:
  * elapsed = paused + running + walking + stopped + unknown.
  */
 object RunPhases {
     const val VERSION = "runback-phases-1"
     const val GRID_SECONDS = 5
-    /** Fenster für Tempo und Kadenz: ±1 Rasterschritt, also 15 s. */
+    /** Window for pace and cadence: ±1 grid step, so 15 s. */
     const val WINDOW_RADIUS = 1
-    /** Kürzeste Phase in Rasterschritten (4 × 5 s = 20 s). */
+    /** Shortest phase in grid steps (4 × 5 s = 20 s). */
     const val MIN_PHASE_STEPS = 4
-    /** Schrittfrequenz pro Minute: Laufen hat eine Flugphase, Gehen nicht. */
+    /** Steps per minute: running has a flight phase, walking does not. */
     const val RUN_CADENCE = 140.0
     const val WALK_CADENCE = 130.0
-    /** Tempo-Band mit Hysterese: über 2,2 m/s (≈ 7:35 /km) Laufen, unter 1,8 m/s (≈ 9:15 /km) Gehen. */
+    /** Pace band with hysteresis: above 2.2 m/s (≈ 7:35 /km) running, below 1.8 m/s (≈ 9:15 /km) walking. */
     const val RUN_SPEED_MPS = 2.2
     const val WALK_SPEED_MPS = 1.8
     const val STOP_SPEED_MPS = 0.5
-    /** Mehr als die Hälfte des 15-s-Fensters muss gültige GPS-Schritte haben, sonst ist das Tempo unbekannt. */
+    /** More than half of the 15-s window must have valid GPS steps, otherwise the pace is unknown. */
     const val MIN_COVERED_SECONDS = 8.0
-    /** Bis zu dieser Genauigkeit belegt ein ruhender GPS-Fix ohne Beschleunigungsdaten Stillstand. */
+    /** Up to this accuracy, a resting GPS fix without acceleration data proves standing still. */
     const val STILL_MAX_ACCURACY_METERS = 20.0
-    /** Streuung der Beschleunigung (m/s²) je Raster, unter der das Gerät ruht. Laufen liegt bei > 3. */
+    /** Acceleration spread (m/s²) per grid step below which the device rests. Running is above 3. */
     const val STILL_ACCELERATION_STDDEV = 0.5
     const val MIN_ACCELERATION_SAMPLES = 10
-    /** Schnellste anhaltende Laufstrecke über 5 Minuten (60 Rasterschritte). */
+    /** Fastest sustained run over 5 minutes (60 grid steps). */
     const val SUSTAINED_STEPS = 60
 
     enum class State { RUN, WALK, STOPPED, PAUSED, UNKNOWN }
@@ -49,7 +48,7 @@ object RunPhases {
         val distanceMeters: Double,
         val stepDistanceMeters: Double,
         val gpsCoveredSeconds: Double,
-        /** Über 15 s geglättet; null ohne ausreichend GPS. */
+        /** Smoothed over 15 s; null without enough GPS. */
         val speedMps: Double?,
         val state: State,
         val heartRate: Double?,
@@ -84,7 +83,7 @@ object RunPhases {
         val longestMovingSeconds: Int?,
         val runWalkTransitions: Int,
         val trailingIdleSeconds: Int,
-        /** Tempo der schnellsten 5 min innerhalb einer RUN-Phase; fehlt ohne 5 min Lauf am Stück. */
+        /** Pace of the fastest 5 min within a RUN phase; missing without 5 min of running in one go. */
         val fastestSustained300sSecondsPerKm: Double?,
         val running: StateSummary,
         val walking: StateSummary,
@@ -93,9 +92,9 @@ object RunPhases {
     data class Result(val rows: List<Row>, val phases: List<Phase>, val budget: Budget, val metrics: Metrics)
 
     /**
-     * `rows` ist das lückenlose 5-s-Raster aus RunTimeline (`keepEmpty`),
-     * `pauses` sind geschlossene Pausenintervalle in Uhrzeit, `still` je
-     * Raster: true ruhend, false bewegt, null ohne Beschleunigungsdaten.
+     * `rows` is the gapless 5-s grid from RunTimeline (`keepEmpty`),
+     * `pauses` are closed pause intervals in wall-clock time, `still` per
+     * grid step: true at rest, false moving, null without acceleration data.
      */
     fun build(
         startTime: Long,
@@ -195,7 +194,7 @@ object RunPhases {
         return Result(outRows, phases, budget, metrics(outRows, phases, gridSeconds))
     }
 
-    /** Phasen unter MIN_PHASE_STEPS gehen im vorherigen Nachbarn auf (Hysterese), notfalls im nächsten. PAUSED bleibt. */
+    /** Phases shorter than MIN_PHASE_STEPS merge into the previous neighbor (hysteresis), or else the next. PAUSED stays. */
     fun smooth(raw: List<State>): List<State> {
         class Run(val state: State, var count: Int, var locked: Boolean = false)
         val runs = ArrayList<Run>()
@@ -211,7 +210,7 @@ object RunPhases {
                 index < runs.lastIndex && runs[index + 1].state != State.PAUSED -> index + 1
                 else -> null
             }
-            if (target == null) { runs[index].locked = true; continue } // Zwischen Pausen oder allein: bleibt kurz.
+            if (target == null) { runs[index].locked = true; continue } // Between pauses or alone: stays short.
             runs[target].count += runs[index].count; runs.removeAt(index)
             var i = 0
             while (i < runs.lastIndex) {
@@ -299,7 +298,7 @@ object RunPhases {
     private fun emptyMetrics() = Metrics(null, null, null, 0, 0, null,
         StateSummary(0.0, 0.0, null, null), StateSummary(0.0, 0.0, null, null), StateSummary(0.0, 0.0, null, null))
 
-    /** Ruhe je Rasterfenster aus der Streuung des Beschleunigungsbetrags; null ohne genug Samples. */
+    /** Stillness per grid window from the spread of the acceleration magnitude; null without enough samples. */
     fun stillness(startTime: Long, bins: Int, samples: List<Acceleration>, gridSeconds: Int = GRID_SECONDS): List<Boolean?> {
         val stepMs = gridSeconds * 1000L
         val sums = DoubleArray(bins); val squares = DoubleArray(bins); val counts = IntArray(bins)
@@ -320,7 +319,7 @@ object RunPhases {
         }
     }
 
-    /** Geschlossene Pausenintervalle aus Ereignissen: pause/interrupted bis resume/start; offen bis `endTime`. */
+    /** Closed pause intervals from events: pause/interrupted until resume/start; open until `endTime`. */
     fun pauseIntervals(events: List<Pair<String, Long>>, endTime: Long): List<LongRange> {
         val result = ArrayList<LongRange>()
         var open: Long? = null
@@ -334,7 +333,7 @@ object RunPhases {
         return result
     }
 
-    /** CSV-Zeitreihe: Leerzellen für Unbekanntes, nie 0. Tempo nur in Bewegung. */
+    /** CSV time series: empty cells for unknown values, never 0. Pace only while moving. */
     fun csv(rows: List<Row>): String {
         val out = StringBuilder("elapsed_s,distance_m,state,pace_s_km,speed_mps,heart_rate,cadence_spm,elevation_m,grade_pct,gps_accuracy_m,gps_covered_s\n")
         fun num(value: Double?, digits: Int): String = if (value == null || !value.isFinite()) "" else String.format(java.util.Locale.ROOT, "%.${digits}f", value)

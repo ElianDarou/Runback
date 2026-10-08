@@ -11,8 +11,9 @@ import type { ScheduleState } from './schedule';
 import type { RunTarget } from './runTarget';
 import type { FeatureSettings } from './features';
 import type { PurposeHintProvenance } from './purposeHint';
+import type { Language } from './i18n';
 
-/** Gemeinsame Datensätze von Telefon und Server, ohne Abhängigkeit zur nativen Brücke. */
+/** Shared records of phone and server, without a dependency on the native bridge. */
 export interface Preset {
   id: string;
   name: string;
@@ -24,58 +25,60 @@ export interface Settings {
   schedule?: ScheduleState;
   goal?: string;
   goalTargetDate?: string;
-  /** Zielstrecke in km und Zielzeit in Sekunden fürs Laufziel (`domain/raceGoal`). */
+  /** Goal distance in km and goal time in seconds for the running goal (`domain/raceGoal`). */
   goalDistanceKm?: number;
   goalTargetSeconds?: number;
   trainingFocus?: TrainingFocus | null;
-  /** Bereich Krafttraining: eigenes Ziel und eigener Fokus. */
+  /** Strength area: own goal and own focus. */
   strengthGoal?: string;
   strengthGoalTargetDate?: string;
   strengthFocus?: TrainingFocus | null;
   strengthPostponedUntil?: number;
   minutes?: number;
   purpose?: RunPurpose;
-  /** Zuletzt gewählte Sportart für die freie Aufzeichnung. */
+  /** Last chosen sport for free recording. */
   sport?: Sport;
-  /** Wo das Handy beim Laufen steckt; Kotlin liest es beim Start für den Laufstil. */
+  /** Where the phone is carried while running; Kotlin reads it at start for running form. */
   gaitPlacement?: GaitPlacement;
-  /** Puls und Bewegungen der Uhr im Krafttraining; Kotlin liest es beim Start einer Einheit. */
+  /** Heart rate and watch motion in strength training; Kotlin reads it when a session starts. */
   motionCapture?: MotionCaptureSettings;
   trainingDays?: number[];
   cues?: boolean;
-  /** Explizit gewählte Begleitung für den nächsten Lauf. */
+  /** Explicitly chosen companion for the next run. */
   runTarget?: RunTarget;
   weather?: boolean;
-  /** Maxpuls in bpm für die Pulszonen; fehlt er, schätzt Runback aus den Läufen. */
+  /** Max heart rate in bpm for the heart rate zones; if missing, Runback estimates it from runs. */
   maxHeartRate?: number;
-  /** Älterer Einzelschalter; gilt nur, solange `features` fehlt. */
+  /** Older single switch; applies only while `features` is missing. */
   showHeartRate?: boolean;
-  /** Was der Nutzer sehen will und wann Runback fragt (`domain/features`). */
+  /** What the user wants to see and when Runback asks (`domain/features`). */
   features?: FeatureSettings;
   presets?: Preset[];
   experiments?: Experiment[];
   dismissedRecommendations?: string[];
-  /** Gelöschte Importvorschläge; Originaleinheiten und gespeicherte Vorlagen bleiben erhalten. */
+  /** Deleted import suggestions; original sessions and saved templates are kept. */
   dismissedStrengthImportTemplateIds?: string[];
   adherence?: Record<string, Adherence>;
   postponedUntil?: number;
+  /** App language; missing means the device language (`ui/deviceLanguage`). Kotlin reads it for notifications. */
+  language?: Language;
   [key: string]: unknown;
 }
 export type MotionWrist = 'left' | 'right' | 'unknown';
 export interface MotionCaptureSettings {
-  /** Bewegungen mitschreiben (Rohdaten für spätere Satzerkennung). */
+  /** Record motion (raw data for later set detection). */
   enabled: boolean;
   wrist: MotionWrist;
-  /** Puls messen; fehlt der Wert, ist er an (Kotlin `MotionSessions.config`). */
+  /** Measure heart rate; if the value is missing, it is on (Kotlin `MotionSessions.config`). */
   heartRate?: boolean;
   /**
-   * Sätze auf der Uhr erkennen und Wiederholungen zählen; nur mit
-   * `enabled`. Fehlt der Wert, ist sie an (Kotlin `MotionSessions.config`).
+   * Detect sets on the watch and count reps; only with `enabled`. If the
+   * value is missing, it is on (Kotlin `MotionSessions.config`).
    */
   autoSets?: boolean;
   /**
-   * Erkannte Zahl ohne Eingabe nach kurzer Zeit übernehmen; nur mit
-   * `autoSets`. Fehlt der Wert, ist sie aus — der Nutzer bestätigt selbst.
+   * Accept the detected count after a short time without input; only with
+   * `autoSets`. If the value is missing, it is off — the user confirms.
    */
   autoConfirm?: boolean;
 }
@@ -90,8 +93,8 @@ export interface Run extends RunSummary {
   route?: RoutePoint[];
   events?: { type?: string; at?: number; message?: string }[];
   target?: RunTarget;
-  /** Laufart ausdrücklich gewählt oder bestätigt; dann fragt die Detailseite nicht mehr. */
+  /** Run type explicitly chosen or confirmed; then the detail page stops asking. */
   purposeConfirmed?: boolean;
-  /** Spur eines bestätigten Vorschlags; fehlt bei eigener Wahl. */
+  /** Trace of a confirmed suggestion; missing when chosen by the user. */
   purposeHint?: PurposeHintProvenance;
 }

@@ -29,6 +29,7 @@ import {
   type RoutePreference,
   type RouteRequest,
 } from '../domain/routes';
+import { fixed, tr } from '../domain/i18n';
 import { requestRoutePlan } from '../services/routeProvider';
 import { normalizeRunTarget, targetForPurpose } from '../domain/runTarget';
 import {
@@ -87,29 +88,28 @@ const distanceOptions = [
   { value: '15', label: '15 km' },
 ];
 
-const modeOptions: { value: RouteMode; label: string }[] = [
-  { value: 'loop', label: 'Rundweg' },
-  { value: 'out_and_back', label: 'Hin und zurück' },
+// Built per render so the active language applies without a restart.
+const modeOptions = (): { value: RouteMode; label: string }[] => [
+  { value: 'loop', label: tr('Rundweg', 'Loop') },
+  { value: 'out_and_back', label: tr('Hin und zurück', 'Out and back') },
 ];
 
-const preferenceOptions: { value: RoutePreference; label: string }[] = [
-  { value: 'flat', label: 'Möglichst flach' },
-  { value: 'quiet', label: 'Möglichst ruhig' },
-  { value: 'green', label: 'Möglichst grün' },
-  { value: 'balanced', label: 'Ausgeglichen' },
+const preferenceOptions = (): { value: RoutePreference; label: string }[] => [
+  { value: 'flat', label: tr('Möglichst flach', 'As flat as possible') },
+  { value: 'quiet', label: tr('Möglichst ruhig', 'As quiet as possible') },
+  { value: 'green', label: tr('Möglichst grün', 'As green as possible') },
+  { value: 'balanced', label: tr('Ausgeglichen', 'Balanced') },
 ];
 
-const voiceIntervalOptions = [
-  { value: '0.5', label: '0,5 km' },
+const voiceIntervalOptions = () => [
+  { value: '0.5', label: `${fixed(0.5, 1)} km` },
   { value: '1', label: '1 km' },
   { value: '2', label: '2 km' },
   { value: '5', label: '5 km' },
 ];
 
 function number(value: number | undefined, digits = 1) {
-  return Number.isFinite(value)
-    ? (value || 0).toFixed(digits).replace('.', ',')
-    : '–';
+  return Number.isFinite(value) ? fixed(value || 0, digits) : '–';
 }
 
 function duration(seconds: number | undefined) {
@@ -226,10 +226,10 @@ export function RoutePlannerScreen({
         setRecording(next.recording);
         if (!next.recording) {
           setView('result');
-          setMessage('Lauf gespeichert.');
+          setMessage(tr('Lauf gespeichert.', 'Run saved.'));
         }
       } catch {
-        // Die Aufzeichnung bleibt nativ aktiv, auch wenn eine einzelne Abfrage scheitert.
+        // The recording stays active natively, even if a single query fails.
       }
     };
     void refresh();
@@ -245,7 +245,12 @@ export function RoutePlannerScreen({
   ): Promise<void> => {
     const current = plannerStateRef.current;
     if (!current)
-      throw new Error('Die lokalen Routendaten sind noch nicht geladen.');
+      throw new Error(
+        tr(
+          'Die lokalen Routendaten sind noch nicht geladen.',
+          'The local route data is not loaded yet.',
+        ),
+      );
     const next = normalizePlannerState({ ...current, ...patch });
     plannerStateRef.current = next;
     setPlannerState(next);
@@ -291,12 +296,20 @@ export function RoutePlannerScreen({
     try {
       await nativeCall('requestRecordingPermissions');
       const location = await native.currentLocation();
-      setStart({ ...location, label: 'Aktuelle Position' });
+      setStart({
+        ...location,
+        label: tr('Aktuelle Position', 'Current position'),
+      });
       if (location.accuracyM && location.accuracyM > 100) {
         setMessage(
-          `Die aktuelle Position ist ungefähr ${Math.round(
-            location.accuracyM,
-          )} m genau.`,
+          tr(
+            `Die aktuelle Position ist ungefähr ${Math.round(
+              location.accuracyM,
+            )} m genau.`,
+            `The current position is about ${Math.round(
+              location.accuracyM,
+            )} m accurate.`,
+          ),
         );
       }
       setView('distance');
@@ -315,7 +328,13 @@ export function RoutePlannerScreen({
     try {
       const results = await native.searchLocation(startQuery);
       setSearchResults(results);
-      if (!results.length) setError('Kein passender Startort gefunden.');
+      if (!results.length)
+        setError(
+          tr(
+            'Kein passender Startort gefunden.',
+            'No matching start place found.',
+          ),
+        );
     } catch (errorValue) {
       setError(
         errorValue instanceof Error ? errorValue.message : String(errorValue),
@@ -333,12 +352,19 @@ export function RoutePlannerScreen({
 
   const request = (): RouteRequest | null => {
     if (!start) {
-      setError('Wähle zuerst einen Startpunkt.');
+      setError(
+        tr('Wähle zuerst einen Startpunkt.', 'Choose a start point first.'),
+      );
       return null;
     }
     const distanceKm = Number(distanceInput.replace(',', '.'));
     if (!Number.isFinite(distanceKm) || distanceKm < 1 || distanceKm > 50) {
-      setError('Wähle eine Distanz zwischen 1 und 50 Kilometern.');
+      setError(
+        tr(
+          'Wähle eine Distanz zwischen 1 und 50 Kilometern.',
+          'Choose a distance between 1 and 50 kilometers.',
+        ),
+      );
       return null;
     }
     return {
@@ -346,7 +372,7 @@ export function RoutePlannerScreen({
         latitude: start.latitude,
         longitude: start.longitude,
       },
-      startLabel: start.label || 'Startpunkt',
+      startLabel: start.label || tr('Startpunkt', 'Start point'),
       distanceKm,
       mode,
       preference,
@@ -364,7 +390,10 @@ export function RoutePlannerScreen({
       if (!nextRoute) {
         setRoute(null);
         setError(
-          'Keine begehbare Route gefunden. Prüfe die Internetverbindung und versuche es erneut.',
+          tr(
+            'Keine begehbare Route gefunden. Prüfe die Internetverbindung und versuche es erneut.',
+            'No walkable route found. Check your internet connection and try again.',
+          ),
         );
         setView('preference');
         return;
@@ -382,7 +411,12 @@ export function RoutePlannerScreen({
 
   const saveRoute = async (plan: RoutePlan) => {
     if (plan.source !== 'brouter') {
-      setError('Nur verifizierte Straßenrouten können gespeichert werden.');
+      setError(
+        tr(
+          'Nur verifizierte Straßenrouten können gespeichert werden.',
+          'Only verified road routes can be saved.',
+        ),
+      );
       return;
     }
     setBusy(true);
@@ -394,7 +428,7 @@ export function RoutePlannerScreen({
       );
       await persistPlannerState({ routes: next });
       setRoute(plan);
-      setMessage('Route gespeichert.');
+      setMessage(tr('Route gespeichert.', 'Route saved.'));
     } catch (errorValue) {
       setError(
         errorValue instanceof Error ? errorValue.message : String(errorValue),
@@ -406,7 +440,12 @@ export function RoutePlannerScreen({
 
   const startRun = async () => {
     if (!route || route.source !== 'brouter') {
-      setError('Nur eine verifizierte Straßenroute kann gestartet werden.');
+      setError(
+        tr(
+          'Nur eine verifizierte Straßenroute kann gestartet werden.',
+          'Only a verified road route can be started.',
+        ),
+      );
       return;
     }
     setBusy(true);
@@ -419,7 +458,10 @@ export function RoutePlannerScreen({
       const activeRouteId = plannerStateRef.current?.activeRoutePlanId;
       if (current.recording && activeRouteId !== route.id) {
         throw new Error(
-          'Ein anderer Lauf ist bereits aktiv. Beende ihn zuerst, bevor du diese Route startest.',
+          tr(
+            'Ein anderer Lauf ist bereits aktiv. Beende ihn zuerst, bevor du diese Route startest.',
+            'Another run is already active. End it before you start this route.',
+          ),
         );
       }
       const permissions = await nativeCall<{ locationPermission: boolean }>(
@@ -427,7 +469,10 @@ export function RoutePlannerScreen({
       );
       if (!permissions.locationPermission) {
         throw new Error(
-          'Für die Aufzeichnung fehlt die genaue Standortfreigabe.',
+          tr(
+            'Für die Aufzeichnung fehlt die genaue Standortfreigabe.',
+            'Precise location permission is missing for recording.',
+          ),
         );
       }
       const nextRoutes = saved.some(item => item.id === route.id)
@@ -455,7 +500,12 @@ export function RoutePlannerScreen({
         started = result.recording ? normalizeRun(result.recording) : null;
       }
       if (!started?.id)
-        throw new Error('Der Lauf konnte nicht gestartet werden.');
+        throw new Error(
+          tr(
+            'Der Lauf konnte nicht gestartet werden.',
+            'The run could not be started.',
+          ),
+        );
       const activeRoutes = nextRoutes.map(item =>
         item.id === route.id ? { ...item, activeRunId: started.id } : item,
       );
@@ -497,7 +547,7 @@ export function RoutePlannerScreen({
       const next = await native.state();
       setRecording(next.recording);
       setView('result');
-      setMessage('Lauf gespeichert.');
+      setMessage(tr('Lauf gespeichert.', 'Run saved.'));
     } catch (errorValue) {
       setError(
         errorValue instanceof Error ? errorValue.message : String(errorValue),
@@ -540,7 +590,13 @@ export function RoutePlannerScreen({
     setError('');
     try {
       const url = googleMapsDirectionsUrl(points);
-      if (!url) throw new Error('Diese Route kann nicht geöffnet werden.');
+      if (!url)
+        throw new Error(
+          tr(
+            'Diese Route kann nicht geöffnet werden.',
+            'This route cannot be opened.',
+          ),
+        );
       await Linking.openURL(url);
     } catch (errorValue) {
       setError(
@@ -630,22 +686,25 @@ export function RoutePlannerScreen({
         <View style={styles.header}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Zurück"
+            accessibilityLabel={tr('Zurück', 'Back')}
             onPress={back}
             style={styles.back}
           >
             <Text style={styles.backText}>‹</Text>
-            <Text style={styles.backLabel}>Zurück</Text>
+            <Text style={styles.backLabel}>{tr('Zurück', 'Back')}</Text>
           </Pressable>
           <View style={styles.headerRight}>
             {step ? <Text style={styles.step}>{step}</Text> : null}
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Routenplaner schließen"
+              accessibilityLabel={tr(
+                'Routenplaner schließen',
+                'Close route planner',
+              )}
               onPress={onClose}
               style={styles.close}
             >
-              <Text style={styles.closeText}>Schließen</Text>
+              <Text style={styles.closeText}>{tr('Schließen', 'Close')}</Text>
             </Pressable>
           </View>
         </View>
@@ -653,7 +712,7 @@ export function RoutePlannerScreen({
       {error ? (
         <View style={styles.noticeSlot}>
           <Notice
-            title="Aktion nicht abgeschlossen"
+            title={tr('Aktion nicht abgeschlossen', 'Action not completed')}
             onDismiss={() => setError('')}
           >
             {error}
@@ -676,26 +735,37 @@ export function RoutePlannerScreen({
 
   const renderStart = () => (
     <>
-      <Title>{embedded ? 'Routen' : 'Wo startest du?'}</Title>
-      <Copy muted>Wähle den Start für deine nächste Laufroute.</Copy>
+      <Title>
+        {embedded
+          ? tr('Routen', 'Routes')
+          : tr('Wo startest du?', 'Where do you start?')}
+      </Title>
+      <Copy muted>
+        {tr(
+          'Wähle den Start für deine nächste Laufroute.',
+          'Choose the start for your next running route.',
+        )}
+      </Copy>
       <Button
-        title="Aktuelle Position verwenden"
+        title={tr('Aktuelle Position verwenden', 'Use current position')}
         onPress={() => void loadCurrentLocation()}
         disabled={busy}
       />
       <Button
         secondary
-        title="Startort suchen"
+        title={tr('Startort suchen', 'Search for a start place')}
         onPress={() => setView('search')}
         disabled={busy}
       />
       {saved.length ? (
-        <Section title="Gespeicherte Routen">
+        <Section title={tr('Gespeicherte Routen', 'Saved routes')}>
           {saved.map(item => (
             <Row
               key={item.id}
               title={`${number(item.distanceMeters / 1000, 2)} km · ${
-                item.mode === 'loop' ? 'Rundweg' : 'Hin und zurück'
+                item.mode === 'loop'
+                  ? tr('Rundweg', 'Loop')
+                  : tr('Hin und zurück', 'Out and back')
               }`}
               subtitle={`${item.startLabel} · ${routePreferenceLabel(
                 item.preference,
@@ -713,33 +783,39 @@ export function RoutePlannerScreen({
 
   const renderSearch = () => (
     <>
-      <Title>Startort suchen</Title>
+      <Title>{tr('Startort suchen', 'Search for a start place')}</Title>
       <Copy muted>
-        Suche nach einer Adresse, einem Ort oder einem Treffpunkt.
+        {tr(
+          'Suche nach einer Adresse, einem Ort oder einem Treffpunkt.',
+          'Search for an address, a place or a meeting point.',
+        )}
       </Copy>
-      <Field label="Startort">
+      <Field label={tr('Startort', 'Start place')}>
         <Input
-          label="Startort"
+          label={tr('Startort', 'Start place')}
           value={startQuery}
           onChangeText={setStartQuery}
-          placeholder="Zum Beispiel: Seepark Freiburg"
+          placeholder={tr(
+            'Zum Beispiel: Seepark Freiburg',
+            'For example: Seepark Freiburg',
+          )}
           autoFocus
           returnKeyType="search"
           onSubmitEditing={() => void searchStart()}
         />
       </Field>
       <Button
-        title="Startort suchen"
+        title={tr('Startort suchen', 'Search for a start place')}
         onPress={() => void searchStart()}
         disabled={busy || startQuery.trim().length < 3}
       />
       {searchResults.length ? (
-        <Section title="Treffer">
+        <Section title={tr('Treffer', 'Matches')}>
           {searchResults.map((result, index) => (
             <Row
               key={`${result.latitude}-${result.longitude}-${index}`}
               title={result.label}
-              subtitle="Als Startpunkt verwenden"
+              subtitle={tr('Als Startpunkt verwenden', 'Use as start point')}
               onPress={() => selectSearchResult(result)}
             />
           ))}
@@ -750,11 +826,18 @@ export function RoutePlannerScreen({
 
   const renderDistance = () => (
     <>
-      <Title>Wie weit möchtest du laufen?</Title>
-      <Copy muted>Die Distanz meint die gesamte Route, inklusive Rückweg.</Copy>
-      <Field label="Schnellauswahl">
+      <Title>
+        {tr('Wie weit möchtest du laufen?', 'How far do you want to run?')}
+      </Title>
+      <Copy muted>
+        {tr(
+          'Die Distanz meint die gesamte Route, inklusive Rückweg.',
+          'The distance covers the whole route, including the way back.',
+        )}
+      </Copy>
+      <Field label={tr('Schnellauswahl', 'Quick pick')}>
         <ChipGroup
-          label="Distanz auswählen"
+          label={tr('Distanz auswählen', 'Choose distance')}
           options={distanceOptions}
           value={
             distanceOptions.some(option => option.value === distanceInput)
@@ -764,75 +847,114 @@ export function RoutePlannerScreen({
           onChange={setDistanceInput}
         />
       </Field>
-      <Field label="Eigene Distanz" hint="Zwischen 1 und 50 km">
+      <Field
+        label={tr('Eigene Distanz', 'Custom distance')}
+        hint={tr('Zwischen 1 und 50 km', 'Between 1 and 50 km')}
+      >
         <Input
-          label="Eigene Distanz in Kilometern"
+          label={tr(
+            'Eigene Distanz in Kilometern',
+            'Custom distance in kilometers',
+          )}
           value={distanceInput}
           onChangeText={setDistanceInput}
           keyboardType="decimal-pad"
         />
       </Field>
-      <Button title="Weiter" onPress={() => setView('mode')} disabled={busy} />
+      <Button
+        title={tr('Weiter', 'Next')}
+        onPress={() => setView('mode')}
+        disabled={busy}
+      />
     </>
   );
 
   const renderMode = () => (
     <>
-      <Title>Welche Strecke möchtest du?</Title>
-      <Copy muted>Beide Varianten bringen dich wieder zum Start.</Copy>
+      <Title>
+        {tr('Welche Strecke möchtest du?', 'Which route do you want?')}
+      </Title>
+      <Copy muted>
+        {tr(
+          'Beide Varianten bringen dich wieder zum Start.',
+          'Both options bring you back to the start.',
+        )}
+      </Copy>
       <ChipGroup
-        label="Routentyp"
-        options={modeOptions}
+        label={tr('Routentyp', 'Route type')}
+        options={modeOptions()}
         value={mode}
         onChange={setMode}
       />
       <Card>
         <Text style={styles.cardTitle}>
-          {mode === 'loop' ? 'Rundweg' : 'Hin und zurück'}
+          {mode === 'loop'
+            ? tr('Rundweg', 'Loop')
+            : tr('Hin und zurück', 'Out and back')}
         </Text>
         <Copy muted>
           {mode === 'loop'
-            ? 'Runback sucht eine Schleife mit möglichst wenig doppelter Strecke.'
-            : 'Runback sucht einen Wendepunkt und führt dich auf demselben Weg zurück.'}
+            ? tr(
+                'Runback sucht eine Schleife mit möglichst wenig doppelter Strecke.',
+                'Runback looks for a loop with as little doubled distance as possible.',
+              )
+            : tr(
+                'Runback sucht einen Wendepunkt und führt dich auf demselben Weg zurück.',
+                'Runback looks for a turnaround point and brings you back the same way.',
+              )}
         </Copy>
       </Card>
-      <Button title="Weiter" onPress={() => setView('preference')} />
+      <Button
+        title={tr('Weiter', 'Next')}
+        onPress={() => setView('preference')}
+      />
     </>
   );
 
   const renderPreference = () => (
     <>
-      <Title>Was ist dir wichtig?</Title>
+      <Title>{tr('Was ist dir wichtig?', 'What matters to you?')}</Title>
       <Copy muted>
-        Runback nutzt die Auswahl als Priorität, nicht als starres Versprechen.
+        {tr(
+          'Runback nutzt die Auswahl als Priorität, nicht als starres Versprechen.',
+          'Runback uses your choice as a priority, not a fixed promise.',
+        )}
       </Copy>
       <ChipGroup
-        label="Routenpriorität"
-        options={preferenceOptions}
+        label={tr('Routenpriorität', 'Route priority')}
+        options={preferenceOptions()}
         value={preference}
         onChange={setPreference}
       />
       <Card>
         <Text style={styles.cardTitle}>{routePreferenceLabel(preference)}</Text>
         <Copy muted>
-          Hauptstraßen und ungeeignete Wege werden weiterhin vermieden, wenn die
-          Kartendaten das erkennen lassen.
+          {tr(
+            'Hauptstraßen und ungeeignete Wege werden weiterhin vermieden, wenn die Kartendaten das erkennen lassen.',
+            'Main roads and unsuitable paths are still avoided when the map data shows them.',
+          )}
         </Copy>
       </Card>
       <Notice>
-        Für eine begehbare Straßenroute werden Startpunkt und
-        Routenzwischenpunkte an BRouter mit OpenStreetMap-Daten übertragen.
-        Laufdaten bleiben lokal auf deinem Gerät.
+        {tr(
+          'Für eine begehbare Straßenroute werden Startpunkt und Routenzwischenpunkte an BRouter mit OpenStreetMap-Daten übertragen. Laufdaten bleiben lokal auf deinem Gerät.',
+          'For a walkable road route, the start point and route waypoints are sent to BRouter with OpenStreetMap data. Run data stays on your device.',
+        )}
       </Notice>
       <Button
-        title="Route finden"
+        title={tr('Route finden', 'Find route')}
         onPress={() => void generate()}
         disabled={busy || !start}
       />
       {busy ? (
         <View style={styles.loading}>
           <ActivityIndicator color={color.green} />
-          <Copy muted>Routenvorschläge werden verglichen …</Copy>
+          <Copy muted>
+            {tr(
+              'Routenvorschläge werden verglichen …',
+              'Comparing route options …',
+            )}
+          </Copy>
         </View>
       ) : null}
     </>
@@ -844,7 +966,7 @@ export function RoutePlannerScreen({
     const isNavigable = route.source === 'brouter';
     return (
       <>
-        <Title>Deine Route</Title>
+        <Title>{tr('Deine Route', 'Your route')}</Title>
         <Copy muted>
           {route.startLabel} · {routePreferenceLabel(route.preference)}
         </Copy>
@@ -852,7 +974,7 @@ export function RoutePlannerScreen({
         <View style={styles.metrics}>
           <Stat
             value={number(route.distanceMeters / 1000, 2)}
-            label="Kilometer"
+            label={tr('Kilometer', 'Kilometers')}
           />
           <Stat
             value={
@@ -860,11 +982,15 @@ export function RoutePlannerScreen({
                 ? '–'
                 : number(route.ascentMeters, 0)
             }
-            label="Höhenmeter"
+            label={tr('Höhenmeter', 'Elevation gain')}
           />
           <Stat
-            value={route.mode === 'loop' ? 'Rundweg' : 'Wende'}
-            label="Strecke"
+            value={
+              route.mode === 'loop'
+                ? tr('Rundweg', 'Loop')
+                : tr('Wende', 'Turn')
+            }
+            label={tr('Strecke', 'Route')}
           />
         </View>
         <RouteOpenActions
@@ -874,20 +1000,28 @@ export function RoutePlannerScreen({
         />
         <Card>
           <Text style={styles.cardTitle}>
-            {route.source === 'brouter' ? 'Strecke gefunden' : 'Vorschau'}
+            {route.source === 'brouter'
+              ? tr('Strecke gefunden', 'Route found')
+              : tr('Vorschau', 'Preview')}
           </Text>
           <Copy muted>
             {route.providerLabel}.{' '}
             {route.source === 'preview'
-              ? 'Die Kartendaten waren nicht erreichbar. Prüfe die Strecke vor dem Lauf.'
-              : 'Die Route basiert auf OpenStreetMap-Daten.'}
+              ? tr(
+                  'Die Kartendaten waren nicht erreichbar. Prüfe die Strecke vor dem Lauf.',
+                  'The map data could not be reached. Check the route before the run.',
+                )
+              : tr(
+                  'Die Route basiert auf OpenStreetMap-Daten.',
+                  'The route is based on OpenStreetMap data.',
+                )}
           </Copy>
         </Card>
         <Button
           title={
             isSaved
-              ? 'Gespeichert · Lauf starten'
-              : 'Route speichern & Lauf starten'
+              ? tr('Gespeichert · Lauf starten', 'Saved · Start run')
+              : tr('Route speichern & Lauf starten', 'Save route & start run')
           }
           onPress={() => void startRun()}
           disabled={busy || !isNavigable}
@@ -895,21 +1029,23 @@ export function RoutePlannerScreen({
         {!isSaved ? (
           <Button
             secondary
-            title="Nur Route speichern"
+            title={tr('Nur Route speichern', 'Only save route')}
             onPress={() => void saveRoute(route)}
             disabled={busy || !isNavigable}
           />
         ) : null}
         {!isNavigable ? (
           <Copy muted>
-            Diese Vorschau ist nicht auf Straßen geprüft und kann deshalb weder
-            gespeichert noch gestartet werden.
+            {tr(
+              'Diese Vorschau ist nicht auf Straßen geprüft und kann deshalb weder gespeichert noch gestartet werden.',
+              'This preview is not checked against roads, so it cannot be saved or started.',
+            )}
           </Copy>
         ) : null}
         <Button
           secondary
           small
-          title="Andere Route suchen"
+          title={tr('Andere Route suchen', 'Find another route')}
           onPress={() => setView('preference')}
           disabled={busy}
         />
@@ -918,16 +1054,21 @@ export function RoutePlannerScreen({
   };
 
   const renderVoiceSettings = () => (
-    <Section title="Sprachansagen">
+    <Section title={tr('Sprachansagen', 'Voice cues')}>
       <View style={styles.switchRow}>
         <View style={styles.switchText}>
-          <Text style={styles.rowTitle}>Sprachansagen aktiv</Text>
+          <Text style={styles.rowTitle}>
+            {tr('Sprachansagen aktiv', 'Voice cues on')}
+          </Text>
           <Text style={styles.rowSubtitle}>
-            Pace und Route werden während des Laufs angesagt.
+            {tr(
+              'Pace und Route werden während des Laufs angesagt.',
+              'Pace and route are announced during the run.',
+            )}
           </Text>
         </View>
         <Switch
-          accessibilityLabel="Sprachansagen aktiv"
+          accessibilityLabel={tr('Sprachansagen aktiv', 'Voice cues on')}
           accessibilityState={{ checked: voice.enabled }}
           value={voice.enabled}
           onValueChange={enabled => updateVoice({ enabled })}
@@ -939,11 +1080,14 @@ export function RoutePlannerScreen({
         <View style={styles.switchText}>
           <Text style={styles.rowTitle}>Pace</Text>
           <Text style={styles.rowSubtitle}>
-            Aktueller Durchschnitt in min/km.
+            {tr(
+              'Aktueller Durchschnitt in min/km.',
+              'Current average in min/km.',
+            )}
           </Text>
         </View>
         <Switch
-          accessibilityLabel="Pace ansagen"
+          accessibilityLabel={tr('Pace ansagen', 'Announce pace')}
           accessibilityState={{ checked: voice.pace }}
           value={voice.pace}
           onValueChange={paceValue => updateVoice({ pace: paceValue })}
@@ -953,13 +1097,16 @@ export function RoutePlannerScreen({
       </View>
       <View style={styles.switchRow}>
         <View style={styles.switchText}>
-          <Text style={styles.rowTitle}>Distanz</Text>
+          <Text style={styles.rowTitle}>{tr('Distanz', 'Distance')}</Text>
           <Text style={styles.rowSubtitle}>
-            Bereits gelaufene Kilometer und Reststrecke.
+            {tr(
+              'Bereits gelaufene Kilometer und Reststrecke.',
+              'Kilometers run so far and distance left.',
+            )}
           </Text>
         </View>
         <Switch
-          accessibilityLabel="Distanz ansagen"
+          accessibilityLabel={tr('Distanz ansagen', 'Announce distance')}
           accessibilityState={{ checked: voice.distance }}
           value={voice.distance}
           onValueChange={distanceValue =>
@@ -971,13 +1118,16 @@ export function RoutePlannerScreen({
       </View>
       <View style={styles.switchRow}>
         <View style={styles.switchText}>
-          <Text style={styles.rowTitle}>Puls</Text>
+          <Text style={styles.rowTitle}>{tr('Puls', 'Heart rate')}</Text>
           <Text style={styles.rowSubtitle}>
-            Nur wenn ein gültiger Wert vorliegt.
+            {tr(
+              'Nur wenn ein gültiger Wert vorliegt.',
+              'Only when a valid value is available.',
+            )}
           </Text>
         </View>
         <Switch
-          accessibilityLabel="Puls ansagen"
+          accessibilityLabel={tr('Puls ansagen', 'Announce heart rate')}
           accessibilityState={{ checked: voice.heartRate }}
           value={voice.heartRate}
           onValueChange={heartRate => updateVoice({ heartRate })}
@@ -987,13 +1137,16 @@ export function RoutePlannerScreen({
       </View>
       <View style={styles.switchRow}>
         <View style={styles.switchText}>
-          <Text style={styles.rowTitle}>Route</Text>
+          <Text style={styles.rowTitle}>{tr('Route', 'Route')}</Text>
           <Text style={styles.rowSubtitle}>
-            Reststrecke und Abstand zur geplanten Route.
+            {tr(
+              'Reststrecke und Abstand zur geplanten Route.',
+              'Distance left and offset from the planned route.',
+            )}
           </Text>
         </View>
         <Switch
-          accessibilityLabel="Route ansagen"
+          accessibilityLabel={tr('Route ansagen', 'Announce route')}
           accessibilityState={{ checked: voice.navigation }}
           value={voice.navigation}
           onValueChange={navigation => updateVoice({ navigation })}
@@ -1001,10 +1154,10 @@ export function RoutePlannerScreen({
           thumbColor={voice.navigation ? color.green : color.muted}
         />
       </View>
-      <Field label="Ansageintervall">
+      <Field label={tr('Ansageintervall', 'Announcement interval')}>
         <ChipGroup
-          label="Ansageintervall"
-          options={voiceIntervalOptions}
+          label={tr('Ansageintervall', 'Announcement interval')}
+          options={voiceIntervalOptions()}
           value={String(voice.intervalKm)}
           onChange={value => updateVoice({ intervalKm: Number(value) })}
         />
@@ -1023,10 +1176,13 @@ export function RoutePlannerScreen({
     return (
       <>
         <Title>
-          {recording.status === 'recording' ? 'Lauf läuft' : 'Lauf pausiert'}
+          {recording.status === 'recording'
+            ? tr('Lauf läuft', 'Run in progress')
+            : tr('Lauf pausiert', 'Run paused')}
         </Title>
         <Copy muted>
-          {route.startLabel} · Ziel {formatDistanceKm(route.distanceMeters)}
+          {route.startLabel} · {tr('Ziel', 'Goal')}{' '}
+          {formatDistanceKm(route.distanceMeters)}
         </Copy>
         <RouteMap
           planned={route.points}
@@ -1035,22 +1191,33 @@ export function RoutePlannerScreen({
         />
         <Card>
           <Text style={styles.cardTitle}>
-            {offRoute ? 'Du bist neben der Route' : 'Du bist auf der Route'}
+            {offRoute
+              ? tr('Du bist neben der Route', 'You are off the route')
+              : tr('Du bist auf der Route', 'You are on the route')}
           </Text>
           <Copy muted>
             {offRoute
-              ? `Etwa ${number(
-                  progress?.distanceMeters,
-                  0,
-                )} m von der geplanten Strecke entfernt.`
-              : 'Folge der gestrichelten Linie.'}
+              ? tr(
+                  `Etwa ${number(
+                    progress?.distanceMeters,
+                    0,
+                  )} m von der geplanten Strecke entfernt.`,
+                  `About ${number(
+                    progress?.distanceMeters,
+                    0,
+                  )} m from the planned route.`,
+                )
+              : tr('Folge der gestrichelten Linie.', 'Follow the dashed line.')}
           </Copy>
         </Card>
         <View style={styles.metrics}>
-          <Stat value={duration(recording.durationSeconds)} label="Dauer" />
+          <Stat
+            value={duration(recording.durationSeconds)}
+            label={tr('Dauer', 'Duration')}
+          />
           <Stat
             value={formatDistanceKm(recording.distanceMeters)}
-            label="Gelaufen"
+            label={tr('Gelaufen', 'Covered')}
           />
           <Stat value={formatPaceSeconds(paceSeconds)} label="Pace" />
         </View>
@@ -1059,42 +1226,56 @@ export function RoutePlannerScreen({
           onCoMaps={() => void openCoMaps(route.points)}
           disabled={busy}
         />
-        <Section title="Während des Laufs">
+        <Section title={tr('Während des Laufs', 'During the run')}>
           <Row
-            title="Reststrecke"
+            title={tr('Reststrecke', 'Distance left')}
             subtitle={formatDistanceKm(progress?.remainingMeters)}
           />
           <Row
-            title="Nächste Richtungsänderung"
+            title={tr('Nächste Richtungsänderung', 'Next direction change')}
             subtitle={
               progress?.nextTurn
-                ? `In ${formatDistanceKm(progress.nextTurn.distanceMeters)} ${
-                    progress.nextTurn.direction === 'left' ? 'links' : 'rechts'
-                  }`
-                : 'Dem Weg weiter folgen'
+                ? progress.nextTurn.direction === 'left'
+                  ? tr(
+                      `In ${formatDistanceKm(
+                        progress.nextTurn.distanceMeters,
+                      )} links`,
+                      `In ${formatDistanceKm(
+                        progress.nextTurn.distanceMeters,
+                      )} left`,
+                    )
+                  : tr(
+                      `In ${formatDistanceKm(
+                        progress.nextTurn.distanceMeters,
+                      )} rechts`,
+                      `In ${formatDistanceKm(
+                        progress.nextTurn.distanceMeters,
+                      )} right`,
+                    )
+                : tr('Dem Weg weiter folgen', 'Keep following the path')
             }
           />
           <Row
-            title="Herzfrequenz"
+            title={tr('Herzfrequenz', 'Heart rate')}
             subtitle={
               recording.avgHeartRate
                 ? `${Math.round(recording.avgHeartRate)} bpm`
-                : 'Keine Daten'
+                : tr('Keine Daten', 'No data')
             }
           />
         </Section>
         <Button
           title={
             recording.status === 'recording'
-              ? 'Lauf pausieren'
-              : 'Lauf fortsetzen'
+              ? tr('Lauf pausieren', 'Pause run')
+              : tr('Lauf fortsetzen', 'Resume run')
           }
           onPress={() => void togglePause()}
           disabled={busy}
         />
         <Button
           secondary
-          title="Lauf beenden & speichern"
+          title={tr('Lauf beenden & speichern', 'End & save run')}
           onPress={() => void finishRun()}
           disabled={busy}
         />
@@ -1103,8 +1284,8 @@ export function RoutePlannerScreen({
           small
           title={
             voiceOpen
-              ? 'Sprachansagen schließen'
-              : 'Sprachansagen konfigurieren'
+              ? tr('Sprachansagen schließen', 'Close voice cues')
+              : tr('Sprachansagen konfigurieren', 'Set up voice cues')
           }
           onPress={() => setVoiceOpen(value => !value)}
         />
@@ -1117,7 +1298,7 @@ export function RoutePlannerScreen({
     return shell(
       <View style={styles.loading}>
         <ActivityIndicator color={color.green} />
-        <Copy muted>Routen werden geladen …</Copy>
+        <Copy muted>{tr('Routen werden geladen …', 'Loading routes …')}</Copy>
       </View>,
     );
   }

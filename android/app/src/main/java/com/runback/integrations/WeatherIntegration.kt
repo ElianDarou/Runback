@@ -1,6 +1,7 @@
 package com.runback.integrations
 
 import android.content.Context
+import com.runback.core.Lang
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -25,13 +26,13 @@ class WeatherIntegration(context: Context) {
         .getSharedPreferences("weather_cache", Context.MODE_PRIVATE)
 
     suspend fun enrich(run: JSONObject, raw: JSONArray, enabled: Boolean): JSONObject {
-        if (!enabled) return result("disabled", "Wetteranreicherung ist deaktiviert.")
+        if (!enabled) return result("disabled", Lang.tr("Wetteranreicherung ist deaktiviert.", "Weather enrichment is turned off."))
         return try {
             withContext(Dispatchers.IO) { enrichEnabled(run, raw) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            result("unavailable", e.message ?: "Historisches Wetter ist nicht verfügbar.")
+            result("unavailable", e.message ?: Lang.tr("Historisches Wetter ist nicht verfügbar.", "Historical weather is not available."))
         }
     }
 
@@ -72,7 +73,7 @@ class WeatherIntegration(context: Context) {
             .put("time", times.optString(best))
             .put("temperatureC", temperature ?: JSONObject.NULL)
             .put("windMps", wind ?: JSONObject.NULL)
-            // Woher der Wind kommt (0 = Nord, 90 = Ost); Modellwind in 10 m Höhe, keine Messung am Körper.
+            // Wind direction (0 = north, 90 = east); model wind at 10 m height, not a measurement on the body.
             .put("windDirectionDeg", windDirection?.takeIf { it.isFinite() } ?: JSONObject.NULL)
             .put("missing", missing)
     }
@@ -108,7 +109,7 @@ class WeatherIntegration(context: Context) {
             connection.inputStream.bufferedReader(StandardCharsets.UTF_8).use { reader ->
                 val result = StringBuilder(); val buffer = CharArray(8192)
                 while (true) { val count = reader.read(buffer); if (count < 0) break
-                    require(result.length + count <= 1024 * 1024) { "Wetterantwort ist zu groß" }; result.append(buffer, 0, count) }
+                    require(result.length + count <= 1024 * 1024) { Lang.tr("Wetterantwort ist zu groß", "The weather response is too large") }; result.append(buffer, 0, count) }
                 result.toString()
             }
         } finally { connection.disconnect() }

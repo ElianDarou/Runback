@@ -7,7 +7,7 @@ import {
   targetForPurpose,
 } from '../src/domain/runTarget';
 
-describe('Laufziel', () => {
+describe('Run target', () => {
   it('parses only explicit supported pace values', () => {
     expect(parsePaceInput('5:30')).toBe(330);
     expect(parsePaceInput('05:07')).toBe(307);
@@ -50,7 +50,7 @@ describe('Laufziel', () => {
   it('steps the target pace in five seconds and stays in range', () => {
     expect(stepTargetPace(330, 1)).toBe(335);
     expect(stepTargetPace(330, -1)).toBe(325);
-    // Ein krummes Zieltempo aus der Zielzeit rastet auf das Raster ein.
+    // An awkward target pace derived from the goal time snaps to the grid.
     expect(stepTargetPace(331.4, 1)).toBe(335);
     expect(stepTargetPace(331.4, -1)).toBe(330);
     expect(stepTargetPace(120, -1)).toBeNull();

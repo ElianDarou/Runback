@@ -1,18 +1,19 @@
 /**
- * Sprache zu Struktur: gesprochene oder getippte Muskelkater-Meldungen
- * werden deterministisch über ein festes Lexikon zugeordnet, nie geraten.
+ * From speech to structure: spoken or typed soreness reports are mapped
+ * deterministically through a fixed lexicon, never guessed.
  *
- * Rein deterministisch: gleiche Eingabe, gleiches Ergebnis. Kein Netz, kein
- * React, kein Zufall. Das Lexikon ist festgeschrieben und versioniert — es wird
- * nicht bei jedem Aufruf neu erfunden.
+ * Purely deterministic: same input, same result. No network, no React, no
+ * randomness. The lexicon is fixed and versioned — it is not reinvented on
+ * every call.
  *
- * Der Kern ist Grundregel 6: Ein Sprachmodell darf zuhören und Felder
- * vorschlagen, entscheiden tut diese Datei. Eine Region, die hier nicht im
- * Lexikon steht, wird verworfen und nicht erfunden.
+ * The core is ground rule 6: a language model may listen and propose fields,
+ * but this file decides. A region that is not in the lexicon here is discarded
+ * and not invented.
  */
 import {
   REGIONS_VERSION,
   allRegionIds,
+  regionBaseLabel,
   regionDefinition,
   regionId,
   regionLabel,
@@ -20,27 +21,30 @@ import {
   type RegionId,
   type Side,
 } from './regions';
+import { quote, tr } from './i18n';
 
-export const SORENESS_LEXICON_VERSION = 'soreness-lexicon-v1';
+// v2 adds English input: English fillers, side and intensity words. Reports
+// keep the version they were evaluated with.
+export const SORENESS_LEXICON_VERSION = 'soreness-lexicon-v2';
 
-/** Ein vorgeschlagener Eintrag. Wert 0–10, wie der Nutzer ihn gemeldet hat. */
+/** A proposed entry. Value 0–10, as the user reported it. */
 export interface SorenessProposal {
   regionId: RegionId;
   value: number;
 }
 
 /**
- * Etwas, das nicht eindeutig war. Wird gefragt, nicht geraten.
+ * Something that was not clear. Asked, not guessed.
  */
 export interface SorenessQuestion {
   kind: 'region' | 'side' | 'intensity' | 'unknown';
-  /** Der gehörte Wortlaut, damit die Rückfrage nachvollziehbar bleibt. */
+  /** The heard wording, so the follow-up question stays traceable. */
   fragment: string;
-  /** Fertig formulierte deutsche Rückfrage. */
+  /** Ready-made follow-up question in the active language. */
   question: string;
-  /** Mögliche konkrete Regionen. Leer, wenn gar nichts zuzuordnen war. */
+  /** Possible concrete regions. Empty if nothing could be matched. */
   candidates: RegionId[];
-  /** Bereits erkannte Stärke, falls nur die Region offen ist. */
+  /** Intensity already recognized, if only the region is open. */
   value?: number;
 }
 
@@ -48,13 +52,13 @@ export interface SorenessParse {
   lexiconVersion: string;
   regionsVersion: string;
   transcript: string;
-  /** „Heute nichts“ — eine eigenständige, wertvolle Antwort, keine leere. */
+  /** “Nothing today” — a complete, meaningful answer, not an empty one. */
   nothingToday: boolean;
   proposals: SorenessProposal[];
   questions: SorenessQuestion[];
 }
 
-/** Strukturierte Felder aus einem optionalen Sprachmodell-Durchlauf. */
+/** Structured fields from an optional language-model pass. */
 export interface StructuredSorenessItem {
   region?: unknown;
   side?: unknown;
@@ -66,8 +70,9 @@ export interface StructuredSorenessItem {
 // ---------------------------------------------------------------------------
 
 /**
- * Wörter auf Basisregionen. Mehrere Regionen bedeuten: mehrdeutig, es wird
- * nachgefragt. Schlüssel stehen bereits normalisiert (klein, ohne Umlaute).
+ * Words mapped to base regions. Several regions mean ambiguous: the user is
+ * asked. Keys are already normalized (lowercase, without umlauts). German
+ * words come first; the English words below map to the same regions.
  */
 const REGION_WORDS: Record<string, RegionBase[]> = {
   nacken: ['neck'],
@@ -163,9 +168,72 @@ const REGION_WORDS: Record<string, RegionBase[]> = {
   beine: ['quad', 'hamstring', 'calf_gastroc', 'glute'],
   arm: ['biceps', 'triceps', 'forearm'],
   arme: ['biceps', 'triceps', 'forearm'],
+  // English
+  neck: ['neck'],
+  shoulder: ['shoulder_front', 'shoulder_side', 'shoulder_rear'],
+  shoulders: ['shoulder_front', 'shoulder_side', 'shoulder_rear'],
+  'front shoulder': ['shoulder_front'],
+  'side shoulder': ['shoulder_side'],
+  'rear shoulder': ['shoulder_rear'],
+  'back shoulder': ['shoulder_rear'],
+  'upper trapezius': ['trap_upper'],
+  traps: ['trap_upper'],
+  'upper traps': ['trap_upper'],
+  'middle trapezius': ['trap_mid'],
+  'middle traps': ['trap_mid'],
+  rhomboids: ['rhomboid'],
+  back: ['lat', 'lower_back', 'trap_mid', 'rhomboid'],
+  'lower back': ['lower_back'],
+  lumbar: ['lower_back'],
+  chest: ['chest_mid'],
+  pec: ['chest_mid'],
+  pecs: ['chest_mid'],
+  pectorals: ['chest_mid'],
+  'middle chest': ['chest_mid'],
+  'upper chest': ['chest_upper'],
+  biceps: ['biceps'],
+  triceps: ['triceps'],
+  'upper arm': ['biceps', 'triceps'],
+  forearm: ['forearm'],
+  forearms: ['forearm'],
+  arms: ['biceps', 'triceps', 'forearm'],
+  abs: ['abs_upper', 'abs_lower'],
+  abdominals: ['abs_upper', 'abs_lower'],
+  stomach: ['abs_upper', 'abs_lower'],
+  belly: ['abs_upper', 'abs_lower'],
+  'upper abs': ['abs_upper'],
+  'lower abs': ['abs_lower'],
+  'side abs': ['oblique'],
+  'hip flexor': ['hip_flexor'],
+  'hip flexors': ['hip_flexor'],
+  hip: ['hip_flexor'],
+  glute: ['glute'],
+  glutes: ['glute'],
+  buttocks: ['glute'],
+  butt: ['glute'],
+  quad: ['quad'],
+  quadriceps: ['quad'],
+  'front thigh': ['quad'],
+  'front of thigh': ['quad'],
+  thigh: ['quad', 'hamstring', 'adductor'],
+  thighs: ['quad', 'hamstring', 'adductor'],
+  hamstring: ['hamstring'],
+  'back thigh': ['hamstring'],
+  'back of thigh': ['hamstring'],
+  'inner thigh': ['adductor'],
+  'inner thighs': ['adductor'],
+  adductor: ['adductor'],
+  adductors: ['adductor'],
+  calf: ['calf_gastroc'],
+  calves: ['calf_gastroc'],
+  'deep calf': ['calf_soleus'],
+  shin: ['tibialis'],
+  shins: ['tibialis'],
+  leg: ['quad', 'hamstring', 'calf_gastroc', 'glute'],
+  legs: ['quad', 'hamstring', 'calf_gastroc', 'glute'],
 };
 
-/** Seitenwörter. `both` erzeugt zwei Meldungen, nicht eine. */
+/** Side words. `both` produces two entries, not one. */
 const SIDE_WORDS: Record<string, Side | 'both'> = {
   links: 'l',
   linke: 'l',
@@ -182,15 +250,29 @@ const SIDE_WORDS: Record<string, Side | 'both'> = {
   beidseitig: 'both',
   beidseits: 'both',
   bds: 'both',
+  // English
+  left: 'l',
+  right: 'r',
+  both: 'both',
+  bilateral: 'both',
 };
 
-/** Stärkewörter. Festgeschrieben, Teil der Lexikon-Version. */
+/** Intensity words. Fixed, part of the lexicon version. */
 const INTENSITY_WORDS: Record<string, number> = {
   leicht: 3,
   mittel: 5,
   ordentlich: 6,
   stark: 8,
   extrem: 9,
+  // English
+  mild: 3,
+  light: 3,
+  moderate: 5,
+  medium: 5,
+  decent: 6,
+  strong: 8,
+  severe: 8,
+  extreme: 9,
 };
 
 const NUMBER_WORDS: Record<string, number> = {
@@ -206,9 +288,21 @@ const NUMBER_WORDS: Record<string, number> = {
   acht: 8,
   neun: 9,
   zehn: 10,
+  // English
+  zero: 0,
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
 };
 
-/** „Heute nichts“ ist eine Antwort, kein fehlender Wert. */
+/** “Nothing today” is an answer, not a missing value. */
 const NOTHING_PHRASES = [
   'heute nichts',
   'nichts heute',
@@ -220,9 +314,17 @@ const NOTHING_PHRASES = [
   'alles gut',
   'alles frei',
   'nichts zu melden',
+  // English
+  'nothing today',
+  'nothing to report',
+  'no soreness',
+  'no pain',
+  'no complaints',
+  'all good',
+  'all fine',
 ];
 
-/** Füllwörter. Erzeugen keine Rückfrage, wenn sie nichts treffen. */
+/** Filler words. They raise no question. */
 const FILLER = new Set([
   'ich',
   'habe',
@@ -275,13 +377,66 @@ const FILLER = new Set([
   'okay',
   'aber',
   'nur',
+  // English
+  'i',
+  'a',
+  'the',
+  'my',
+  'am',
+  'are',
+  'was',
+  'were',
+  'have',
+  'has',
+  'had',
+  'it',
+  'its',
+  'on',
+  'at',
+  'of',
+  'to',
+  'some',
+  'just',
+  'yesterday',
+  'today',
+  'tonight',
+  'now',
+  'this',
+  'morning',
+  'little',
+  'bit',
+  'kind',
+  'think',
+  'about',
+  'around',
+  'maybe',
+  'probably',
+  'is',
+  'be',
+  'been',
+  'there',
+  'and',
+  'or',
+  'very',
+  'really',
+  'quite',
+  'still',
+  'also',
+  'pain',
+  'sore',
+  'soreness',
+  'hurts',
+  'hurt',
+  'aching',
+  'feel',
+  'feels',
 ]);
 
 // ---------------------------------------------------------------------------
-// Normalisierung und Unschärfe
+// Normalization and fuzziness
 // ---------------------------------------------------------------------------
 
-/** Klein, ohne Umlaute, ohne Satzzeichen. Umlaute fallen auf den Grundvokal. */
+/** Lowercase, without umlauts or punctuation. Umlauts fall back to their base vowel. */
 export function normalizeText(value: string): string {
   return String(value ?? '')
     .toLowerCase()
@@ -295,7 +450,7 @@ export function normalizeText(value: string): string {
     .trim();
 }
 
-/** Levenshtein-Distanz, iterativ mit einer Zeile Speicher. */
+/** Levenshtein distance, iterative with one row of memory. */
 export function levenshtein(a: string, b: string): number {
   if (a === b) {
     return 0;
@@ -321,7 +476,7 @@ export function levenshtein(a: string, b: string): number {
   return previous[b.length];
 }
 
-/** 1 bei Gleichheit, 0 bei völliger Verschiedenheit. */
+/** 1 for equal strings, 0 for entirely different ones. */
 export function normalizedLevenshtein(a: string, b: string): number {
   const longest = Math.max(a.length, b.length);
   return longest ? 1 - levenshtein(a, b) / longest : 1;
@@ -337,8 +492,8 @@ function trigrams(value: string): Set<string> {
 }
 
 /**
- * Dice-Koeffizient über Trigramme. Fängt Umstellungen ab, die Levenshtein
- * teuer bewertet.
+ * Dice coefficient over trigrams. Catches reorderings that Levenshtein
+ * scores harshly.
  */
 export function trigramSimilarity(a: string, b: string): number {
   if (a === b) {
@@ -362,8 +517,8 @@ const LEVENSHTEIN_THRESHOLD = 0.8;
 const TRIGRAM_THRESHOLD = 0.7;
 
 /**
- * Erkennungsfehler abfangen: normalisierte Levenshtein-Ähnlichkeit ≥ 0,8 oder
- * hohe Trigramm-Ähnlichkeit bei noch plausibler Distanz.
+ * Catches recognition errors: normalized Levenshtein similarity ≥ 0.8, or high
+ * trigram similarity at a still plausible distance.
  */
 export function fuzzyMatch(token: string, keys: string[]): string | null {
   if (token.length < 4) {
@@ -391,7 +546,7 @@ export function fuzzyMatch(token: string, keys: string[]): string | null {
   return best;
 }
 
-/** Deutsche Adjektiv- und Pluralendungen abstreifen, wenn sonst nichts trifft. */
+/** Strips German adjective and plural endings when nothing else matches. */
 function stems(token: string): string[] {
   const found = [token];
   for (const suffix of ['en', 'em', 'er', 'es', 'e', 'n']) {
@@ -403,7 +558,7 @@ function stems(token: string): string[] {
 }
 
 // ---------------------------------------------------------------------------
-// Zerlegung
+// Tokenizing
 // ---------------------------------------------------------------------------
 
 type Token =
@@ -462,7 +617,7 @@ function classify(phrase: string, words: number): Token | null {
       }
     }
   }
-  // Unschärfe zuletzt, damit ein exakter Treffer nie überstimmt wird.
+  // Fuzzy matching last, so an exact match is never overridden.
   const candidates = [
     ...sameWordCount(REGION_KEYS, words),
     ...(words === 1 ? SIDE_KEYS : []),
@@ -475,6 +630,17 @@ function classify(phrase: string, words: number): Token | null {
   }
   return null;
 }
+
+/** Words between an intensity and its scale: “von” or “out of”. Returns how many. */
+const scaleConnectorLength = (words: string[], at: number): number => {
+  if (words[at] === 'von') {
+    return 1;
+  }
+  if (words[at] === 'out' && words[at + 1] === 'of') {
+    return 2;
+  }
+  return 0;
+};
 
 function tokenize(normalized: string): Token[] {
   const words = normalized ? normalized.split(' ') : [];
@@ -496,14 +662,15 @@ function tokenize(normalized: string): Token[] {
         break;
       }
     }
-    // „acht von zehn“ nennt eine Stärke, nicht zwei.
-    if (
-      matched &&
-      matched.type === 'intensity' &&
-      words[index + length] === 'von' &&
-      lookup(words[index + length + 1] || '', 1)?.type === 'intensity'
-    ) {
-      length += 2;
+    // “acht von zehn” and “eight out of ten” name one intensity, not two.
+    if (matched && matched.type === 'intensity') {
+      const connector = scaleConnectorLength(words, index + length);
+      if (
+        connector &&
+        lookup(words[index + length + connector] || '', 1)?.type === 'intensity'
+      ) {
+        length += connector + 1;
+      }
     }
     tokens.push(matched || { type: 'unknown', text: words[index] });
     index += length;
@@ -512,7 +679,7 @@ function tokenize(normalized: string): Token[] {
 }
 
 // ---------------------------------------------------------------------------
-// Zusammenbau
+// Assembly
 // ---------------------------------------------------------------------------
 
 interface Entry {
@@ -551,7 +718,7 @@ function group(tokens: Token[]): { entries: Entry[]; unknown: string[] } {
         token.side !== 'both' &&
         last.side !== token.side
       ) {
-        // Speech recognition often repeats both sides as “links und rechts”.
+        // Speech recognition often repeats both sides as “links und rechts” (“left and right”).
         // Preserve that explicit information instead of leaving the second
         // side pending and silently applying the next intensity to one side.
         last.side = 'both';
@@ -599,7 +766,10 @@ function questionForEntry(entry: Entry): SorenessQuestion | null {
     return {
       kind: 'region',
       fragment: entry.text,
-      question: `„${entry.text}“ ist nicht eindeutig. Welche Region meinst du?`,
+      question: `${quote(entry.text)} ${tr(
+        'ist nicht eindeutig. Welche Region meinst du?',
+        'is ambiguous. Which region do you mean?',
+      )}`,
       candidates,
       value: entry.value,
     };
@@ -609,7 +779,10 @@ function questionForEntry(entry: Entry): SorenessQuestion | null {
     return {
       kind: 'side',
       fragment: entry.text,
-      question: `${definition.label}: links, rechts oder beide?`,
+      question: tr(
+        `${regionBaseLabel(base)}: links, rechts oder beide?`,
+        `${regionBaseLabel(base)}: left, right, or both?`,
+      ),
       candidates: [regionId(base, 'l'), regionId(base, 'r')],
       value: entry.value,
     };
@@ -618,12 +791,14 @@ function questionForEntry(entry: Entry): SorenessQuestion | null {
     const ids = definition.sided
       ? sidesOf(entry.side).map(side => regionId(base, side))
       : [regionId(base)];
+    const names = ids.map(regionLabel).join(tr(' und ', ' and '));
     return {
       kind: 'intensity',
       fragment: entry.text,
-      question: `Wie stark ist es an ${ids
-        .map(regionLabel)
-        .join(' und ')}? 0 bis 10.`,
+      question: tr(
+        `Wie stark ist es an ${names}? 0 bis 10.`,
+        `How sore is it at ${names}? 0 to 10.`,
+      ),
       candidates: ids,
     };
   }
@@ -632,7 +807,7 @@ function questionForEntry(entry: Entry): SorenessQuestion | null {
 
 const clamp = (value: number) => Math.min(10, Math.max(0, Math.round(value)));
 
-/** Späterer Eintrag gewinnt: „Wade drei, nein Wade sechs“ endet bei 6. */
+/** Later entry wins: “calf three, no, calf six” ends at 6. */
 function dedupe(proposals: SorenessProposal[]): SorenessProposal[] {
   const byId = new Map<RegionId, number>();
   proposals.forEach(entry => byId.set(entry.regionId, entry.value));
@@ -640,8 +815,8 @@ function dedupe(proposals: SorenessProposal[]): SorenessProposal[] {
 }
 
 /**
- * Der einzige Weg von gesprochener Sprache zu Regionen. Gibt Vorschläge und
- * offene Rückfragen zurück — nie eine geratene Zuordnung.
+ * The only path from spoken language to regions. Returns suggestions and open
+ * questions — never a guessed match.
  */
 export function parseSoreness(transcript: string): SorenessParse {
   const normalized = normalizeText(transcript);
@@ -677,7 +852,10 @@ export function parseSoreness(transcript: string): SorenessParse {
     questions.push({
       kind: 'unknown',
       fragment,
-      question: `„${fragment}“ konnte ich keiner Region zuordnen. Tippe sie auf der Figur an.`,
+      question: `${quote(fragment)} ${tr(
+        'konnte ich keiner Region zuordnen. Tippe sie auf der Figur an.',
+        'I could not match it to a region. Tap it on the figure.',
+      )}`,
       candidates: [],
     });
   }
@@ -693,20 +871,20 @@ export function parseSoreness(transcript: string): SorenessParse {
 }
 
 // ---------------------------------------------------------------------------
-// Prüfung fremder Felder (Grundregel 6)
+// Checking foreign fields (ground rule 6)
 // ---------------------------------------------------------------------------
 
 const VALID_IDS = new Set(allRegionIds());
 const REGION_ORDER = new Map(allRegionIds().map((id, index) => [id, index]));
 
-/** Gibt die Kennung zurück, wenn es sie in `regions-v1` wirklich gibt. */
+/** Returns the ID if it really exists in `regions-v1`. */
 export function validRegionId(value: unknown): RegionId | null {
   return typeof value === 'string' && VALID_IDS.has(value) ? value : null;
 }
 
 /**
- * Strukturierte Felder aus einem Sprachmodell durch dasselbe Lexikon führen.
- * Was nicht durchkommt, wird verworfen und nachgefragt — nie erfunden.
+ * Passes structured fields from a language model through the same lexicon.
+ * What does not get through is discarded and asked about — never invented.
  */
 export function fromStructured(
   items: StructuredSorenessItem[],
@@ -740,7 +918,10 @@ export function fromStructured(
         questions.push({
           kind: 'intensity',
           fragment: raw,
-          question: `Wie stark ist es an ${regionLabel(direct)}? 0 bis 10.`,
+          question: tr(
+            `Wie stark ist es an ${regionLabel(direct)}? 0 bis 10.`,
+            `How sore is it at ${regionLabel(direct)}? 0 to 10.`,
+          ),
           candidates: [direct],
         });
       } else {
@@ -755,8 +936,14 @@ export function fromStructured(
         kind: 'unknown',
         fragment: raw,
         question: raw
-          ? `„${raw}“ gehört nicht zur Regionenliste und wurde verworfen. Tippe die Region auf der Figur an.`
-          : 'Eine Angabe ohne Region wurde verworfen. Tippe die Region auf der Figur an.',
+          ? `${quote(raw)} ${tr(
+              'gehört nicht zur Regionenliste und wurde verworfen. Tippe die Region auf der Figur an.',
+              'is not in the region list and was discarded. Tap the region on the figure.',
+            )}`
+          : tr(
+              'Eine Angabe ohne Region wurde verworfen. Tippe die Region auf der Figur an.',
+              'An entry without a region was discarded. Tap the region on the figure.',
+            ),
         candidates: [],
       });
       continue;
@@ -784,7 +971,7 @@ export function fromStructured(
   };
 }
 
-/** Eine gespeicherte Meldung. Liegt auf dem Gerät und wandert ins Backup. */
+/** A saved report. Stored on the device and included in backups. */
 export interface SorenessReport {
   at: number;
   lexiconVersion: string;
@@ -795,7 +982,7 @@ export interface SorenessReport {
   transcript?: string;
 }
 
-/** Baut die Meldung aus dem bestätigten Stand der Figur. */
+/** Builds the report from the confirmed state of the figure. */
 export function buildReport(
   values: Record<RegionId, number | null>,
   at: number,

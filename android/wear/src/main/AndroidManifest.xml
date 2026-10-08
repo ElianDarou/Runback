@@ -13,12 +13,12 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
-    <!-- Normale Berechtigung; erfüllt die Vorgabe für den Health-Dienst der Bewegungsaufzeichnung. -->
+    <!-- Normal permission; meets the requirement for the health service that records motion. -->
     <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
     <uses-permission android:name="android.permission.REQUEST_COMPANION_START_FOREGROUND_SERVICES_FROM_BACKGROUND" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
-    <!-- Erkannter Satz: Bestätigung auch bei ausgeschaltetem Bildschirm nach vorn holen. -->
+    <!-- Detected set: bring the confirmation to the front even when the screen is off. -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <application android:name=".WearApplication" android:label="Runback" android:theme="@style/WearTheme" android:icon="@drawable/ic_runback" android:allowBackup="false" android:supportsRtl="true">

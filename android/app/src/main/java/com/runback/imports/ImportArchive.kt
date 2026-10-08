@@ -1,5 +1,6 @@
 package com.runback.imports
 
+import com.runback.core.Lang
 import java.io.File
 import java.io.InputStream
 import java.util.Locale
@@ -7,7 +8,7 @@ import java.util.zip.ZipInputStream
 
 /**
  * Bounded archive traversal for imports. Archive names are labels only; every
- * extracted entry is placed in a caller supplied temporary directory.
+ * extracted entry is placed in a caller-supplied temporary directory.
  */
 class ImportArchive(
     private val tempRoot: File,
@@ -31,7 +32,7 @@ class ImportArchive(
     private val pending = ArrayList<Pending>()
 
     fun import(file: File) {
-        require(tempRoot.isDirectory) { "Temporärer Importordner fehlt" }
+        require(tempRoot.isDirectory) { Lang.tr("Temporärer Importordner fehlt", "Temporary import folder is missing") }
         entries = 0
         pending.clear()
         try {
@@ -57,7 +58,7 @@ class ImportArchive(
             while (true) {
                 checkCancelled()
                 val entry = zip.nextEntry ?: break
-                if (++entries > maxEntries) throw IllegalArgumentException("ZIP enthält zu viele Dateien")
+                if (++entries > maxEntries) throw IllegalArgumentException(Lang.tr("ZIP enthält zu viele Dateien", "ZIP contains too many files"))
                 if (entry.isDirectory) {
                     drainBounded(zip)
                     onSkipped()
@@ -78,7 +79,7 @@ class ImportArchive(
                     copyBounded(zip, extracted)
                     if (isNestedArchive(name)) {
                         if (depth >= maxDepth) {
-                            onError(name, IllegalArgumentException("Verschachtelte Archive sind zu tief"))
+                            onError(name, IllegalArgumentException(Lang.tr("Verschachtelte Archive sind zu tief", "Nested archives are too deep")))
                         } else {
                             collect(extracted, depth + 1, path)
                         }

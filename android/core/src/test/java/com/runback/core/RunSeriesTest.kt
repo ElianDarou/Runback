@@ -10,7 +10,7 @@ class RunSeriesTest {
     private fun row(i: Int, state: RunPhases.State, speed: Double? = 3.0, heart: Double? = 150.0, elevation: Double? = 100.0) =
         RunPhases.Row((i + 1) * grid, i * grid * 3.0, 15.0, 5.0, speed, state, heart, 170.0, elevation, 0.0, 5.0)
 
-    /** Ein Punkt je Sekunde nach Norden mit 3 m/s. */
+    /** One point per second heading north at 3 m/s. */
     private fun northTrack(seconds: Int) = (0 until seconds).map { s ->
         RunTimeline.GpsPoint(start + s * 1000L, 52.0 + s * 3.0 / 111_195.0, 13.0, 4.0, 100.0)
     }
@@ -20,9 +20,9 @@ class RunSeriesTest {
         assertEquals(0.0, RunSeries.bearingDeg(a, RunSeries.Position(52.01, 13.0)), 0.5)
         assertEquals(90.0, RunSeries.bearingDeg(a, RunSeries.Position(52.0, 13.01)), 0.5)
         val fromNorth = RunSeries.Wind(4.0, 0.0)
-        assertEquals(4.0, RunSeries.headwind(fromNorth, 0.0), 0.001)    // nach Norden = in den Wind
-        assertEquals(-4.0, RunSeries.headwind(fromNorth, 180.0), 0.001) // nach Süden = Rückenwind
-        assertEquals(0.0, RunSeries.headwind(fromNorth, 90.0), 0.001)   // quer
+        assertEquals(4.0, RunSeries.headwind(fromNorth, 0.0), 0.001)    // heading north = into the wind
+        assertEquals(-4.0, RunSeries.headwind(fromNorth, 180.0), 0.001) // heading south = tailwind
+        assertEquals(0.0, RunSeries.headwind(fromNorth, 90.0), 0.001)   // crosswind
     }
 
     @Test fun rowsCarryPositionAndHeadwindOnlyWhereKnown() {
@@ -30,7 +30,7 @@ class RunSeriesTest {
         val result = RunSeries.build(start, rows, northTrack(60), RunSeries.Wind(3.0, 0.0))
         assertEquals(grid, result.stepSeconds)
         assertEquals(12, result.rows.size)
-        // Erstes Fenster hat eine Position, aber noch keinen Kurs — also keinen Wind.
+        // The first window has a position but no heading yet — so no wind.
         assertNotNull(result.rows[0].position)
         assertNull(result.rows[0].headwindMps)
         assertEquals(3.0, result.rows[1].headwindMps!!, 0.05)
@@ -60,10 +60,10 @@ class RunSeriesTest {
         assertEquals(grid * 4, result.stepSeconds)
         assertEquals(rows[3].elapsedSeconds, result.rows[0].elapsedSeconds)
         assertEquals(rows[3].distanceMeters, result.rows[0].distanceMeters, 0.001)
-        assertEquals(3.0, result.rows[0].speedMps!!, 0.001)       // Mittel nur über vorhandene Werte
+        assertEquals(3.0, result.rows[0].speedMps!!, 0.001)       // average only over the values present
         assertTrue(result.rows[0].moving)
         assertEquals(140.0, result.rows[0].heartRate!!, 0.001)
-        assertNull(result.rows[24].heartRate)                   // keine Pulswerte → kein Puls
+        assertNull(result.rows[24].heartRate)                   // no heart rate values → no heart rate
         assertNull(result.rows[0].position)
     }
 

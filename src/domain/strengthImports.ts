@@ -3,11 +3,12 @@ import type { PlannedSet, StrengthSession, WorkoutTemplate } from './strength';
 import { CATALOG_VERSION } from './strength';
 import type { StrongWorkout } from './vendorImports';
 import { applyStrengthEndCorrection } from './endCorrection';
+import { tr } from './i18n';
 
 export const STRENGTH_IMPORT_TEMPLATE_VERSION = 'strength-import-template-v2';
 export const STRENGTH_IMPORT_SESSION_VERSION = 'strength-import-session-v1';
 
-/** Nur eine Ansicht der Originale: Satzabschluss bekannt, Satzzeit und RIR unbekannt. */
+/** Only a view of the originals: set completion is known; set time and RIR are not. */
 export function importedStrengthSession(
   workout: StrongWorkout,
 ): StrengthSession {
@@ -98,7 +99,7 @@ export interface ImportedTemplate {
 const workoutName = (name: string) =>
   name.trim().toLowerCase().replace(/\s+/g, ' ');
 
-/** Eine letzte Einheit je Name, ohne Mischung historischer Varianten oder erfundene Wochentage. */
+/** One latest session per name, without mixing historical variants or made-up weekdays. */
 export function importedTemplateCandidates(
   workouts: StrongWorkout[],
   existing: WorkoutTemplate[] = [],
@@ -126,7 +127,7 @@ export function importedTemplateCandidates(
   const result: ImportedTemplate[] = [];
   for (const [key, workout] of latest) {
     const source = workout.source ?? 'strong';
-    // Die Wahl gilt für Quelle und Trainingsname, auch nach einem erneuten Import.
+    // The choice applies to source and workout name, also after a new import.
     const id = `import-template:${encodeURIComponent(source)}:${encodeURIComponent(key)}`;
     if (
       dismissed.has(id) ||
@@ -146,7 +147,12 @@ export function importedTemplateCandidates(
         exercise?.id ??
         `imported:${encodeURIComponent(set.exercise.trim().toLowerCase().replace(/\s+/g, ' '))}`;
       if (!exercise)
-        warnings.add('Prüfe Übungen, deren Ausführung noch unbekannt ist.');
+        warnings.add(
+          tr(
+            'Prüfe Übungen, deren Ausführung noch unbekannt ist.',
+            'Check exercises whose execution is still unknown.',
+          ),
+        );
       const kg =
         set.weight !== null && set.weight >= 0
           ? set.weightUnit === 'kg'
@@ -156,7 +162,12 @@ export function importedTemplateCandidates(
             : undefined
           : undefined;
       if (set.weight !== null && kg === undefined)
-        warnings.add('Ergänze Lasten mit unbekannter Einheit oder Bedeutung.');
+        warnings.add(
+          tr(
+            'Ergänze Lasten mit unbekannter Einheit oder Bedeutung.',
+            'Add loads with an unknown unit or meaning.',
+          ),
+        );
       const bodyweight = exercise?.equipment === 'bodyweight';
       const planned: PlannedSet = {
         kind:
@@ -178,12 +189,21 @@ export function importedTemplateCandidates(
       if (set.seconds !== null) planned.seconds = set.seconds;
       if (kg !== undefined && (!bodyweight || kg > 0)) planned.weightKg = kg;
       if (set.restSeconds != null) planned.restSeconds = set.restSeconds;
-      else warnings.add('Ergänze Pausen, die im Export fehlen.');
+      else
+        warnings.add(
+          tr(
+            'Ergänze Pausen, die im Export fehlen.',
+            'Add rest times that are missing from the export.',
+          ),
+        );
       if (set.distance !== null)
         warnings.add(
-          'Prüfe Streckenangaben in den Details; die Kraftvorlage übernimmt keine Strecke.',
+          tr(
+            'Prüfe Streckenangaben in den Details; die Kraftvorlage übernimmt keine Strecke.',
+            'Check distance details; the strength template does not take over distance.',
+          ),
         );
-      // Gleiche Übung in getrennten Blöcken bleibt getrennt, etwa bei Supersätzen.
+      // The same exercise in separate blocks stays separate, e.g. in supersets.
       const previous = exercises[exercises.length - 1];
       if (previous?.exerciseId === exerciseId) previous.sets.push(planned);
       else
@@ -222,7 +242,7 @@ export function importedTemplateCandidates(
   );
 }
 
-/** Übernehmen legt nur neue Vorlagen an; eigene Änderungen bleiben erhalten. */
+/** Accepting only adds new templates; your own changes are kept. */
 export function acceptImportedTemplate(
   existing: WorkoutTemplate[],
   candidate: WorkoutTemplate,

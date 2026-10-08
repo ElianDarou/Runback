@@ -1,11 +1,10 @@
 package com.runback.core
 
 import org.json.JSONObject
-import java.util.Locale
 import kotlin.math.floor
 import kotlin.math.roundToInt
 
-/** Begrenzter Live-Zustand; Tempo pro Kilometer entsteht an interpolierten Grenzen. */
+/** Bounded live state; pace per kilometer comes from interpolated boundaries. */
 class RunAnnouncements private constructor(private val config: JSONObject) {
     private var previousDistance: Double? = null
     private var previousSeconds = 0.0
@@ -31,7 +30,7 @@ class RunAnnouncements private constructor(private val config: JSONObject) {
         if (previous != null && distance > previous) {
             val first = floor(previous / 1000).toInt() + 1
             val last = floor(distance / 1000).toInt()
-            // Nie beliebig viele Grenzen nach einem unplausiblen Sprung abarbeiten.
+            // Never work through an arbitrary number of boundaries after an implausible jump.
             if (last - first <= 10) for (km in first..last) {
                 val boundary = previousSeconds + (seconds - previousSeconds) * (km * 1000 - previous) / (distance - previous)
                 lastKilometerSeconds = if (continuous && kilometerValid) kilometerStartSeconds?.let { boundary - it } else null
@@ -51,16 +50,16 @@ class RunAnnouncements private constructor(private val config: JSONObject) {
         if (bucket <= lastTrigger) return null
         lastTrigger = bucket
         val parts = ArrayList<String>()
-        if (config.getBoolean("kilometer") && freshGps) parts.add("Kilometer ${floor(distance / 1000).toInt()}.")
-        if (config.getBoolean("distance") && freshGps) parts.add(String.format(Locale.GERMANY, "Strecke %.2f Kilometer.", distance / 1000))
+        if (config.getBoolean("kilometer") && freshGps) parts.add(Lang.tr("Kilometer ${floor(distance / 1000).toInt()}.", "Kilometer ${floor(distance / 1000).toInt()}."))
+        if (config.getBoolean("distance") && freshGps) parts.add(String.format(Lang.locale(), Lang.tr("Strecke %.2f Kilometer.", "Distance %.2f kilometers."), distance / 1000))
         if (config.getBoolean("lastKilometerPace")) lastKilometerSeconds?.takeIf { it > 0 }?.let {
-            parts.add("Letzter Kilometer ${pace(it)}.")
+            parts.add(Lang.tr("Letzter Kilometer ${pace(it)}.", "Last kilometer ${pace(it)}."))
         }
         if (config.getBoolean("averagePace") && freshGps && distance > 0 && seconds > 0) {
-            parts.add("Durchschnitt ${pace(seconds / (distance / 1000))}.")
+            parts.add(Lang.tr("Durchschnitt ${pace(seconds / (distance / 1000))}.", "Average ${pace(seconds / (distance / 1000))}."))
         }
         if (config.getBoolean("heartRate")) heartRate?.takeIf { it.isFinite() && it in 30.0..240.0 }?.let {
-            parts.add("Puls ${it.roundToInt()}.")
+            parts.add(Lang.tr("Puls ${it.roundToInt()}.", "Heart rate ${it.roundToInt()}."))
         }
         return parts.joinToString(" ").takeIf { it.isNotBlank() }
     }
@@ -71,17 +70,22 @@ class RunAnnouncements private constructor(private val config: JSONObject) {
             if (value == null || value.optInt("version") != VERSION) return null
             val trigger = value.optString("trigger")
             if (trigger == "off") return null
-            require(trigger in setOf("distance", "time")) { "Unbekannter Auslöser für Durchsagen." }
+            require(trigger in setOf("distance", "time")) { Lang.tr("Unbekannter Auslöser für Durchsagen.", "Unknown trigger for announcements.") }
             val interval = value.optDouble("interval", Double.NaN)
-            require(interval.isFinite() && interval >= 1 && interval <= if (trigger == "distance") 10 else 60) { "Ungültiger Durchsageabstand." }
+            require(interval.isFinite() && interval >= 1 && interval <= if (trigger == "distance") 10 else 60) { Lang.tr("Ungültiger Durchsageabstand.", "Invalid announcement interval.") }
             listOf("kilometer", "distance", "lastKilometerPace", "averagePace", "heartRate").forEach {
-                require(value.opt(it) is Boolean) { "Unvollständige Durchsage." }
+                require(value.opt(it) is Boolean) { Lang.tr("Unvollständige Durchsage.", "Incomplete announcement.") }
             }
             return RunAnnouncements(JSONObject(value.toString()))
         }
         private fun pace(seconds: Double): String {
             val total = seconds.roundToInt()
-            return "${total / 60} Minuten ${total % 60} Sekunden pro Kilometer"
+            val minutes = total / 60
+            val rest = total % 60
+            return Lang.tr(
+                "$minutes Minuten $rest Sekunden pro Kilometer",
+                "$minutes ${if (minutes == 1) "minute" else "minutes"} $rest ${if (rest == 1) "second" else "seconds"} per kilometer",
+            )
         }
     }
 }

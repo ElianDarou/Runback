@@ -3,6 +3,7 @@ import type {
   MotionWrist,
   Run,
 } from './domain/trainingRecords';
+import { tr, type Language } from './domain/i18n';
 export type {
   Preset,
   Settings,
@@ -42,7 +43,7 @@ export interface RunEndEditorData {
   originalEndTime: number;
   correctedEndTime?: number;
   series: RunSeries | null;
-  /** Warum sich das Ende nicht sicher kürzen lässt, etwa Pausen ohne Zeitpunkt. */
+  /** Why the end cannot be shortened safely, e.g. pauses without a time. */
   blockedReason?: string;
 }
 import {
@@ -65,7 +66,7 @@ import {
   type StrengthWatchInfo,
 } from './domain/wearLink';
 
-/** Zähler aus `MotionSessions.status`; die Rohdaten selbst bleiben nativ. */
+/** Counters from `MotionSessions.status`; the raw data itself stays native. */
 export interface MotionStatus {
   enabled: boolean;
   heartRate?: boolean;
@@ -125,7 +126,7 @@ export interface AppState {
 }
 export { normalizeRun, normalizeStrength };
 const module = NativeModules.Runback;
-/** Gleicher Name wie `StrengthWorkout.EVENT` in Kotlin. */
+/** Same name as `StrengthWorkout.EVENT` in Kotlin. */
 const STRENGTH_CHANGED_EVENT = 'runbackStrengthChanged';
 const routeModule = NativeModules.RoutePlanner;
 export async function nativeCall<T = unknown>(
@@ -133,7 +134,12 @@ export async function nativeCall<T = unknown>(
   ...args: unknown[]
 ): Promise<T> {
   if (!module || typeof module[method] !== 'function') {
-    throw new Error('Diese Funktion ist in diesem Build noch nicht verfügbar.');
+    throw new Error(
+      tr(
+        'Diese Funktion ist in diesem Build noch nicht verfügbar.',
+        'This function is not available in this build yet.',
+      ),
+    );
   }
   const result = await module[method](...args);
   return (typeof result === 'string' ? JSON.parse(result) : result) as T;
@@ -144,7 +150,10 @@ export async function routeCall<T = unknown>(
 ): Promise<T> {
   if (!routeModule || typeof routeModule[method] !== 'function') {
     throw new Error(
-      'Der Routenplaner ist in diesem Build noch nicht verfügbar.',
+      tr(
+        'Der Routenplaner ist in diesem Build noch nicht verfügbar.',
+        'The route planner is not available in this build yet.',
+      ),
     );
   }
   const result = await routeModule[method](...args);
@@ -198,14 +207,14 @@ export const native = {
   async discardRunArchive(id: string) {
     await nativeCall('discardRunArchive', id);
   },
-  // ZIP aus flachen Dateien; jeder Aufruf hängt an gleichnamige Dateien an.
+  // ZIP from flat files; each call appends to files with the same name.
   async beginExportArchive(prefix: string): Promise<string> {
     return (await nativeCall<{ id: string }>('beginExportArchive', prefix)).id;
   },
   async appendExportArchive(id: string, files: Record<string, string>) {
     await nativeCall('appendExportArchive', id, JSON.stringify(files));
   },
-  /** `includeMotion`: Kotlin legt die Bewegungsdaten als Ordner `bewegungsdaten/` dazu. */
+  /** `includeMotion`: Kotlin adds the motion data as the folder `bewegungsdaten/`. */
   async shareExportArchive(
     id: string,
     title: string,
@@ -224,7 +233,7 @@ export const native = {
   async discardExportArchive(id: string) {
     await nativeCall('discardExportArchive', id);
   },
-  /** In Runback aufgezeichnete Krafteinheiten, älteste zuerst, ohne Importe. */
+  /** Strength sessions recorded in Runback, oldest first, without imports. */
   async recordedStrengthSessionIds(): Promise<string[]> {
     return (await nativeCall<{ ids: string[] }>('recordedStrengthSessionIds'))
       .ids;
@@ -247,7 +256,7 @@ export const native = {
   async feedback(id: string, feedback: unknown) {
     await nativeCall('updateRunFeedback', id, JSON.stringify(feedback));
   },
-  /** Begrenzter Zeitverlauf (Aggregate je Fenster) für den Laufbericht. */
+  /** Limited time course (aggregates per window) for the run report. */
   async runTimeline(id: string, maxRows = 120): Promise<RunTimeline> {
     const raw = await nativeCall<any>('getRunTimeline', id, maxRows);
     return {
@@ -256,7 +265,7 @@ export const native = {
       rows: Array.isArray(raw?.rows) ? raw.rows : [],
     };
   },
-  /** Darstellungsreihe für die Graphen der Detailseite (RunSeries, ≤ maxRows Zeilen). */
+  /** Display series for the detail page charts (RunSeries, ≤ maxRows rows). */
   async runSeries(id: string, maxRows = 600): Promise<RunSeries> {
     const raw = await nativeCall<any>('getRunSeries', id, maxRows);
     return {
@@ -272,8 +281,8 @@ export const native = {
     };
   },
   /**
-   * Schreibt die 5-s-Zeitreihe nativ als CSV in den Export-Cache. Die Zeilen
-   * bleiben in Kotlin; zurück kommt nur der Dateiname.
+   * Writes the 5-second time series natively as CSV into the export cache. The
+   * rows stay in Kotlin; only the file name comes back.
    */
   async writeRunTimeseries(
     id: string,
@@ -286,8 +295,8 @@ export const native = {
     };
   },
   /**
-   * Teilt mehrere Dateien auf einmal. Einträge ohne `content` müssen bereits
-   * im Export-Cache liegen (siehe writeRunTimeseries).
+   * Shares several files at once. Entries without `content` must already be in
+   * the export cache (see writeRunTimeseries).
    */
   async shareFiles(
     files: { fileName: string; mimeType: string; content?: string }[],
@@ -295,7 +304,7 @@ export const native = {
   ) {
     await nativeCall('shareFiles', JSON.stringify(files), title);
   },
-  /** Übergibt eine Textdatei an das System-Share-Sheet. */
+  /** Passes a text file to the system share sheet. */
   async shareTextFile(
     fileName: string,
     content: string,
@@ -304,9 +313,8 @@ export const native = {
   ) {
     await nativeCall('shareTextFile', fileName, mimeType, content, title);
   },
-  // Krafttraining. Der native Speicher legt die laufende Einheit getrennt von
-  // der Historie ab, damit ein bestätigter Satz eine kleine Schreiboperation
-  // bleibt.
+  // Strength training. The native store keeps the running session apart from
+  // the history, so a confirmed set stays a small write operation.
   async strength(): Promise<StrengthState> {
     return normalizeStrength(await nativeCall<any>('getStrengthState'));
   },
@@ -317,7 +325,17 @@ export const native = {
       await nativeCall<any>('saveStrengthTemplates', JSON.stringify(templates)),
     );
   },
-  /** `conflict`: Uhr oder Benachrichtigung waren schneller; `active` ist deren Stand. */
+  /**
+   * Names the phone and watch show in `language`. Display only: stored names
+   * and exports never use this map. Sent on start and whenever the language changes.
+   */
+  async setDisplayNames(
+    language: Language,
+    names: Record<string, string>,
+  ): Promise<void> {
+    await nativeCall('setDisplayNames', JSON.stringify({ language, names }));
+  },
+  /** `conflict`: the watch or notification was faster; `active` is its state. */
   async saveStrengthSession(
     session: StrengthSession,
   ): Promise<StrengthState & { conflict: boolean }> {
@@ -328,9 +346,8 @@ export const native = {
     return { ...normalizeStrength(raw), conflict: raw?.conflict === true };
   },
   /**
-   * Änderungen an der laufenden Einheit, die nicht aus der App kommen: Uhr
-   * oder Benachrichtigung haben einen Satz abgehakt oder die Pause gesteuert.
-   * Gibt eine Abmeldung zurück.
+   * Changes to the running session that do not come from the app: the watch or
+   * a notification ticked a set or controlled the rest. Returns an unsubscribe.
    */
   onStrengthChanged(
     listener: (session: StrengthSession | null) => void,
@@ -343,7 +360,7 @@ export const native = {
           const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
           listener(normalizeStrength({ active: parsed }).active);
         } catch {
-          // Ein unlesbares Ereignis ändert nichts; der nächste Abgleich holt den Stand.
+          // An unreadable event changes nothing; the next sync fetches the state.
         }
       },
     );
@@ -374,17 +391,17 @@ export const native = {
       Math.min(500, limit),
     );
   },
-  /** Puls einer Krafteinheit von der Uhr, mit Darstellungsreihe; sonst undefined. */
+  /** Heart rate of a strength session from the watch, with display series; otherwise undefined. */
   async strengthHeart(id: string): Promise<StrengthHeart | undefined> {
     return readStrengthHeart(await nativeCall<unknown>('getStrengthHeart', id));
   },
-  /** Was die Uhr zu einer Krafteinheit misst und übertragen hat; `null` ohne Uhr. */
+  /** What the watch measured for a strength session and sent; `null` without a watch. */
   async strengthWatch(id: string): Promise<StrengthWatchInfo | null> {
     return readStrengthWatchInfo(
       await nativeCall<unknown>('getStrengthWatch', id),
     );
   },
-  /** Kurzformen ohne Reihe für alle Einheiten mit Puls, nach Einheit. */
+  /** Short forms without a series for all sessions with heart rate, per session. */
   async strengthHeartSummaries(): Promise<
     Record<string, StrengthHeartSummary>
   > {
@@ -392,7 +409,7 @@ export const native = {
       await nativeCall<unknown>('getStrengthHeartSummaries'),
     );
   },
-  /** Zeitraum, Enden und Puls für „Ende bearbeiten“ einer Krafteinheit. */
+  /** Time range, ends and heart rate for “Edit end” of a strength session. */
   async strengthEndEditor(id: string): Promise<StrengthEndEditorData> {
     const raw = await nativeCall<any>('getStrengthEndEditor', id);
     const time = (value: unknown) =>
@@ -408,7 +425,7 @@ export const native = {
       heart: readStrengthHeart(raw.heart),
     };
   },
-  /** `null` stellt das ursprüngliche Ende wieder her. */
+  /** `null` restores the original end. */
   async setStrengthEnd(
     id: string,
     endTime: number | null,
@@ -416,7 +433,7 @@ export const native = {
     const raw = await nativeCall<any>('setStrengthEnd', id, endTime ?? -1);
     return strengthSessionFromBridge(raw);
   },
-  /** Unkorrigierter Verlauf eines Laufs für „Ende bearbeiten“. */
+  /** Uncorrected history of a run for “Edit end”. */
   async runEndEditor(id: string): Promise<RunEndEditorData> {
     const raw = await nativeCall<any>('getRunEndEditor', id);
     const corrected = raw.correctedEndTime;
@@ -433,7 +450,7 @@ export const native = {
   async setRunEnd(id: string, endTime: number | null): Promise<void> {
     await nativeCall<any>('setRunEnd', id, endTime ?? -1);
   },
-  /** Speichert eine geprüfte Vorschau aus `importFiles` mit der Wahl des Nutzers. */
+  /** Saves a checked preview from `importFiles` with the user's choice. */
   async commitImport(token: string, choice: ImportChoice): Promise<any> {
     return nativeCall<any>('commitImport', token, JSON.stringify(choice));
   },

@@ -10,7 +10,7 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-/** Separat vom Dokumentspeicher und dessen Backups; Token verschlüsselt mit Android Keystore. */
+/** Kept apart from the document store and its backups; token encrypted with the Android Keystore. */
 class ServerSecrets(context: Context) {
     private val prefs = context.getSharedPreferences("runback_server", Context.MODE_PRIVATE)
     private fun key(): SecretKey {

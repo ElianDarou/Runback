@@ -63,8 +63,8 @@ function session(
   };
 }
 
-describe('Kraftprogression', () => {
-  it('führt nur abgeschlossene Arbeitssätze in die e1RM-Serie ein', () => {
+describe('Strength progression', () => {
+  it('feeds only completed working sets into the e1RM series', () => {
     const series = buildE1RMSeries(
       [session('finished', 0, 100), session('active', 7, 200, 5, 'active')],
       'squat',
@@ -73,14 +73,14 @@ describe('Kraftprogression', () => {
     expect(series[0].weightKg).toBe(100);
   });
 
-  it('verwendet geplante Werte nicht als Trainingsbeleg', () => {
+  it('does not use planned values as training evidence', () => {
     const plannedOnly = session('planned', 0, 100);
     plannedOnly.exercises[0].sets[1].actualWeightKg = undefined;
     plannedOnly.exercises[0].sets[1].actualReps = undefined;
     expect(buildE1RMSeries([plannedOnly], 'squat')).toEqual([]);
   });
 
-  it('mischt keine Zeitsätze oder andere Lastarten in die Lastserie', () => {
+  it('does not mix timed sets or other load types into the load series', () => {
     const timed = session('timed', 0, 100);
     timed.exercises[0].sets[1].planned.kind = 'timed';
     timed.exercises[0].sets[1].planned.seconds = 30;
@@ -104,7 +104,7 @@ describe('Kraftprogression', () => {
     session('s5', 28, 100),
   ];
 
-  it('lässt Frischemodulation die Richtung eines Vorschlags nicht umkippen', () => {
+  it('lets freshness modulation not flip the direction of a suggestion', () => {
     const result = assessExerciseProgression(rising, 'squat', {
       regionFreshness: 0,
     });
@@ -113,8 +113,8 @@ describe('Kraftprogression', () => {
     expect(result.suggestion?.targetRange.minKg).toBeGreaterThanOrEqual(112);
   });
 
-  it('behauptet aus drei monotonen Einheiten keine Richtung', () => {
-    // 99 → 100 → 101: unter „kein Trend“ ist jede dritte Reihenfolge monoton.
+  it('claims no direction from three monotonic sessions', () => {
+    // 99 → 100 → 101: under “no trend”, every third order is monotonic.
     const result = assessExerciseProgression(
       [session('s1', 0, 99), session('s2', 7, 100), session('s3', 14, 101)],
       'squat',
@@ -125,7 +125,7 @@ describe('Kraftprogression', () => {
     expect(result.reason).toMatch(/fehlen noch 2/);
   });
 
-  it('nutzt ab fünf Tagen die exakte Verteilung: nur perfekt monoton ist eine Richtung', () => {
+  it('uses the exact distribution from five days on: only a perfectly monotonic order is a direction', () => {
     const oneDip = assessExerciseProgression(
       [
         session('s1', 0, 100),
@@ -142,14 +142,14 @@ describe('Kraftprogression', () => {
     expect(assessExerciseProgression(rising, 'squat').verdict).toBe('increase');
   });
 
-  it('zählt zwei Einheiten am selben Tag als einen Trainingstag', () => {
+  it('counts two sessions on the same day as one training day', () => {
     const sameDay = [...rising.slice(0, 4), session('s4b', 21, 111)];
     const result = assessExerciseProgression(sameDay, 'squat');
     expect(result.verdict).toBe('not_assessable');
     expect(result.reason).toMatch(/fehlt noch einer/);
   });
 
-  it('erreicht den Keep-going-Verdikt eigenständig', () => {
+  it('reaches the keep-going verdict on its own', () => {
     const result = assessExerciseProgression(
       [
         session('s1', 0, 100),
@@ -165,7 +165,7 @@ describe('Kraftprogression', () => {
     expect(result.plateau.status).toBe('unclear');
   });
 
-  it('macht ein Prüfkriterium für jeden erzeugten Vorschlag verpflichtend', () => {
+  it('makes a check criterion mandatory for every generated suggestion', () => {
     const results: ProgressionAssessment[] = [
       assessExerciseProgression(rising, 'squat'),
       assessExerciseProgression(flat, 'squat'),
@@ -182,7 +182,7 @@ describe('Kraftprogression', () => {
     }
   });
 
-  it('lässt ein einzelnes schlechtes Training den Trend nicht kippen', () => {
+  it('does not let a single bad session flip the trend', () => {
     const result = assessExerciseProgression(
       [
         session('s1', 0, 100, 1),
@@ -198,11 +198,11 @@ describe('Kraftprogression', () => {
     expect(result.cusum?.changePoints).toEqual([]);
   });
 
-  it('nennt nur ein enges Intervall um null ein Plateau', () => {
+  it('calls only a narrow interval around zero a plateau', () => {
     const stable = assessExerciseProgression(flat, 'squat');
     expect(stable.plateau.status).toBe('stable');
     expect(stable.verdict).toBe('plateau');
-    // 100 → 160 → 70 → 140 → 100: Intervall −90…+70 kg/Woche ist kein Plateau.
+    // 100 → 160 → 70 → 140 → 100: interval −90…+70 kg/week is no plateau.
     const noisy = assessExerciseProgression(
       [
         session('s1', 0, 100),
@@ -218,7 +218,7 @@ describe('Kraftprogression', () => {
     expect(noisy.trend?.confidenceInterval.lower).toBeLessThan(-50);
   });
 
-  it('unterscheidet das Vier-Wochen-Plateau von einer Dreierregel', () => {
+  it('distinguishes the four-week plateau from a three-session rule', () => {
     const short = [
       session('s1', 0, 100),
       session('s2', 3, 100),
@@ -236,7 +236,7 @@ describe('Kraftprogression', () => {
     );
   });
 
-  it('nimmt Sätze über zwölf Wiederholungen nicht in die e1RM-Serie', () => {
+  it('keeps sets above twelve reps out of the e1RM series', () => {
     const series = buildE1RMSeries(
       [session('short', 0, 100, 10), session('long', 7, 60, 20)],
       'squat',
@@ -244,7 +244,7 @@ describe('Kraftprogression', () => {
     expect(series.map(point => point.sessionId)).toEqual(['short']);
   });
 
-  it('liefert bei zu wenig Evidenz keine Zahl und keinen Scheinvorschlag', () => {
+  it('gives no number and no fake suggestion when evidence is too thin', () => {
     const result = assessExerciseProgression([session('s1', 0, 100)], 'squat');
     expect(result.verdict).toBe('not_assessable');
     expect(result.suggestion).toBeNull();

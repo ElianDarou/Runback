@@ -2,7 +2,7 @@
   "name": "runback-server",
   "version": "1.0.0",
   "private": true,
-  "description": "Eigener Runback-Server: Kopie deiner Daten, Website, API und lesender SQL-Zugriff.",
+  "description": "Own Runback server: copy of your data, website, API and read-only SQL access.",
   "type": "module",
   "scripts": {
     "build": "node build.mjs",

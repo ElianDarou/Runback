@@ -22,7 +22,7 @@ describe('aggregateStatistics', () => {
         run({ id: 'paused', status: 'paused' }),
         run({ id: 'bad-time', startTime: Number.NaN }),
         run({ id: 'bad-distance', distanceMeters: Number.POSITIVE_INFINITY }),
-        // Fehlstart: gespeichert, aber kein Training.
+        // False start: saved, but not training.
         run({ id: 'accidental', durationSeconds: 6, distanceMeters: 0 }),
       ],
       Date.UTC(2026, 0, 6),

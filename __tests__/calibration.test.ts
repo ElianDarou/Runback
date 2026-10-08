@@ -45,8 +45,8 @@ const session: StrengthSession = {
   }],
 };
 
-describe('Kalibrierung', () => {
-  it('bildet Meldungen linear in eine Entwurfsmatrix ab', () => {
+describe('Calibration', () => {
+  it('maps reports linearly into a design matrix', () => {
     const result = buildDesignMatrix({
       sessions: [session],
       reports: [{ at: base + 24 * hour, regionId: 'quad_l', value: 5 }],
@@ -57,7 +57,7 @@ describe('Kalibrierung', () => {
     expect(result.matrix[0][0]).toBeGreaterThan(0);
   });
 
-  it('hält die Lösung nichtnegativ und robust gegen einen Ausreißer', () => {
+  it('keeps the solution non-negative and robust against an outlier', () => {
     const result = solveRegularizedNonNegativeLeastSquares(
       [[1], [1], [1]],
       [2, 2, 50],
@@ -68,14 +68,14 @@ describe('Kalibrierung', () => {
     expect(result.coefficients[0]).toBeLessThan(20);
   });
 
-  it('senkt die Posteriorvarianz bei einer rekursiven Beobachtung', () => {
+  it('lowers the posterior variance with a recursive observation', () => {
     const initial = createRecursiveCalibrationState(1, [1]);
     const updated = updateRecursiveCalibration(initial, [1], 3);
     expect(updated.means[0]).toBeGreaterThan(initial.means[0]);
     expect(updated.covariance[0][0]).toBeLessThan(initial.covariance[0][0]);
   });
 
-  it('erklärt stark korrelierte Koeffizienten maschinenlesbar', () => {
+  it('explains strongly correlated coefficients in machine-readable form', () => {
     const columns: CalibrationColumn[] = [
       { key: 'a|quad', exerciseId: 'a', regionId: 'quad' },
       { key: 'b|quad', exerciseId: 'b', regionId: 'quad' },
@@ -88,7 +88,7 @@ describe('Kalibrierung', () => {
     expect(result[0].separatingObservation).toContain('isolierte');
   });
 
-  it('wählt das Zeitraster deterministisch und bewahrt Meldungen beim Zurücksetzen', () => {
+  it('picks the time grid deterministically and keeps reports when resetting', () => {
     const input = {
       sessions: [session],
       reports: [
@@ -108,7 +108,7 @@ describe('Kalibrierung', () => {
     expect(reset.coefficients['leg_extension|quad']).toBe(1);
   });
 
-  it('überträgt gelernte Werte per Anteilsähnlichkeit auf neue Übungen', () => {
+  it('transfers learned values to new exercises by share similarity', () => {
     const target = {
       id: 'user-leg-extension',
       name: 'Eigene Beinstreckung',

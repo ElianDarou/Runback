@@ -37,7 +37,7 @@ class MotionDataTest {
             assertNull(reader.next())
             assertFalse(reader.truncated)
         }
-        // Akku leer mitten im Schreiben: alles davor bleibt lesbar.
+        // Battery died mid-write: everything before it stays readable.
         MotionFormat.Reader(ByteArrayInputStream(bytes.copyOf(bytes.size - 5))).use { reader ->
             assertEquals(MotionFormat.KIND_ANCHOR, reader.next()!!.kind)
             assertEquals(MotionFormat.KIND_ACCEL, reader.next()!!.kind)
@@ -54,7 +54,7 @@ class MotionDataTest {
         assertTrue(MotionExport.readable { ByteArrayInputStream(bytes) })
         assertTrue(MotionExport.readable { ByteArrayInputStream(bytes.copyOf(bytes.size - 5)) })
         assertFalse(MotionExport.readable { ByteArrayInputStream("NOTMOTION-and-more-bytes".toByteArray()) })
-        // Beschädigtes gzip mitten in der Datei.
+        // Corrupted gzip in the middle of the file.
         val gz = ByteArrayOutputStream().also { out -> java.util.zip.GZIPOutputStream(out).use { it.write(bytes) } }.toByteArray()
         val broken = gz.copyOf().also { for (i in 12 until it.size - 8) it[i] = 0x55 }
         assertFalse(MotionExport.readable { java.util.zip.GZIPInputStream(ByteArrayInputStream(broken)) })
@@ -74,8 +74,8 @@ class MotionDataTest {
         .put("id", "session-1").put("startTime", 1_000L).put("status", status).put("currentExercise", current)
         .apply { if (status == "finished") put("endTime", 9_000L) }
         .put("exercises", JSONArray()
-            .put(JSONObject().put("exerciseId", "bench").put("name", "Bankdrücken").put("sets", JSONArray(sets)))
-            .put(JSONObject().put("exerciseId", "row").put("name", "Rudern").put("sets", JSONArray().put(set("b1")))))
+            .put(JSONObject().put("exerciseId", "bench").put("name", "Bench press").put("sets", JSONArray(sets)))
+            .put(JSONObject().put("exerciseId", "row").put("name", "Row").put("sets", JSONArray().put(set("b1")))))
 
     private fun set(id: String, completedAt: Long? = null, skipped: Boolean = false) = JSONObject()
         .put("id", id).put("planned", JSONObject().put("kind", "normal").put("reps", 8).put("restSeconds", 90))
@@ -146,7 +146,7 @@ class MotionDataTest {
 
     @Test fun exportAlignsWatchClockAndKeepsUnknownsEmpty() {
         val rawBytes = raw {
-            // Uhr geht 250 ms vor; Einheit startet auf der Handyuhr bei 1 000 000.
+            // Watch runs 250 ms ahead; session starts on the phone clock at 1,000,000.
             anchor(5_000_000_000L, 1_001_250L)
             sample(MotionFormat.KIND_ACCEL, 5_020_000_000L, 1f, 2f, 3f)
             sample(MotionFormat.KIND_GYRO, 5_040_000_000L, 0.5f, 0f, -0.5f)
@@ -154,7 +154,7 @@ class MotionDataTest {
         }
         val meta = JSONObject().put("sessionId", "session-1").put("wrist", "left").put("startedAt", 1_000_000L)
             .put("events", JSONArray().put(JSONObject().put("t", 1_002_000L).put("type", "set_completed")
-                .put("exerciseIndex", 0).put("exerciseId", "bench").put("exerciseName", "Bankdrücken, eng")
+                .put("exerciseIndex", 0).put("exerciseId", "bench").put("exerciseName", "Bench press, eng")
                 .put("setIndex", 0).put("setId", "a1")))
             .put("pings", JSONArray().put(JSONObject().put("t0", 1_000_000L).put("tw", 1_000_260L).put("t1", 1_000_020L)))
         val strength = session(status = "finished", sets = listOf(set("a1", completedAt = 1_002_000L), set("a2")))
@@ -173,14 +173,14 @@ class MotionDataTest {
         assertEquals("t_ms,x,y,z\n1040,0.5,0.0,-0.5\n", files["session-1/gyro.csv"])
         assertEquals("t_ms,bpm,accuracy\n1030,121.5,3\n", files["session-1/heart.csv"])
         val sets = files["session-1/sets.csv"]!!.lines()
-        assertTrue(sets[1].startsWith("0,bench,Bankdrücken,0,a1,normal,,8,,,8,60,,,0,2000,90,single,,"))
-        // Nicht abgehakter Satz: keine erfundenen Werte.
-        assertTrue(sets[2].startsWith("0,bench,Bankdrücken,1,a2,normal,,8,,,,,,,0,,90,,,"))
-        assertTrue(files["session-1/events.csv"]!!.contains("2000,set_completed,0,bench,\"Bankdrücken, eng\",0,a1"))
+        assertTrue(sets[1].startsWith("0,bench,Bench press,0,a1,normal,,8,,,8,60,,,0,2000,90,single,,"))
+        // Set not checked off: no invented values.
+        assertTrue(sets[2].startsWith("0,bench,Bench press,1,a2,normal,,8,,,,,,,0,,90,,,"))
+        assertTrue(files["session-1/events.csv"]!!.contains("2000,set_completed,0,bench,\"Bench press, eng\",0,a1"))
 
         val summary = files["sessions.csv"]!!.lines()
         assertEquals("session-1,1000000,1060000,Push,left,50,,1,0,1,250,10,1,1,3,1,1,1,0", summary[1])
-        // Ohne Rohdatei und ohne Ping: Zeilen bleiben leer statt 0.
+        // Without a raw file and without a ping: rows stay empty instead of 0.
         assertEquals("session-2,1000000,,,left,,,0,0,0,,,,,0,0,1,,", summary[2])
         assertFalse(files.containsKey("session-2/accel.csv"))
         assertEquals(MotionExport.FORMAT, JSONObject(files["manifest.json"]!!).getString("format"))
@@ -194,7 +194,7 @@ class MotionDataTest {
         val meta = JSONObject().put("sessionId", "session-1").put("startedAt", 1_000_000L)
         val out = ByteArrayOutputStream()
         ZipOutputStream(out).use { zip ->
-            // Wie im Krafttraining-Export: gleichnamige Tabelle auf oberster Ebene.
+            // As in the strength export: a same-named table at the top level.
             zip.putNextEntry(java.util.zip.ZipEntry("sessions.csv"))
             zip.write("kraft\n".toByteArray())
             zip.closeEntry()
@@ -214,7 +214,7 @@ class MotionDataTest {
     }
 
     @Test fun exportKeepsDetectedAndCorrectedRepsSideBySide() {
-        val target = SetDetectionLog.Target("session-1", "bench", "Bankdrücken", 0, "a1")
+        val target = SetDetectionLog.Target("session-1", "bench", "Bench press", 0, "a1")
         val set = SetDetector.DetectedSet(5_100_000_000L, 5_900_000_000L, listOf(
             SetDetector.Rep(5_100_000_000L, 5_500_000_000L, 5_300_000_000L, 0.9),
             SetDetector.Rep(5_500_000_000L, 5_900_000_000L, 5_700_000_000L, 0.8),
@@ -239,13 +239,13 @@ class MotionDataTest {
         }
         val files = unzip(out.toByteArray())
         val detections = files["session-1/detections.csv"]!!.lines()
-        // Uhr 250 ms vor: Sensorzeit 6 s → Wanduhr 1 002 250 → t_ms 2000.
-        assertEquals("detected,d1,0,bench,Bankdrücken,a1,${SetDetector.VERSION},${RepProfiles.VERSION},1100,1900,2000,2,0.72,0,3000,corrected,user,3,1,1,1,,", detections[1])
-        assertEquals("closed,,0,bench,Bankdrücken,a2,,,,,4000,,,,,,,,,,,SET_ACTIVE,4", detections[2])
+        // Watch 250 ms ahead: sensor time 6 s → wall clock 1,002,250 → t_ms 2000.
+        assertEquals("detected,d1,0,bench,Bench press,a1,${SetDetector.VERSION},${RepProfiles.VERSION},1100,1900,2000,2,0.72,0,3000,corrected,user,3,1,1,1,,", detections[1])
+        assertEquals("closed,,0,bench,Bench press,a2,,,,,4000,,,,,,,,,,,SET_ACTIVE,4", detections[2])
         assertEquals("d1,1,1500,1900,400,1700,0.8", files["session-1/detected_reps.csv"]!!.lines()[2])
         val sets = files["session-1/sets.csv"]!!.lines()
         assertTrue(sets[1], sets[1].endsWith(",detected,d1,2"))
-        // Zwei Sätze derselben Übung binnen einer Sekunde abgehakt: nachgetragen.
+        // Two sets of the same exercise checked off within a second: entered later.
         assertTrue(sets[2], sets[2].endsWith(",batch,,"))
         assertTrue(sets[3], sets[3].endsWith(",batch,,"))
         assertTrue(files["session-1/detections.jsonl"]!!.contains("\"wasCorrected\":true"))
@@ -253,7 +253,7 @@ class MotionDataTest {
     }
 
     @Test fun aConfirmationThePhoneNeverAppliedIsNoSetLabel() {
-        val target = SetDetectionLog.Target("session-1", "bench", "Bankdrücken", 0, "a1")
+        val target = SetDetectionLog.Target("session-1", "bench", "Bench press", 0, "a1")
         val set = SetDetector.DetectedSet(5_100_000_000L, 5_900_000_000L,
             listOf(SetDetector.Rep(5_100_000_000L, 5_900_000_000L, 5_500_000_000L, 0.9)), 0.7, JSONObject())
         val rawBytes = raw {
@@ -261,7 +261,7 @@ class MotionDataTest {
             event(6_000_000_000L, SetDetectionLog.detected("d1", target, set))
             event(7_000_000_000L, SetDetectionLog.reviewed("d1", target, 1, 1, byUser = true, adjustments = 0))
         }
-        // Senden scheiterte; abgehakt wurde später am Handy, ohne Erkennung.
+        // Sending failed; the set was checked off later on the phone, without detection.
         val meta = JSONObject().put("sessionId", "session-1").put("startedAt", 1_000_000L)
             .put("events", JSONArray().put(completion(1_040_000L, "a1")))
         val strength = session(status = "finished", sets = listOf(set("a1", completedAt = 1_040_000L))).put("startTime", 1_000_000L)
@@ -275,7 +275,7 @@ class MotionDataTest {
     }
 
     @Test fun aReopenedSetLosesItsDetectionLabel() {
-        val target = SetDetectionLog.Target("session-1", "bench", "Bankdrücken", 0, "a1")
+        val target = SetDetectionLog.Target("session-1", "bench", "Bench press", 0, "a1")
         val set = SetDetector.DetectedSet(5_100_000_000L, 5_900_000_000L,
             listOf(SetDetector.Rep(5_100_000_000L, 5_900_000_000L, 5_500_000_000L, 0.9)), 0.7, JSONObject())
         val rawBytes = raw {
@@ -296,7 +296,7 @@ class MotionDataTest {
         }
         val files = unzip(out.toByteArray())
         assertTrue(files["session-1/sets.csv"]!!.lines()[1].endsWith(",single,,"))
-        // Die Erkennung wurde damals übernommen; das bleibt in detections.csv sichtbar.
+        // The detection was accepted back then; that stays visible in detections.csv.
         assertTrue(files["session-1/detections.csv"]!!.lines()[1].contains(",confirmed,user,1,1,0,1,"))
     }
 
@@ -304,7 +304,7 @@ class MotionDataTest {
         .put("exerciseIndex", 0).put("exerciseId", "bench").put("setId", setId)
 
     @Test fun laterDecisionReplacesEarlierOneButKeepsTheDetection() {
-        val target = SetDetectionLog.Target("session-1", "bench", "Bankdrücken", 0, "a1")
+        val target = SetDetectionLog.Target("session-1", "bench", "Bench press", 0, "a1")
         val detected = JSONObject().put("type", SetDetectionLog.DETECTED).put("detectionId", "d1").put("detectedReps", 9)
         val entries = SetDetectionLog.entries(listOf(
             1L to detected,

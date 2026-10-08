@@ -58,14 +58,14 @@ const render = (
   return tree;
 };
 
-describe('Statistik', () => {
-  it('bietet ohne Läufe den leeren Zustand statt leerer Diagramme', () => {
+describe('Statistics', () => {
+  it('shows the empty state instead of empty charts when there are no runs', () => {
     const tree = render([]);
     expect(JSON.stringify(tree.toJSON())).toContain('Noch keine Läufe');
     expect(byLabel(tree, 'Zeitraum')).toBeUndefined();
   });
 
-  it('meldet den gewählten Zeitraum nach außen', () => {
+  it('reports the chosen period outward', () => {
     const onViewChange = jest.fn();
     const tree = render([run()], defaultStatisticsView, onViewChange);
     ReactTestRenderer.act(() => {
@@ -77,7 +77,7 @@ describe('Statistik', () => {
     });
   });
 
-  it('meldet die gewählte Kennzahl nach außen', () => {
+  it('reports the chosen metric outward', () => {
     const onViewChange = jest.fn();
     const tree = render([run()], defaultStatisticsView, onViewChange);
     ReactTestRenderer.act(() => {
@@ -89,7 +89,7 @@ describe('Statistik', () => {
     });
   });
 
-  it('verschweigt Kennzahlen, für die keine Daten vorliegen', () => {
+  it('hides metrics that have no data', () => {
     const bare = render([run({ distanceMeters: 200, durationSeconds: 90 })]);
     expect(byLabel(bare, 'Tempo')).toBeUndefined();
     expect(byLabel(bare, 'Gefühl')).toBeUndefined();
@@ -101,7 +101,7 @@ describe('Statistik', () => {
     expect(byLabel(rated, 'Gefühl')).toBeDefined();
   });
 
-  it('öffnet die Werte eines Balkens an Ort und Stelle', () => {
+  it('opens a bar’s values in place', () => {
     const tree = render([run()]);
     expect(texts(tree)).not.toContain('Woche ');
 
@@ -113,7 +113,7 @@ describe('Statistik', () => {
     expect(shown).toContain('Woche ');
   });
 
-  it('klappt einen Abschnitt erst auf Anforderung auf', () => {
+  it('expands a section only on request', () => {
     const tree = render([run()]);
     const panel = labelStartingWith(tree, 'Bestwerte,')!;
     expect(panel.props.accessibilityState.expanded).toBe(false);
@@ -125,7 +125,7 @@ describe('Statistik', () => {
     expect(texts(tree)).toContain('Längster Lauf');
   });
 
-  it('öffnet Einzelrekorde und die stärkste Woche mit ihren Quellen', () => {
+  it('opens single records and the strongest week with their sources', () => {
     const onOpenRecord = jest.fn();
     let tree!: ReactTestRenderer.ReactTestRenderer;
     ReactTestRenderer.act(() => {
@@ -160,7 +160,7 @@ describe('Statistik', () => {
     }
   });
 
-  it('bietet ohne Lauf-ID oder Navigation keinen Link an und sperrt beim Laden', () => {
+  it('offers no link without a run id or navigation and locks while loading', () => {
     const onOpenRecord = jest.fn();
     let tree!: ReactTestRenderer.ReactTestRenderer;
     ReactTestRenderer.act(() => {
@@ -192,7 +192,7 @@ describe('Statistik', () => {
 });
 
 describe('readStatisticsView', () => {
-  it('behält gespeicherte Auswahl und verwirft Unsinn', () => {
+  it('keeps the saved selection and discards nonsense', () => {
     expect(readStatisticsView({ range: '1y', metric: 'pace' })).toEqual({
       range: '1y',
       metric: 'pace',
@@ -204,8 +204,8 @@ describe('readStatisticsView', () => {
   });
 });
 
-describe('Statistik · Funktionen', () => {
-  it('zeigt unter „Tiefer schauen“ nur gewählte Module', () => {
+describe('Statistics · Features', () => {
+  it('shows only the chosen modules under "Look deeper"', () => {
     let tree!: ReactTestRenderer.ReactTestRenderer;
     ReactTestRenderer.act(() => {
       tree = ReactTestRenderer.create(
@@ -225,7 +225,7 @@ describe('Statistik · Funktionen', () => {
     expect(texts(tree)).not.toContain('"Tiefer schauen"');
   });
 
-  it('zeigt ohne Bereich Laufen keine Laufstatistik und keinen Leerzustand dafür', () => {
+  it('shows no running statistics and no empty state for them without the Running area', () => {
     let tree!: ReactTestRenderer.ReactTestRenderer;
     ReactTestRenderer.act(() => {
       tree = ReactTestRenderer.create(

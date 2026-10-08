@@ -13,10 +13,11 @@ import {
   type RunEndEditorData,
   type StrengthEndEditorData,
 } from '../native';
+import { tr } from '../domain/i18n';
 import { Copy, Notice, Sheet, color } from './components';
 import { EndEditor } from './EndEditor';
 
-/** Lädt beim Öffnen; Fehler stehen im Sheet, damit der Weg zurück klar bleibt. */
+/** Loads when opened; errors appear in the sheet so the way back stays clear. */
 function useEditorData<T>(
   visible: boolean,
   load: () => Promise<T>,
@@ -37,13 +38,16 @@ function useEditorData<T>(
           setError(
             e instanceof Error
               ? e.message
-              : 'Der Verlauf ließ sich nicht laden.',
+              : tr(
+                  'Der Verlauf ließ sich nicht laden.',
+                  'The trace could not be loaded.',
+                ),
           ),
       );
     return () => {
       current = false;
     };
-    // `load` hängt nur an der Kennung.
+    // `load` only depends on the key.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, key]);
   return { data, error };
@@ -74,7 +78,12 @@ export function StrengthEndSheet({
       onSaved(await native.setStrengthEnd(session.id, endTime));
     } catch (e) {
       setSaveError(
-        e instanceof Error ? e.message : 'Das Ende ließ sich nicht speichern.',
+        e instanceof Error
+          ? e.message
+          : tr(
+              'Das Ende ließ sich nicht speichern.',
+              'The end could not be saved.',
+            ),
       );
     } finally {
       setBusy(false);
@@ -85,10 +94,16 @@ export function StrengthEndSheet({
     : undefined;
   const marks = strengthSetTimes(session);
   return (
-    <Sheet visible={visible} title="Ende bearbeiten" onClose={onClose}>
+    <Sheet
+      visible={visible}
+      title={tr('Ende bearbeiten', 'Edit end')}
+      onClose={onClose}
+    >
       {error ? <Notice>{error}</Notice> : null}
       {saveError ? <Notice>{saveError}</Notice> : null}
-      {!data && !error ? <Copy muted>Lade Verlauf …</Copy> : null}
+      {!data && !error ? (
+        <Copy muted>{tr('Lade Verlauf …', 'Loading trace …')}</Copy>
+      ) : null}
       {data ? (
         <EndEditor
           key={`${data.startTime}:${data.correctedEndTime ?? ''}`}
@@ -105,7 +120,10 @@ export function StrengthEndSheet({
               ? [
                   {
                     key: 'heart',
-                    label: `Puls · ${heartSourceLabel(data.heart)}`,
+                    label: tr(
+                      `Puls · ${heartSourceLabel(data.heart)}`,
+                      `Heart rate · ${heartSourceLabel(data.heart)}`,
+                    ),
                     unit: 'bpm',
                     stroke: color.series.heart,
                     points: heartTrack(data.heart),
@@ -114,7 +132,10 @@ export function StrengthEndSheet({
               : []
           }
           marks={marks}
-          emptyHint="Für diese Zeit gibt es keinen Puls. Importiere ihn aus Fitbit oder Google Fit oder setze das Ende nach Gefühl."
+          emptyHint={tr(
+            'Für diese Zeit gibt es keinen Puls. Importiere ihn aus Fitbit oder Google Fit oder setze das Ende nach Gefühl.',
+            'There is no heart rate for this time. Import it from Fitbit or Google Fit, or set the end by feel.',
+          )}
           busy={busy}
           onSave={endTime => void save(endTime)}
           onReset={data.correctedEndTime ? () => void save(null) : undefined}
@@ -150,7 +171,12 @@ export function RunEndSheet({
       onSaved();
     } catch (e) {
       setSaveError(
-        e instanceof Error ? e.message : 'Das Ende ließ sich nicht speichern.',
+        e instanceof Error
+          ? e.message
+          : tr(
+              'Das Ende ließ sich nicht speichern.',
+              'The end could not be saved.',
+            ),
       );
     } finally {
       setBusy(false);
@@ -158,13 +184,22 @@ export function RunEndSheet({
   };
   const tracks = data ? runTracks(data.startTime, data.series) : null;
   return (
-    <Sheet visible={visible} title="Ende bearbeiten" onClose={onClose}>
+    <Sheet
+      visible={visible}
+      title={tr('Ende bearbeiten', 'Edit end')}
+      onClose={onClose}
+    >
       {error ? <Notice>{error}</Notice> : null}
       {saveError ? <Notice>{saveError}</Notice> : null}
-      {!data && !error ? <Copy muted>Lade Verlauf …</Copy> : null}
+      {!data && !error ? (
+        <Copy muted>{tr('Lade Verlauf …', 'Loading trace …')}</Copy>
+      ) : null}
       {data && !data.series ? (
         <Copy>
-          Ohne aufgezeichneten Verlauf lässt sich das Ende nicht prüfen.
+          {tr(
+            'Ohne aufgezeichneten Verlauf lässt sich das Ende nicht prüfen.',
+            'Without a recorded trace, the end cannot be checked.',
+          )}
         </Copy>
       ) : null}
       {data && data.series && data.blockedReason ? (
@@ -185,20 +220,23 @@ export function RunEndSheet({
           lines={[
             {
               key: 'speed',
-              label: 'Tempo',
+              label: tr('Tempo', 'Pace'),
               unit: 'km/h',
               stroke: color.green,
               points: tracks.speed,
             },
             {
               key: 'heart',
-              label: 'Puls',
+              label: tr('Puls', 'Heart rate'),
               unit: 'bpm',
               stroke: color.series.heart,
               points: tracks.heart,
             },
           ]}
-          emptyHint="Der Verlauf hat keine Bewegung und keinen Puls."
+          emptyHint={tr(
+            'Der Verlauf hat keine Bewegung und keinen Puls.',
+            'The trace has no movement and no heart rate.',
+          )}
           busy={busy}
           onSave={endTime => void save(endTime)}
           onReset={data.correctedEndTime ? () => void save(null) : undefined}

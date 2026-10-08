@@ -86,7 +86,7 @@ function render(
   return tree;
 }
 
-/** Sammelt jeden dargestellten Textknoten, unabhängig von der Verschachtelung. */
+/** Collects every rendered text node, regardless of nesting. */
 const texts = (tree: ReactTestRenderer.ReactTestRenderer): string[] => {
   const found: string[] = [];
   const walk = (node: any) => {
@@ -133,7 +133,7 @@ const byLabel = (
       typeof node.props.onPress === 'function',
   );
 
-describe('Trainingsansicht', () => {
+describe('Workout view', () => {
   const base = () => startSession(template, 1_000_000);
 
   const swipeRows = (tree: ReactTestRenderer.ReactTestRenderer) =>
@@ -143,7 +143,7 @@ describe('Trainingsansicht', () => {
         typeof node.props.onAccessibilityAction === 'function',
     );
 
-  it('löscht einen Satz per Wischaktion und bietet Rückgängig an', () => {
+  it('deletes a set by swiping and offers undo', () => {
     const props = handlers();
     const session = base();
     const tree = render(session, props);
@@ -167,7 +167,7 @@ describe('Trainingsansicht', () => {
     expect(texts(tree)).not.toContain('Satz 2 gelöscht');
   });
 
-  it('übernimmt Werte, die Uhr oder Benachrichtigung gespeichert haben', () => {
+  it('takes over values that the watch or a notification saved', () => {
     const props = handlers();
     const session = base();
     const tree = render(session, props);
@@ -194,7 +194,7 @@ describe('Trainingsansicht', () => {
     [1, '8'],
     [2, '2'],
   ])(
-    'zeigt die sechs bestätigten Wiederholungen der Uhr nach Eingabe in Feld %i',
+    'shows the six reps confirmed on the watch after typing into field %i',
     (field, value) => {
       const props = handlers();
       const session = startSession(
@@ -256,13 +256,13 @@ describe('Trainingsansicht', () => {
       ReactTestRenderer.act(() => inputs[0].props.onBlur());
       expect(props.onEditSet.mock.lastCall[2].actualReps).toBe(6);
 
-      // Auch ein auf der Uhr bestätigter Satz bleibt am Handy korrigierbar.
+      // A set confirmed on the watch stays correctable on the phone.
       ReactTestRenderer.act(() => inputs[1].props.onChangeText('7'));
       expect(tree.root.findAllByType(TextInput)[1].props.value).toBe('7');
     },
   );
 
-  it('behält einen offenen Gewichtsentwurf bei, wenn sich nur die Wiederholungen ändern', () => {
+  it('keeps an open weight draft when only the reps change', () => {
     const props = handlers();
     const session = base();
     const tree = render(session, props);
@@ -287,12 +287,12 @@ describe('Trainingsansicht', () => {
     expect(inputs[1].props.value).toBe('6');
   });
 
-  it('lässt den einzigen Satz einer Übung nicht wegwischen', () => {
+  it('does not let the only set of an exercise be swiped away', () => {
     const tree = render({ ...base(), currentExercise: 1 }, handlers());
     expect(swipeRows(tree)[0].props.accessibilityActions).toEqual([]);
   });
 
-  it('hält die Pause an, lässt sie weiterlaufen oder überspringt sie', () => {
+  it('pauses the rest, lets it run on, or skips it', () => {
     const props = handlers();
     const session = base();
     const resting = completeSet(session, 0, session.exercises[0].sets[0].id, 1_000_000);
@@ -311,39 +311,39 @@ describe('Trainingsansicht', () => {
     expect(props.onResumeRest).toHaveBeenCalled();
   });
 
-  it('zeigt die aktuelle Übung ausgeklappt und die übrigen als Zeilen', () => {
+  it('shows the current exercise expanded and the others as rows', () => {
     const session = { ...base(), currentExercise: 1 };
     const tree = render(session, handlers());
     const shown = texts(tree);
     expect(shown).toContain('Beinbeuger liegend');
     expect(shown).toContain('Kniebeuge (Langhantel)');
     expect(shown).toContain('Wadenheben stehend');
-    // Nur die aktuelle Übung zeigt Eingabefelder: kg, Wdh. und RIR (optional).
+    // Only the current exercise shows input fields: kg, Wdh. and RIR (optional).
     expect(tree.root.findAllByType(TextInput)).toHaveLength(3);
   });
 
-  it('kennzeichnet die Richtung der Nachbarübungen', () => {
+  it('marks the direction of the neighboring exercises', () => {
     const tree = render({ ...base(), currentExercise: 1 }, handlers());
     const shown = texts(tree);
     expect(shown).toContain('↑');
     expect(shown).toContain('↓');
   });
 
-  it('wechselt beim Antippen einer Zeile die Übung', () => {
+  it('switches the exercise when a row is tapped', () => {
     const props = handlers();
     const tree = render({ ...base(), currentExercise: 1 }, props);
     byLabel(tree, 'Wadenheben stehend, 0 von 1 Sätzen erledigt').props.onPress();
     expect(props.onSelectExercise).toHaveBeenCalledWith(2);
   });
 
-  it('belegt die Eingaben aus der Vorgabe vor', () => {
+  it('prefills the inputs from the target', () => {
     const tree = render(base(), handlers());
     const inputs = tree.root.findAllByType(TextInput);
     expect(inputs[0].props.value).toBe('100');
     expect(inputs[1].props.value).toBe('5');
   });
 
-  it('bestätigt einen Satz mit den sichtbaren Werten', () => {
+  it('confirms a set with the visible values', () => {
     const props = handlers();
     const tree = render(base(), props);
     ReactTestRenderer.act(() => {
@@ -357,7 +357,7 @@ describe('Trainingsansicht', () => {
     );
   });
 
-  it('übernimmt eine gemeldete Reserve (RIR) nur als Nutzereingabe', () => {
+  it('takes a reported reserve (RIR) only as user input', () => {
     const props = handlers();
     const tree = render(base(), props);
     ReactTestRenderer.act(() => {
@@ -369,14 +369,14 @@ describe('Trainingsansicht', () => {
       base().exercises[0].sets[0].id,
       { actualWeightKg: 100, actualReps: 5, actualRir: 2 },
     );
-    // Leer bleibt unbekannt: kein Feld, keine 0.
+    // Empty stays unknown: no field, no 0.
     const empty = handlers();
     const bare = render(base(), empty);
     byLabel(bare, 'Satz 1 bestätigen').props.onPress();
     expect(empty.onCompleteSet.mock.calls[0][2]).not.toHaveProperty('actualRir');
   });
 
-  it('speichert bei einem Zeitsatz Sekunden statt Wiederholungen', () => {
+  it('stores seconds instead of reps for a timed set', () => {
     const timed = startSession(
       {
         ...template,
@@ -410,28 +410,28 @@ describe('Trainingsansicht', () => {
     );
   });
 
-  it('bietet bei einem erledigten Satz das Zurücknehmen an', () => {
+  it('offers to undo a completed set', () => {
     const session = base();
     const done = completeSet(session, 0, session.exercises[0].sets[0].id, 1);
     const tree = render(done, handlers(), { now: 1 });
     expect(() => byLabel(tree, 'Satz 1 zurücknehmen')).not.toThrow();
   });
 
-  it('zeigt die laufende Pause mit verbleibender Zeit', () => {
+  it('shows the running rest with the remaining time', () => {
     const session = base();
     const done = completeSet(session, 0, session.exercises[0].sets[0].id, 0);
     const tree = render(done, handlers(), { now: 60_000 });
     expect(texts(tree)).toContain('Pause 2:00');
   });
 
-  it('zeigt keine Pause, wenn sie abgelaufen ist', () => {
+  it('shows no rest once it has ended', () => {
     const session = base();
     const done = completeSet(session, 0, session.exercises[0].sets[0].id, 0);
     const tree = render(done, handlers(), { now: 200_000 });
     expect(texts(tree).some(value => value.startsWith('Pause'))).toBe(false);
   });
 
-  it('nennt die letzte vergleichbare Leistung statt der Vorgabe', () => {
+  it('names the last comparable performance instead of the target', () => {
     const previous = completeSet(
       base(),
       0,
@@ -443,14 +443,14 @@ describe('Trainingsansicht', () => {
     expect(texts(tree)).toContain('97,5 kg × 6');
   });
 
-  it('meldet Fortschritt und verstrichene Zeit im Kopf', () => {
+  it('reports progress and elapsed time in the header', () => {
     const session = base();
     const done = completeSet(session, 0, session.exercises[0].sets[0].id, 1);
     const tree = render(done, handlers(), { now: 1_000_000 + 15 * 60_000 });
     expect(texts(tree)).toContain('15 min · 1 von 4 Sätzen');
   });
 
-  it('reicht Beenden, Minimieren und Ergänzen weiter', () => {
+  it('passes on finish, minimize and add', () => {
     const props = handlers();
     const tree = render(base(), props);
     byLabel(tree, 'Training beenden').props.onPress();
@@ -463,13 +463,13 @@ describe('Trainingsansicht', () => {
     expect(props.onAddExercise).toHaveBeenCalled();
   });
 
-  it('kommt mit einer Einheit ohne Übungen zurecht', () => {
+  it('handles a session without exercises', () => {
     const tree = render(startSession(null, 1), handlers());
     expect(texts(tree)).toContain('Noch keine Übung');
     expect(tree.root.findAllByType(TextInput)).toHaveLength(0);
   });
 
-  it('sperrt das Gewichtsfeld bei Eigengewichtsübungen', () => {
+  it('locks the weight field for bodyweight exercises', () => {
     const bodyweight = startSession(
       {
         ...template,
@@ -489,7 +489,7 @@ describe('Trainingsansicht', () => {
     expect(tree.root.findAllByType(TextInput)[0].props.editable).toBe(false);
   });
 
-  /** Einheit ohne Planwerte, damit nur der Vorschlag greifen kann. */
+  /** Session without planned values, so only the suggestion can apply. */
   const freeTemplate: WorkoutTemplate = {
     id: 'template-free',
     name: 'Frei',
@@ -507,7 +507,7 @@ describe('Trainingsansicht', () => {
     ],
   };
 
-  /** Abgeschlossene Einheit mit tatsächlichen Werten als Historie. */
+  /** Completed session with actual values as history. */
   const finishedSession = (
     id: string,
     at: number,
@@ -537,7 +537,7 @@ describe('Trainingsansicht', () => {
     ],
   });
 
-  it('füllt leere Felder mit den Werten der letzten Einheit vor', () => {
+  it('fills empty fields with the values of the last session', () => {
     const tree = render(startSession(freeTemplate, 2_000_000), handlers(), {
       history: [finishedSession('older', 1_000_000, [95, 95])],
     });
@@ -546,7 +546,7 @@ describe('Trainingsansicht', () => {
     expect(inputs[1].props.value).toBe('5');
   });
 
-  it('übernimmt den Vorschlag beim Bestätigen ohne weitere Eingabe', () => {
+  it('takes the suggestion when confirming without further input', () => {
     const props = handlers();
     const session = startSession(freeTemplate, 2_000_000);
     const tree = render(session, props, {
@@ -560,14 +560,14 @@ describe('Trainingsansicht', () => {
     );
   });
 
-  it('lässt den Planwert vor dem Vorschlag stehen', () => {
+  it('keeps the planned value in front of the suggestion', () => {
     const tree = render(base(), handlers(), {
       history: [finishedSession('older', 1_000_000, [95, 95])],
     });
     expect(tree.root.findAllByType(TextInput)[0].props.value).toBe('100');
   });
 
-  it('markiert den Vorschlag als Vorschlag und die Eingabe als Eingabe', () => {
+  it('marks the suggestion as a suggestion and the input as input', () => {
     const tree = render(startSession(freeTemplate, 2_000_000), handlers(), {
       history: [finishedSession('older', 1_000_000, [95, 95])],
     });
@@ -581,7 +581,7 @@ describe('Trainingsansicht', () => {
     ).not.toContain('Vorschlag');
   });
 
-  it('zeigt den Verlauf erst, wenn alle Sätze der Übung erledigt sind', () => {
+  it('shows the history only once all sets of the exercise are done', () => {
     const sessions = [
       finishedSession('s1', 1_000_000, [90, 90]),
       finishedSession('s2', 1_000_000 + 7 * 86_400_000, [95, 95]),
@@ -605,7 +605,7 @@ describe('Trainingsansicht', () => {
     ).toBe(true);
   });
 
-  it('bleibt ohne übergebene Historie ohne Verlaufsnotiz', () => {
+  it('shows no history note without passed history', () => {
     let session = startSession(freeTemplate, 2_000_000);
     for (const set of session.exercises[0].sets) {
       session = completeSet(session, 0, set.id, session.startTime, {
@@ -620,8 +620,8 @@ describe('Trainingsansicht', () => {
   });
 });
 
-describe('Funktionen im Training', () => {
-  it('blendet RIR-Feld und Pausenbalken auf Wunsch aus', () => {
+describe('Features in workouts', () => {
+  it('hides the RIR field and rest bar on request', () => {
     const started = startSession(template, 1_000_000);
     const session = completeSet(
       started,

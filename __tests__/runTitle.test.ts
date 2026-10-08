@@ -35,6 +35,15 @@ describe('isMeaningfulRunName', () => {
     expect(isMeaningfulRunName('Afternoon Run')).toBe(false);
     expect(isMeaningfulRunName('activity')).toBe(false);
   });
+
+  it('rejects the placeholders from imports made in English', () => {
+    expect(isMeaningfulRunName('Garmin run')).toBe(false);
+    expect(isMeaningfulRunName('Garmin Lauf')).toBe(false);
+    expect(isMeaningfulRunName('Apple Health run')).toBe(false);
+    expect(isMeaningfulRunName('Google Fit run')).toBe(false);
+    expect(isMeaningfulRunName('Mi Fitness activity')).toBe(false);
+    expect(isMeaningfulRunName('Samsung Health run')).toBe(false);
+  });
 });
 
 describe('dayPartTitle', () => {
@@ -78,8 +87,8 @@ describe('runTitle', () => {
   });
 });
 
-describe('Laufarten', () => {
-  it('bietet „Noch offen“ nicht zur Auswahl an', () => {
+describe('Run types', () => {
+  it('does not offer “Not set yet” as a choice', () => {
     expect(RUN_PURPOSES.map(option => option.label)).toEqual([
       'Einfach laufen',
       'Ruhig',
@@ -93,7 +102,7 @@ describe('Laufarten', () => {
     expect(purposeLabel('unknown')).toBe('Noch offen');
   });
 
-  it('liest die alten Uhr-Werte als Tempowechsel', () => {
+  it('reads the old watch values as pace changes', () => {
     expect(normalizePurpose('quality')).toBe('intervals');
     expect(normalizePurpose('interval')).toBe('intervals');
     expect(normalizePurpose('easy')).toBe('easy');
@@ -101,7 +110,7 @@ describe('Laufarten', () => {
     expect(normalizePurpose(undefined)).toBe('unknown');
   });
 
-  it('macht aus „Ruhig“ einen Titel, der als Name trägt', () => {
+  it('turns “Easy” into a title that serves as a name', () => {
     expect(runTitle({ startTime: at(7), purpose: 'easy' })).toBe(
       'Ruhige Runde',
     );

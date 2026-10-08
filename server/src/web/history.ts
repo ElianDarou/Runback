@@ -5,20 +5,21 @@ import { mondayStart } from '../../../src/domain/statistics';
 import type { StrengthSession } from '../../../src/domain/strength';
 import type { PageContext } from './context';
 import { oneOf, param, syncStatus } from './context';
-import { completedSets, counted, date, day, km, tempo } from './format';
-import { html, query, type Html } from './html';
+import { completedSets, counted, dayMonth, day, km, tempo } from './format';
+import { html, type Html } from './html';
+import type { Translator } from './i18n';
 import { emptyState, page, row, segmented, title } from './ui';
 
 /**
- * Verlauf: Was habe ich gemacht? Alle Einheiten nach Wochen, wie in der App.
- * Der Wochenkopf trägt die Summe, damit man den Umfang sieht, ohne in die
- * Statistik zu wechseln.
+ * History: what did I do? All workouts by week, as in the app. The week header
+ * shows the total, so the volume is visible without switching to statistics.
  */
 
 type Unit =
   | { kind: 'run'; at: number; run: Run }
   | { kind: 'strength'; at: number; session: StrengthSession };
 
+// URL values stay German like the `bereich` parameter, so bookmarks keep working.
 type Filter = 'alle' | 'laufen' | 'rad' | 'kraft';
 const FILTERS: Filter[] = ['alle', 'laufen', 'rad', 'kraft'];
 const PAGE_WEEKS = 26;
@@ -31,17 +32,15 @@ const matches = (unit: Unit, filter: Filter) =>
     : unit.kind === 'run' &&
       (filter === 'laufen' ? isRun(unit.run) : !isRun(unit.run));
 
-function weekLabel(start: number, now: number): string {
+function weekLabel(tx: Translator, start: number, now: number): string {
   const thisWeek = mondayStart(now);
-  if (start === thisWeek) return 'Diese Woche';
-  if (start === mondayStart(thisWeek - 86_400_000)) return 'Letzte Woche';
-  return `${date(start).slice(0, 6)} – ${date(start + 6 * 86_400_000).slice(
-    0,
-    6,
-  )}`;
+  if (start === thisWeek) return tx.t('Diese Woche', 'This week');
+  if (start === mondayStart(thisWeek - 86_400_000))
+    return tx.t('Letzte Woche', 'Last week');
+  return `${dayMonth(tx, start)} – ${dayMonth(tx, start + 6 * 86_400_000)}`;
 }
 
-function weekSummary(units: Unit[]): string {
+function weekSummary(tx: Translator, units: Unit[]): string {
   const runs = units.filter(
     (unit): unit is Extract<Unit, { kind: 'run' }> => unit.kind === 'run',
   );
@@ -52,42 +51,60 @@ function weekSummary(units: Unit[]): string {
   );
   return [
     runs.length
-      ? `${counted(runs.length, 'Einheit', 'Einheiten')} · ${km(meters, 1)} km`
+      ? `${counted(
+          tx,
+          runs.length,
+          ['Einheit', 'Einheiten'],
+          ['workout', 'workouts'],
+        )} · ${km(tx, meters, 1)} km`
       : null,
-    sessions ? counted(sessions, 'Krafttraining', 'Krafttrainings') : null,
+    sessions
+      ? counted(
+          tx,
+          sessions,
+          ['Krafttraining', 'Krafttrainings'],
+          ['strength session', 'strength sessions'],
+        )
+      : null,
   ]
     .filter(Boolean)
     .join(' · ');
 }
 
-function unitRow(unit: Unit, ctx: PageContext): Html {
+function unitRow(tx: Translator, unit: Unit, ctx: PageContext): Html {
   if (unit.kind === 'run') {
-    const { value, unit: tempoUnit } = tempo(unit.run);
+    const { value, unit: tempoUnit } = tempo(tx, unit.run);
     return row({
       title: runTitle(unit.run),
-      subtitle: `${day(unit.at)} · ${km(
+      subtitle: `${day(tx, unit.at)} · ${km(
+        tx,
         unit.run.distanceMeters,
       )} km · ${value} ${tempoUnit}`,
-      href: `/lauf/${encodeURIComponent(unit.run.id)}`,
+      href: tx.link(`/run/${encodeURIComponent(unit.run.id)}`),
     });
   }
   const heart = ctx.data.heart[unit.session.id];
   const sets = completedSets(unit.session);
   return row({
-    title: unit.session.name || 'Krafttraining',
+    title: unit.session.name || tx.t('Krafttraining', 'Strength training'),
     subtitle: [
-      day(unit.at),
-      counted(sets, 'Satz', 'Sätze'),
-      heart ? `Ø ${Math.round(heart.averageBpm)} bpm` : null,
+      day(tx, unit.at),
+      counted(tx, sets, ['Satz', 'Sätze'], ['set', 'sets']),
+      heart
+        ? tx.t(
+            `Ø ${Math.round(heart.averageBpm)} bpm`,
+            `Avg ${Math.round(heart.averageBpm)} bpm`,
+          )
+        : null,
     ]
       .filter(Boolean)
       .join(' · '),
-    href: `/kraft/${encodeURIComponent(unit.session.id)}`,
+    href: tx.link(`/strength/${encodeURIComponent(unit.session.id)}`),
   });
 }
 
-export function verlaufPage(ctx: PageContext): Html {
-  const { data, now, url } = ctx;
+export function historyPage(ctx: PageContext): Html {
+  const { data, now, url, tx } = ctx;
   const units: Unit[] = [
     ...data.runs.map(run => ({ kind: 'run' as const, at: run.startTime, run })),
     ...data.strength
@@ -100,15 +117,20 @@ export function verlaufPage(ctx: PageContext): Html {
   ].sort((a, b) => b.at - a.at);
 
   const available: { value: Filter; label: string }[] = [
-    { value: 'alle', label: 'Alle' },
+    { value: 'alle', label: tx.t('Alle', 'All') },
     ...(units.some(u => u.kind === 'run' && isRun(u.run))
-      ? [{ value: 'laufen' as const, label: 'Laufen' }]
+      ? [{ value: 'laufen' as const, label: tx.t('Laufen', 'Running') }]
       : []),
     ...(units.some(u => u.kind === 'run' && !isRun(u.run))
-      ? [{ value: 'rad' as const, label: 'Radfahren' }]
+      ? [{ value: 'rad' as const, label: tx.t('Radfahren', 'Cycling') }]
       : []),
     ...(units.some(u => u.kind === 'strength')
-      ? [{ value: 'kraft' as const, label: 'Krafttraining' }]
+      ? [
+          {
+            value: 'kraft' as const,
+            label: tx.t('Krafttraining', 'Strength training'),
+          },
+        ]
       : []),
   ];
   const filter = oneOf(param(url, 'bereich'), FILTERS, 'alle');
@@ -128,42 +150,51 @@ export function verlaufPage(ctx: PageContext): Html {
 
   const body = units.length
     ? html`${available.length > 2
-        ? segmented(
-            'Bereich',
-            available,
-            filter,
-            value =>
-              `/verlauf${query({ bereich: value === 'alle' ? null : value })}`,
+        ? segmented(tx.t('Bereich', 'Area'), available, filter, value =>
+            tx.link('/history', {
+              bereich: value === 'alle' ? null : value,
+            }),
           )
         : null}
       ${visible.map(
         ([start, entries]) =>
           html`<div class="week">
-              <span>${weekLabel(start, now)}</span
-              ><span class="num">${weekSummary(entries)}</span>
+              <span>${weekLabel(tx, start, now)}</span
+              ><span class="num">${weekSummary(tx, entries)}</span>
             </div>
-            ${entries.map(unit => unitRow(unit, ctx))}`,
+            ${entries.map(unit => unitRow(tx, unit, ctx))}`,
       )}
       ${ordered.length > visible.length
         ? html`<div class="section">
             <a
               class="button secondary small"
-              href="/verlauf${query({
+              href="${tx.link('/history', {
                 bereich: filter === 'alle' ? null : filter,
                 wochen: weeks + PAGE_WEEKS,
               })}"
-              >Ältere Wochen zeigen</a
+              >${tx.t('Ältere Wochen zeigen', 'Show older weeks')}</a
             >
           </div>`
         : null}`
     : emptyState(
-        'Noch keine Einheiten',
-        'Verbinde dein Telefon. Danach erscheinen hier alle Läufe und Krafttrainings.',
-        { label: 'Telefon verbinden', href: '/daten#verbinden' },
+        tx.t('Noch keine Einheiten', 'No workouts yet'),
+        tx.t(
+          'Verbinde dein Telefon. Danach erscheinen hier alle Läufe und Krafttrainings.',
+          'Connect your phone. Runs and strength sessions will appear here.',
+        ),
+        {
+          label: tx.t('Telefon verbinden', 'Connect phone'),
+          href: `${tx.link('/data')}#verbinden`,
+        },
       );
 
   return page(
-    { title: 'Verlauf', tab: 'Verlauf', status: syncStatus(data, now) },
-    html`${title('Verlauf')}${body}`,
+    tx,
+    {
+      title: tx.t('Verlauf', 'History'),
+      tab: 'history',
+      status: syncStatus(tx, data, now),
+    },
+    html`${title(tx.t('Verlauf', 'History'))}${body}`,
   );
 }

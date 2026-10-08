@@ -2,7 +2,7 @@ import {
   activeExperimentFor,
   recommendationArea,
 } from '../../../src/domain/areas';
-import { focusLabel, type TrainingFocus } from '../../../src/domain/focus';
+import type { TrainingFocus } from '../../../src/domain/focus';
 import type {
   Area,
   Experiment,
@@ -12,6 +12,8 @@ import type { PageContext } from './context';
 import { oneOf, param, syncStatus } from './context';
 import { date, relative } from './format';
 import { html, type Html } from './html';
+import type { Translator } from './i18n';
+import { focusName } from './labels';
 import {
   badge,
   card,
@@ -26,46 +28,66 @@ import {
 } from './ui';
 
 /**
- * Coach: Woran arbeite ich? Ziel, Fokus und Empfehlung je Bereich, so wie die
- * App sie zuletzt übertragen hat. Der Server bewertet nichts neu und schlägt
- * nichts vor; neue Empfehlungen entstehen nur in der App.
+ * Coach: what am I working on? Goal, focus and recommendation per area, as the
+ * app last transferred them. The server re-evaluates nothing and suggests
+ * nothing; new recommendations only come from the app.
  */
 
-const STATUS_LABEL: Record<ExperimentStatus, string> = {
-  active: 'Aktiv',
-  paused: 'Pausiert',
-  completed: 'Abgeschlossen',
-  aborted: 'Abgebrochen',
-};
+function statusLabel(tx: Translator, status: ExperimentStatus): string {
+  switch (status) {
+    case 'active':
+      return tx.t('Aktiv', 'Active');
+    case 'paused':
+      return tx.t('Pausiert', 'Paused');
+    case 'completed':
+      return tx.t('Abgeschlossen', 'Completed');
+    case 'aborted':
+      return tx.t('Abgebrochen', 'Cancelled');
+  }
+}
 
-function goalLine(goal: unknown, targetDate: unknown): string | null {
+function goalLine(
+  tx: Translator,
+  goal: unknown,
+  targetDate: unknown,
+): string | null {
   if (typeof goal !== 'string' || !goal.trim()) return null;
   const dateText =
     typeof targetDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(targetDate)
-      ? ` · bis ${date(new Date(`${targetDate}T12:00:00`).getTime())}`
+      ? tx.t(
+          ` · bis ${date(tx, new Date(`${targetDate}T12:00:00`).getTime())}`,
+          ` · until ${date(tx, new Date(`${targetDate}T12:00:00`).getTime())}`,
+        )
       : '';
   return `${goal.trim()}${dateText}`;
 }
 
 function recommendationCard(
+  tx: Translator,
   experiment: Experiment | undefined,
   ctx: PageContext,
 ): Html {
   if (!experiment) {
+    const heading = tx.t('Keine aktive Empfehlung', 'No active recommendation');
     return card(
-      html`<h2 class="card-title">Keine aktive Empfehlung</h2>
+      html`<h2 class="card-title">${heading}</h2>
         ${copy(
-          'Neue Empfehlungen schlägt die App vor, wenn die Daten sie tragen.',
+          tx.t(
+            'Neue Empfehlungen schlägt die App vor, wenn die Daten sie tragen.',
+            'The app suggests new recommendations when the data supports them.',
+          ),
           true,
         )}`,
-      { label: 'Empfehlung' },
+      { label: tx.t('Empfehlung', 'Recommendation') },
     );
   }
   const recommendation = experiment.recommendation;
+  const modelVersion = recommendation.model_version || '–';
+  const accepted = relative(tx, experiment.acceptedAt, ctx.now);
   return card(
     html`<div>
         ${badge(
-          STATUS_LABEL[experiment.status],
+          statusLabel(tx, experiment.status),
           experiment.status === 'active' ? 'green' : 'muted',
         )}
       </div>
@@ -74,29 +96,42 @@ function recommendationCard(
       </h2>
       ${copy(recommendation.reason, true)}
       ${recommendation.goal
-        ? copy(`Woran wir erkennen, ob es hilft: ${recommendation.goal}`, true)
+        ? copy(
+            tx.t(
+              `Woran wir erkennen, ob es hilft: ${recommendation.goal}`,
+              `How we will know it helped: ${recommendation.goal}`,
+            ),
+            true,
+          )
         : null}
       ${copy(
-        `Angenommen ${relative(
-          experiment.acceptedAt,
-          ctx.now,
-        )} · Stand aus der App · Modell ${recommendation.model_version || '–'}`,
+        tx.t(
+          `Angenommen ${accepted} · Stand aus der App · Modell ${modelVersion}`,
+          `Accepted ${accepted} · As of the app · Model ${modelVersion}`,
+        ),
         true,
       )}`,
-    { accent: experiment.status === 'active', label: 'Empfehlung' },
+    {
+      accent: experiment.status === 'active',
+      label: tx.t('Empfehlung', 'Recommendation'),
+    },
   );
 }
 
 export function coachPage(ctx: PageContext): Html {
-  const { data, now, url } = ctx;
-  const status = syncStatus(data, now);
+  const { data, now, url, tx } = ctx;
+  const status = syncStatus(tx, data, now);
   const settings = data.settings;
   if (!settings) {
     return page(
-      { title: 'Coach', tab: 'Coach', status },
+      tx,
+      { title: 'Coach', tab: 'coach', status },
       html`${title('Coach')}${emptyState(
-        'Noch nichts übertragen',
-        'Gib in der App den Bereich „Coach“ für deinen Server frei.',
+        tx.t('Noch nichts übertragen', 'Nothing transferred yet'),
+        tx.t(
+          'Gib in der App den Bereich „Coach“ für deinen Server frei.',
+          'Share the “Coach” area with your server in the app.',
+        ),
       )}`,
     );
   }
@@ -109,8 +144,8 @@ export function coachPage(ctx: PageContext): Html {
   const active = activeExperimentFor(experiments, area as 'running');
   const goal =
     area === 'running'
-      ? goalLine(settings.goal, settings.goalTargetDate)
-      : goalLine(settings.strengthGoal, settings.strengthGoalTargetDate);
+      ? goalLine(tx, settings.goal, settings.goalTargetDate)
+      : goalLine(tx, settings.strengthGoal, settings.strengthGoalTargetDate);
   const focus = (
     area === 'running' ? settings.trainingFocus : settings.strengthFocus
   ) as TrainingFocus | null | undefined;
@@ -124,36 +159,45 @@ export function coachPage(ctx: PageContext): Html {
   const body = html`
     ${title('Coach')}
     ${segmented(
-      'Bereich',
+      tx.t('Bereich', 'Area'),
       [
-        { value: 'running' as Area, label: 'Laufen' },
-        { value: 'strength' as Area, label: 'Krafttraining' },
+        { value: 'running' as Area, label: tx.t('Laufen', 'Running') },
+        {
+          value: 'strength' as Area,
+          label: tx.t('Krafttraining', 'Strength training'),
+        },
       ],
       area,
-      value => `/coach?bereich=${value}`,
+      value => tx.link('/coach', { bereich: value }),
     )}
-    <div class="section">${recommendationCard(active, ctx)}</div>
+    <div class="section">${recommendationCard(tx, active, ctx)}</div>
     ${section(
       null,
       html`
-        ${row({ title: 'Ziel', subtitle: goal ?? 'Noch kein Ziel' })}
         ${row({
-          title: 'Fokus',
-          subtitle: focus ? focusLabel(focus) : 'Noch kein Fokus',
+          title: tx.t('Ziel', 'Goal'),
+          subtitle: goal ?? tx.t('Noch kein Ziel', 'No goal yet'),
+        })}
+        ${row({
+          title: tx.t('Fokus', 'Focus'),
+          subtitle: focus
+            ? focusName(tx, focus)
+            : tx.t('Noch kein Fokus', 'No focus yet'),
         })}
       `,
     )}
     ${history.length
       ? section(
-          'Frühere Empfehlungen',
+          tx.t('Frühere Empfehlungen', 'Earlier recommendations'),
           history.map(entry =>
             row({
               title: entry.recommendation.action || entry.recommendation.title,
-              subtitle: `${date(entry.acceptedAt)} · ${
-                STATUS_LABEL[entry.status]
-              }`,
+              subtitle: `${date(tx, entry.acceptedAt)} · ${statusLabel(
+                tx,
+                entry.status,
+              )}`,
               value: badge(
-                STATUS_LABEL[entry.status],
+                statusLabel(tx, entry.status),
                 entry.status === 'active' ? 'green' : 'muted',
               ),
             }),
@@ -163,14 +207,20 @@ export function coachPage(ctx: PageContext): Html {
     ${section(
       null,
       disclosure(
-        'So entsteht eine Empfehlung',
-        'Regeln in der App, nicht auf dem Server',
+        tx.t('So entsteht eine Empfehlung', 'How a recommendation comes about'),
+        tx.t(
+          'Regeln in der App, nicht auf dem Server',
+          'Rules live in the app, not on the server',
+        ),
         copy(
-          'Runback wählt je Bereich höchstens eine Empfehlung und legt vorher fest, woran sie gemessen wird. Diese Seite zeigt den Stand, den dein Telefon zuletzt übertragen hat.',
+          tx.t(
+            'Runback wählt je Bereich höchstens eine Empfehlung und legt vorher fest, woran sie gemessen wird. Diese Seite zeigt den Stand, den dein Telefon zuletzt übertragen hat.',
+            'Runback picks at most one recommendation per area and decides beforehand how it will be measured. This page shows the state your phone last transferred.',
+          ),
           true,
         ),
       ),
     )}
   `;
-  return page({ title: 'Coach', tab: 'Coach', status }, body);
+  return page(tx, { title: 'Coach', tab: 'coach', status }, body);
 }

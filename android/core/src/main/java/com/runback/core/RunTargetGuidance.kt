@@ -7,8 +7,8 @@ data class HeartSample(val time: Long, val bpm: Double)
 data class TargetCue(val code: String, val message: String, val faster: Boolean)
 
 /**
- * Versionierte, zustandsbehaftete Live-Regel. Sie gibt nur Hinweise aus; Start,
- * Pause und gespeicherte Messwerte bleiben allein unter Kontrolle des Nutzers.
+ * Versioned, stateful live rule. It only gives hints; start, pause and saved
+ * measurements remain under the user's sole control.
  */
 class RunTargetGuidance private constructor(
     private var targetJson: String,
@@ -50,12 +50,14 @@ class RunTargetGuidance private constructor(
     }
 
     /**
-     * Neues Zieltempo mitten im Lauf. Eine laufende Abweichung zählt nicht weiter:
-     * Wer das Ziel an sein Tempo anpasst, soll nicht sofort den alten Hinweis hören.
+     * New target pace mid-run. An ongoing deviation no longer counts: whoever
+     * adjusts the target to their pace should not hear the old hint right away.
      */
     fun changePace(secondsPerKm: Double) {
-        require(kind == "pace") { "Nur ein Tempoziel lässt sich ändern." }
-        require(secondsPerKm.isFinite() && secondsPerKm in 120.0..1200.0) { "Zieltempo wird nicht unterstützt." }
+        require(kind == "pace") { Lang.tr("Nur ein Tempoziel lässt sich ändern.", "Only a pace target can be changed.") }
+        require(secondsPerKm.isFinite() && secondsPerKm in 120.0..1200.0) {
+            Lang.tr("Zieltempo wird nicht unterstützt.", "Target pace is not supported.")
+        }
         paceSecondsPerKm = secondsPerKm
         if (targetJson.isNotBlank() && targetJson != "{}") {
             targetJson = JSONObject(targetJson).put("secondsPerKm", secondsPerKm).toString()
@@ -149,9 +151,9 @@ class RunTargetGuidance private constructor(
             requiredOutsideMs = intervalMs,
             cooldownMs = intervalMs,
             cue = if (direction == "too_fast") {
-                TargetCue("pace_too_fast", "langsamer", false)
+                TargetCue("pace_too_fast", Lang.tr("langsamer", "slower"), false)
             } else {
-                TargetCue("pace_too_slow", "schneller", true)
+                TargetCue("pace_too_slow", Lang.tr("schneller", "faster"), true)
             },
         )
     }
@@ -182,9 +184,9 @@ class RunTargetGuidance private constructor(
             maxOf(required, intervalMs),
             intervalMs,
             if (direction == "heart_high") {
-                TargetCue("heart_rate_high", "langsamer", false)
+                TargetCue("heart_rate_high", Lang.tr("langsamer", "slower"), false)
             } else {
-                TargetCue("heart_rate_low", "schneller", true)
+                TargetCue("heart_rate_low", Lang.tr("schneller", "faster"), true)
             },
         )
     }
@@ -201,7 +203,7 @@ class RunTargetGuidance private constructor(
             clearExcursion()
             if (corrected) {
                 lastCueAt = now
-                return TargetCue("pace_perfect", "perfekt", false)
+                return TargetCue("pace_perfect", Lang.tr("perfekt", "perfect"), false)
             }
             return null
         }
@@ -247,32 +249,34 @@ class RunTargetGuidance private constructor(
             RunAnnouncements.fromJson(value.optJSONObject("announcements"))
             val kind = value.optString("kind")
             val seconds = value.optDouble("cueIntervalSeconds", 30.0)
-            require(seconds.isFinite() && seconds % 1.0 == 0.0 && seconds in 5.0..300.0) { "Hinweisabstand wird nicht unterstützt." }
+            require(seconds.isFinite() && seconds % 1.0 == 0.0 && seconds in 5.0..300.0) {
+                Lang.tr("Hinweisabstand wird nicht unterstützt.", "Cue interval is not supported.")
+            }
             val interval = (seconds * 1000).toLong()
             if (kind == "none") return RunTargetGuidance(value.toString(), kind, "voice", Double.NaN, "", Double.NaN, Double.NaN, interval)
             val output = value.optString("output")
-            require(output in setOf("voice", "vibration", "both")) { "Unbekannte Ausgabe für Laufhinweise." }
+            require(output in setOf("voice", "vibration", "both")) { Lang.tr("Unbekannte Ausgabe für Laufhinweise.", "Unknown output for run cues.") }
             return when (kind) {
                 "pace" -> {
                     val pace = value.optDouble("secondsPerKm", Double.NaN)
                     val mode = value.optString("mode")
-                    require(pace.isFinite() && pace in 120.0..1200.0) { "Zieltempo wird nicht unterstützt." }
-                    require(mode in setOf("ceiling", "range")) { "Tempoziel ist unvollständig." }
+                    require(pace.isFinite() && pace in 120.0..1200.0) { Lang.tr("Zieltempo wird nicht unterstützt.", "Target pace is not supported.") }
+                    require(mode in setOf("ceiling", "range")) { Lang.tr("Tempoziel ist unvollständig.", "Pace target is incomplete.") }
                     RunTargetGuidance(value.toString(), kind, output, pace, mode, Double.NaN, Double.NaN, interval)
                 }
                 "heart_rate" -> {
                     val min = value.optDouble("minBpm", Double.NaN)
                     val max = value.optDouble("maxBpm", Double.NaN)
                     require(min.isFinite() && max.isFinite() && min >= 40 && max <= 240 && max - min >= 5) {
-                        "Pulsbereich wird nicht unterstützt."
+                        Lang.tr("Pulsbereich wird nicht unterstützt.", "Heart rate range is not supported.")
                     }
                     RunTargetGuidance(value.toString(), kind, output, Double.NaN, "", min, max, interval)
                 }
-                else -> throw IllegalArgumentException("Unbekanntes Laufziel.")
+                else -> throw IllegalArgumentException(Lang.tr("Unbekanntes Laufziel.", "Unknown run target."))
             }.also { it.reset(0L, false) }
         }
 
-        /** Reine Fabriken für die zustandsbehaftete Mathematik in JVM-Tests. */
+        /** Plain factories for the stateful math in JVM tests. */
         internal fun pace(secondsPerKm: Double, mode: String, output: String = "both", intervalSeconds: Int = 30) =
             RunTargetGuidance("{}", "pace", output, secondsPerKm, mode, Double.NaN, Double.NaN, intervalSeconds * 1000L)
                 .also { it.reset(0L, false) }

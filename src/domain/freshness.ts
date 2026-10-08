@@ -17,19 +17,20 @@ import {
   type StrengthSession,
 } from './strength';
 import { catalogExercise } from './catalog';
+import { tr } from './i18n';
 
 /**
- * Versionierte Ausgangsannahmen des Muskelmodells.
+ * Versioned starting assumptions of the muscle model.
  *
- * Alle Zahlen liegen hier an einer Stelle. Sie sind Setzungen, keine
- * validierten Werte: Die Impulsantwort folgt der Banister-Klasse, die
- * „effektiven Wiederholungen“ (λ = 4) sind eine Hypothese, die Lauf- und
- * Steigungskoeffizienten sind Startannahmen. Das Modell bleibt gesperrt,
- * bis die Validierung (modelValidation.ts) besteht.
+ * All numbers live here in one place. They are settings, not validated
+ * values: the impulse response follows the Banister class, the “effective
+ * repetitions” (λ = 4) are a hypothesis, and the run and grade coefficients
+ * are starting assumptions. The model stays locked until validation
+ * (modelValidation.ts) passes.
  *
- * v2: kein Ersatz-Körpergewicht, keine Planwerte als Ist, RIR nur aus
- * Nutzereingabe oder unabhängiger Referenz, Epley nur bis zwölf Wdh.
- * v3: Datenbankübungen ohne Zahlenmodell und unbekannte Lastarten liefern keinen Reiz.
+ * v2: no substitute body weight, no planned values as actual, RIR only from
+ * user input or an independent reference, Epley only up to twelve reps.
+ * v3: database exercises without a numeric model and unknown load types give no stimulus.
  */
 export const MUSCLE_MODEL_CONSTANTS = Object.freeze({
   modelVersion: 'muscle-model-v3',
@@ -78,7 +79,7 @@ export const MUSCLE_MODEL_CONSTANTS = Object.freeze({
 
 export const MUSCLE_MODEL_VERSION = MUSCLE_MODEL_CONSTANTS.modelVersion;
 
-/** Eine einzelne Meldung mit einer Skala von 0 bis 10. */
+/** A single report on a scale from 0 to 10. */
 export interface SorenessReport {
   at: number;
   regionId: string;
@@ -87,7 +88,7 @@ export interface SorenessReport {
   kind?: 'soreness';
 }
 
-/** Explizite Meldung, dass heute keine Region gemeldet wird. */
+/** Explicit report that no region is reported today. */
 export interface NothingTodayReport {
   kind: 'nothing_today';
   at: number;
@@ -96,7 +97,7 @@ export interface NothingTodayReport {
 
 export type MuscleReport = SorenessReport | NothingTodayReport;
 
-/** Provenienz, die jede Ableitung des Modells mitführt. */
+/** Provenance carried by every derivation of the model. */
 export interface MuscleModelProvenance {
   model_version: string;
   regions_version: string;
@@ -137,9 +138,9 @@ export interface SetStimulusOptions {
 }
 
 /**
- * Grobe Spanne aus festen Zuschlägen. Keine Standardabweichung und kein
- * Vorhersageintervall: Bis eine zeitlich fortlaufende Validierung Fehler an
- * unbekannten Beobachtungen liefert, bleibt `calibrated` false.
+ * Rough spread from fixed margins. No standard deviation and no prediction
+ * interval: until a time-ordered validation produces errors on unseen
+ * observations, `calibrated` stays false.
  */
 export interface StimulusUncertainty {
   roughSpread: number;
@@ -155,7 +156,7 @@ export interface SetStimulusResult extends MuscleModelProvenance {
   e1rmEstimate: number | null;
   relativeLoad: number | null;
   rir: number | null;
-  /** Herkunft der Reserve; null heißt unbekannt und kein Reiz. */
+  /** Source of the reserve; null means unknown and no stimulus. */
   rirSource: 'reported' | 'failure_confirmed' | 'estimated' | null;
   effectiveReps: number | null;
   stimulus: number | null;
@@ -205,7 +206,7 @@ export interface RunSegmentStimulusResult extends MuscleModelProvenance {
   speedMps: number | null;
   durationHours: number | null;
   stimulusByRegion: Partial<Record<RegionId, number>>;
-  /** false: Steigungsfaktoren nicht berechnet; der Reiz ist eine Untergrenze. */
+  /** false: grade factors not calculated; the stimulus is a lower bound. */
   gradeKnown: boolean;
   uncertainty: StimulusUncertainty;
   valid: boolean;
@@ -230,7 +231,7 @@ export type RegionalStimulusContribution =
   | RunStimulusContribution;
 
 export interface FreshnessUncertainty {
-  /** Grobe Spanne in Frischepunkten aus festen Zuschlägen; kein Intervall. */
+  /** Rough spread in freshness points from fixed margins; not an interval. */
   roughSpreadPoints: number;
   roughLowerPoints: number;
   roughUpperPoints: number;
@@ -308,7 +309,7 @@ export function isNothingTodayReport(
   return report.kind === 'nothing_today';
 }
 
-/** Prüft eine Meldung, ohne ungültige Werte still zu verändern. */
+/** Checks a report without silently changing invalid values. */
 export function isValidMuscleReport(report: MuscleReport): boolean {
   if (!finite(report.at) || report.at < 0) {
     return false;
@@ -326,7 +327,7 @@ export function isValidMuscleReport(report: MuscleReport): boolean {
   );
 }
 
-/** Erzeugt eine explizite, deterministische „heute nichts“-Meldung. */
+/** Creates an explicit, deterministic “nothing today” report. */
 export function nothingTodayReport(at: number, note?: string): NothingTodayReport {
   return note === undefined
     ? { kind: 'nothing_today', at }
@@ -400,14 +401,18 @@ interface SetLoad {
   reasons: string[];
 }
 
-/** Nur tatsächlich erfasste Werte; Planwerte bleiben Planung. */
+/** Only actually recorded values; planned values stay planning. */
 const setLoad = (set: LoggedSet, exercise: Exercise, options: SetStimulusOptions): SetLoad => {
   const raw = set.actualWeightKg;
   const loadKind = set.planned.loadKind;
   const reasons: string[] = [];
   const uncertain = false;
   if (loadKind === 'unknown') {
-    return { weightKg: null, uncertain: true, reasons: ['Die Lastart ist unbekannt.'] };
+    return {
+      weightKg: null,
+      uncertain: true,
+      reasons: [tr('Die Lastart ist unbekannt.', 'The load type is unknown.')],
+    };
   }
   if (loadKind === 'kg') {
     return {
@@ -423,7 +428,10 @@ const setLoad = (set: LoggedSet, exercise: Exercise, options: SetStimulusOptions
       weightKg: null,
       uncertain,
       reasons: [
-        'Körpergewicht fehlt; ohne Angabe bleibt die bewegte Last unbekannt.',
+        tr(
+          'Körpergewicht fehlt; ohne Angabe bleibt die bewegte Last unbekannt.',
+          'Body weight is missing; without it the moved load stays unknown.',
+        ),
       ],
     };
   }
@@ -437,7 +445,13 @@ const setLoad = (set: LoggedSet, exercise: Exercise, options: SetStimulusOptions
       return {
         weightKg: null,
         uncertain,
-        reasons: [...reasons, 'Unterstützung oder Körpergewicht ist ungültig.'],
+        reasons: [
+          ...reasons,
+          tr(
+            'Unterstützung oder Körpergewicht ist ungültig.',
+            'Assistance or body weight is invalid.',
+          ),
+        ],
       };
     }
     return { weightKg: movedBodyweight - raw, uncertain, reasons };
@@ -448,15 +462,15 @@ const setLoad = (set: LoggedSet, exercise: Exercise, options: SetStimulusOptions
   return { weightKg: movedBodyweight + raw, uncertain, reasons };
 };
 
-/** Geschätztes Einwiederholungsmaximum mit der im Projekt vorhandenen Epley-Funktion. */
+/** Estimated one-rep max using the project's Epley function. */
 export function estimateE1RM(weightKg: number, repetitions: number): number | null {
   return epley1RM(weightKg, repetitions);
 }
 
 /**
- * Bester beobachteter Epley-Wert früherer Einheiten innerhalb der letzten
- * acht Wochen. Die eigene Einheit zählt nicht: Ein Satz darf nicht seine
- * eigene Referenz sein, sonst wird die Reserve rechnerisch immer 0.
+ * Best observed Epley value of earlier sessions within the last eight weeks.
+ * The session itself does not count: a set must not be its own reference,
+ * otherwise the reserve would always compute to 0.
  */
 export function bestExerciseE1RM(
   exerciseId: string,
@@ -501,7 +515,7 @@ export function bestExerciseE1RM(
   return best;
 }
 
-/** Summe der effektiven Wiederholungen nach der dokumentierten Exponentialform. */
+/** Sum of the effective repetitions using the documented exponential form. */
 export function effectiveRepetitions(repetitions: number, rir: number): number {
   if (!(repetitions > 0) || !(rir >= 0)) {
     return 0;
@@ -516,14 +530,14 @@ export function effectiveRepetitions(repetitions: number, rir: number): number {
   return result;
 }
 
-/** Effektive Wiederholungen für einen Zeit- oder Isometriesatz. */
+/** Effective repetitions for a timed or isometric set. */
 export function effectiveRepetitionsFromSeconds(seconds: number): number {
   return finite(seconds) && seconds > 0
     ? seconds / MUSCLE_MODEL_CONSTANTS.isometricReferenceSeconds
     : 0;
 }
 
-/** Berechnet den Grundreiz eines einzelnen protokollierten Satzes. */
+/** Calculates the base stimulus of a single logged set. */
 export function calculateSetStimulus(
   set: LoggedSet,
   exercise: Exercise,
@@ -541,10 +555,13 @@ export function calculateSetStimulus(
   const isTimed = set.planned.kind === 'timed' || finite(timedSeconds);
   if (set.completedAt === undefined) {
     uncertaintyReasons.push(
-      'Satz nicht abgeschlossen; Planwerte zählen nicht als Reiz.',
+      tr(
+        'Satz nicht abgeschlossen; Planwerte zählen nicht als Reiz.',
+        'Set not completed; planned values do not count as stimulus.',
+      ),
     );
   }
-  // Unabhängige Referenz: explizit übergeben oder aus früheren Einheiten.
+  // Independent reference: passed explicitly or taken from earlier sessions.
   const reference =
     options.e1rmEstimate ??
     (options.recentSessions
@@ -555,8 +572,8 @@ export function calculateSetStimulus(
           options.sessionId,
         )
       : null);
-  // Reserve: Nutzereingabe > bestätigter Satz bis zum Versagen > Schätzung
-  // aus unabhängiger Referenz. Ohne eine davon bleibt sie unbekannt.
+  // Reserve: user input > set confirmed to failure > estimate from an
+  // independent reference. Without one of these it stays unknown.
   let rir: number | null = null;
   let rirSource: 'reported' | 'failure_confirmed' | 'estimated' | null = null;
   if (!isTimed && finite(repetitions)) {
@@ -576,16 +593,22 @@ export function calculateSetStimulus(
       rir = Math.max(0, 30 * (1 / relative - 1) - repetitions);
       rirSource = 'estimated';
       uncertaintyReasons.push(
-        'Anstrengung (RIR) aus dem e1RM einer früheren Einheit geschätzt.',
+        tr(
+          'Anstrengung (RIR) aus dem e1RM einer früheren Einheit geschätzt.',
+          'Reps in reserve (RIR) estimated from the e1RM of an earlier session.',
+        ),
       );
     } else {
       uncertaintyReasons.push(
-        'Anstrengung (RIR) nicht angegeben und keine frühere Einheit als Referenz; der Reiz bleibt unbekannt.',
+        tr(
+          'Anstrengung (RIR) nicht angegeben und keine frühere Einheit als Referenz; der Reiz bleibt unbekannt.',
+          'Reps in reserve (RIR) not given and no earlier session as reference; the stimulus stays unknown.',
+        ),
       );
     }
   }
-  // e1RM: mit bekannter Reserve aus diesem Satz (inverse Epley mit Wdh. + RIR),
-  // sonst nur aus der unabhängigen Referenz. Nie aus dem Satz allein.
+  // e1RM: with a known reserve from this set (inverse Epley with reps + RIR),
+  // otherwise only from the independent reference. Never from the set alone.
   const e1rm =
     !isTimed && finite(load.weightKg) && finite(repetitions) && rir !== null
       ? epley1RM(load.weightKg, repetitions + rir) ?? reference
@@ -598,7 +621,10 @@ export function calculateSetStimulus(
     epley1RM(load.weightKg, repetitions + rir) === null
   ) {
     uncertaintyReasons.push(
-      `Mehr als ${MUSCLE_MODEL_CONSTANTS.maxEpleyRepetitions} Wiederholungen bis zum Versagen; Epley trägt hier keine Schätzung.`,
+      tr(
+        `Mehr als ${MUSCLE_MODEL_CONSTANTS.maxEpleyRepetitions} Wiederholungen bis zum Versagen; Epley trägt hier keine Schätzung.`,
+        `More than ${MUSCLE_MODEL_CONSTANTS.maxEpleyRepetitions} reps to failure; Epley gives no estimate here.`,
+      ),
     );
   }
   const relativeLoad =
@@ -613,23 +639,43 @@ export function calculateSetStimulus(
       ? effectiveRepetitions(repetitions, rir)
       : 0;
   if (isTimed && !(nEff > 0)) {
-    uncertaintyReasons.push('Spannungsdauer fehlt oder ist ungültig.');
+    uncertaintyReasons.push(
+      tr(
+        'Spannungsdauer fehlt oder ist ungültig.',
+        'Time under tension is missing or invalid.',
+      ),
+    );
   }
   if (!isTimed && !(nEff > 0)) {
-    uncertaintyReasons.push('Last oder Wiederholungen fehlen oder sind ungültig.');
+    uncertaintyReasons.push(
+      tr(
+        'Last oder Wiederholungen fehlen oder sind ungültig.',
+        'Load or reps are missing or invalid.',
+      ),
+    );
   }
   if (exercise.origin !== 'catalog') {
-    uncertaintyReasons.push('Eigene Übung: Anteile sind keine Katalogannahme.');
+    uncertaintyReasons.push(
+      tr(
+        'Eigene Übung: Anteile sind keine Katalogannahme.',
+        'Custom exercise: shares are not a catalog assumption.',
+      ),
+    );
   }
   if (!finite(exercise.eccentric) || !finiteShareSet(exercise)) {
-    uncertaintyReasons.push('Muskelanteile oder Belastungsfaktor dieser Übung sind unbekannt.');
+    uncertaintyReasons.push(
+      tr(
+        'Muskelanteile oder Belastungsfaktor dieser Übung sind unbekannt.',
+        'Muscle shares or load factor of this exercise are unknown.',
+      ),
+    );
   }
   const stimulus =
     nEff > 0 && relativeLoad !== null && set.completedAt !== undefined &&
       finite(exercise.eccentric) && finiteShareSet(exercise)
       ? nEff * relativeLoad ** MUSCLE_MODEL_CONSTANTS.relativeLoadGamma * exercise.eccentric
       : null;
-  // Feste Zuschläge, keine geschätzte Streuung.
+  // Fixed margins, no estimated spread.
   const roughSpread =
     (load.uncertain ? 8 : 3) +
     (exercise.origin === 'catalog' ? 0 : 5) +
@@ -657,11 +703,16 @@ export function calculateSetStimulus(
       reasons: Array.from(new Set(uncertaintyReasons)),
     },
     valid,
-    reason: valid ? undefined : 'Satz kann nicht als Reiz berechnet werden.',
+    reason: valid
+      ? undefined
+      : tr(
+          'Satz kann nicht als Reiz berechnet werden.',
+          'Set cannot be calculated as a stimulus.',
+        ),
   };
 }
 
-/** Verteilt einen Reiz auf konkrete Regionen und Seiten. */
+/** Distributes a stimulus across concrete regions and sides. */
 export function distributeStimulus(
   exercise: Exercise,
   stimulus: number,
@@ -718,7 +769,7 @@ const unilateralSideFor = (
   );
 };
 
-/** Baut alle regionalen Beiträge einer Krafteinheit aus den protokollierten Sätzen. */
+/** Builds all regional contributions of a strength session from its logged sets. */
 export function buildStrengthStimulusContributions(
   session: StrengthSession,
   options: StrengthStimulusOptions = {},
@@ -817,7 +868,7 @@ const runCoefficients = (): Record<RegionBase, number> => ({
   tibialis: MUSCLE_MODEL_CONSTANTS.runCoefficientTibialis,
 });
 
-/** Berechnet den direkten Reiz eines Laufabschnitts nach §4. */
+/** Calculates the direct stimulus of a run segment per §4. */
 export function runSegmentStimulus(
   segment: SegmentAggregate,
   options: RunSegmentStimulusOptions = {},
@@ -833,12 +884,17 @@ export function runSegmentStimulus(
   const coefficient = { ...runCoefficients(), ...options.coefficients };
   const uncertaintyReasons: string[] = [];
   if (segment.phase === 'pause') {
-    uncertaintyReasons.push('Pausenabschnitt erzeugt keinen Reiz.');
+    uncertaintyReasons.push(
+      tr('Pausenabschnitt erzeugt keinen Reiz.', 'Pause segment produces no stimulus.'),
+    );
   }
   const gradeKnown = finite(segment.gradePercent);
   if (!gradeKnown) {
     uncertaintyReasons.push(
-      'Steigung fehlt; der Steigungsanteil wird nicht berechnet, Zeit und Distanz bleiben nutzbar.',
+      tr(
+        'Steigung fehlt; der Steigungsanteil wird nicht berechnet, Zeit und Distanz bleiben nutzbar.',
+        'Grade is missing; the grade share is not calculated, time and distance stay usable.',
+      ),
     );
   }
   if (speedMps === null || segment.phase === 'pause') {
@@ -854,16 +910,25 @@ export function runSegmentStimulus(
       uncertainty: {
         roughSpread: speedMps === null ? 15 : 5,
         calibrated: false,
-        reasons: [...uncertaintyReasons, 'Dauer oder Distanz des Abschnitts ist ungültig.'],
+        reasons: [
+          ...uncertaintyReasons,
+          tr(
+            'Dauer oder Distanz des Abschnitts ist ungültig.',
+            'Duration or distance of the segment is invalid.',
+          ),
+        ],
       },
       valid: false,
-      reason: 'Laufabschnitt kann nicht als Reiz berechnet werden.',
+      reason: tr(
+        'Laufabschnitt kann nicht als Reiz berechnet werden.',
+        'Run segment cannot be calculated as a stimulus.',
+      ),
     };
   }
   const durationHours = durationSeconds / 3600;
   const speedRatio = speedMps / MUSCLE_MODEL_CONSTANTS.referenceSpeedMps;
-  // Ohne Steigung entfallen die Steigungsfaktoren; der Reiz ist dann eine
-  // Untergrenze, keine Annahme „eben“.
+  // Without grade the grade factors drop out; the stimulus is then a lower
+  // bound, not a “flat” assumption.
   const grade = gradeKnown ? (segment.gradePercent as number) / 100 : 0;
   const downhill = Math.max(0, -grade);
   const uphill = Math.max(0, grade);
@@ -914,7 +979,7 @@ export function runSegmentStimulus(
   };
 }
 
-/** Baut Laufbeiträge für einen Lauf zusammen. */
+/** Builds the run contributions of a run. */
 export function buildRunStimulusContributions(
   run: RunSummary,
   coefficients?: Partial<Record<RegionBase, number>>,
@@ -971,7 +1036,7 @@ const normalisedImpulse = (hours: number, rise: number, decay: number): number =
     : 0;
 };
 
-/** Normierte Differenz zweier Exponentialfunktionen aus §5.1. */
+/** Normalized difference of two exponential functions per §5.1. */
 export function impulseResponse(
   hours: number,
   riseHours: number,
@@ -980,7 +1045,7 @@ export function impulseResponse(
   return normalisedImpulse(hours, riseHours, decayHours);
 }
 
-/** Kombinierte schnelle und langsame Impulsantwort. */
+/** Combined fast and slow impulse response. */
 export function combinedImpulseResponse(
   hours: number,
   timeConstants: TimeConstants = defaultTimeConstants(),
@@ -996,7 +1061,7 @@ export function combinedImpulseResponse(
   );
 }
 
-/** Stundenabstand, da alle Modellzeiten als Millisekunden übergeben werden. */
+/** Hours between two instants, since all model times are passed as milliseconds. */
 export function hoursSince(at: number, origin: number): number {
   return (at - origin) / (60 * 60 * 1000);
 }
@@ -1032,7 +1097,7 @@ const coefficientFromState = (
   };
 };
 
-/** Kosinusähnlichkeit der Kataloganteile zweier Übungen. */
+/** Cosine similarity of the catalog shares of two exercises. */
 export function cosineShareSimilarity(left: Exercise, right: Exercise): number {
   const bases = Array.from(
     new Set([...Object.keys(left.shares), ...Object.keys(right.shares)]),
@@ -1059,7 +1124,7 @@ export interface PartialPoolResult {
   similarity: number;
 }
 
-/** Überträgt gelernte Werte per Kosinusähnlichkeit auf eine neue Übung. */
+/** Transfers learned values to a new exercise by cosine similarity. */
 export function partialPoolCoefficient(
   target: Exercise,
   baseRegion: RegionBase,
@@ -1122,7 +1187,7 @@ const allExercises = (input: FreshnessInput): Exercise[] => {
   return Array.from(byId.values());
 };
 
-/** Alle Beiträge aus Kraft- und Laufdaten in einem gemeinsamen Zeitbuch. */
+/** All contributions from strength and run data in one shared timeline. */
 export function buildRegionalStimulusContributions(
   input: FreshnessInput,
 ): RegionalStimulusContribution[] {
@@ -1213,17 +1278,27 @@ const regionFreshness = (
     variance += scale * scale * item.coefficient.variance;
     uncertaintyReasons.push(...item.contribution.uncertainty.reasons);
     if (!item.contribution.catalogReliable) {
-      uncertaintyReasons.push('Mindestens ein Anteil stammt nicht aus einem belastbaren Katalog.');
+      uncertaintyReasons.push(
+      tr(
+        'Mindestens ein Anteil stammt nicht aus einem belastbaren Katalog.',
+        'At least one share does not come from a reliable catalog.',
+      ),
+    );
     }
   }
   if (!relevant.length) {
-    uncertaintyReasons.push('Für diese Region liegt kein relevanter Beitrag vor.');
+    uncertaintyReasons.push(
+      tr(
+        'Für diese Region liegt kein relevanter Beitrag vor.',
+        'This region has no relevant contribution.',
+      ),
+    );
   }
   if (!reports.length) {
-    uncertaintyReasons.push('Keine bestätigende Meldung vorhanden.');
+    uncertaintyReasons.push(tr('Keine bestätigende Meldung vorhanden.', 'No confirming report.'));
   }
-  // Feste Zuschläge plus Koeffizientenvarianz ohne Kovarianz: eine grobe
-  // Spanne, kein Vorhersageintervall.
+  // Fixed margins plus coefficient variance without covariance: a rough
+  // spread, not a prediction interval.
   const roughSpread = Math.min(
     100,
     Math.sqrt(variance) * 100 + (reports.length ? 0 : 2) +
@@ -1243,19 +1318,34 @@ const regionFreshness = (
   let reason: string | undefined;
   if (!relevant.length) {
     reasonCode = 'no_reliable_shares';
-    reason = 'Für diese Region fehlen belastbare Trainingsanteile.';
+    reason = tr(
+      'Für diese Region fehlen belastbare Trainingsanteile.',
+      'This region lacks reliable training shares.',
+    );
   } else if (!reliableShares) {
     reasonCode = 'no_reliable_shares';
-    reason = 'Die Anteile dieser Region sind noch nicht belastbar hinterlegt.';
+    reason = tr(
+      'Die Anteile dieser Region sind noch nicht belastbar hinterlegt.',
+      'The shares of this region are not yet reliably recorded.',
+    );
   } else if (roughSpread > MUSCLE_MODEL_CONSTANTS.uncertaintyThresholdFreshnessPoints) {
     reasonCode = 'uncertainty_too_high';
-    reason = 'Die Unsicherheit der Regionsschätzung liegt über der festgelegten Schwelle.';
+    reason = tr(
+      'Die Unsicherheit der Regionsschätzung liegt über der festgelegten Schwelle.',
+      'The uncertainty of the region estimate is above the set threshold.',
+    );
   } else if (!recentEnough && !hasConfirmation) {
     reasonCode = 'outside_horizon_without_report';
-    reason = 'Die letzte relevante Einheit liegt außerhalb des Modellhorizonts und es fehlt eine bestätigende Meldung.';
+    reason = tr(
+      'Die letzte relevante Einheit liegt außerhalb des Modellhorizonts und es fehlt eine bestätigende Meldung.',
+      'The last relevant session is outside the model horizon and no confirming report exists.',
+    );
   } else if (!hasConfirmation && freshness === 100) {
     reasonCode = 'missing_reports';
-    reason = 'Ohne Meldung wird keine exakte 100 ausgegeben.';
+    reason = tr(
+      'Ohne Meldung wird keine exakte 100 ausgegeben.',
+      'Without a report, an exact 100 is not shown.',
+    );
   }
   const uniqueReasons = Array.from(new Set(uncertaintyReasons));
   const uncertainty: FreshnessUncertainty = {
@@ -1281,7 +1371,12 @@ const regionFreshness = (
       value: null,
       sorenessPrediction: null,
       reasonCode,
-      reason: reason ?? 'Für diese Region liegt noch keine belastbare Zahl vor.',
+      reason:
+        reason ??
+        tr(
+          'Für diese Region liegt noch keine belastbare Zahl vor.',
+          'This region has no reliable number yet.',
+        ),
     };
   }
   return {
@@ -1290,15 +1385,24 @@ const regionFreshness = (
     value: freshness,
     sorenessPrediction: 10 * (1 - freshness / 100),
     assumptions: [
-      'Die Impulsantwort wird mit der versionierten Ausgangsannahme berechnet.',
+      tr(
+        'Die Impulsantwort wird mit der versionierten Ausgangsannahme berechnet.',
+        'The impulse response is calculated with the versioned starting assumption.',
+      ),
       reports.length
-        ? 'Die Regionsschätzung wird durch vorhandene Meldungen eingeordnet.'
-        : 'Mangels Meldung wird die Katalogannahme verwendet.',
+        ? tr(
+            'Die Regionsschätzung wird durch vorhandene Meldungen eingeordnet.',
+            'The region estimate is placed in context by existing reports.',
+          )
+        : tr(
+            'Mangels Meldung wird die Katalogannahme verwendet.',
+            'Without a report, the catalog assumption is used.',
+          ),
     ],
   };
 };
 
-/** Berechnet die Frische aller konkreten Regionen zum angegebenen Zeitpunkt. */
+/** Calculates the freshness of all concrete regions at the given time. */
 export function calculateFreshness(
   input: FreshnessInput,
 ): FreshnessSnapshot {
@@ -1325,7 +1429,7 @@ export function calculateFreshness(
   };
 }
 
-/** Zukunftsauswertung derselben Gleichung, ausdrücklich als Prognose markiert. */
+/** Forward-looking evaluation of the same equation, explicitly marked as a forecast. */
 export function predictFreshness(input: FreshnessInput): FreshnessSnapshot {
   const contributions = buildRegionalStimulusContributions(input);
   const regions = Object.fromEntries(
@@ -1350,7 +1454,7 @@ export function predictFreshness(input: FreshnessInput): FreshnessSnapshot {
   };
 }
 
-/** Liefert die Modellvorhersage auch dann, wenn §7 die Anzeige als unbekannt markiert. */
+/** Returns the model prediction even when §7 marks the display as unknown. */
 export function predictSoreness(
   input: FreshnessInput,
   regionIdValue: RegionId,
@@ -1366,16 +1470,16 @@ export function predictSoreness(
   return result.kind === 'freshness' ? result.sorenessPrediction : null;
 }
 
-/** Kurzname für Aufrufer, die den einzelnen Satz als Reizfunktion verwenden. */
+/** Short name for callers that use a single set as a stimulus function. */
 export const setStimulus = calculateSetStimulus;
 
-/** Kurzname für die Laufabschnittsrechnung. */
+/** Short name for the run segment calculation. */
 export const calculateRunSegmentStimulus = runSegmentStimulus;
 
-/** Kurzname für die kombinierte Impulsantwort. */
+/** Short name for the combined impulse response. */
 export const hTotal = combinedImpulseResponse;
 
-/** Liefert die einzelne Region aus einer vollständigen Momentaufnahme. */
+/** Returns a single region from a complete snapshot. */
 export function freshnessAt(
   input: FreshnessInput,
   regionIdValue: RegionId,

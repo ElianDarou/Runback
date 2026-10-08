@@ -4,19 +4,19 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Was die Uhr über erkannte Sätze in die Rohdatei schreibt (Ereignisse,
- * `MotionFormat.KIND_EVENT`). Die Erkennung und die Entscheidung des Nutzers
- * sind getrennte Ereignisse: `detectedReps` wird nie überschrieben, die
- * Korrektur steht als `finalReps` daneben. Zusammen mit den Rohdaten der Datei
- * sind das die Labels für spätere Modelle.
+ * What the watch writes about detected sets into the raw file (events,
+ * `MotionFormat.KIND_EVENT`). Detection and the user's decision are separate
+ * events: `detectedReps` is never overwritten, the correction sits next to it
+ * as `finalReps`. Together with the file's raw data, these are the labels for
+ * later models.
  *
- * Arten:
- * - `set_detected`: Zählung, Satzgrenzen, Wiederholungen, Merkmale.
- * - `set_reviewed`: bestätigt, korrigiert oder verworfen — von Hand oder
- *   automatisch nach Ablauf der Wartezeit — oder `superseded`, wenn der Satz
- *   am Handy erledigt wurde, bevor die Uhr eine Antwort hatte.
- * - `set_closed`: Satz wurde abgehakt, ohne dass die Uhr ihn erkannt hat
- *   (von Hand auf Uhr oder Handy); hält fest, was der Detektor da gerade sah.
+ * Kinds:
+ * - `set_detected`: count, set boundaries, reps, features.
+ * - `set_reviewed`: confirmed, corrected or rejected — by hand or
+ *   automatically after the wait time runs out — or `superseded`, when the set
+ *   was finished on the phone before the watch had an answer.
+ * - `set_closed`: set was checked off without the watch detecting it
+ *   (by hand on the watch or phone); records what the detector saw at that moment.
  */
 object SetDetectionLog {
     const val VERSION = 1
@@ -25,7 +25,7 @@ object SetDetectionLog {
     const val CLOSED = "set_closed"
     const val SUPERSEDED = "superseded"
 
-    /** Wohin der Satz gehört, so wie die Uhr ihn vom Handy kennt. */
+    /** Where the set belongs, as the watch knows it from the phone. */
     data class Target(
         val sessionId: String,
         val exerciseId: String,
@@ -50,8 +50,8 @@ object SetDetectionLog {
     enum class Decision(val value: String) { CONFIRMED("confirmed"), CORRECTED("corrected"), REJECTED("rejected") }
 
     /**
-     * Entscheidung zu einer Erkennung. `finalReps` ist bei „verworfen“ leer;
-     * `byUser` ist falsch, wenn die Uhr nach der Wartezeit selbst übernommen hat.
+     * Decision on a detection. `finalReps` is empty when “rejected”;
+     * `byUser` is false when the watch accepted it itself after the wait time.
      */
     fun reviewed(id: String, target: Target, detectedReps: Int, finalReps: Int?, byUser: Boolean, adjustments: Int): JSONObject {
         val decision = when {
@@ -71,9 +71,9 @@ object SetDetectionLog {
     }
 
     /**
-     * Die Frage hat sich erledigt, bevor der Nutzer auf der Uhr entschieden hat:
-     * Der Satz wurde am Handy abgehakt oder übersprungen, oder die Übung
-     * wechselte. Keine Zahl — die gilt am Handy.
+     * The question was resolved before the user decided on the watch: the set
+     * was checked off or skipped on the phone, or the exercise changed.
+     * No count — the phone's count applies.
      */
     fun superseded(id: String, target: Target, detectedReps: Int, adjustments: Int): JSONObject = base(REVIEWED, target)
         .put("detectionId", id)
@@ -85,7 +85,7 @@ object SetDetectionLog {
         .put("wasCorrected", false)
         .put("adjustments", adjustments)
 
-    /** Satz abgehakt ohne Erkennung; `state` und `provisionalReps` vom Detektor in diesem Moment. */
+    /** Set checked off without detection; `state` and `provisionalReps` from the detector at that moment. */
     fun closed(target: Target, state: String?, provisionalReps: Int, profile: String?): JSONObject = base(CLOSED, target)
         .put("detectorState", state ?: JSONObject.NULL)
         .put("provisionalReps", provisionalReps)
@@ -100,22 +100,22 @@ object SetDetectionLog {
         .put("exerciseIndex", target.exerciseIndex)
         .put("setId", target.setId)
 
-    /** Eine Erkennung mit ihrer Entscheidung, wie sie der Export als Zeile schreibt. */
+    /** One detection with its decision, as the export writes it as a row. */
     class Entry(
-        /** Sensorzeit der Erkennung bzw. des Abhakens ohne Erkennung. */
+        /** Sensor time of the detection, or of the check-off without detection. */
         val atNanos: Long,
         val detected: JSONObject?,
         val reviewedAtNanos: Long?,
         val reviewed: JSONObject?,
         val closed: JSONObject? = null,
     ) {
-        /** Zuordnung zum Satz: aus der Erkennung, sonst aus Entscheidung oder Abhaken. */
+        /** Link to the set: from the detection, otherwise from the decision or check-off. */
         val target: JSONObject get() = detected ?: reviewed ?: closed!!
     }
 
     /**
-     * Fasst die Ereignisse einer Datei zusammen: je Erkennung eine Zeile,
-     * dazu jeder ohne Erkennung abgehakte Satz. Reihenfolge wie in der Datei.
+     * Summarizes a file's events: one row per detection, plus every set checked
+     * off without detection. Same order as in the file.
      */
     fun entries(events: List<Pair<Long, JSONObject>>): List<Entry> {
         val result = mutableListOf<Entry>()

@@ -14,6 +14,7 @@ import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.health.connect.client.units.Length
 import androidx.health.connect.client.units.Velocity
+import com.runback.core.Lang
 import kotlinx.coroutines.CancellationException
 import org.json.JSONArray
 import org.json.JSONObject
@@ -35,12 +36,12 @@ class HealthConnectIntegration(private val context: Context) {
         val sdk = HealthConnectClient.getSdkStatus(context)
         if (sdk != HealthConnectClient.SDK_AVAILABLE) return@safely result(
             if (sdk == HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED) "provider_update_required" else "unavailable",
-            "Health Connect muss auf diesem Telefon installiert oder aktualisiert werden.")
+            Lang.tr("Health Connect muss auf diesem Telefon installiert oder aktualisiert werden.", "Health Connect must be installed or updated on this phone."))
         val granted = client().permissionController.getGrantedPermissions()
         JSONObject().put("status", if (granted.contains(HealthPermission.getReadPermission(ExerciseSessionRecord::class))) "connected" else "permission_required")
             .put("granted", JSONArray(granted.toList())).put("readTypes", JSONArray(readTypes.map { type ->
                 JSONObject().put("type", type.simpleName).put("granted", granted.contains(HealthPermission.getReadPermission(type)))
-            })).put("routeAccess", "Fremde Routen benötigen eine ausdrückliche Freigabe im Vordergrund.")
+            })).put("routeAccess", Lang.tr("Fremde Routen benötigen eine ausdrückliche Freigabe im Vordergrund.", "Other routes need explicit permission while the app is in the foreground."))
     }
 
     fun permissionIntent(write: Boolean = false, route: Boolean = false): Intent {
@@ -59,7 +60,7 @@ class HealthConnectIntegration(private val context: Context) {
         val health = client()
         val granted = health.permissionController.getGrantedPermissions()
         if (!granted.contains(HealthPermission.getReadPermission(ExerciseSessionRecord::class))) {
-            return@safely result("permission_required", "Bitte Trainingsdaten in Health Connect freigeben.")
+            return@safely result("permission_required", Lang.tr("Bitte Trainingsdaten in Health Connect freigeben.", "Allow training data in Health Connect."))
         }
         val end = Instant.now()
         // Default HC access does not include data older than 30 days before first grant.
@@ -100,7 +101,7 @@ class HealthConnectIntegration(private val context: Context) {
             var cadenceSum = 0.0; var cadenceCount = 0
             fun addSample(time: Instant, kind: String, values: JSONObject, meta: Metadata) {
                 if (time < session.startTime || time >= session.endTime) return
-                check(raw.length() < MAX_SAMPLES) { "Die Sitzung überschreitet das sichere Importlimit." }
+                check(raw.length() < MAX_SAMPLES) { Lang.tr("Die Sitzung überschreitet das sichere Importlimit.", "The session exceeds the safe import limit.") }
                 raw.put(sample(time, kind, values).put("source", meta.dataOrigin.packageName)
                     .put("recordId", meta.id).put("sourceVersion", meta.lastModifiedTime.toString()))
             }
@@ -165,14 +166,14 @@ class HealthConnectIntegration(private val context: Context) {
     }
 
     suspend fun exportRun(run: JSONObject, samples: JSONArray, includeRoute: Boolean): JSONObject = safely {
-        if (run.optString("source").startsWith("health_connect")) return@safely result("excluded", "Importierte Health-Connect-Läufe werden nicht zurückgeschrieben.")
-        if (run.optString("status") != "completed") return@safely result("not_completed", "Nur abgeschlossene Läufe können geteilt werden.")
+        if (run.optString("source").startsWith("health_connect")) return@safely result("excluded", Lang.tr("Importierte Health-Connect-Läufe werden nicht zurückgeschrieben.", "Imported Health Connect runs are not written back."))
+        if (run.optString("status") != "completed") return@safely result("not_completed", Lang.tr("Nur abgeschlossene Läufe können geteilt werden.", "Only completed runs can be shared."))
         val health = client()
         val granted = health.permissionController.getGrantedPermissions()
-        if (!granted.contains(HealthPermission.getWritePermission(ExerciseSessionRecord::class))) return@safely result("permission_required", "Schreibfreigabe für Training fehlt.")
-        if (includeRoute && !granted.contains(HealthPermission.PERMISSION_WRITE_EXERCISE_ROUTE)) return@safely result("route_permission_required", "Route zuerst ausdrücklich freigeben.")
+        if (!granted.contains(HealthPermission.getWritePermission(ExerciseSessionRecord::class))) return@safely result("permission_required", Lang.tr("Schreibfreigabe für Training fehlt.", "Write permission for training is missing."))
+        if (includeRoute && !granted.contains(HealthPermission.PERMISSION_WRITE_EXERCISE_ROUTE)) return@safely result("route_permission_required", Lang.tr("Route zuerst ausdrücklich freigeben.", "Allow the route explicitly first."))
         val start = Instant.ofEpochMilli(run.getLong("startTime")); val end = Instant.ofEpochMilli(run.getLong("endTime"))
-        require(end > start) { "Ungültige Laufzeit" }
+        require(end > start) { Lang.tr("Ungültige Laufzeit", "Invalid run time") }
         val id = run.getString("id")
         // Stable IDs prevent duplicate insertion on retry; a fixed version avoids silently rewriting prior exports.
         fun metadata(kind: String) = Metadata.activelyRecorded(Device(type = if (run.optString("source").contains("wear")) Device.TYPE_WATCH else Device.TYPE_PHONE), "runback:$id:$kind", 1)
@@ -214,11 +215,11 @@ class HealthConnectIntegration(private val context: Context) {
         }
         health.insertRecords(records)
         JSONObject().put("status", "exported").put("recordCount", records.size).put("routeIncluded", route != null)
-            .put("message", "Lokal an Health Connect übergeben. Andere Apps können eigene Cloud-Synchronisierung verwenden.")
+            .put("message", Lang.tr("Lokal an Health Connect übergeben. Andere Apps können eigene Cloud-Synchronisierung verwenden.", "Handed to Health Connect on this device. Other apps may use their own cloud sync."))
     }
 
     private fun client(): HealthConnectClient {
-        check(HealthConnectClient.getSdkStatus(context) == HealthConnectClient.SDK_AVAILABLE) { "Health Connect ist nicht verfügbar." }
+        check(HealthConnectClient.getSdkStatus(context) == HealthConnectClient.SDK_AVAILABLE) { Lang.tr("Health Connect ist nicht verfügbar.", "Health Connect is not available.") }
         return HealthConnectClient.getOrCreate(context)
     }
 
@@ -229,7 +230,7 @@ class HealthConnectIntegration(private val context: Context) {
             val page = health.readRecords(ReadRecordsRequest(type, TimeRangeFilter.between(start, end),
                 dataOriginFilter = origins, pageSize = 500, pageToken = token))
             records.addAll(page.records)
-            check(records.size <= 10000) { "Importlimit erreicht. Bitte einen kürzeren Zeitraum wählen." }
+            check(records.size <= 10000) { Lang.tr("Importlimit erreicht. Bitte einen kürzeren Zeitraum wählen.", "Import limit reached. Choose a shorter time range.") }
             token = page.pageToken
         } while (token != null)
         return records.distinctBy { it.metadata.id }
@@ -246,8 +247,8 @@ class HealthConnectIntegration(private val context: Context) {
     private fun result(status: String, message: String) = JSONObject().put("status", status).put("message", message)
     private suspend fun safely(block: suspend () -> JSONObject): JSONObject = try { block() }
         catch (e: CancellationException) { throw e }
-        catch (e: SecurityException) { result("permission_required", "Health-Connect-Freigabe fehlt oder wurde widerrufen.") }
-        catch (e: Exception) { result("unavailable", e.message ?: "Health Connect ist gerade nicht verfügbar.") }
+        catch (e: SecurityException) { result("permission_required", Lang.tr("Health-Connect-Freigabe fehlt oder wurde widerrufen.", "Health Connect permission is missing or was revoked.")) }
+        catch (e: Exception) { result("unavailable", e.message ?: Lang.tr("Health Connect ist gerade nicht verfügbar.", "Health Connect is not available right now.")) }
 
     companion object { private const val MAX_SAMPLES = 200000 }
 }

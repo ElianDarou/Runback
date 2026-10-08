@@ -147,9 +147,9 @@ def prepare_release(assets, metadata, sha, current_id, output):
         for name in sorted(assets) if name.endswith(".apk") or name == "BUILD-METADATA.json"
     ).encode()
     assets["RELEASE-NOTES.md"] += (
-        f"\nFür Main-Commit `{sha}` aus dem erfolgreichen PR-Lauf `{metadata['ciRun']}` übernommen. "
-        f"Der vollständige Repository-Inhalt ist identisch (`{metadata['tree']}`). "
-        "APKs und ihre Versionsnummer bleiben unverändert.\n"
+        f"\nTaken over for main commit `{sha}` from the successful PR run `{metadata['ciRun']}`. "
+        f"The full repository content is identical (`{metadata['tree']}`). "
+        "The APKs and their version number are unchanged.\n"
     ).encode()
     output.mkdir()
     for name, data in assets.items():

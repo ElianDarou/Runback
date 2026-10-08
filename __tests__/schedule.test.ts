@@ -6,6 +6,8 @@ import {
   moveSession,
   normalizeSchedule,
   proposeMove,
+  scheduleTitle,
+  storedScheduleTitle,
   serializeSchedule,
   startOfWeek,
   suggestWeek,
@@ -13,6 +15,7 @@ import {
   type ScheduleState,
   type ScheduledSession,
 } from '../src/domain/schedule';
+import { setLanguage } from '../src/domain/i18n';
 
 const TODAY = '2025-03-10';
 
@@ -40,22 +43,22 @@ const state = (overrides: Partial<ScheduleState> = {}): ScheduleState => ({
   ...overrides,
 });
 
-describe('Lokale Kalenderdaten', () => {
-  it('arbeitet mit Kalender- statt Millisekunden-Tagen', () => {
+describe('Local calendar data', () => {
+  it('works with calendar days instead of millisecond days', () => {
     expect(addCalendarDays('2024-03-30', 1)).toBe('2024-03-31');
     expect(addCalendarDays('2024-03-30', 2)).toBe('2024-04-01');
     expect(addCalendarDays('2024-10-26', 2)).toBe('2024-10-28');
     expect(startOfWeek('2025-03-16')).toBe('2025-03-10');
   });
 
-  it('formatiert einen lokalen Date-Wert ohne UTC-Verschiebung', () => {
+  it('formats a local date value without a UTC shift', () => {
     const local = new Date(2025, 2, 10, 23, 59, 59);
     expect(localDateKey(local)).toBe('2025-03-10');
   });
 });
 
-describe('Schedule-Normalisierung und Offline-Roundtrip', () => {
-  it('entfernt ungültige Einträge, dedupliziert IDs und behält Links', () => {
+describe('Schedule normalization and offline round trip', () => {
+  it('removes invalid entries, deduplicates ids and keeps links', () => {
     const raw = {
       version: 99,
       routine: { days: [6, 0, 0, 8, -1], minutes: 45 },
@@ -74,15 +77,15 @@ describe('Schedule-Normalisierung und Offline-Roundtrip', () => {
     expect(normalized.availability).toEqual({ '2025-03-11': 20 });
   });
 
-  it('serialisiert deterministisch als lokale, rein optionale Kalenderdaten', () => {
+  it('serializes deterministically as local, purely optional calendar data', () => {
     const original = state({ sessions: [session('r', '2025-03-11')] });
     const restored = normalizeSchedule(JSON.parse(serializeSchedule(original)));
     expect(restored).toEqual(original);
   });
 });
 
-describe('Wochenvorschlag', () => {
-  it('liefert eine Vorschau und verändert den gespeicherten Zustand nicht', () => {
+describe('Week suggestion', () => {
+  it('returns a preview and does not change the saved state', () => {
     const original = state();
     const suggestion = suggestWeek(original, TODAY, { today: TODAY });
     expect(suggestion.weekStart).toBe(TODAY);
@@ -95,7 +98,7 @@ describe('Wochenvorschlag', () => {
     expect(original.sessions).toEqual([]);
   });
 
-  it('verschiebt bei einem un verfügbaren Tag innerhalb der Woche und erzeugt keine Dublette', () => {
+  it('moves a session off an unavailable day within the week and creates no duplicate', () => {
     const original = state({ availability: { '2025-03-12': 0 } });
     const first = suggestWeek(original, TODAY, { today: TODAY });
     const second = suggestWeek(original, TODAY, { today: TODAY });
@@ -110,7 +113,7 @@ describe('Wochenvorschlag', () => {
     expect(first.suggestions[0].date).toBe('2025-03-11');
   });
 
-  it('respektiert eine übersprungene Ausnahme und holt sie nicht automatisch nach', () => {
+  it('respects a skipped exception and does not catch it up automatically', () => {
     const original = state({
       sessions: [session('skip-wed', '2025-03-12', { status: 'skipped' })],
     });
@@ -121,7 +124,7 @@ describe('Wochenvorschlag', () => {
     expect(suggestion.addedSessions).toHaveLength(2);
   });
 
-  it('wird erst durch eine explizite Anwendung persistierbar und bleibt idempotent', () => {
+  it('becomes persistent only through an explicit apply and stays idempotent', () => {
     const preview = suggestWeek(state(), TODAY, { today: TODAY });
     const applied = applyWeekSuggestion(state(), preview, { today: TODAY });
     const twice = applyWeekSuggestion(applied, preview, { today: TODAY });
@@ -247,8 +250,8 @@ describe('Wochenvorschlag', () => {
   });
 });
 
-describe('Verschieben und Konflikte', () => {
-  it('meldet einen festen Zieltermin und schlägt keinen stillen Umzug vor', () => {
+describe('Moving and conflicts', () => {
+  it('reports a fixed target date and suggests no silent move', () => {
     const current = state({
       sessions: [
         session('move', '2025-03-11'),
@@ -263,7 +266,7 @@ describe('Verschieben und Konflikte', () => {
     );
   });
 
-  it('erkennt harte Einheiten über die Wochen-Grenze hinweg', () => {
+  it('detects hard sessions across the week boundary', () => {
     const current = state({
       sessions: [
         session('sunday-hard', '2025-03-16', { effort: 'hard' }),
@@ -275,7 +278,7 @@ describe('Verschieben und Konflikte', () => {
     expect(proposal.suggestions.some(item => item.date === '2025-03-18')).toBe(true);
   });
 
-  it('verschiebt einen erlaubten Termin nur nach ausdrücklicher Anwendung', () => {
+  it('moves an allowed date only after explicit application', () => {
     const current = state({ sessions: [session('move', '2025-03-11')] });
     const moved = moveSession(current, 'move', '2025-03-13', { today: TODAY });
     expect(moved.sessions.find(item => item.id === 'move')?.date).toBe('2025-03-13');
@@ -283,8 +286,8 @@ describe('Verschieben und Konflikte', () => {
   });
 });
 
-describe('Sichere Änderungen', () => {
-  it('hält vergangene Einheiten unveränderlich', () => {
+describe('Safe changes', () => {
+  it('keeps past sessions unchanged', () => {
     const current = state({ sessions: [session('past', '2025-03-09')] });
     expect(updateSession(current, 'past', { title: 'Geändert' }, { today: TODAY })).toBe(
       current,
@@ -292,12 +295,38 @@ describe('Sichere Änderungen', () => {
     expect(cancelSession(current, 'past', { today: TODAY })).toBe(current);
   });
 
-  it('markiert eine zukünftige Absage, ohne eine Nachhol-Einheit anzulegen', () => {
+  it('marks a future cancellation without creating a make-up session', () => {
     const current = state({ sessions: [session('future', '2025-03-12')] });
     const cancelled = cancelSession(current, 'future', { today: TODAY });
     expect(cancelled.sessions).toEqual([
       expect.objectContaining({ id: 'future', status: 'skipped' }),
     ]);
     expect(cancelled.sessions).toHaveLength(1);
+  });
+});
+
+describe('schedule titles', () => {
+  afterEach(() => setLanguage('de'));
+
+  it('shows the localized default for the German stored defaults', () => {
+    expect(scheduleTitle({ title: 'Krafttraining' })).toBe('Krafttraining');
+    expect(scheduleTitle({ title: 'Lauf' })).toBe('Lauf');
+    setLanguage('en');
+    expect(scheduleTitle({ title: 'Krafttraining' })).toBe('Strength training');
+    expect(scheduleTitle({ title: 'Lauf' })).toBe('Run');
+  });
+
+  it('shows titles the user typed as they are', () => {
+    setLanguage('en');
+    expect(scheduleTitle({ title: 'Morning hills' })).toBe('Morning hills');
+    expect(scheduleTitle({ title: 'Morgenlauf' })).toBe('Morgenlauf');
+  });
+
+  it('stores a localized default back as the German value', () => {
+    expect(storedScheduleTitle('Krafttraining')).toBe('Krafttraining');
+    setLanguage('en');
+    expect(storedScheduleTitle('Strength training')).toBe('Krafttraining');
+    expect(storedScheduleTitle('Run')).toBe('Lauf');
+    expect(storedScheduleTitle('Morning hills')).toBe('Morning hills');
   });
 });

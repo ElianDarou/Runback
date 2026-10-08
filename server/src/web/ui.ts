@@ -1,33 +1,49 @@
 import { html, join, raw, type Child, type Html } from './html';
+import type { Translator } from './i18n';
 
 /**
- * Bausteine der Website mit denselben Namen und Regeln wie in
- * `src/ui/components.tsx`: ein Titel je Seite, eine Aussage je Fläche,
- * Nebenwege eingeklappt. Interaktion ohne JavaScript: Auswahl ist ein Link,
- * Aktionen sind Formulare.
+ * Building blocks of the website with the same names and rules as in
+ * `src/ui/components.tsx`: one title per page, one statement per area,
+ * secondary paths collapsed. Interaction works without JavaScript: selection
+ * is a link, actions are forms.
  */
 
-export type TabName = 'Plan' | 'Verlauf' | 'Statistik' | 'Coach' | 'Daten';
-export const TABS: { name: TabName; href: string }[] = [
-  { name: 'Verlauf', href: '/verlauf' },
-  { name: 'Statistik', href: '/statistik' },
-  { name: 'Plan', href: '/plan' },
-  { name: 'Coach', href: '/coach' },
-  { name: 'Daten', href: '/daten' },
+export type TabId = 'plan' | 'history' | 'statistics' | 'coach' | 'data';
+const TABS: { id: TabId; href: string }[] = [
+  { id: 'history', href: '/history' },
+  { id: 'statistics', href: '/statistics' },
+  { id: 'plan', href: '/plan' },
+  { id: 'coach', href: '/coach' },
+  { id: 'data', href: '/data' },
 ];
+
+export const tabName = (tx: Translator, id: TabId): string => {
+  switch (id) {
+    case 'history':
+      return tx.t('Verlauf', 'History');
+    case 'statistics':
+      return tx.t('Statistik', 'Statistics');
+    case 'plan':
+      return tx.t('Plan', 'Plan');
+    case 'coach':
+      return tx.t('Coach', 'Coach');
+    case 'data':
+      return tx.t('Daten', 'Data');
+  }
+};
 
 export interface PageOptions {
   title: string;
-  tab?: TabName;
-  /** Steht rechts im Kopf: wann das Telefon zuletzt übertragen hat. */
+  tab?: TabId;
+  /** Shown at the top right: when the phone last transferred. */
   status?: { label: string; stale: boolean } | null;
   narrow?: boolean;
 }
 
-export function page(options: PageOptions, body: Child): Html {
+export function page(tx: Translator, options: PageOptions, body: Child): Html {
   const status = options.status;
   return html`<!doctype html>
-<html lang="de">
+<html lang="${tx.lang}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -40,17 +56,19 @@ export function page(options: PageOptions, body: Child): Html {
 <body>
 <header class="header">
   <div class="header-inner">
-    <a class="brand" href="/verlauf">runback<span class="brand-mark"> /</span></a>
+    <a class="brand" href="${tx.link(
+      '/history',
+    )}">runback<span class="brand-mark"> /</span></a>
     ${
       options.tab
-        ? html`<nav class="tabs" aria-label="Bereiche">
+        ? html`<nav class="tabs" aria-label="${tx.t('Bereiche', 'Areas')}">
             ${TABS.map(
               tab =>
                 html`<a
                   class="tab"
-                  href="${tab.href}"
-                  ${raw(tab.name === options.tab ? ' aria-current="page"' : '')}
-                  >${tab.name}</a
+                  href="${tx.link(tab.href)}"
+                  ${raw(tab.id === options.tab ? ' aria-current="page"' : '')}
+                  >${tabName(tx, tab.id)}</a
                 >`,
             )}
           </nav>`
@@ -284,14 +302,15 @@ export function table(
   </div>`;
 }
 
-/** Formular mit CSRF-Feld. Aktionen der Website sind immer POST. */
+/** Form with the CSRF field. Website actions are always POST. */
 export const form = (
+  tx: Translator,
   action: string,
   csrf: string,
   body: Child,
   className = 'form',
 ) =>
-  html`<form class="${className}" method="post" action="${action}">
+  html`<form class="${className}" method="post" action="${tx.link(action)}">
     <input type="hidden" name="csrf" value="${csrf}" />${body}
   </form>`;
 

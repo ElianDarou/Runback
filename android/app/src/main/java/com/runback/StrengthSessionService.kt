@@ -25,6 +25,8 @@ import android.os.Vibrator
 import android.util.Log
 import com.google.android.gms.tasks.Tasks
 import com.google.android.gms.wearable.Wearable
+import com.runback.core.DisplayNames
+import com.runback.core.Lang
 import com.runback.core.RestCue
 import com.runback.core.RunStore
 import com.runback.core.StrengthLive
@@ -34,10 +36,10 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /**
- * Läuft, solange eine Krafteinheit aktiv ist: hält die Benachrichtigung mit
- * „Satz abhaken“, „Anhalten“ und „Überspringen“ und weckt das Handy zum
- * Pausenende. Dann vibriert die Uhr, wenn sie die Einheit zeigt und verbunden
- * ist, sonst das Handy; ein Ton kommt nur vom Handy (Einstellungen).
+ * Runs while a strength session is active: keeps the notification with
+ * "Mark set done", "Pause" and "Skip", and wakes the phone when the rest ends.
+ * Then the watch vibrates if it shows the session and is connected, otherwise
+ * the phone; a sound only comes from the phone (settings).
  */
 class StrengthSessionService : Service() {
     private lateinit var thread: HandlerThread
@@ -55,8 +57,8 @@ class StrengthSessionService : Service() {
         thread = HandlerThread("RunbackStrength").also { it.start() }
         worker = Handler(thread.looper)
         getSystemService(NotificationManager::class.java).createNotificationChannel(
-            NotificationChannel(CHANNEL, "Krafttraining", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "Laufende Einheit mit Satz und Pause"
+            NotificationChannel(CHANNEL, Lang.tr("Krafttraining", "Strength training"), NotificationManager.IMPORTANCE_LOW).apply {
+                description = Lang.tr("Laufende Einheit mit Satz und Pause", "Active session with sets and rest")
                 setShowBadge(false)
             },
         )
@@ -68,16 +70,16 @@ class StrengthSessionService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // Die Frist für startForeground gilt auch, wenn die Einheit inzwischen fehlt.
+        // The startForeground deadline applies even if the session is gone by now.
         if (!foreground) {
             try {
                 val notification = Notification.Builder(this, CHANNEL)
-                    .setSmallIcon(R.drawable.ic_runback).setContentTitle("Krafttraining").setOngoing(true).build()
+                    .setSmallIcon(R.drawable.ic_runback).setContentTitle(Lang.tr("Krafttraining", "Strength training")).setOngoing(true).build()
                 if (Build.VERSION.SDK_INT >= 34) startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH)
                 else startForeground(NOTIFICATION_ID, notification)
                 foreground = true
             } catch (error: RuntimeException) {
-                Log.e(TAG, "Trainingsbenachrichtigung konnte nicht starten", error)
+                Log.e(TAG, "Could not start the session notification", error)
                 stopSelf(startId)
                 return START_NOT_STICKY
             }
@@ -99,12 +101,12 @@ class StrengthSessionService : Service() {
     }
 
     /**
-     * Hält das Handy bis zum Pausenende wach; sonst schläft der Handler mit der
-     * CPU ein. Das Ende kommt aus der gespeicherten Einheit, nicht aus der
-     * Anzeige: Startet der Dienst kurz nach dem Ende neu, kommt das Signal noch.
+     * Keeps the phone awake until the rest ends; otherwise the handler sleeps
+     * with the CPU. The end comes from the stored session, not from the display:
+     * if the service restarts shortly after the end, the signal still arrives.
      */
     private fun schedule(session: JSONObject, now: Long) {
-        // Schon gemeldet: nicht erneut einplanen, sonst kreist der Rückruf bis zum Ende des Nachlaufs.
+        // Already reported: do not schedule again, or the callback loops until the end of the grace period.
         val endsAt = (if (StrengthWorkout.alerts(store).restTimer) StrengthLive.restEndsAt(session) else null)
             ?.takeIf { store.getDocument(ALERTED)?.optString("key") != "${session.optString("id")}:$it" }
         if (endsAt == scheduledRestEnd) return
@@ -125,7 +127,7 @@ class StrengthSessionService : Service() {
         scheduledRestEnd = null
         try {
             val session = store.getDocument(ACTIVE) ?: return
-            // Inzwischen angehalten, übersprungen oder ein neuer Satz: kein Signal für diese Pause.
+            // Paused, skipped, or a new set by now: no signal for this rest.
             if (endsAt == null || StrengthLive.restEndsAt(session) != endsAt) return
             val key = "${session.optString("id")}:$endsAt"
             if (store.getDocument(ALERTED)?.optString("key") == key) return
@@ -133,10 +135,10 @@ class StrengthSessionService : Service() {
             alert(session.optString("id"))
             StrengthWorkout.republish(this)
         } catch (error: Exception) {
-            Log.w(TAG, "Pausenende konnte nicht gemeldet werden", error)
+            Log.w(TAG, "Could not report the rest end", error)
         } finally {
             update()
-            // Kurz wach bleiben, bis Ton und Vibration angestoßen sind.
+            // Stay awake briefly until sound and vibration are triggered.
             if (scheduledRestEnd == null) wakeLock?.acquire(3_000L)
         }
     }
@@ -148,7 +150,7 @@ class StrengthSessionService : Service() {
         if (settings.vibration && !alertWatch(sessionId)) vibrate()
     }
 
-    /** Vibriert auf der Uhr, wenn sie diese Einheit zeigt und verbunden ist. */
+    /** Vibrates the watch if it shows this session and is connected. */
     private fun alertWatch(sessionId: String): Boolean {
         val node = StrengthWorkout.watchNode(store, sessionId) ?: return false
         return runCatching {
@@ -163,12 +165,12 @@ class StrengthSessionService : Service() {
     private fun vibrate() {
         val vibrator = getSystemService(Vibrator::class.java) ?: return
         val effect = VibrationEffect.createWaveform(RestCue.VIBRATION, -1)
-        // Wecker-Kategorie: Android lässt sie auch aus dem Hintergrund vibrieren.
+        // Alarm category: Android lets it vibrate even from the background.
         if (Build.VERSION.SDK_INT >= 33) vibrator.vibrate(effect, VibrationAttributes.createForUsage(VibrationAttributes.USAGE_ALARM))
         else @Suppress("DEPRECATION") vibrator.vibrate(effect, AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build())
     }
 
-    /** Medienlautstärke, damit der Ton auch im Kopfhörer kommt; Musik wird kurz leiser. */
+    /** Media volume, so the sound also plays through headphones; music ducks briefly. */
     private fun alertSound() {
         val rate = 44_100
         val pcm = RestCue.pcm(rate)
@@ -194,7 +196,7 @@ class StrengthSessionService : Service() {
             }, RestCue.DURATION_MS + 300L)
         }.onFailure {
             audio?.abandonAudioFocusRequest(focus)
-            Log.w(TAG, "Ton am Pausenende fehlgeschlagen", it)
+            Log.w(TAG, "Sound at the rest end failed", it)
         }
     }
 
@@ -203,11 +205,14 @@ class StrengthSessionService : Service() {
         val set = mirror.optJSONObject("set")
         val rest = mirror.optJSONObject("rest")
         val sessionId = mirror.optString("sessionId")
-        val title = exercise?.optString("name")?.takeIf { it.isNotBlank() } ?: mirror.optString("name", "Krafttraining")
+        val title = exercise?.optString("name")?.takeIf { it.isNotBlank() }?.let { DisplayNames.exercise(it) }
+            ?: DisplayNames.session(mirror.optString("name", "Krafttraining"))
         val text = when {
-            set != null -> "Satz ${set.optInt("number")} von ${exercise?.optInt("total")} · ${set.optString("label")}"
-            exercise?.optBoolean("done") == true -> "Alle Sätze erledigt"
-            else -> "${mirror.optInt("completedSets")} von ${mirror.optInt("totalSets")} Sätzen"
+            set != null -> Lang.tr("Satz ${set.optInt("number")} von ${exercise?.optInt("total")} · ${set.optString("label")}",
+                "Set ${set.optInt("number")} of ${exercise?.optInt("total")} · ${set.optString("label")}")
+            exercise?.optBoolean("done") == true -> Lang.tr("Alle Sätze erledigt", "All sets done")
+            else -> Lang.tr("${mirror.optInt("completedSets")} von ${mirror.optInt("totalSets")} Sätzen",
+                "${mirror.optInt("completedSets")} of ${mirror.optInt("totalSets")} sets")
         }
         val open = packageManager.getLaunchIntentForPackage(packageName)?.let {
             PendingIntent.getActivity(this, 0, it, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
@@ -226,23 +231,23 @@ class StrengthSessionService : Service() {
         if (rest != null) {
             val paused = rest.optBoolean("paused")
             val remaining = rest.optLong("remaining")
-            builder.setSubText(if (paused) "Pause angehalten · ${clock(remaining)}" else "Pause")
+            builder.setSubText(if (paused) Lang.tr("Pause angehalten · ${clock(remaining)}", "Rest paused · ${clock(remaining)}") else Lang.tr("Pause", "Rest"))
             if (!paused && rest.has("endsAt")) {
                 builder.setWhen(rest.optLong("endsAt")).setShowWhen(true).setUsesChronometer(true).setChronometerCountDown(true)
             } else builder.setShowWhen(false)
         } else {
             builder.setWhen(mirror.optLong("startTime")).setShowWhen(true).setUsesChronometer(true)
         }
-        if (set != null) builder.addAction(action("Satz abhaken", 1, JSONObject()
+        if (set != null) builder.addAction(action(Lang.tr("Satz abhaken", "Mark set done"), 1, JSONObject()
             .put("action", StrengthLive.COMPLETE_SET).put("sessionId", sessionId)
             .put("exerciseIndex", exercise?.optInt("index") ?: 0).put("setId", set.optString("id"))))
         if (rest != null) {
             val paused = rest.optBoolean("paused")
             val startedAt = rest.optLong("startedAt")
-            builder.addAction(action(if (paused) "Weiter" else "Anhalten", 2, JSONObject()
+            builder.addAction(action(if (paused) Lang.tr("Weiter", "Resume") else Lang.tr("Anhalten", "Pause"), 2, JSONObject()
                 .put("action", if (paused) StrengthLive.RESUME_REST else StrengthLive.PAUSE_REST)
                 .put("sessionId", sessionId).put("restStartedAt", startedAt)))
-            builder.addAction(action("Überspringen", 3, JSONObject()
+            builder.addAction(action(Lang.tr("Überspringen", "Skip"), 3, JSONObject()
                 .put("action", StrengthLive.SKIP_REST).put("sessionId", sessionId).put("restStartedAt", startedAt)))
         }
         return builder.build()
@@ -279,9 +284,9 @@ class StrengthSessionService : Service() {
         private const val CHANNEL = "runback_strength"
         private const val NOTIFICATION_ID = 4410
         private const val ACTIVE = "strength_active"
-        /** Letzte gemeldete Pause; verhindert ein zweites Signal nach einem Neustart des Dienstes. */
+        /** Last reported rest; prevents a second signal after the service restarts. */
         private const val ALERTED = "strength_rest_alerted"
-        /** Bis so lange nach dem Pausenende kommt das Signal nach einem Neustart noch; später wäre es irreführend. */
+        /** After a restart the signal still arrives up to this long after the rest ends; later it would be misleading. */
         private const val LATE_ALERT_MS = 30_000L
         const val ACTION_COMMAND = "com.runback.strength.COMMAND"
         const val EXTRA_COMMAND = "command"
@@ -289,19 +294,19 @@ class StrengthSessionService : Service() {
 
         private fun clock(seconds: Long) = "%d:%02d".format(seconds / 60, seconds % 60)
 
-        /** Benachrichtigung und Pausenwecker folgen dem gespeicherten Stand. */
+        /** Notification and rest alarm follow the stored state. */
         fun refresh(context: Context) {
             instance?.let { service -> service.worker.post { service.update() }; return }
             val active = RunStore(context).getDocument(ACTIVE)?.optString("status") == "active"
             if (!active) return
-            // Aus dem Hintergrund darf Android den Start verweigern; die App holt ihn beim Öffnen nach.
+            // From the background Android may refuse the start; the app catches up when it opens.
             runCatching { context.startForegroundService(Intent(context, StrengthSessionService::class.java)) }
-                .onFailure { Log.w(TAG, "Trainingsbenachrichtigung nicht gestartet", it) }
+                .onFailure { Log.w(TAG, "Session notification did not start", it) }
         }
     }
 }
 
-/** Knöpfe der Trainingsbenachrichtigung am Handy. */
+/** Buttons of the session notification on the phone. */
 class StrengthActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != StrengthSessionService.ACTION_COMMAND) return

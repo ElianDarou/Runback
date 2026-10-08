@@ -20,26 +20,29 @@ import {
 import type { Store } from './db';
 import { openApi } from './openapi';
 import { loadDataset } from './records';
-import { runSql } from './sql';
+import { SqlError, runSql } from './sql';
 import { SyncError, commit, deleteCopy, plan, receive } from './sync';
 import { planPage } from './web/plan';
 import { coachPage } from './web/coach';
 import type { PageContext } from './web/context';
-import {
-  datenPage,
-  loginPage,
-  notFoundPage,
-  type DatenState,
-} from './web/daten';
-import { runPage, strengthPage } from './web/einheit';
+import { dataPage, loginPage, notFoundPage, type DataState } from './web/data';
+import { runPage, strengthPage } from './web/session';
 import type { Html } from './web/html';
-import { statistikPage } from './web/statistik';
+import { historyPage } from './web/history';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { setLanguageSource } from '../../src/domain/i18n';
+import { requestLanguage, translator, type Lang, type Translator } from './web/i18n';
+
+// Domain modules build text in "the" language; on the server that is the
+// language of the request being handled, kept apart per async context.
+const requestLang = new AsyncLocalStorage<Lang>();
+setLanguageSource(() => requestLang.getStore());
+import { statisticsPage } from './web/statistics';
 import { STYLESHEET } from './web/style';
-import { verlaufPage } from './web/verlauf';
 
 export interface AppConfig {
   version: string;
-  /** Hinter einem Reverse Proxy: X-Forwarded-For/-Proto vertrauen. */
+  /** Behind a reverse proxy: trust X-Forwarded-For and X-Forwarded-Proto. */
   trustProxy: boolean;
   now?: () => number;
 }
@@ -49,6 +52,44 @@ const SMALL_BODY = 1024 * 1024;
 const SYNC_BODY = 48 * 1024 * 1024;
 
 const FAVICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#101210"/><path d="M11 24 21 8" stroke="#A5D879" stroke-width="4" stroke-linecap="round"/></svg>`;
+
+/**
+ * Website paths that used to be German. Old links and forms keep working:
+ * GET requests are redirected to the new path, POST requests are routed to it.
+ */
+const RENAMED_PATHS: [legacy: string, current: string][] = [
+  ['/verlauf', '/history'],
+  ['/statistik', '/statistics'],
+  ['/daten', '/data'],
+  ['/anmelden', '/sign-in'],
+  ['/abmelden', '/sign-out'],
+  ['/lauf', '/run'],
+  ['/kraft', '/strength'],
+];
+/** Segments of the data page's actions that were German. */
+const RENAMED_ACTIONS: Record<string, string> = {
+  kopplung: 'pairing',
+  passwort: 'password',
+  loeschen: 'delete',
+  geraet: 'device',
+  trennen: 'disconnect',
+};
+
+export function canonicalPath(pathname: string): string {
+  for (const [legacy, current] of RENAMED_PATHS) {
+    if (pathname !== legacy && !pathname.startsWith(`${legacy}/`)) continue;
+    const rest = pathname.slice(legacy.length);
+    if (current !== '/data') return current + rest;
+    return (
+      current +
+      rest
+        .split('/')
+        .map(segment => RENAMED_ACTIONS[segment] ?? segment)
+        .join('/')
+    );
+  }
+  return pathname;
+}
 
 class HttpError extends Error {
   constructor(readonly status: number, message: string) {
@@ -81,9 +122,10 @@ function redirect(
   res: ServerResponse,
   location: string,
   cookies: string[] = [],
+  status = 303,
 ) {
   if (cookies.length) res.setHeader('set-cookie', cookies);
-  res.writeHead(303, { location });
+  res.writeHead(status, { location });
   res.end();
 }
 
@@ -92,7 +134,7 @@ async function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
   let size = 0;
   for await (const chunk of req) {
     size += (chunk as Buffer).length;
-    if (size > limit) throw new HttpError(413, 'Die Anfrage ist zu groß.');
+    if (size > limit) throw new HttpError(413, 'The request is too large.');
     chunks.push(chunk as Buffer);
   }
   return Buffer.concat(chunks);
@@ -106,7 +148,7 @@ async function readJson(
   try {
     return JSON.parse(body.toString('utf8') || '{}');
   } catch {
-    throw new HttpError(400, 'Ungültiges JSON.');
+    throw new HttpError(400, 'Invalid JSON.');
   }
 }
 
@@ -128,11 +170,20 @@ function cookies(req: IncomingMessage): Record<string, string> {
   return result;
 }
 
-/** Nur relative Ziele innerhalb der Website; alles andere führt zum Verlauf. */
+/** Only relative targets within the website; anything else goes to history. */
 function safeNext(value: string | null): string {
-  return value && /^\/(?!\/)[^\s\\]*$/.test(value) && !value.startsWith('/api/')
-    ? value
-    : '/verlauf';
+  if (!value || !/^\/(?!\/)[^\s\\]*$/.test(value) || value.startsWith('/api/'))
+    return '/history';
+  const cut = value.search(/[?#]/);
+  if (cut < 0) return canonicalPath(value);
+  return canonicalPath(value.slice(0, cut)) + value.slice(cut);
+}
+
+/** Text for a failed query, in the visitor's language. */
+function sqlMessage(error: unknown, tx: Translator): string {
+  return error instanceof SqlError
+    ? tx.t(error.text.de, error.text.en)
+    : (error as Error).message;
 }
 
 export function createApp(store: Store, config: AppConfig) {
@@ -168,17 +219,18 @@ export function createApp(store: Store, config: AppConfig) {
   }
 
   function need(who: Principal | null, scope: Scope): Principal {
-    if (!who) throw new HttpError(401, 'Anmeldung fehlt oder ist abgelaufen.');
+    if (!who) throw new HttpError(401, 'Sign-in is missing or has expired.');
     if (!who.scopes.includes(scope))
-      throw new HttpError(403, 'Dieser Zugang darf das nicht.');
+      throw new HttpError(403, 'This access may not do that.');
     return who;
   }
 
-  /** Formulare der Website: gleiche Herkunft und passendes CSRF-Feld. */
+  /** Forms on the website: same origin and a matching CSRF field. */
   function checkForm(
     req: IncomingMessage,
     who: Principal,
     form: URLSearchParams,
+    tx: Translator,
   ) {
     const origin = req.headers.origin;
     if (origin && origin !== 'null') {
@@ -189,20 +241,33 @@ export function createApp(store: Store, config: AppConfig) {
         host = '';
       }
       if (host !== req.headers.host)
-        throw new HttpError(403, 'Anfrage von einer fremden Seite.');
+        throw new HttpError(
+          403,
+          tx.t(
+            'Anfrage von einer fremden Seite.',
+            'Request from another site.',
+          ),
+        );
     }
     if (!who.csrf || form.get('csrf') !== who.csrf) {
-      throw new HttpError(403, 'Die Seite war zu lange offen. Lade sie neu.');
+      throw new HttpError(
+        403,
+        tx.t(
+          'Die Seite war zu lange offen. Lade sie neu.',
+          'The page was open too long. Reload it.',
+        ),
+      );
     }
   }
 
-  function context(url: URL, who: Principal): PageContext {
+  function context(url: URL, who: Principal, tx: Translator): PageContext {
     return {
       store,
       data: loadDataset(store),
       now: now(),
       url,
       csrf: who.csrf ?? '',
+      tx,
     };
   }
 
@@ -232,20 +297,18 @@ export function createApp(store: Store, config: AppConfig) {
     if (method === 'POST' && path === '/pair') {
       const ip = clientIp(req);
       if (pairThrottle.blocked(ip, now()))
-        throw new HttpError(
-          429,
-          'Zu viele Versuche. Warte eine Viertelstunde.',
-        );
+        throw new HttpError(429, 'Too many attempts. Wait fifteen minutes.');
       const body = await readJson(req);
       if (body?.protocol !== SERVER_SYNC_PROTOCOL) {
         throw new HttpError(
           409,
-          'App und Server sprechen verschiedene Versionen. Aktualisiere den Server oder die App.',
+          'The app and the server speak different versions. Update the server or the app.',
         );
       }
       const result = redeemPairingCode(
         store,
         String(body?.code ?? ''),
+        // Default device name, stored as given.
         String(body?.deviceName ?? 'Telefon'),
         body.protocol,
         now(),
@@ -254,7 +317,7 @@ export function createApp(store: Store, config: AppConfig) {
         pairThrottle.fail(ip, now());
         throw new HttpError(
           403,
-          'Der Code stimmt nicht oder ist abgelaufen. Erzeuge auf der Website einen neuen.',
+          'The code is wrong or has expired. Create a new one on the website.',
         );
       }
       return sendJson(res, 200, {
@@ -267,7 +330,7 @@ export function createApp(store: Store, config: AppConfig) {
     const who = principal(req);
     if (path.startsWith('/sync/')) {
       const device = need(who, 'ingest');
-      if (method !== 'POST') throw new HttpError(405, 'Nur POST.');
+      if (method !== 'POST') throw new HttpError(405, 'Only POST.');
       const body = await readJson(
         req,
         path === '/sync/objects' ? SYNC_BODY : SYNC_BODY / 2,
@@ -281,12 +344,12 @@ export function createApp(store: Store, config: AppConfig) {
           serverVersion: config.version,
         });
       }
-      throw new HttpError(404, 'Unbekannter Endpunkt.');
+      throw new HttpError(404, 'Unknown endpoint.');
     }
     if (path === '/device' && method === 'DELETE') {
       const device = need(who, 'ingest');
       if (device.kind !== 'device')
-        throw new HttpError(403, 'Nur das Telefon kann sich trennen.');
+        throw new HttpError(403, 'Only the phone can disconnect.');
       if (url.searchParams.get('copy') === 'delete') deleteCopy(store);
       else removeDevice(store, device.id);
       return sendJson(res, 200, { ok: true });
@@ -294,7 +357,7 @@ export function createApp(store: Store, config: AppConfig) {
     if (path === '/sql' && method === 'POST') {
       const caller = need(who, 'read');
       if (caller.kind === 'session')
-        throw new HttpError(403, 'Nutze im Browser die Seite „Daten“.');
+        throw new HttpError(403, 'Use the “Data” page in the browser.');
       const body = await readJson(req);
       try {
         return sendJson(
@@ -306,7 +369,7 @@ export function createApp(store: Store, config: AppConfig) {
         throw new HttpError(400, (error as Error).message);
       }
     }
-    if (method !== 'GET') throw new HttpError(405, 'Nur GET.');
+    if (method !== 'GET') throw new HttpError(405, 'Only GET.');
     need(who, 'read');
     if (path === '/export/runback.sqlite') return exportDatabase(store, res);
     if (path.startsWith('/export/'))
@@ -318,49 +381,57 @@ export function createApp(store: Store, config: AppConfig) {
     req: IncomingMessage,
     res: ServerResponse,
     url: URL,
+    path: string,
     who: Principal,
+    tx: Translator,
   ) {
     const form = await readForm(req);
-    checkForm(req, who, form);
-    const path = url.pathname;
-    const show = (state: DatenState, status = 200) =>
-      sendHtml(res, status, datenPage(context(url, who), state));
-    if (path === '/abmelden') {
+    checkForm(req, who, form, tx);
+    const show = (state: DataState, status = 200) =>
+      sendHtml(res, status, dataPage(context(url, who, tx), state));
+    if (path === '/sign-out') {
       const cookie = cookies(req)[SESSION_COOKIE];
       if (cookie) endSession(store, cookie);
-      return redirect(res, '/anmelden', [sessionCookie(req, '', 0)]);
+      return redirect(res, tx.link('/sign-in'), [sessionCookie(req, '', 0)]);
     }
-    if (path === '/daten/kopplung')
+    if (path === '/data/pairing')
       return show({ pairing: createPairingCode(store, now()) });
-    if (path === '/daten/token') {
-      const name = (form.get('name') ?? '').trim() || 'Lese-Token';
+    if (path === '/data/token') {
+      const name =
+        (form.get('name') ?? '').trim() || tx.t('Lese-Token', 'Read token');
       return show({
         newToken: { name, token: createReadToken(store, name, now()) },
       });
     }
-    let match = /^\/daten\/token\/([^/]+)\/loeschen$/.exec(path);
+    let match = /^\/data\/token\/([^/]+)\/delete$/.exec(path);
     if (match) {
       revokeReadToken(store, decodeURIComponent(match[1]));
       return show({
         message: {
-          title: 'Token widerrufen',
-          body: 'Es funktioniert ab sofort nicht mehr.',
+          title: tx.t('Token widerrufen', 'Token revoked'),
+          body: tx.t(
+            'Es funktioniert ab sofort nicht mehr.',
+            'It stops working right away.',
+          ),
           tone: 'green',
         },
       });
     }
-    match = /^\/daten\/geraet\/([^/]+)\/trennen$/.exec(path);
+    match = /^\/data\/device\/([^/]+)\/disconnect$/.exec(path);
     if (match) {
       removeDevice(store, decodeURIComponent(match[1]));
       return show({
         message: {
-          title: 'Telefon getrennt',
-          body: 'Die Kopie bleibt. Neue Daten kommen erst nach dem nächsten Verbinden.',
+          title: tx.t('Telefon getrennt', 'Phone disconnected'),
+          body: tx.t(
+            'Die Kopie bleibt. Neue Daten kommen erst nach dem nächsten Verbinden.',
+            'The copy stays. New data only arrives after the next connection.',
+          ),
           tone: 'green',
         },
       });
     }
-    if (path === '/daten/passwort') {
+    if (path === '/data/password') {
       const problem = changePassword(
         store,
         form.get('current') ?? '',
@@ -370,22 +441,36 @@ export function createApp(store: Store, config: AppConfig) {
         return show(
           {
             message: {
-              title: 'Passwort nicht geändert',
-              body: problem,
+              title: tx.t('Passwort nicht geändert', 'Password not changed'),
+              body:
+                problem === 'wrong-current'
+                  ? tx.t(
+                      'Das aktuelle Passwort stimmt nicht.',
+                      'The current password is wrong.',
+                    )
+                  : tx.t(
+                      'Das neue Passwort braucht mindestens 8 Zeichen.',
+                      'The new password needs at least 8 characters.',
+                    ),
               tone: 'danger',
             },
           },
           400,
         );
-      return redirect(res, '/anmelden', [sessionCookie(req, '', 0)]);
+      return redirect(res, tx.link('/sign-in'), [sessionCookie(req, '', 0)]);
     }
-    if (path === '/daten/loeschen') {
-      if ((form.get('confirm') ?? '').trim().toUpperCase() !== 'LÖSCHEN') {
+    if (path === '/data/delete') {
+      // Both the German and the English word are accepted, whatever the page language.
+      const typed = (form.get('confirm') ?? '').trim().toUpperCase();
+      if (typed !== 'LÖSCHEN' && typed !== 'DELETE') {
         return show(
           {
             message: {
-              title: 'Nichts gelöscht',
-              body: 'Tippe LÖSCHEN, um zu bestätigen.',
+              title: tx.t('Nichts gelöscht', 'Nothing deleted'),
+              body: tx.t(
+                'Tippe LÖSCHEN, um zu bestätigen.',
+                'Type DELETE to confirm.',
+              ),
               tone: 'caution',
             },
           },
@@ -395,13 +480,16 @@ export function createApp(store: Store, config: AppConfig) {
       deleteCopy(store);
       return show({
         message: {
-          title: 'Kopie gelöscht',
-          body: 'Der Server ist leer und das Telefon getrennt.',
+          title: tx.t('Kopie gelöscht', 'Copy deleted'),
+          body: tx.t(
+            'Der Server ist leer und das Telefon getrennt.',
+            'The server is empty and the phone is disconnected.',
+          ),
           tone: 'green',
         },
       });
     }
-    if (path === '/daten/sql') {
+    if (path === '/data/sql') {
       const sql = form.get('sql') ?? '';
       try {
         const result = await runSql(store.path, sql);
@@ -414,37 +502,38 @@ export function createApp(store: Store, config: AppConfig) {
           );
         return show({ sql: { query: sql, result } });
       } catch (error) {
-        return show(
-          { sql: { query: sql, error: (error as Error).message } },
-          400,
-        );
+        return show({ sql: { query: sql, error: sqlMessage(error, tx) } }, 400);
       }
     }
-    throw new HttpError(404, 'Unbekannte Aktion.');
+    throw new HttpError(404, tx.t('Unbekannte Aktion.', 'Unknown action.'));
   }
 
   async function handleWeb(
     req: IncomingMessage,
     res: ServerResponse,
     url: URL,
+    tx: Translator,
   ) {
-    const path = url.pathname;
     const method = req.method ?? 'GET';
-    if (path === '/app.css') {
+    if (url.pathname === '/app.css') {
       res.setHeader('cache-control', 'public, max-age=3600');
       res.writeHead(200, { 'content-type': 'text/css; charset=utf-8' });
       return res.end(STYLESHEET);
     }
-    if (path === '/favicon.svg') {
+    if (url.pathname === '/favicon.svg') {
       res.setHeader('cache-control', 'public, max-age=86400');
       res.writeHead(200, { 'content-type': 'image/svg+xml' });
       return res.end(FAVICON);
     }
-    if (path === '/healthz') {
+    if (url.pathname === '/healthz') {
       res.writeHead(200, { 'content-type': 'text/plain' });
       return res.end('ok');
     }
-    if (path === '/anmelden') {
+    const path = canonicalPath(url.pathname);
+    if (method === 'GET' && path !== url.pathname)
+      return redirect(res, `${path}${url.search}`, [], 301);
+
+    if (path === '/sign-in') {
       if (method === 'POST') {
         const form = await readForm(req);
         const ip = clientIp(req);
@@ -453,7 +542,14 @@ export function createApp(store: Store, config: AppConfig) {
           return sendHtml(
             res,
             429,
-            loginPage('Zu viele Versuche. Warte eine Viertelstunde.', next),
+            loginPage(
+              tx,
+              tx.t(
+                'Zu viele Versuche. Warte eine Viertelstunde.',
+                'Too many attempts. Wait fifteen minutes.',
+              ),
+              next,
+            ),
           );
         }
         if (!checkPassword(store, form.get('password') ?? '')) {
@@ -461,7 +557,11 @@ export function createApp(store: Store, config: AppConfig) {
           return sendHtml(
             res,
             401,
-            loginPage('Das Passwort stimmt nicht.', next),
+            loginPage(
+              tx,
+              tx.t('Das Passwort stimmt nicht.', 'The password is wrong.'),
+              next,
+            ),
           );
         }
         const session = createSession(store, now());
@@ -472,47 +572,55 @@ export function createApp(store: Store, config: AppConfig) {
       return sendHtml(
         res,
         200,
-        loginPage(null, safeNext(url.searchParams.get('weiter'))),
+        loginPage(
+          tx,
+          null,
+          safeNext(
+            url.searchParams.get('next') ?? url.searchParams.get('weiter'),
+          ),
+        ),
       );
     }
 
     const cookie = cookies(req)[SESSION_COOKIE];
     const who = cookie ? sessionPrincipal(store, cookie, now()) : null;
     if (!who) {
-      if (method !== 'GET') throw new HttpError(401, 'Melde dich an.');
+      if (method !== 'GET')
+        throw new HttpError(401, tx.t('Melde dich an.', 'Sign in.'));
       return redirect(
         res,
-        `/anmelden?weiter=${encodeURIComponent(path + url.search)}`,
+        tx.withLang(`/sign-in?next=${encodeURIComponent(path + url.search)}`),
       );
     }
-    if (method === 'POST') return handleWebPost(req, res, url, who);
-    if (method !== 'GET') throw new HttpError(405, 'Nicht erlaubt.');
+    if (method === 'POST') return handleWebPost(req, res, url, path, who, tx);
+    if (method !== 'GET')
+      throw new HttpError(405, tx.t('Nicht erlaubt.', 'Not allowed.'));
 
-    const ctx = context(url, who);
-    if (path === '/') return redirect(res, '/verlauf');
-    if (path === '/verlauf') return sendHtml(res, 200, verlaufPage(ctx));
-    if (path === '/statistik') return sendHtml(res, 200, statistikPage(ctx));
+    const ctx = context(url, who, tx);
+    if (path === '/') return redirect(res, tx.link('/history'));
+    if (path === '/history') return sendHtml(res, 200, historyPage(ctx));
+    if (path === '/statistics') return sendHtml(res, 200, statisticsPage(ctx));
     if (path === '/plan') return sendHtml(res, 200, planPage(ctx));
     if (path === '/coach') return sendHtml(res, 200, coachPage(ctx));
-    if (path === '/daten') {
+    if (path === '/data') {
       const sql = url.searchParams.get('sql');
       return sendHtml(
         res,
         200,
-        datenPage(ctx, sql ? { sql: { query: sql.slice(0, 20_000) } } : {}),
+        dataPage(ctx, sql ? { sql: { query: sql.slice(0, 20_000) } } : {}),
       );
     }
-    let match = /^\/lauf\/([^/]+)$/.exec(path);
+    let match = /^\/run\/([^/]+)$/.exec(path);
     if (match) {
       const result = runPage(ctx, decodeURIComponent(match[1]));
-      return sendHtml(res, result ? 200 : 404, result ?? notFoundPage());
+      return sendHtml(res, result ? 200 : 404, result ?? notFoundPage(tx));
     }
-    match = /^\/kraft\/([^/]+)$/.exec(path);
+    match = /^\/strength\/([^/]+)$/.exec(path);
     if (match) {
       const result = strengthPage(ctx, decodeURIComponent(match[1]));
-      return sendHtml(res, result ? 200 : 404, result ?? notFoundPage());
+      return sendHtml(res, result ? 200 : 404, result ?? notFoundPage(tx));
     }
-    return sendHtml(res, 404, notFoundPage());
+    return sendHtml(res, 404, notFoundPage(tx));
   }
 
   return async function handle(req: IncomingMessage, res: ServerResponse) {
@@ -525,6 +633,11 @@ export function createApp(store: Store, config: AppConfig) {
     );
     const isApi =
       url.pathname.startsWith('/api/v1/') || url.pathname === '/api/v1';
+    const { lang, explicit } = requestLanguage(
+      url,
+      req.headers['accept-language'],
+    );
+    const tx = translator(lang, explicit);
     try {
       if (isApi)
         await handleApi(
@@ -533,7 +646,7 @@ export function createApp(store: Store, config: AppConfig) {
           url,
           url.pathname.slice('/api/v1'.length) || '/',
         );
-      else await handleWeb(req, res, url);
+      else await requestLang.run(lang, () => handleWeb(req, res, url, tx));
     } catch (error) {
       const status =
         error instanceof HttpError ||
@@ -543,7 +656,12 @@ export function createApp(store: Store, config: AppConfig) {
           : 500;
       const message =
         status === 500
-          ? 'Interner Fehler. Details stehen im Log des Servers.'
+          ? isApi
+            ? 'Internal error. Details are in the server log.'
+            : tx.t(
+                'Interner Fehler. Details stehen im Log des Servers.',
+                'Internal error. Details are in the server log.',
+              )
           : (error as Error).message;
       if (status === 500) console.error(error);
       if (res.headersSent) {

@@ -1,11 +1,11 @@
+import { fixed, getLanguage, tr } from './i18n';
 import type { RunSummary, SegmentAggregate } from './types';
 
 /**
- * Darstellungsreihe eines Laufs für die Graphen der Detailseite. Sie kommt
- * fertig aus Kotlin (RunSeries): ein Fenster je Zeile, Tempo nur in Bewegung,
- * Höhe aus RunElevation, Gegenwind nur mit bekannter Windrichtung. Hier
- * stehen nur Ableitungen für die Anzeige — kein Fallback auf 0, fehlende
- * Werte bleiben `undefined`.
+ * Display series of a run for the detail page's charts. It arrives ready-made
+ * from Kotlin (RunSeries): one window per row, pace only while moving, elevation
+ * from RunElevation, headwind only with a known wind direction. This file only
+ * derives display values — no fallback to 0; missing values stay `undefined`.
  */
 export interface SeriesRow {
   elapsedSeconds: number;
@@ -18,9 +18,9 @@ export interface SeriesRow {
   gradePercent?: number;
   latitude?: number;
   longitude?: number;
-  /** Positiv = Gegenwind, negativ = Rückenwind (m/s). */
+  /** Positive = headwind, negative = tailwind (m/s). */
   headwindMps?: number;
-  /** Armschwung aus dem Laufstil (Uhr, sonst Handy in der Hand), Grad. */
+  /** Arm swing from the running form (watch, otherwise phone in hand), degrees. */
   armSwingDeg?: number;
 }
 export interface RunSeries {
@@ -47,16 +47,16 @@ export const SERIES_METRICS: SeriesMetric[] = [
 ];
 export function metricLabel(metric: SeriesMetric): string {
   return {
-    pace: 'Tempo',
-    heartRate: 'Puls',
-    elevation: 'Höhe',
-    cadence: 'Kadenz',
-    armSwing: 'Armschwung',
-    wind: 'Wind',
+    pace: tr('Tempo', 'Pace'),
+    heartRate: tr('Puls', 'Heart rate'),
+    elevation: tr('Höhe', 'Elevation'),
+    cadence: tr('Kadenz', 'Cadence'),
+    armSwing: tr('Armschwung', 'Arm swing'),
+    wind: tr('Wind', 'Wind'),
   }[metric];
 }
 
-/** Wert einer Metrik in einer Zeile; Tempo als s/km, sonst wie gemessen. */
+/** Value of a metric in one row; pace as s/km, otherwise as measured. */
 export function metricValue(
   row: SeriesRow,
   metric: SeriesMetric,
@@ -79,7 +79,7 @@ export function metricValue(
   }
 }
 
-/** Nur Metriken mit mindestens zwei Messwerten bekommen einen Reiter. */
+/** Only metrics with at least two readings get a tab. */
 export function availableMetrics(series: RunSeries | null): SeriesMetric[] {
   if (!series) return [];
   return SERIES_METRICS.filter(
@@ -105,14 +105,14 @@ export function formatElapsed(seconds: number): string {
     : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 export function formatKm(meters: number, digits = 2): string {
-  return (meters / 1000).toFixed(digits).replace('.', ',');
+  return fixed(meters / 1000, digits);
 }
-/** Gegenwind mit Vorzeichen, deutsches Komma: „+2,1“ oder „−1,4“. */
+/** Headwind with sign and the active decimal separator: "+2,1" or "−1,4". */
 export function formatHeadwind(mps: number | undefined): string {
   if (mps === undefined || !Number.isFinite(mps)) return '–';
   const rounded = Math.round(mps * 10) / 10;
   const sign = rounded > 0 ? '+' : rounded < 0 ? '−' : '±';
-  return `${sign}${Math.abs(rounded).toFixed(1).replace('.', ',')}`;
+  return `${sign}${fixed(Math.abs(rounded), 1)}`;
 }
 export function formatMetric(
   metric: SeriesMetric,
@@ -141,9 +141,12 @@ export function metricUnit(metric: SeriesMetric): string {
   }[metric];
 }
 
-/** Windrichtung als Himmelsrichtung, woher er kommt. */
+/** Wind direction as the compass point it comes from. */
 export function compassLabel(fromDeg: number): string {
-  const names = ['N', 'NO', 'O', 'SO', 'S', 'SW', 'W', 'NW'];
+  const names =
+    getLanguage() === 'en'
+      ? ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
+      : ['N', 'NO', 'O', 'SO', 'S', 'SW', 'W', 'NW'];
   return names[Math.round((((fromDeg % 360) + 360) % 360) / 45) % 8];
 }
 
@@ -152,7 +155,7 @@ export function axisValue(row: SeriesRow, axis: SeriesAxis): number {
   return axis === 'distance' ? row.distanceMeters : row.elapsedSeconds;
 }
 
-/** Zeile, die auf der Achse am nächsten liegt (binäre Suche, Zeilen sind sortiert). */
+/** Row closest to the axis value (binary search; rows are sorted). */
 export function nearestIndex(
   rows: SeriesRow[],
   axis: SeriesAxis,
@@ -174,7 +177,7 @@ export function nearestIndex(
   return lo;
 }
 
-/** Zeile, deren Position dem Punkt am nächsten liegt; −1 ohne Positionen. */
+/** Row whose position is closest to the point; −1 without positions. */
 export function nearestByPosition(
   rows: SeriesRow[],
   latitude: number,
@@ -197,14 +200,14 @@ export function nearestByPosition(
 }
 
 /**
- * Kilometer-Abschnitte für die Tabelle. Quelle sind die nativen `segments`
- * (Distanzmodell 3.0): sie enden am vollen Kilometer oder an einer Pause, also
- * kann ein Kilometer aus zwei Zeilen bestehen. Tempo aus Bewegungszeit, wenn
- * bekannt, sonst aus der Abschnittsdauer.
+ * Kilometer splits for the table. The source is the native `segments`
+ * (distance model 3.0): they end at a whole kilometer or at a pause, so one
+ * kilometer can span two rows. Pace from moving time when known, otherwise
+ * from the split duration.
  */
 export interface KilometerSplit {
   index: number;
-  /** „1“, „2“ … oder „8–8,4“ für den Rest. */
+  /** "1", "2" … or "8–8.4" for the remainder. */
   label: string;
   fromMeters: number;
   toMeters: number;
@@ -213,11 +216,11 @@ export interface KilometerSplit {
   avgHeartRate?: number;
   ascentMeters?: number;
   descentMeters?: number;
-  /** Nettosteigung des Abschnitts in %, nur ab 50 m aus geglätteter Höhe. */
+  /** Net grade of the split in %, only from 50 m on smoothed elevation. */
   gradePercent?: number;
   startElapsedSeconds?: number;
   endElapsedSeconds?: number;
-  /** Ab 5 s ohne GPS im Abschnitt ist das Tempo nicht belastbar. */
+  /** From 5 s without GPS in the split, the pace is not reliable. */
   uncertain: boolean;
 }
 export function kilometerSplits(
@@ -235,8 +238,8 @@ export function kilometerSplits(
         segment.distanceMeters >= 50 && seconds > 0
           ? seconds / (segment.distanceMeters / 1000)
           : undefined;
-      // Native Abschnitte enden am ersten GPS-Punkt ab 1000 m, also knapp
-      // darüber; ein „ganzer“ Kilometer darf deshalb etwas länger sein.
+      // Native splits end at the first GPS point from 1000 m on, so just past
+      // it; a "whole" kilometer may therefore run a little longer.
       const whole =
         segment.distanceMeters >= 950 &&
         segment.distanceMeters <= 1050 &&
@@ -261,7 +264,7 @@ export function kilometerSplits(
     });
 }
 
-/** Zeilenbereich eines Abschnitts in der Reihe, nach Zeit; null ohne Zeitangaben. */
+/** Row range of a split in the series, by time; null without time data. */
 export function splitRange(
   rows: SeriesRow[],
   split: KilometerSplit,
@@ -277,14 +280,14 @@ export function splitRange(
   return from <= to ? [from, to] : [to, from];
 }
 
-/** Durchschnittstempo des Laufs in s/km für die Ø-Linie; undefined unter 20 m. */
+/** Average pace of the run in s/km for the average line; undefined under 20 m. */
 export function averagePace(run: RunSummary): number | undefined {
   if (run.distanceMeters < 20 || run.durationSeconds <= 0) return undefined;
   const seconds = run.time?.movingSeconds ?? run.durationSeconds;
   return seconds / (run.distanceMeters / 1000);
 }
 
-/** Gesamtwerte für die Ablese-Zeile ohne Auswahl. */
+/** Totals for the reading line without a selection. */
 export function seriesTotals(
   run: RunSummary,
   series: RunSeries | null,

@@ -3,6 +3,7 @@ package com.runback
 import android.content.Context
 import android.os.Build
 import androidx.work.*
+import com.runback.core.Lang
 import com.runback.core.RunStore
 import org.json.JSONArray
 import org.json.JSONObject
@@ -13,7 +14,7 @@ import java.security.MessageDigest
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
-/** Nur ausgehende Kopie. Netzwerk wartet auf einem eigenen Thread, niemals auf Training oder JS. */
+/** Outbound copy only. Network waits on its own thread, never on training or JS. */
 object ServerLink {
     private val gate = Any()
     private val executor = Executors.newSingleThreadScheduledExecutor()
@@ -49,7 +50,7 @@ object ServerLink {
         val connection = URL("$url/api/v1$path").openConnection() as HttpURLConnection
         try {
             connection.requestMethod = method
-            connection.instanceFollowRedirects = false // Token darf niemals einem Redirect folgen.
+            connection.instanceFollowRedirects = false // The token must never follow a redirect.
             connection.connectTimeout = 5000
             connection.readTimeout = 15000
             connection.setRequestProperty("Accept", "application/json")
@@ -66,23 +67,23 @@ object ServerLink {
             val bytes = stream?.use { input ->
                 val buffer = java.io.ByteArrayOutputStream()
                 val chunk = ByteArray(8192)
-                while (true) { val count = input.read(chunk); if (count < 0) break; buffer.write(chunk, 0, count); require(buffer.size() <= 24 * 1024 * 1024) { "Serverantwort zu groß." } }
+                while (true) { val count = input.read(chunk); if (count < 0) break; buffer.write(chunk, 0, count); require(buffer.size() <= 24 * 1024 * 1024) { Lang.tr("Serverantwort zu groß.", "Server response is too large.") } }
                 buffer.toByteArray()
             } ?: ByteArray(0)
             val result = runCatching { JSONObject(String(bytes, Charsets.UTF_8)) }.getOrDefault(JSONObject())
             if (code !in 200..299) throw HttpFailure(code, when (code) {
-                401, 403 -> "Verbinde dein Telefon erneut."
-                409 -> "Aktualisiere App und Server."
-                else -> "Der Server hat die Übertragung abgelehnt."
+                401, 403 -> Lang.tr("Verbinde dein Telefon erneut.", "Reconnect your phone.")
+                409 -> Lang.tr("Aktualisiere App und Server.", "Update the app and the server.")
+                else -> Lang.tr("Der Server hat die Übertragung abgelehnt.", "The server rejected the transfer.")
             })
             return result
         } finally { connection.disconnect() }
     }
     fun connect(context: Context, address: String, code: String, scope: JSONObject): JSONObject {
         val url = ServerPayload.checkedAddress(address)
-        require(Regex("[0-9]{8}").matches(code)) { "Gib den achtstelligen Code von der Website ein." }
+        require(Regex("[0-9]{8}").matches(code)) { Lang.tr("Gib den achtstelligen Code von der Website ein.", "Enter the 8-digit code from the website.") }
         val result = call(url, "/pair", body = JSONObject().put("code", code).put("deviceName", Build.MODEL).put("protocol", ServerPayload.PROTOCOL))
-        require(result.optInt("protocol") == ServerPayload.PROTOCOL && result.optString("token").startsWith("rbd_")) { "Dieser Server spricht eine andere Version." }
+        require(result.optInt("protocol") == ServerPayload.PROTOCOL && result.optString("token").startsWith("rbd_")) { Lang.tr("Dieser Server spricht eine andere Version.", "This server speaks a different version.") }
         val secrets = ServerSecrets(context)
         secrets.clear()
         secrets.saveToken(result.getString("token"))
@@ -99,7 +100,7 @@ object ServerLink {
         return status(context)
     }
     fun disconnect(context: Context): JSONObject {
-        // Lokal sofort trennen; ist der Server unterwegs nicht erreichbar, bleibt seine Kopie dort.
+        // Disconnect locally right away; if the server is unreachable, its copy stays there.
         val secrets = ServerSecrets(context)
         val old = status(context)
         val token = runCatching { secrets.token() }.getOrNull()
@@ -118,12 +119,12 @@ object ServerLink {
         current.put("state", "syncing").put("lastAttemptAt", now).put("message", JSONObject.NULL)
         secrets.saveStatus(current)
         try {
-            val token = secrets.token() ?: throw HttpFailure(401, "Verbinde dein Telefon erneut.")
+            val token = secrets.token() ?: throw HttpFailure(401, Lang.tr("Verbinde dein Telefon erneut.", "Reconnect your phone."))
             ServerPayload.checkedAddress(url)
-            // Erreichbarkeit vor dem Lesen der Historie prüfen.
+            // Check reachability before reading the history.
             val hello = call(url, "/hello", method = "GET")
-            require(hello.optString("app") == "runback-server") { "Diese Adresse gehört nicht zu einem Runback-Server." }
-            // Erreichbarkeit auch während des Trainings prüfen, Historie danach lesen.
+            require(hello.optString("app") == "runback-server") { Lang.tr("Diese Adresse gehört nicht zu einem Runback-Server.", "This address does not belong to a Runback server.") }
+            // Check reachability during training too; read the history afterwards.
             if (store.active() != null || store.getDocument("strength_active") != null) {
                 current.put("state", "waiting")
                 secrets.saveStatus(current)
@@ -151,22 +152,22 @@ object ServerLink {
                 batch = JSONArray(); size = 0
             }
             for (i in 0 until needed.length()) {
-                val entry = entries[needed.getString(i)] ?: error("Der Server fordert unbekannte Daten an.")
+                val entry = entries[needed.getString(i)] ?: error(Lang.tr("Der Server fordert unbekannte Daten an.", "The server requested unknown data."))
                 val bytes = entry.toString().toByteArray(Charsets.UTF_8).size
-                require(bytes < 40 * 1024 * 1024) { "Eine Einheit ist zu groß für die Übertragung." }
+                require(bytes < 40 * 1024 * 1024) { Lang.tr("Eine Einheit ist zu groß für die Übertragung.", "One workout is too large to transfer.") }
                 if (batch.length() >= 100 || size + bytes > 40 * 1024 * 1024) flush()
                 batch.put(entry); size += bytes
             }
             flush()
             val committed = call(url, "/sync/commit", token, envelope().put("manifest", manifest).put("scope", scope))
-            check(committed.getJSONArray("missing").length() == 0) { "Die Übertragung ist noch unvollständig." }
+            check(committed.getJSONArray("missing").length() == 0) { Lang.tr("Die Übertragung ist noch unvollständig.", "The transfer is not complete yet.") }
             current.put("state", "ok").put("pending", 0).put("lastSuccessAt", System.currentTimeMillis()).put("serverVersion", committed.optString("serverVersion"))
         } catch (error: Exception) {
             current.put("state", if (error is HttpFailure) { if (error.status in listOf(401, 403)) "rejected" else "error" } else if (error is IOException) "offline" else "error")
             current.put("message", when (current.optString("state")) {
-                "offline" -> "Runback überträgt, sobald dein Server wieder erreichbar ist."
-                "rejected" -> "Verbinde dein Telefon erneut."
-                else -> "Der Abgleich ist fehlgeschlagen. Versuche es erneut."
+                "offline" -> Lang.tr("Runback überträgt, sobald dein Server wieder erreichbar ist.", "Runback will sync as soon as your server is reachable again.")
+                "rejected" -> Lang.tr("Verbinde dein Telefon erneut.", "Reconnect your phone.")
+                else -> Lang.tr("Der Abgleich ist fehlgeschlagen. Versuche es erneut.", "Sync failed. Try again.")
             })
         }
         secrets.saveStatus(current)

@@ -6,8 +6,14 @@ import {
   type ExerciseSessionPoint,
 } from '../domain/exerciseHistory';
 import { exerciseGroups, muscleGroupLabel } from '../domain/muscleGroups';
-import { formatWeight, type StrengthSession } from '../domain/strength';
+import {
+  displaySessionName,
+  formatWeight,
+  type StrengthSession,
+} from '../domain/strength';
 import { setLabel } from '../domain/strengthSession';
+import { dateFormat, numberFormat, tr } from '../domain/i18n';
+import { exerciseDisplayName } from '../domain/catalog';
 import {
   Badge,
   ChipGroup,
@@ -23,42 +29,59 @@ import {
 import { Chart, ChartDetail, DASH, ValueRow } from './StatsParts';
 
 /**
- * Verlauf einer Übung: Richtung, Bestwerte, ein Diagramm je Einheit und die
- * Einheiten selbst. Die Richtung („Steigt“, „Stabil“, „Noch nicht klar“)
- * stammt aus dem Kraftverlauf und wird hier nur gezeigt, nicht neu bewertet.
+ * History of one exercise: direction, personal bests, a chart per session and
+ * the sessions themselves. The direction ("Rising", "Stable", "Not clear yet")
+ * comes from the strength trend and is only shown here, not re-evaluated.
  */
 
 type ExerciseMetric = 'e1rm' | 'weight' | 'volume' | 'reps';
 
 const METRICS: {
   value: ExerciseMetric;
-  label: string;
   shape: 'bar' | 'point';
 }[] = [
-  { value: 'e1rm', label: 'Maximum', shape: 'point' },
-  { value: 'weight', label: 'Gewicht', shape: 'point' },
-  { value: 'volume', label: 'Volumen', shape: 'bar' },
-  { value: 'reps', label: 'Wiederholungen', shape: 'bar' },
+  { value: 'e1rm', shape: 'point' },
+  { value: 'weight', shape: 'point' },
+  { value: 'volume', shape: 'bar' },
+  { value: 'reps', shape: 'bar' },
 ];
 
-/** So viele Einheiten passen lesbar nebeneinander. */
+const metricLabel = (metric: ExerciseMetric) => {
+  switch (metric) {
+    case 'e1rm':
+      return tr('Maximum', 'Maximum');
+    case 'weight':
+      return tr('Gewicht', 'Weight');
+    case 'volume':
+      return tr('Volumen', 'Volume');
+    case 'reps':
+      return tr('Wiederholungen', 'Reps');
+  }
+};
+
+/** This many sessions fit side by side and stay readable. */
 const CHART_POINTS = 16;
 const VISIBLE_SESSIONS = 8;
 
-const kilograms = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 });
-const dayFormat = new Intl.DateTimeFormat('de-DE', {
-  day: '2-digit',
-  month: '2-digit',
-});
-const dayLongFormat = new Intl.DateTimeFormat('de-DE', {
-  weekday: 'short',
-  day: '2-digit',
-  month: '2-digit',
-  year: 'numeric',
-});
+const formatKg = (value: number) =>
+  numberFormat({ maximumFractionDigits: 0 }).format(value);
+const shortDay = (at: number) =>
+  dateFormat({ day: '2-digit', month: '2-digit' }).format(new Date(at));
+const longDay = (at: number) =>
+  dateFormat({
+    weekday: 'short',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(new Date(at));
 
-const counted = (count: number, singular: string, plural: string) =>
-  `${count} ${count === 1 ? singular : plural}`;
+const sessionWord = (count: number) =>
+  tr(count === 1 ? 'Einheit' : 'Einheiten', count === 1 ? 'session' : 'sessions');
+const setWord = (count: number) =>
+  tr(count === 1 ? 'Satz' : 'Sätze', count === 1 ? 'set' : 'sets');
+
+const counted = (count: number, word: (count: number) => string) =>
+  `${count} ${word(count)}`;
 
 function valueOf(
   point: ExerciseSessionPoint,
@@ -85,18 +108,21 @@ function formatValue(metric: ExerciseMetric, value: number | null) {
     case 'weight':
       return { value: formatWeight(Math.round(value * 2) / 2), unit: 'kg' };
     case 'volume':
-      return { value: kilograms.format(value), unit: 'kg' };
+      return { value: formatKg(value), unit: 'kg' };
     case 'reps':
-      return { value: String(Math.round(value)), unit: 'Wdh.' };
+      return {
+        value: String(Math.round(value)),
+        unit: tr('Wdh.', 'reps'),
+      };
   }
 }
 
 function pointLine(point: ExerciseSessionPoint): string {
   const best = point.bestSet ? setLabel(point.bestSet) : '';
   return [
-    counted(point.workingSets, 'Satz', 'Sätze'),
-    best ? `bester ${best}` : null,
-    point.volumeKg > 0 ? `${kilograms.format(point.volumeKg)} kg` : null,
+    counted(point.workingSets, setWord),
+    best ? tr(`bester ${best}`, `best ${best}`) : null,
+    point.volumeKg > 0 ? `${formatKg(point.volumeKg)} kg` : null,
   ]
     .filter(Boolean)
     .join(' · ');
@@ -137,10 +163,13 @@ export function ExerciseDetail({
   if (!history.points.length) {
     return (
       <>
-        <Title>{history.name}</Title>
+        <Title>{exerciseDisplayName(history.exerciseId, history.name)}</Title>
         <EmptyState
-          title="Noch kein Satz"
-          copy="Sobald du diese Übung abhakst, entsteht hier ihr Verlauf."
+          title={tr('Noch kein Satz', 'No set yet')}
+          copy={tr(
+            'Sobald du diese Übung abhakst, entsteht hier ihr Verlauf.',
+            'As soon as you tick off this exercise, its history appears here.',
+          )}
         />
       </>
     );
@@ -148,7 +177,7 @@ export function ExerciseDetail({
 
   return (
     <>
-      <Title>{history.name}</Title>
+      <Title>{exerciseDisplayName(history.exerciseId, history.name)}</Title>
       <View style={styles.trend}>
         <Badge muted={history.trend.verdict !== 'increase'}>
           {history.trend.label}
@@ -162,25 +191,25 @@ export function ExerciseDetail({
               ? DASH
               : formatWeight(Math.round(bestE1RM * 2) / 2)
           }
-          label="Max. kg geschätzt"
+          label={tr('Max. kg geschätzt', 'Est. max kg')}
         />
         <Stat
           value={heaviest === undefined ? DASH : formatWeight(heaviest)}
-          label="Schwerstes kg"
+          label={tr('Schwerstes kg', 'Heaviest kg')}
         />
         <Stat
           value={String(history.points.length)}
-          label={history.points.length === 1 ? 'Einheit' : 'Einheiten'}
+          label={sessionWord(history.points.length)}
         />
       </View>
 
       {metrics.length ? (
-        <Section title="Verlauf">
+        <Section title={tr('Verlauf', 'Trace')}>
           <ChipGroup
-            label="Kennzahl im Verlauf"
+            label={tr('Kennzahl im Verlauf', 'Metric over time')}
             options={metrics.map(entry => ({
               value: entry.value,
-              label: entry.label,
+              label: metricLabel(entry.value),
             }))}
             value={metric}
             onChange={next => {
@@ -191,11 +220,11 @@ export function ExerciseDetail({
           <Chart
             points={recent.map(point => ({
               key: point.at,
-              label: dayFormat.format(new Date(point.at)),
-              fullLabel: dayLongFormat.format(new Date(point.at)),
+              label: shortDay(point.at),
+              fullLabel: longDay(point.at),
               value: valueOf(point, metric),
             }))}
-            title={METRICS.find(entry => entry.value === metric)?.label ?? ''}
+            title={metricLabel(metric)}
             format={value => formatValue(metric, value)}
             shape={METRICS.find(entry => entry.value === metric)?.shape ?? 'bar'}
             selected={selected}
@@ -205,23 +234,26 @@ export function ExerciseDetail({
           />
           {selectedPoint ? (
             <ChartDetail
-              title={dayLongFormat.format(new Date(selectedPoint.at))}
-              value={`${
-                METRICS.find(entry => entry.value === metric)?.label ?? ''
-              } ${formatValue(metric, valueOf(selectedPoint, metric)).value} ${
-                formatValue(metric, valueOf(selectedPoint, metric)).unit
-              }`.trim()}
+              title={longDay(selectedPoint.at)}
+              value={`${metricLabel(metric)} ${
+                formatValue(metric, valueOf(selectedPoint, metric)).value
+              } ${formatValue(metric, valueOf(selectedPoint, metric)).unit}`.trim()}
               meta={pointLine(selectedPoint)}
             />
           ) : null}
           {history.points.length > CHART_POINTS ? (
-            <Copy muted>{`Die letzten ${CHART_POINTS} Einheiten.`}</Copy>
+            <Copy muted>
+              {tr(
+                `Die letzten ${CHART_POINTS} Einheiten.`,
+                `The last ${CHART_POINTS} sessions.`,
+              )}
+            </Copy>
           ) : null}
         </Section>
       ) : null}
 
       {history.records.length ? (
-        <Section title="Bestwerte">
+        <Section title={tr('Bestwerte', 'Personal bests')}>
           {history.records.map(entry => (
             <ValueRow
               key={entry.id}
@@ -232,12 +264,15 @@ export function ExerciseDetail({
                   : entry.id === 'weight'
                   ? `${formatWeight(entry.point.topWeightKg ?? 0)} kg`
                   : entry.id === 'volume'
-                  ? `${kilograms.format(entry.point.volumeKg)} kg`
-                  : `${entry.point.bestSet?.reps ?? DASH} Wdh.`
+                  ? `${formatKg(entry.point.volumeKg)} kg`
+                  : tr(
+                      `${entry.point.bestSet?.reps ?? DASH} Wdh.`,
+                      `${entry.point.bestSet?.reps ?? DASH} reps`,
+                    )
               }
               meta={`${
                 entry.point.bestSet ? `${setLabel(entry.point.bestSet)} · ` : ''
-              }${dayLongFormat.format(new Date(entry.point.at))}`}
+              }${longDay(entry.point.at)}`}
               onPress={
                 onOpenSession
                   ? () => onOpenSession(entry.point.sessionId)
@@ -249,12 +284,13 @@ export function ExerciseDetail({
         </Section>
       ) : null}
 
-      <Section title="Einheiten">
+      <Section title={tr('Einheiten', 'Sessions')}>
         {newestFirst.slice(0, VISIBLE_SESSIONS).map(point => (
           <Row
             key={point.sessionId}
-            title={`${dayLongFormat.format(new Date(point.at))} · ${
-              point.sessionName || 'Krafttraining'
+            title={`${longDay(point.at)} · ${
+              displaySessionName(point.sessionName) ||
+              tr('Krafttraining', 'Strength training')
             }`}
             subtitle={pointLine(point)}
             onPress={onOpenSession ? () => onOpenSession(point.sessionId) : undefined}
@@ -263,14 +299,18 @@ export function ExerciseDetail({
         ))}
         {newestFirst.length > VISIBLE_SESSIONS ? (
           <Disclosure
-            title="Ältere Einheiten"
-            subtitle={`${newestFirst.length - VISIBLE_SESSIONS} weitere`}
+            title={tr('Ältere Einheiten', 'Older sessions')}
+            subtitle={tr(
+              `${newestFirst.length - VISIBLE_SESSIONS} weitere`,
+              `${newestFirst.length - VISIBLE_SESSIONS} more`,
+            )}
           >
             {newestFirst.slice(VISIBLE_SESSIONS).map(point => (
               <Row
                 key={point.sessionId}
-                title={`${dayLongFormat.format(new Date(point.at))} · ${
-                  point.sessionName || 'Krafttraining'
+                title={`${longDay(point.at)} · ${
+                  displaySessionName(point.sessionName) ||
+                  tr('Krafttraining', 'Strength training')
                 }`}
                 subtitle={pointLine(point)}
                 onPress={
@@ -283,22 +323,38 @@ export function ExerciseDetail({
         ) : null}
       </Section>
 
-      <Disclosure title="Details" subtitle="Datenbasis und Versionen">
+      <Disclosure
+        title={tr('Details', 'Details')}
+        subtitle={tr('Datenbasis und Versionen', 'Data basis and versions')}
+      >
         <Copy muted>
-          Das Maximum ist eine Schätzung nach Epley aus Arbeitssätzen mit Last
-          bis zwölf Wiederholungen, keine Messung.
+          {tr(
+            'Das Maximum ist eine Schätzung nach Epley aus Arbeitssätzen mit Last bis zwölf Wiederholungen, keine Messung.',
+            'The maximum is an Epley estimate from working sets with a load of up to twelve reps, not a measurement.',
+          )}
         </Copy>
         <Copy muted>
           {groups
-            ? `Muskelgruppen: ${groups.map(muscleGroupLabel).join(', ')}.`
-            : 'Diese Übung hat keine bekannte Muskelgruppe.'}
+            ? tr(
+                `Muskelgruppen: ${groups.map(muscleGroupLabel).join(', ')}.`,
+                `Muscle groups: ${groups.map(muscleGroupLabel).join(', ')}.`,
+              )
+            : tr(
+                'Diese Übung hat keine bekannte Muskelgruppe.',
+                'This exercise has no known muscle group.',
+              )}
         </Copy>
         <Copy muted>
-          {`${EXERCISE_HISTORY_VERSION} · ${history.progression.model_version} · ${counted(
-            history.progression.series.length,
-            'Einheit',
-            'Einheiten',
-          )} mit geeignetem Arbeitssatz`}
+          {tr(
+            `${EXERCISE_HISTORY_VERSION} · ${history.progression.model_version} · ${counted(
+              history.progression.series.length,
+              sessionWord,
+            )} mit geeignetem Arbeitssatz`,
+            `${EXERCISE_HISTORY_VERSION} · ${history.progression.model_version} · ${counted(
+              history.progression.series.length,
+              sessionWord,
+            )} with a suitable working set`,
+          )}
         </Copy>
       </Disclosure>
     </>

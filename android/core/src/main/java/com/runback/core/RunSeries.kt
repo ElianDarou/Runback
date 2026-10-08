@@ -7,26 +7,25 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Darstellungsreihe einer Aufzeichnung für die Graphen der Detailseite.
+ * Display series of a recording for the detail page's graphs.
  *
- * Baut auf den 5-s-Zeilen von RunPhases auf (Tempo geglättet, Phase, Puls,
- * Kadenz, Höhe aus RunElevation, Steigung) und ergänzt je Fenster die letzte
- * GPS-Position sowie — bei bekanntem Wind — die Gegenwindkomponente entlang
- * der Laufrichtung. Längere Läufe werden auf höchstens `maxRows` Zeilen
- * zusammengefasst, indem benachbarte Fenster gemittelt werden; Rohsamples
- * verlassen den Speicher nicht (Grundregel 8).
+ * Builds on the 5-s rows from RunPhases (smoothed pace, phase, heart rate,
+ * cadence, elevation from RunElevation, grade) and adds, per window, the last
+ * GPS position and, when wind is known, the headwind component along the
+ * direction of travel. Longer runs are condensed to at most `maxRows` rows by
+ * averaging neighboring windows; raw samples never leave memory (ground rule 8).
  *
- * Tempo gibt es nur in Bewegung (RUN/WALK); Stillstand und Pausen bleiben
- * ohne Wert statt als 0 m/s. Fenster ohne Position bleiben ohne Position.
+ * Pace only exists while moving (RUN/WALK); standing still and pauses stay
+ * without a value instead of 0 m/s. Windows without a position stay without one.
  */
 object RunSeries {
     const val VERSION = "runback-series-1"
     const val DEFAULT_MAX_ROWS = 600
 
     data class Position(val latitude: Double, val longitude: Double)
-    /** Windrichtung meteorologisch: `fromDeg` ist, woher er kommt (0 = Nord, 90 = Ost). */
+    /** Wind direction in meteorological terms: `fromDeg` is where it comes from (0 = north, 90 = east). */
     data class Wind(val mps: Double, val fromDeg: Double)
-    /** Wert über einen Zeitraum (Laufstil-Fenster), in Unix-ms. */
+    /** Value over a period (running form window), in Unix ms. */
     data class Span(val start: Long, val end: Long, val value: Double)
     data class Row(
         val elapsedSeconds: Int,
@@ -38,14 +37,14 @@ object RunSeries {
         val elevationM: Double?,
         val gradePercent: Double?,
         val position: Position?,
-        /** Positiv = Gegenwind, negativ = Rückenwind, in m/s. */
+        /** Positive = headwind, negative = tailwind, in m/s. */
         val headwindMps: Double?,
-        /** Armschwung aus dem Laufstil-Fenster, das diese Zeile überdeckt (Grad). */
+        /** Arm swing from the running form window covering this row (degrees). */
         val armSwingDeg: Double? = null,
     )
     data class Result(val stepSeconds: Int, val rows: List<Row>)
 
-    /** Kurs in Grad (0 = Nord, 90 = Ost) von a nach b. */
+    /** Heading in degrees (0 = north, 90 = east) from a to b. */
     fun bearingDeg(a: Position, b: Position): Double {
         val lat1 = Math.toRadians(a.latitude); val lat2 = Math.toRadians(b.latitude)
         val dLon = Math.toRadians(b.longitude - a.longitude)
@@ -54,7 +53,7 @@ object RunSeries {
         return (Math.toDegrees(atan2(y, x)) + 360.0) % 360.0
     }
 
-    /** Anteil des Winds entlang des Kurses; läuft man in den Wind, ist er positiv. */
+    /** Share of the wind along the heading; running into the wind makes it positive. */
     fun headwind(wind: Wind, bearingDeg: Double): Double =
         wind.mps * cos(Math.toRadians(bearingDeg - wind.fromDeg))
 
@@ -81,8 +80,8 @@ object RunSeries {
             if (bin !in 0 until n) continue
             last[bin] = Position(point.latitude, point.longitude)
         }
-        // Kurs je Fenster aus der letzten Position davor; mindestens 5 m Versatz,
-        // sonst ist die Richtung nur Rauschen und der Wind bleibt unbestimmt.
+        // Heading per window from the last position before it; at least 5 m of offset,
+        // otherwise the direction is just noise and the wind stays undetermined.
         val headwind = arrayOfNulls<Double>(n)
         if (wind != null) {
             var previous: Position? = null

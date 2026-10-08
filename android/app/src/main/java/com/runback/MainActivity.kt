@@ -9,6 +9,7 @@ import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
 import com.facebook.react.defaults.DefaultReactActivityDelegate
+import com.runback.core.Lang
 import com.runback.core.RecordingService
 import com.runback.core.RunStore
 import com.runback.core.WearCommandGate
@@ -78,7 +79,7 @@ class MainActivity : ReactActivity() {
     }
     if (alreadyApplied) {
       WearCommandGate.markApplied(store, runId, commandId, commandSequence)
-      sendRemoteAck(uri, action, runId, commandId, commandSequence, "accepted", "Aufzeichnungsbefehl bereits angewendet.")
+      sendRemoteAck(uri, action, runId, commandId, commandSequence, "accepted", Lang.tr("Aufzeichnungsbefehl bereits angewendet.", "Recording command already applied."))
       return
     }
     runCatching {
@@ -99,7 +100,7 @@ class MainActivity : ReactActivity() {
       confirmRemoteCommand(uri, runId, action, commandId, commandSequence)
     }.onFailure { error ->
       WearCommandGate.release(store, runId, commandId, commandSequence)
-      sendRemoteAck(uri, action, runId, commandId, commandSequence, "error", error.message ?: "Aufzeichnung konnte nicht synchronisiert werden.")
+      sendRemoteAck(uri, action, runId, commandId, commandSequence, "error", error.message ?: Lang.tr("Aufzeichnung konnte nicht synchronisiert werden.", "Recording could not be synced."))
     }
   }
 
@@ -112,7 +113,7 @@ class MainActivity : ReactActivity() {
     }
     if (applied) {
       WearCommandGate.markApplied(RunStore(this), runId, commandId, sequence)
-      sendRemoteAck(uri, action, runId, commandId, sequence, "accepted", "Aufzeichnung auf dem Handy synchronisiert.")
+      sendRemoteAck(uri, action, runId, commandId, sequence, "accepted", Lang.tr("Aufzeichnung auf dem Handy synchronisiert.", "Recording synced to the phone."))
     } else if (attempt < 100) {
       android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
         { confirmRemoteCommand(uri, runId, action, commandId, sequence, attempt + 1) },
@@ -120,7 +121,7 @@ class MainActivity : ReactActivity() {
       )
     } else {
       WearCommandGate.release(RunStore(this), runId, commandId, sequence)
-      sendRemoteAck(uri, action, runId, commandId, sequence, "error", "Das Handy hat nicht rechtzeitig reagiert.")
+      sendRemoteAck(uri, action, runId, commandId, sequence, "error", Lang.tr("Das Handy hat nicht rechtzeitig reagiert.", "The phone did not respond in time."))
     }
   }
 
@@ -147,7 +148,7 @@ class MainActivity : ReactActivity() {
 
   /**
    * Returns the instance of the [ReactActivityDelegate]. We use [DefaultReactActivityDelegate]
-   * which allows you to enable New Architecture with a single boolean flags [fabricEnabled]
+   * which allows you to enable New Architecture with a single boolean flag [fabricEnabled]
    */
   override fun createReactActivityDelegate(): ReactActivityDelegate =
       DefaultReactActivityDelegate(this, mainComponentName, fabricEnabled)

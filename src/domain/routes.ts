@@ -1,3 +1,5 @@
+import { fixed, tr } from './i18n';
+
 export type RouteMode = 'loop' | 'out_and_back';
 export type RoutePreference = 'flat' | 'quiet' | 'green' | 'balanced';
 export type RouteSource = 'brouter' | 'preview';
@@ -31,15 +33,16 @@ export interface RoutePlan extends RouteRequest {
 const EARTH_RADIUS_METERS = 6_371_000;
 const METERS_PER_DEGREE_LATITUDE = 111_320;
 
-const preferenceLabels: Record<RoutePreference, string> = {
-  flat: 'möglichst flach',
-  quiet: 'möglichst ruhig',
-  green: 'möglichst grün',
-  balanced: 'ausgeglichen',
-};
+// A function: the labels depend on the active language.
+const preferenceLabels = (): Record<RoutePreference, string> => ({
+  flat: tr('möglichst flach', 'as flat as possible'),
+  quiet: tr('möglichst ruhig', 'as quiet as possible'),
+  green: tr('möglichst grün', 'as green as possible'),
+  balanced: tr('ausgeglichen', 'balanced'),
+});
 
 export const routePreferenceLabel = (value: RoutePreference) =>
-  preferenceLabels[value];
+  preferenceLabels()[value];
 
 export function haversineMeters(
   first: RouteCoordinate,
@@ -73,9 +76,9 @@ function validRoutePoints(points: RouteCoordinate[]) {
 }
 
 /**
- * Google Maps nimmt Zwischenziele entgegen, aber keine komplette GPS-Spur.
- * Wenige gleichmäßig verteilte Punkte halten den Link kurz und bewahren die
- * grobe Form, während Google die begehbare Verbindung neu berechnet.
+ * Google Maps accepts waypoints, but not a complete GPS track.
+ * A few evenly spread points keep the link short and preserve the rough shape,
+ * while Google recalculates the walkable connection.
  */
 export function routeWaypoints(
   points: RouteCoordinate[],
@@ -98,7 +101,7 @@ function coordinateForMaps(point: RouteCoordinate) {
   return `${point.latitude.toFixed(6)},${point.longitude.toFixed(6)}`;
 }
 
-/** Universal Google-Maps-Link für eine Laufroute mit wenigen Formpunkten. */
+/** Universal Google Maps link for a running route with a few shape points. */
 export function googleMapsDirectionsUrl(points: RouteCoordinate[]): string {
   const valid = validRoutePoints(points);
   if (valid.length < 2) return '';
@@ -322,7 +325,7 @@ export function createPreviewRoute(
     distanceMeters: routeDistanceMeters(points),
     ascentMeters: routeAscentMeters(points),
     source: 'preview',
-    providerLabel: 'Lokale Vorschau',
+    providerLabel: tr('Lokale Vorschau', 'Local preview'),
   };
 }
 
@@ -404,7 +407,7 @@ export function nextTurn(
 
 export function formatDistanceKm(meters: number | undefined): string {
   if (!Number.isFinite(meters)) return '–';
-  return `${((meters || 0) / 1000).toFixed(2).replace('.', ',')} km`;
+  return `${fixed((meters || 0) / 1000, 2)} km`;
 }
 
 export function formatPaceSeconds(seconds: number | undefined): string {
