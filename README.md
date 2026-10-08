@@ -13,29 +13,33 @@ normales Ergebnis.
 
 ## Was du in der App siehst
 
+**Heute** und **Verlauf** sind feste Tabs. Bis zu zwei weitere aktive
+Funktionen lassen sich in die Leiste heften: Plan, Coach, Statistik, Routen,
+Vorlagen oder Muskelkater. Alles andere liegt unter **Alle Funktionen**.
+
 - **Heute** — Was mache ich jetzt? Wochenleiste, die heutige Einheit als
   Karte mit einem Start-Button (Sportart, Zweck, Vorlage und Tempo-/Pulsziel
   im Start-Sheet), die laufende Empfehlung kompakt, Muskelkater melden, die
   letzten Einheiten.
-- **Plan** — Was mache ich diese Woche? Wochenkalender, Einheit hinzufügen,
-  Woche vorschlagen lassen, Monat als Sprungmarke; darunter Zeit & Rhythmus,
-  Vorlagen (Kraft und Lauf) und Entwicklung.
 - **Verlauf** — Was habe ich gemacht? Einheiten nach Wochen gruppiert mit
-  Summe, Statistik mit Zeitraum, Kennzahlen und Diagramm, Muskelkarte.
-  Detailansicht mit Karte, Kennzahlen, nächstem Schritt, Gefühl, Abschnitten.
-- **Coach** — Woran arbeite ich? Die Empfehlung je Bereich mit Zustand und
-  Fortschritt, darunter Fokus und Ziel, Trainingschat, frühere Empfehlungen,
-  Wie Runback rechnet.
-- **Einstellungen** (Zahnrad im Kopf) — Funktionen, Geräte & Verbindungen
-  (Uhr, BLE, Health Connect, Wetter), Deine Daten (Import, Backup, Löschen),
-  KI-Formulierung, Einrichtung.
+  Summe. Detailansicht mit Karte, Kennzahlen, nächstem Schritt, Gefühl,
+  Abschnitten.
+- **Plan** — Was mache ich diese Woche? Wochenkalender, Einheit hinzufügen,
+  Woche vorschlagen lassen, Monat als Sprungmarke.
+- **Coach** (optional) — Woran arbeite ich? Die Empfehlung je Bereich mit
+  Zustand und Fortschritt, frühere Empfehlungen, Wie Runback rechnet.
+  **Ziele & Fokus** bleiben auch ohne Coach erreichbar.
+- **Einstellungen** (Zahnrad im Kopf) — Funktionen und Navigation, Alle
+  Funktionen, Geräte & Verbindungen (Uhr, BLE, Health Connect, Wetter),
+  Eigener Server, Deine Daten (Import, Export, Backup, Löschen),
+  KI-Formulierung & Trainingschat, Einrichtung.
 
 Unter **Funktionen** wählst du, was Runback zeigt und wann es fragt: Bereiche
 (Laufen, Krafttraining, Radfahren), Muskelkater und die Häufigkeit der Abfrage
-(standardmäßig nach Krafttraining), die Blöcke auf Heute, Plan als Tab,
-Empfehlungen (vorschlagen, nur im Coach, aus), Anzeige während der
-Aufzeichnung, Pausentimer und mehr. Abgeschaltetes verschwindet aus der App;
-Daten bleiben erhalten.
+(standardmäßig nach Krafttraining), die Blöcke auf Heute, Empfehlungen
+(vorschlagen, nur im Coach, aus), Anzeige während der Aufzeichnung,
+Pausentimer und mehr. Unter **Navigation** wählst du die Tabs. Abgeschaltetes
+verschwindet aus der App; Daten bleiben erhalten.
 
 Nach einem Lauf zeigt Runback drei Dinge: wie der Lauf zu seinem Zweck passt,
 wo die aktuelle Empfehlung steht und was du als Nächstes tun kannst — auch
@@ -61,12 +65,15 @@ anderen nichts.
 - **Import** aus Garmin, Strava, Fitbit, Google Fit, Apple Health, Samsung
   Health, Mi Fitness, Polar, Strong u. a. — siehe [Importe](docs/imports.md).
 - **Backup** als ZIP mit allem, was Runback kennt; Wiederherstellung auf einer
-  frischen Installation. Exporte als GPX/FIT/JSON.
+  frischen Installation.
+- **Export** eines Laufs als GPX, Laufberichte und Krafttraining als ZIP.
 - **Health Connect** lesen und (je Lauf, ausdrücklich) schreiben.
 - **BLE-Sensoren** für Puls und Laufkadenz.
 - **Wetter** nur nach Aktivierung, per Open-Meteo.
 - **OpenRouter** optional mit eigenem Schlüssel für Formulierung und
   Trainingschat. Der Chat liest, er schreibt nichts und entscheidet nichts.
+- **Eigener Server** optional, selbst gehostet, mit einer lesenden Kopie
+  freigegebener Daten — siehe [server/README.md](server/README.md).
 
 ## Installation
 

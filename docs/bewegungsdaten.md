@@ -193,39 +193,9 @@ X, y, groups = rm.windows(sessions)         # 4-s-Fenster, Label = exercise_id o
 
 Test des Skripts: `python -m unittest tools/motion/test_runback_motion.py`.
 
-## Vom Signal zum Modell
+## Grenzen
 
-1. **Anschauen.** Gyroskop-Betrag und `events.csv` übereinander plotten.
-   Abhaken muss kurz nach einem Bewegungsblock liegen; sonst Uhrenabgleich
-   (`clock_aligned`) und Handgelenk prüfen.
-2. **Satzgrenzen schätzen.** `estimate_set_bounds` sucht vor jedem Abhaken
-   den letzten zusammenhängenden Bewegungsblock. Die Schwelle passt sich je
-   Einheit an. Ein paar Sätze von Hand gegenprüfen und Ausreißer
-   aussortieren.
-3. **Grundlinie ohne Lernen.** Wiederholungen über die Autokorrelation auf
-   der Hauptachse zählen und mit `reps` vergleichen: Anteil auf ±1 genau und
-   mittlerer Fehler. Jedes Modell muss diese Zahl schlagen.
-4. **Übungen erkennen.** Erst ein einfaches Modell auf Merkmalen je Fenster
-   (Mittelwert, Streuung, dominante Frequenz, Lage der Schwerkraft je Achse)
-   mit Random Forest; danach ein kleines 1D-CNN auf den Fenstern aus
-   `rm.windows`. Die Lage der Schwerkraft trennt viele Übungen schon allein.
-5. **Ehrlich validieren.** Immer ganze Einheiten zurückhalten
-   (`groups` → `GroupKFold` oder „leave one session out“), nie zufällige
-   Fenster: Benachbarte Fenster sind fast gleich, das Ergebnis wäre zu gut.
-   Bericht je Übung mit Anzahl Sätze — eine Übung mit drei Sätzen ist noch
-   nicht beurteilbar.
-6. **Vortrainieren (optional).** Öffentliche Datensätze mit Sensor am Arm:
-   [RecoFit](https://www.microsoft.com/en-us/research/publication/recofit-using-wearable-sensor-find-recognize-count-repetitive-exercises/)
-   (Microsoft, über 100 Personen) und
-   [MM-Fit](https://mmfit.github.io/) (Smartwatch, 10 Übungen). Abtastrate
-   auf 50 Hz bringen, Einheiten und Achsen angleichen, dann mit den eigenen
-   Daten nachtrainieren.
-7. **In die App.** Als TensorFlow Lite (LiteRT) exportieren, wenige 100 KB.
-   Das Modell bekommt eine Version, die in jede Erkennung wandert, und wird
-   erst freigeschaltet, wenn es an zurückgehaltenen Einheiten besteht
-   (wie `modelValidation.ts`). Erkennungen sind Vorschläge.
-
-**Grenzen.** Übungen mit ruhigem Handgelenk (Beinstrecker, Beincurl,
+Übungen mit ruhigem Handgelenk (Beinstrecker, Beincurl,
 Wadenheben) sieht die Uhr kaum. Ähnliche Übungen (Bank- und
 Schrägbankdrücken) und das Gewicht lassen sich aus dem Handgelenk nicht
 sicher unterscheiden.
