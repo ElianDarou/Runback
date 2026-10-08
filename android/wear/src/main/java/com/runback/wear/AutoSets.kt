@@ -84,6 +84,7 @@ class AutoSets(
             }
         }
         val nextProfile = next?.takeIf { set?.optBoolean("timed") != true }?.let { RepProfiles.forExercise(it.exerciseId) }
+        // Der Pausentimer ist nur ein Hinweis: auch vor seinem Ende weiterzählen; Timeränderungen setzen nichts zurück.
         if (nextProfile == null) {
             if (detector != null) buffer.pause()
             detector = null; profile = null
