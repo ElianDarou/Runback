@@ -3,6 +3,7 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import {
@@ -147,6 +148,32 @@ interface SetSuggestion {
   seconds?: number;
 }
 
+/** Ein Entwurf bleibt lokal; ein neuer gespeicherter Wert oder Satzabschluss gilt. */
+function useSetInput(
+  initial: string,
+  stored: number | undefined,
+  completedAt: number | undefined,
+) {
+  const [value, setValue] = useState(initial);
+  const [touched, setTouched] = useState(false);
+  const previous = useRef({ stored, completedAt });
+  useEffect(() => {
+    const changed =
+      previous.current.stored !== stored ||
+      previous.current.completedAt !== completedAt;
+    previous.current = { stored, completedAt };
+    if (!touched || changed) {
+      setValue(initial);
+      setTouched(false);
+    }
+  }, [initial, stored, completedAt, touched]);
+  const change = (next: string) => {
+    setTouched(true);
+    setValue(next);
+  };
+  return [value, change, touched] as const;
+}
+
 const kindLabel: Record<string, string> = {
   warmup: 'Aufwärmen',
   failure: 'bis Versagen',
@@ -234,34 +261,31 @@ const SetRow = memo(function SetRow({
   const suggestedReps = timed ? suggestion?.seconds : suggestion?.reps;
   const initialWeight = ownWeight ?? suggestedWeight;
   const initialReps = ownReps ?? suggestedReps;
-  const [weight, setWeight] = useState(
+  const [weight, setWeight, weightTouched] = useSetInput(
     initialWeight === undefined ? '' : formatWeight(initialWeight),
+    set.actualWeightKg,
+    set.completedAt,
   );
-  const [reps, setReps] = useState(
+  const [reps, setReps, repsTouched] = useSetInput(
     initialReps === undefined ? '' : String(initialReps),
+    timed ? set.actualSeconds : set.actualReps,
+    set.completedAt,
   );
   // Reserve (RIR) ist freiwillig und nur eine Nutzereingabe. Leer heißt
   // unbekannt; die App schätzt sie nicht aus demselben Satz.
-  const [rir, setRir] = useState(
+  const [rir, setRir] = useSetInput(
     set.actualRir === undefined ? '' : String(set.actualRir),
+    set.actualRir,
+    set.completedAt,
   );
-  const [touched, setTouched] = useState(false);
-  // Uhr, Benachrichtigung oder ein gelöschter Satz davor ändern Werte und
-  // Vorschläge, während die Zeile stehen bleibt. Ohne eigene Eingabe folgt sie.
-  useEffect(() => {
-    if (touched) return;
-    setWeight(initialWeight === undefined ? '' : formatWeight(initialWeight));
-    setReps(initialReps === undefined ? '' : String(initialReps));
-    setRir(set.actualRir === undefined ? '' : String(set.actualRir));
-  }, [touched, initialWeight, initialReps, set.actualRir]);
   const done = set.completedAt !== undefined;
   const weightIsSuggested =
-    !touched &&
+    !weightTouched &&
     !done &&
     ownWeight === undefined &&
     suggestedWeight !== undefined;
   const repsIsSuggested =
-    !touched && !done && ownReps === undefined && suggestedReps !== undefined;
+    !repsTouched && !done && ownReps === undefined && suggestedReps !== undefined;
   const bodyweight = set.planned.loadKind === 'bodyweight';
   const note = kindLabel[set.planned.kind];
 
@@ -294,10 +318,7 @@ const SetRow = memo(function SetRow({
         editable={!bodyweight}
         keyboardType="decimal-pad"
         onBlur={() => onEdit(set.id, weight, reps, rir, timed)}
-        onChangeText={value => {
-          setTouched(true);
-          setWeight(value);
-        }}
+        onChangeText={setWeight}
         placeholder={bodyweight ? 'KG' : '–'}
         placeholderTextColor={color.muted}
         selectTextOnFocus
@@ -316,10 +337,7 @@ const SetRow = memo(function SetRow({
         }`}
         keyboardType="number-pad"
         onBlur={() => onEdit(set.id, weight, reps, rir, timed)}
-        onChangeText={value => {
-          setTouched(true);
-          setReps(value);
-        }}
+        onChangeText={setReps}
         placeholder="–"
         placeholderTextColor={color.muted}
         selectTextOnFocus
@@ -333,10 +351,7 @@ const SetRow = memo(function SetRow({
           accessibilityLabel={`Wiederholungen im Tank für Satz ${position}, optional`}
           keyboardType="number-pad"
           onBlur={() => onEdit(set.id, weight, reps, rir, timed)}
-          onChangeText={value => {
-            setTouched(true);
-            setRir(value);
-          }}
+          onChangeText={setRir}
           placeholder="–"
           placeholderTextColor={color.muted}
           selectTextOnFocus
