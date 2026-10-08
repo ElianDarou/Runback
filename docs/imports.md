@@ -4,8 +4,8 @@ Runback liest Exporte anderer Apps ein. Der Import ist optional: Aufzeichnen,
 Historie und Auswertung funktionieren auch ohne. Prinzip: **dort exportieren,
 hier importieren** — keine Cloud-Verbindung, kein Konto.
 
-In der App: **Mehr → Deine Daten → App-Importe**, dann Quelle wählen und
-Datei(en) auswählen. ZIP-Archive können direkt eingelesen werden.
+In der App: **Zahnrad → Deine Daten → Aus anderen Apps**, dann Quelle wählen
+und Datei(en) auswählen. ZIP-Archive können direkt eingelesen werden.
 
 Runback liest die Dateien zuerst nur und zeigt unter **Import prüfen**, was
 neu wäre: Läufe, Krafteinheiten (auch einzeln), Kontextwerte je Art und ob

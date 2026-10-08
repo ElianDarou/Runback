@@ -32,3 +32,5 @@ npm-debug.log
 /server/.generated/
 /server/.env
 .vercel
+
+__pycache__/
