@@ -13,7 +13,7 @@ import kotlin.math.sqrt
  * reps — classic signal processing, no learned model.
  *
  * How it works: bring acceleration and gyroscope to 50 Hz and keep them in a
- * ring buffer (200 s). At rest only check for motion cheaply. When moving,
+ * ring buffer (240 s). At rest only check for motion cheaply. When moving,
  * every 0.5 s check the last 15 s: main axis per sensor, autocorrelation;
  * even motion with a repeat period between `minPeriodS` and `maxPeriodS`,
  * ideally confirmed by both sensors. Fast periodicity around 1.2 s (walking,
@@ -413,7 +413,9 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
         return Active(
             sensor, periodS, axis, option.sign, scaleAccel, scaleGyro, amplitude,
             RepSignal.template(shapes.toList())!!, RepSignal.median(heights.toList()), firstPeak,
-            max(firstPeak - ((periodS + 3) * RepSignal.RATE_HZ).toLong(), oldest()),
+            // Room before the first rep found so far: the set usually began several reps
+            // earlier, while lifting the weight still masked the rhythm.
+            max(firstPeak - ((LEAD_IN_PERIODS * periodS + 3) * RepSignal.RATE_HZ).toLong(), oldest()),
             evidence,
         )
     }
@@ -456,16 +458,23 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
         val peaks = RepSignal.peaks(p, a.periodS, 0.5 * a.amplitude)
         val chosen = mutableListOf<Int>()
         val similarities = mutableListOf<Double>()
+        // Shapes of the latest reps: over a long set the motion changes (fatigue), so a peak
+        // may also match them instead of only the template from the start of the set.
+        val recent = ArrayDeque<DoubleArray>()
         var skipped = 0
         val earliest = a.firstPeak - (0.3 * a.periodS * RepSignal.RATE_HZ).toLong()
         for (i in peaks) {
             if (a.lo + i < earliest) continue
             // The last peak only counts once half a period after it is available.
             val shape = RepSignal.shape(v, i, a.periodS) ?: continue
-            val similarity = RepSignal.dot(shape, a.template)
-            val heightOk = heightFits(p[i], a.height)
+            val recentTemplate = if (recent.size >= 3) RepSignal.template(recent.toList()) else null
+            val similarity = max(RepSignal.dot(shape, a.template), recentTemplate?.let { RepSignal.dot(shape, it) } ?: -1.0)
+            // One arm keeps the fixed height: a tiring arm must not lower the bar until the
+            // other arm's weak reps pass as a continuation (`heightFits`).
+            val height = if (!profile.unilateral && chosen.size >= 3) RepSignal.median(chosen.takeLast(5).map { p[it] }) else a.height
+            val heightOk = heightFits(p[i], height)
             if (chosen.isEmpty()) {
-                if (similarity >= 0.5 && heightOk && a.lo + i > minStart) { chosen += i; similarities += similarity }
+                if (similarity >= 0.5 && heightOk && a.lo + i > minStart) { chosen += i; similarities += similarity; recent.addLast(shape) }
                 continue
             }
             val gap = (i - chosen.last()).toDouble() / RepSignal.RATE_HZ
@@ -473,15 +482,35 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
             val inRhythm = gap in 0.7 * a.periodS..1.5 * a.periodS
             if (heightOk && gap >= 0.6 * a.periodS && (similarity >= 0.5 || (inRhythm && similarity >= 0.3))) {
                 chosen += i; similarities += similarity
+                recent.addLast(shape); if (recent.size > 3) recent.removeFirst()
             } else skipped++
+        }
+        // The first reps often look different from the three the template came from
+        // (dumbbells just lifted, bar just unracked): add them back in rhythm before it
+        // while height and shape roughly fit.
+        if (chosen.isNotEmpty()) {
+            for (i in peaks.filter { it < chosen.first() }.reversed()) {
+                if (a.lo + i <= minStart) break
+                val shape = RepSignal.shape(v, i, a.periodS) ?: break
+                val gap = (chosen.first() - i).toDouble() / RepSignal.RATE_HZ
+                if (gap < 0.6 * a.periodS) continue
+                if (gap > 1.5 * a.periodS) break
+                val similarity = RepSignal.dot(shape, a.template)
+                if (!heightFits(p[i], a.height) || similarity < 0.3) break
+                chosen.add(0, i); similarities.add(0, similarity)
+            }
         }
         return Chain(chosen.map { a.lo + it }, similarities, chosen.map { p[it] }, skipped)
     }
 
     private fun follow() {
         val a = active ?: return
+        if (total - a.firstPeak > MAX_SET_S * RepSignal.RATE_HZ || a.lo < oldest()) {
+            state = State.IDLE; active = null; hits = 0; provisionalReps = 0
+            return
+        }
         val c = chain(a)
-        if (c.peaks.isEmpty() || total - a.firstPeak > MAX_SET_S * RepSignal.RATE_HZ || a.lo < oldest()) {
+        if (c.peaks.isEmpty()) {
             state = State.IDLE; active = null; hits = 0; provisionalReps = 0
             return
         }
@@ -499,6 +528,9 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
         state = State.IDLE; active = null; hits = 0; misses = 0; provisionalReps = 0
         if (c.peaks.size < MIN_REPS) return
         val (set, endFrame) = finish(a, c)
+        // Three reps the detector itself is unsure about are mostly handling between sets
+        // (setting up, walking with the dumbbells): asking about them would block the real set.
+        if (set.count <= 3 && set.uncertain) return
         // The second side of a one-arm set often starts before the first is fully detected.
         minStart = endFrame
         val segment = Segment(set, a.amplitude, c.peaks.first(), total)
@@ -590,11 +622,15 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
     private fun round(value: Double) = (value * 1000).roundToInt() / 1000.0
 
     companion object {
-        const val VERSION = "set-detector-v1"
+        const val VERSION = "set-detector-v2"
         const val UNCERTAIN_BELOW = 0.6
         private const val ACCEL = 0
         private const val GYRO = 1
-        private const val RING_SECONDS = 200
+        /**
+         * Long enough for the longest set (`MAX_SET_S`), the lead-in before its first rep
+         * (`LEAD_IN_PERIODS` × the longest period of 7 s + 3 s) and the end detection after it.
+         */
+        private const val RING_SECONDS = 240
         private const val WINDOW_S = 15.0
         private const val LOOKBACK_S = 45.0
         private const val EVALUATE_EVERY = 25L
@@ -606,6 +642,7 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
         private const val BRIDGE_MIN_S = 5.0
         private const val BRIDGE_MAX_S = 8.0
         private const val MIN_REPS = 3
+        private const val LEAD_IN_PERIODS = 4.0
         private const val MAX_SET_S = 180
         private const val SIDE_GAP_S = 15.0
         private const val SIDE_WAIT_IDLE_S = 12.0

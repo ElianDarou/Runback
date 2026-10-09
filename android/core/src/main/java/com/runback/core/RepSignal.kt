@@ -30,8 +30,8 @@ object RepSignal {
 
     /**
      * Band limit per axis: subtract the slow position (gravity, posture) via a
-     * wide average, then smooth twice with a narrow one. The widths follow the
-     * rep duration once it is known.
+     * wide, smoothed median, then smooth twice with a narrow average. The widths
+     * follow the rep duration once it is known.
      */
     fun prepare(axes: Array<DoubleArray>, periodS: Double?): Array<DoubleArray> {
         val baselineS = if (periodS == null) 12.0 else (2.5 * periodS).coerceIn(5.0, 12.0)
@@ -40,9 +40,44 @@ object RepSignal {
         val smooth = (smoothS * RATE_HZ).toInt()
         return Array(axes.size) { a ->
             val raw = axes[a]
-            val slow = movingAverage(raw, baseline)
+            // Median rather than mean: a posture change before the first and after the last rep
+            // (dumbbell up, set down) stays a step and does not distort the edge reps.
+            val slow = movingAverage(movingMedian(raw, baseline), baseline / 2)
             val detrended = DoubleArray(raw.size) { raw[it] - slow[it] }
             movingAverage(movingAverage(detrended, smooth), smooth)
+        }
+    }
+
+    private const val MEDIAN_BLOCK = 10
+
+    /**
+     * Centered moving median over `width` values, computed on block means
+     * (`MEDIAN_BLOCK` values) and interpolated back onto the grid. Follows a
+     * posture change as a step instead of a ramp.
+     */
+    fun movingMedian(x: DoubleArray, width: Int): DoubleArray {
+        val n = x.size
+        if (n == 0) return DoubleArray(0)
+        val blocks = (n + MEDIAN_BLOCK - 1) / MEDIAN_BLOCK
+        val means = DoubleArray(blocks) { b ->
+            val lo = b * MEDIAN_BLOCK; val hi = min(n, lo + MEDIAN_BLOCK)
+            var sum = 0.0
+            for (i in lo until hi) sum += x[i]
+            sum / (hi - lo)
+        }
+        val half = max(1, width / MEDIAN_BLOCK) / 2
+        val medians = DoubleArray(blocks) { b ->
+            val window = means.copyOfRange(max(0, b - half), min(blocks, b + half + 1))
+            window.sort()
+            val m = window.size / 2
+            if (window.size % 2 == 1) window[m] else (window[m - 1] + window[m]) / 2
+        }
+        return DoubleArray(n) { i ->
+            val position = (i - (MEDIAN_BLOCK - 1) / 2.0) / MEDIAN_BLOCK
+            val lower = position.toInt().coerceIn(0, blocks - 1)
+            val upper = min(lower + 1, blocks - 1)
+            val f = (position - lower).coerceIn(0.0, 1.0)
+            medians[lower] + (medians[upper] - medians[lower]) * f
         }
     }
 
