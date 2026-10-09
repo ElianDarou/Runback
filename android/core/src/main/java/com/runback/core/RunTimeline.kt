@@ -75,11 +75,8 @@ object RunTimeline {
             return ((time - startTime) / stepMs).toInt().coerceIn(0, bucketCount - 1)
         }
 
-        // Same distance rule as RunStore.derive: step accepted, anchor against
-        // the noise floor, pauses and interruptions separate.
-        var distance = 0.0
+        val accumulator = RunMath.DistanceAccumulator()
         var previous: GpsPoint? = null
-        var anchor: GpsPoint? = null
         for (point in gps) {
             val bucket = bucketOf(point.time)
             if (bucket != null) {
@@ -88,28 +85,13 @@ object RunTimeline {
                 if (point.accuracyM.isFinite() && point.accuracyM > 0) { accuracySum[bucket] += point.accuracyM; accuracyCount[bucket]++ }
             }
             val before = previous
-            if (before != null) {
-                val crossing = cuts.any { it > before.time && it <= point.time }
-                val accepted = if (crossing) null else RunMath.acceptedDistance(
-                    before.latitude, before.longitude, before.time, before.accuracyM,
-                    point.latitude, point.longitude, point.time, point.accuracyM,
-                )
-                if (accepted == null) {
-                    anchor = null
-                } else {
-                    val base = anchor ?: before
-                    val stepMeters = RunMath.anchoredDistance(
-                        base.latitude, base.longitude, base.accuracyM,
-                        point.latitude, point.longitude, point.accuracyM,
-                    )
-                    if (stepMeters != null) { distance += stepMeters; anchor = point } else if (anchor == null) anchor = base
-                    if (bucket != null) {
-                        moving[bucket] += (point.time - before.time) / 1000.0
-                        if (stepMeters != null) stepDistance[bucket] += stepMeters
-                    }
-                }
+            val crossing = before?.let { cuts.any { cut -> cut > it.time && cut <= point.time } } ?: false
+            val stepMeters = accumulator.add(point.time, point.latitude, point.longitude, point.accuracyM, resetBefore = crossing)
+            if (before != null && stepMeters != null && bucket != null) {
+                moving[bucket] += (point.time - before.time) / 1000.0
+                stepDistance[bucket] += stepMeters
             }
-            if (bucket != null) distanceAtEnd[bucket] = distance
+            if (bucket != null) distanceAtEnd[bucket] = accumulator.distanceMeters
             previous = point
         }
         for (reading in heartRate) {
