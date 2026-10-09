@@ -37,16 +37,17 @@ class RunStore(context: Context) : DocumentStore {
             }
             db = helper!!.writableDatabase
         }
+        Lang.update(settings())
     }
     private fun <T> locked(block: () -> T): T = synchronized(lock, block)
-    /** Was das erste Öffnen nach einem Prozessverlust tut; für Tests ohne echten Absturz. */
+    /** What the first open after a process loss does; for tests without a real crash. */
     internal fun recoverOrphanedRuns(now: Long) = locked { orphaned(db).forEach { recoverOrphaned(db, it, now) } }
     private fun <T> transaction(block: () -> T): T {
         db.beginTransaction()
         try { val result = block(); db.setTransactionSuccessful(); return result } finally { db.endTransaction() }
     }
     private fun read(id: String): JSONObject = db.rawQuery("SELECT json FROM runs WHERE id=?", arrayOf(id)).use {
-        require(it.moveToFirst()) { "Lauf nicht gefunden" }; JSONObject(it.getString(0))
+        require(it.moveToFirst()) { Lang.tr("Lauf nicht gefunden", "Run not found") }; JSONObject(it.getString(0))
     }
     private fun write(run: JSONObject) { db.insertWithOnConflict("runs", null, ContentValues().apply {
         put("id", run.getString("id")); put("start", run.getLong("startTime")); put("json", run.toString())
@@ -66,8 +67,8 @@ class RunStore(context: Context) : DocumentStore {
         val feedback = getDocument("feedback_${run.getString("id")}") ?: JSONObject()
         run.put("feedback", feedback)
         if (feedback.has("purpose")) run.put("purpose", feedback.getString("purpose"))
-        // Sportart: fehlt sie (ältere Datensätze, Importe), ist es ein Lauf. Eine
-        // spätere Korrektur liegt im Feedback; die ursprüngliche bleibt im Datensatz.
+        // Sport: if it is missing (older records, imports), it is a run. A later
+        // correction lives in the feedback; the original stays in the record.
         if (feedback.has("sport")) run.put("sport", feedback.getString("sport"))
         else if (!run.has("sport")) run.put("sport", "running")
         run.remove("_tick")
@@ -82,11 +83,13 @@ class RunStore(context: Context) : DocumentStore {
     }
     fun active(): JSONObject? = locked { activeId()?.let { present(read(it)) } }
     private fun newRun(purpose: String, source: String, sport: String, target: JSONObject? = null, id: String? = null): JSONObject {
-        check(app.filesDir.usableSpace > 32L * 1024 * 1024) { "Zu wenig freier Speicher. Bitte zuerst Daten sichern und Speicher freigeben." }
+        check(app.filesDir.usableSpace > 32L * 1024 * 1024) {
+            Lang.tr("Zu wenig freier Speicher. Bitte zuerst Daten sichern und Speicher freigeben.", "Not enough free storage. Back up your data and free up storage first.")
+        }
         val now = System.currentTimeMillis()
         val runId = id ?: UUID.randomUUID().toString()
-        require(runId.matches(Regex("[A-Za-z0-9_-]{1,100}"))) { "Ungültige Laufkennung" }
-        check(!runExists(runId)) { "Diese Laufkennung ist bereits gespeichert." }
+        require(runId.matches(Regex("[A-Za-z0-9_-]{1,100}"))) { Lang.tr("Ungültige Laufkennung", "Invalid run ID") }
+        check(!runExists(runId)) { Lang.tr("Diese Laufkennung ist bereits gespeichert.", "This run ID is already saved.") }
         return JSONObject().put("id", runId).put("startTime", now).put("endTime", now)
             .put("purpose", purpose).put("sport", sport).put("source", source).put("status", "recording").put("durationMs", 0L)
             .put("_tick", SystemClock.elapsedRealtime()).put("distanceMeters", 0.0).put("rawSampleCount", 0)
@@ -95,7 +98,7 @@ class RunStore(context: Context) : DocumentStore {
     }
     fun start(purpose: String = "easy", source: String = "phone", sport: String = "running", target: JSONObject? = null, id: String? = null, commandId: String? = null): JSONObject = locked {
         activeId()?.let {
-            check(id == null || id == it) { "Ein anderer Lauf ist bereits aktiv." }
+            check(id == null || id == it) { Lang.tr("Ein anderer Lauf ist bereits aktiv.", "Another run is already active.") }
             val existing = read(it)
             if (id == it && existing.optString("status") == "interrupted") {
                 transaction {
@@ -122,7 +125,7 @@ class RunStore(context: Context) : DocumentStore {
     /** Start a route run and bind its run id to the route in one SQLite lock/transaction. */
     fun startRoute(purpose: String, source: String, sport: String, routePlanId: String, target: JSONObject? = null, id: String? = null, commandId: String? = null): JSONObject = locked {
         activeId()?.let { existingId ->
-            check(id == existingId) { "Ein anderer Lauf ist bereits aktiv." }
+            check(id == existingId) { Lang.tr("Ein anderer Lauf ist bereits aktiv.", "Another run is already active.") }
             val existing = read(existingId)
             if (existing.optString("status") == "interrupted") {
                 transaction {
@@ -136,14 +139,18 @@ class RunStore(context: Context) : DocumentStore {
             }
             return@locked present(read(existingId))
         }
-        val planner = getDocument("route_planner") ?: error("Routenplaner ist nicht vorbereitet.")
+        val planner = getDocument("route_planner") ?: error(Lang.tr("Routenplaner ist nicht vorbereitet.", "Route planner is not set up."))
         val routes = planner.optJSONArray("routes") ?: JSONArray()
         val route = (0 until routes.length())
             .mapNotNull { routes.optJSONObject(it) }
             .firstOrNull { it.optString("id") == routePlanId }
-            ?: error("Die geplante Route wurde nicht gefunden.")
-        check(route.optString("source") == "brouter") { "Nur verifizierte Straßenrouten können gestartet werden." }
-        check(route.optString("activeRunId").isBlank()) { "Diese Route ist bereits einem Lauf zugeordnet." }
+            ?: error(Lang.tr("Die geplante Route wurde nicht gefunden.", "The planned route was not found."))
+        check(route.optString("source") == "brouter") {
+            Lang.tr("Nur verifizierte Straßenrouten können gestartet werden.", "Only verified road routes can be started.")
+        }
+        check(route.optString("activeRunId").isBlank()) {
+            Lang.tr("Diese Route ist bereits einem Lauf zugeordnet.", "This route is already assigned to a run.")
+        }
         val run = newRun(purpose, source, sport, target, id)
         val runId = run.getString("id")
         val updatedRoutes = JSONArray()
@@ -173,13 +180,15 @@ class RunStore(context: Context) : DocumentStore {
         }
         write(run)
     }
-    /** Ändert das Zieltempo des aktiven Laufs; das Ereignis hält alten und neuen Wert fest. */
+    /** Changes the target pace of the active run; the event records the old and new value. */
     fun changeTargetPace(secondsPerKm: Double): JSONObject = locked {
-        require(secondsPerKm.isFinite() && secondsPerKm in 120.0..1200.0) { "Zieltempo wird nicht unterstützt." }
-        val id = activeId() ?: error("Es läuft gerade keine Aufzeichnung.")
+        require(secondsPerKm.isFinite() && secondsPerKm in 120.0..1200.0) {
+            Lang.tr("Zieltempo wird nicht unterstützt.", "Target pace is not supported.")
+        }
+        val id = activeId() ?: error(Lang.tr("Es läuft gerade keine Aufzeichnung.", "No recording is running right now."))
         val run = read(id)
         val target = run.optJSONObject("target")
-        check(target?.optString("kind") == "pace") { "Dieser Lauf hat kein Tempoziel." }
+        check(target?.optString("kind") == "pace") { Lang.tr("Dieser Lauf hat kein Tempoziel.", "This run has no pace target.") }
         val previous = target!!.optDouble("secondsPerKm")
         if (previous != secondsPerKm) transaction {
             target.put("secondsPerKm", secondsPerKm)
@@ -208,12 +217,12 @@ class RunStore(context: Context) : DocumentStore {
             transaction { addEvent(id, "resume", JSONObject().put("previousStatus", run.optString("status")).also {
                 commandId?.let { value -> it.put("commandId", value) }
             })
-                // Ende auf jetzt: Eine Wiederherstellung nach Absturz zählt die Pause davor nicht mit.
+                // End moved to now: a recovery after a crash does not count the pause before it.
                 run.put("status", "recording").put("_tick", SystemClock.elapsedRealtime())
                     .put("endTime", System.currentTimeMillis()); write(run) }
         }; present(JSONObject(run.toString()))
     }
-    /** Unterbricht den aktiven Lauf; die Dauer reicht bis jetzt. Eine zweite Unterbrechung ändert nichts. */
+    /** Interrupts the active run; the duration runs up to now. A second interruption changes nothing. */
     fun markInterrupted(reason: String) = locked {
         activeId()?.let { id ->
             if (read(id).optString("status") == "interrupted") return@let
@@ -257,7 +266,7 @@ class RunStore(context: Context) : DocumentStore {
         transaction {
             val run = read(id)
             samples.forEach { sample ->
-                require(sample.time > 0 && sample.kind.length <= 40) { "Ungültiger Messwert" }
+                require(sample.time > 0 && sample.kind.length <= 40) { Lang.tr("Ungültiger Messwert", "Invalid sensor value") }
                 db.insertOrThrow("samples", null, ContentValues().apply {
                     put("run_id", id); put("time", sample.time); put("kind", sample.kind); put("json", sample.values.toString()) })
                 if (sample.kind == "cadence") {
@@ -272,14 +281,14 @@ class RunStore(context: Context) : DocumentStore {
                         run.put("lastHeartRate", bpm).put("lastHeartRateAt", sample.time)
                     }
                 }
-                // Für die Live-Anzeige „GPS sucht“; die Strecke zählt weiter nur gültige Positionen.
+                // For the live “GPS searching” display; distance still only counts valid positions.
                 if (sample.kind == "gps" && sample.time >= run.optLong("lastGpsAt", 0L)) run.put("lastGpsAt", sample.time)
             }
             val hasGpsSamples = samples.any { it.kind == "gps" }
             val hasSourceSamples = samples.any { it.kind == "gps" || it.kind == "heartRate" }
             val now = SystemClock.elapsedRealtime()
             // Keep the live card responsive without rescanning the complete track for
-            // every sensor batch. Finished runs are always derived exactly below.
+            // every sensor batch. Saving processes the remaining samples with the same rule.
             val lastDerive = run.optLong("_lastDistanceDeriveAt", 0L)
             if (hasSourceSamples && (lastDerive <= 0L || now < lastDerive || now - lastDerive >= 5_000L)) {
                 if (hasGpsSamples) run.put("distanceMeters", liveDistance(id))
@@ -289,7 +298,7 @@ class RunStore(context: Context) : DocumentStore {
             run.put("rawSampleCount", run.optInt("rawSampleCount") + samples.size); write(run)
         }
     }
-    /** Vom Nutzer gesetztes Ende; die Rohsamples danach bleiben gespeichert, zählen aber nicht. */
+    /** End set by the user; raw samples after it stay stored but do not count. */
     private fun trimEnd(id: String): Long? = getDocument("trim_$id")?.optLong("endTime")?.takeIf { it > 0 }
     private fun selectedSamples(id: String, kind: String, until: Long? = trimEnd(id)): List<RawSample> {
         val all = ArrayList<RawSample>()
@@ -313,24 +322,17 @@ class RunStore(context: Context) : DocumentStore {
         return paused
     }
     private fun liveDistance(id: String): Double {
-        val boundaries = events(id)
-        val cuts = (0 until boundaries.length()).mapNotNull { index ->
-            boundaries.optJSONObject(index)?.takeIf { it.optString("type") in listOf("pause", "resume", "interrupted") }?.optLong("at")
-        }
-        var previous: RawSample? = null
-        var distance = 0.0
+        val cuts = cuts(id)
+        val accumulator = RunMath.DistanceAccumulator()
+        var previousTime: Long? = null
         selectedSamples(id, "gps").forEach { sample ->
-            val before = previous
-            if (before != null && cuts.none { it > before.time && it <= sample.time }) {
-                val first = before.values; val second = sample.values
-                RunMath.acceptedDistance(
-                    first.optDouble("latitude"), first.optDouble("longitude"), before.time, first.optDouble("accuracyM", 0.0),
-                    second.optDouble("latitude"), second.optDouble("longitude"), sample.time, second.optDouble("accuracyM", 0.0),
-                )?.let { distance += it }
-            }
-            previous = sample
+            val values = sample.values
+            val crossing = previousTime?.let { before -> cuts.any { it > before && it <= sample.time } } ?: false
+            accumulator.add(sample.time, values.optDouble("latitude"), values.optDouble("longitude"),
+                values.optDouble("accuracyM", 0.0), resetBefore = crossing)
+            previousTime = sample.time
         }
-        return distance
+        return accumulator.distanceMeters
     }
     private fun sensorSources(id: String): JSONObject = JSONObject().apply {
         SensorSourceSelection.selectedSource(selectedSamples(id, "gps"), "gps")?.let { put("gps", it) }
@@ -344,7 +346,7 @@ class RunStore(context: Context) : DocumentStore {
         }
         result
     }
-    /** Alle Originale; `corrected` lässt Samples nach einem vom Nutzer gesetzten Ende weg (Export, Wetter). */
+    /** All originals; `corrected` drops samples after a user-set end (export, weather). */
     fun rawSamples(id: String, corrected: Boolean = false): JSONArray = locked {
         val result = JSONArray()
         val until = (if (corrected) trimEnd(id) else null) ?: Long.MAX_VALUE
@@ -392,7 +394,7 @@ class RunStore(context: Context) : DocumentStore {
         ordered.sortWith(compareBy<JSONObject> { it.optLong("at") })
         return JSONArray().apply { ordered.forEach(::put) }
     }
-    /** Alle Ereigniszeiten, an denen die Distanzzählung neu ansetzt (Pause, Weiter, Unterbrechung). */
+    /** All event times at which distance counting restarts (pause, resume, interruption). */
     private fun cuts(id: String): List<Long> {
         val boundaries = events(id)
         return (0 until boundaries.length()).mapNotNull { index ->
@@ -408,8 +410,8 @@ class RunStore(context: Context) : DocumentStore {
     }
 
     /**
-     * Aggregierte Reihen (Raster 5 s, lückenlos) samt Höhe und Phasen. Rohsamples
-     * bleiben hier; nach außen gehen Aggregate, Phasen und die CSV-Zeitreihe.
+     * Aggregated series (5 s grid, gapless) with altitude and phases. Raw samples
+     * stay here; outwards go aggregates, phases and the CSV time series.
      */
     private class DerivedSeries(val start: Long, val end: Long, val timeline: RunTimeline.Result,
                                 val elevation: RunElevation.Outcome, val phases: RunPhases.Result,
@@ -452,10 +454,10 @@ class RunStore(context: Context) : DocumentStore {
     }
 
     /**
-     * Ableitung aus Rohdaten: Distanz, Kilometer-Abschnitte, Höhe, Phasen, Zeitbudget.
-     * 3.0: GPS-Lücken beenden keinen Abschnitt mehr; Abschnitte enden nur am
-     * vollen Kilometer oder an einer Pause. Steigung und Höhenmeter kommen aus
-     * RunElevation, nie aus zwei Nachbarpunkten.
+     * Derivation from raw data: distance, kilometer splits, altitude, phases, time budget.
+     * 3.0: GPS gaps no longer end a split; splits only end at a full kilometer or
+     * at a pause. Grade and elevation gain come from RunElevation, never from two
+     * neighboring points.
      */
     private fun derive(id: String): JSONObject {
         val geometry = JSONArray(); val segments = JSONArray(); val series = JSONArray(); val gapList = JSONArray()
@@ -468,11 +470,10 @@ class RunStore(context: Context) : DocumentStore {
         val elevationGrid = (derived.elevation as? RunElevation.Outcome.Available)?.result?.grid
         val gridMs = RunPhases.GRID_SECONDS * 1000L
         fun altitudeAt(time: Long): Double? = elevationGrid?.getOrNull(((time - startTime) / gridMs).toInt())
-        var distance = 0.0; var segmentDistance = 0.0; var segmentDuration = 0.0; var segmentGap = 0.0
+        var segmentDistance = 0.0; var segmentDuration = 0.0; var segmentGap = 0.0
         var segmentStart: Long? = null; var segmentEnd: Long? = null
         var gaps = 0; var previous: JSONObject? = null
-        // Anker: Distanz zählt erst, wenn die Verschiebung den GPS-Rauschboden übersteigt.
-        var anchor: JSONObject? = null
+        val accumulator = RunMath.DistanceAccumulator()
         fun split() {
             val from = segmentStart; val to = segmentEnd
             if (segmentDistance > 0 && from != null && to != null) {
@@ -495,41 +496,40 @@ class RunStore(context: Context) : DocumentStore {
                 }
                 segments.put(s)
             }
-            segmentDistance = 0.0; segmentDuration = 0.0; segmentGap = 0.0; segmentStart = null; segmentEnd = null; anchor = null
+            segmentDistance = 0.0; segmentDuration = 0.0; segmentGap = 0.0; segmentStart = null; segmentEnd = null
         }
         points.forEachIndexed { index, p ->
             var gap = false
+            val crossing = previous?.let { before -> cuts.any { it > before.optLong("time") && it <= p.optLong("time") } } ?: false
+            val step = accumulator.add(p.optLong("time"), p.optDouble("latitude"), p.optDouble("longitude"),
+                p.optDouble("accuracyM", 0.0), resetBefore = crossing)
             previous?.let { before ->
-                val crossing = cuts.any { it > before.optLong("time") && it <= p.optLong("time") }
                 if (crossing) { split() } else {
                     val reason = RunMath.rejectionReason(before.optDouble("latitude"), before.optDouble("longitude"), before.optLong("time"), before.optDouble("accuracyM", 0.0),
                         p.optDouble("latitude"), p.optDouble("longitude"), p.optLong("time"), p.optDouble("accuracyM", 0.0))
                     val seconds = (p.optLong("time") - before.optLong("time")) / 1000.0
                     if (reason != null) {
-                        gap = true; gaps++; anchor = null
+                        gap = true; gaps++
                         if (seconds > 0) { segmentGap += seconds; segmentDuration += seconds }
                         if (gapList.length() < 512) gapList.put(JSONObject().put("fromElapsedSeconds", (before.optLong("time") - startTime) / 1000.0)
                             .put("toElapsedSeconds", (p.optLong("time") - startTime) / 1000.0).put("reason", reason))
                     } else {
                         segmentDuration += seconds
-                        val base = anchor ?: before
-                        val step = RunMath.anchoredDistance(base.optDouble("latitude"), base.optDouble("longitude"), base.optDouble("accuracyM", 0.0),
-                            p.optDouble("latitude"), p.optDouble("longitude"), p.optDouble("accuracyM", 0.0))
-                        if (step != null) { distance += step; segmentDistance += step; anchor = p } else if (anchor == null) anchor = base
+                        if (step != null) segmentDistance += step
                     }
                 }
             }
             if (segmentStart == null) segmentStart = p.optLong("time")
             segmentEnd = p.optLong("time")
-            // Der Kilometerpunkt schließt den Abschnitt und eröffnet zugleich den nächsten.
+            // The kilometer mark closes the split and opens the next one at the same time.
             if (segmentDistance >= 1000) { split(); segmentStart = p.optLong("time"); segmentEnd = segmentStart }
             if (gap || index == 0 || index == points.lastIndex || index % maxOf(1, (points.size + 399) / 400) == 0) {
                 if (geometry.length() < 512) geometry.put(JSONObject().put("latitude", p.optDouble("latitude")).put("longitude", p.optDouble("longitude")).put("time", p.optLong("time")).put("gap", gap))
             }; previous = p
         }; split()
-        if (points.size > 1) run.put("distanceMeters", distance)
-        // Zeitgewichtet statt nach Sample-Anzahl: unregelmäßige Aufzeichnung verzerrt sonst das Mittel.
-        // Abdeckung gegen die geltende Dauer, nach einem gesetzten Ende also die gekürzte.
+        if (points.size > 1) run.put("distanceMeters", accumulator.distanceMeters)
+        // Time-weighted instead of by sample count: irregular recording would otherwise skew the mean.
+        // Coverage is measured against the effective duration, i.e. the shortened one after a set end.
         val durationSeconds = present(JSONObject(run.toString())).optDouble("durationSeconds", Double.NaN)
         for ((kind, key, output, coverage) in listOf(
             listOf("heartRate", "bpm", "avgHeartRate", "heartRateCoverage"), listOf("cadence", "rpm", "avgCadence", "cadenceCoverage"))) {
@@ -542,7 +542,7 @@ class RunStore(context: Context) : DocumentStore {
                 cuts.any { boundary -> boundary > times[index - 1] && boundary <= times[index] }
             }.toSet()
             run.remove("${output}Max"); run.remove("${output}Min")
-            // Aus Samples gerechnete Mittel neu setzen; ein Wert aus einer Import-Zusammenfassung bleibt.
+            // Reset the means computed from samples; a value from an import summary stays.
             if (times.isEmpty() && selectedSamples(id, kind, until = null).isNotEmpty()) { run.remove(output); run.remove(coverage) }
             RunMath.timeWeightedAverage(times, values, breaks = breaks)?.let { (mean, covered) ->
                 run.put(output, mean)
@@ -555,8 +555,8 @@ class RunStore(context: Context) : DocumentStore {
         run.put("segments", segments).put("gapCount", gaps).put("gaps", gapList).put("model_version", RunMath.MODEL_VERSION)
             .put("sensorSources", sensorSources(id))
         run.put("dataRetention", JSONObject().put("originals", "retained").put("recomputable", true))
-        // Ohne Spur (Import, Zusammenfassung) gibt es keine Phasen und kein Zeitbudget —
-        // die Aufzeichnungszeit wäre sonst als „unbekannte Bewegung“ verkleidet.
+        // Without a track (import, summary) there are no phases and no time budget —
+        // the recording time would otherwise be disguised as “unknown movement”.
         if (points.size < 2) {
             run.remove("time"); run.remove("phases"); run.remove("phaseMetrics"); run.remove("elevation"); run.remove("gaps")
             write(run)
@@ -597,7 +597,7 @@ class RunStore(context: Context) : DocumentStore {
         write(run)
         return JSONObject().put("geometry", geometry).put("series", series)
     }
-    /** Laufstil-Fenster ohne Pausen; beide Geräte, anders als bei Puls oder GPS gewinnt keins. */
+    /** Running form windows without pauses; both devices count, unlike heart rate or GPS, where none wins. */
     private fun gaitSamples(id: String): List<RawSample> {
         val boundaries = events(id)
         val result = ArrayList<RawSample>()
@@ -610,7 +610,7 @@ class RunStore(context: Context) : DocumentStore {
         }
         return result
     }
-    /** Ein Fenster gilt als gelaufen, wenn mindestens die Hälfte seiner Phasenzeilen RUN ist; ohne Phasen weiß das niemand. */
+    /** A window counts as run if at least half of its phase rows are RUN; without phases nobody knows. */
     private fun gaitSummary(id: String, derived: DerivedSeries): JSONObject? {
         val samples = gaitSamples(id)
         if (samples.isEmpty()) return null
@@ -623,7 +623,7 @@ class RunStore(context: Context) : DocumentStore {
             if (known.isEmpty()) null else known.count { it.state == RunPhases.State.RUN } * 2 >= known.size
         }
     }
-    /** Armschwung je Fenster für den Verlauf: die Uhr, wenn sie einen hat, sonst das Handy. */
+    /** Arm swing per window for the history: the watch if it has one, otherwise the phone. */
     private fun armSwingSpans(id: String): List<RunSeries.Span> {
         val samples = gaitSamples(id).filter { it.values.optDouble("armSwingDeg", Double.NaN).isFinite() }
         val watch = samples.filter { it.values.optString("source") == WearProtocol.WATCH_SOURCE }
@@ -632,12 +632,12 @@ class RunStore(context: Context) : DocumentStore {
                 it.values.getDouble("armSwingDeg"))
         }
     }
-    /** Zeitreihe im 5-s-Raster als CSV; wird nativ in eine Datei geschrieben, nie über die Brücke gereicht. */
+    /** Time series on the 5 s grid as CSV; written natively to a file, never passed over the bridge. */
     fun timeseriesCsv(id: String): String = locked { RunPhases.csv(deriveSeries(id, read(id)).phases.rows) }
     /**
-     * Darstellungsreihe für die Graphen der Detailseite (RunSeries): begrenzte
-     * Zeilenzahl, Position je Fenster, Gegenwind nur mit bekannter Windrichtung
-     * aus dem gespeicherten Wetter (`weather_<id>`).
+     * Display series for the detail page's charts (RunSeries): limited row count,
+     * position per window, headwind only with a known wind direction from the
+     * saved weather (`weather_<id>`).
      */
     fun series(id: String, maxRows: Int = RunSeries.DEFAULT_MAX_ROWS, untrimmed: Boolean = false): JSONObject = locked {
         val derived = if (untrimmed) deriveSeries(id, read(id), until = null) else deriveSeries(id, read(id))
@@ -650,7 +650,7 @@ class RunStore(context: Context) : DocumentStore {
         val derived = derive(id)
         present(read(id)).put("geometry",derived.getJSONArray("geometry")).put("series",derived.getJSONArray("series")).put("events",events(id))
     }
-    /** Begrenzter Zeitverlauf für Export und Darstellung; Rohsamples verlassen den Speicher nicht. */
+    /** Limited time course for export and display; raw samples never leave the store. */
     fun timeline(id: String, maxRows: Int = 120): JSONObject = locked {
         val run = read(id)
         val gps = ArrayList<RunTimeline.GpsPoint>()
@@ -689,13 +689,13 @@ class RunStore(context: Context) : DocumentStore {
         if(it.moveToFirst()) JSONObject(it.getString(0)) else null } }
     override fun putDocument(key: String, value: JSONObject) = locked {
         require(key.length<=200)
-        check(db.insertWithOnConflict("documents",null,ContentValues().apply { put("key",key);put("json",value.toString()) },SQLiteDatabase.CONFLICT_REPLACE) != -1L) { "Dokument konnte nicht gespeichert werden" }
+        check(db.insertWithOnConflict("documents",null,ContentValues().apply { put("key",key);put("json",value.toString()) },SQLiteDatabase.CONFLICT_REPLACE) != -1L) { Lang.tr("Dokument konnte nicht gespeichert werden", "Document could not be saved") }
     }
     override fun deleteDocument(key: String) = locked { db.delete("documents","key=?",arrayOf(key)); Unit }
     /** Finish or delete a strength session while serializing the index and payload update. */
     fun finishStrengthSession(session: JSONObject, summary: JSONObject) = locked {
-        val id = session.optString("id").ifBlank { error("Einheit ohne Kennung kann nicht gespeichert werden.") }
-        require(summary.optString("id") == id) { "Zusammenfassung gehört zu einer anderen Einheit." }
+        val id = session.optString("id").ifBlank { error(Lang.tr("Einheit ohne Kennung kann nicht gespeichert werden.", "Session without ID cannot be saved.")) }
+        require(summary.optString("id") == id) { Lang.tr("Zusammenfassung gehört zu einer anderen Einheit.", "Summary belongs to another session.") }
         transaction {
             putDocument("strength_session_$id", session)
             val index = getDocument("strength_index") ?: JSONObject().put("sessions", JSONArray())
@@ -738,14 +738,14 @@ class RunStore(context: Context) : DocumentStore {
             }
         }
     }
-    /** Alle in Runback aufgezeichneten Einheiten, älteste zuerst; ohne Importe und ohne Obergrenze. */
+    /** All sessions recorded in Runback, oldest first; without imports and without a limit. */
     fun strengthSessionIds(): List<String> = locked {
         val sessions = getDocument("strength_index")?.optJSONArray("sessions") ?: JSONArray()
         (0 until sessions.length()).mapNotNull { sessions.optJSONObject(it) }
             .sortedWith(compareBy<JSONObject> { it.optLong("startTime") }.thenBy { it.optString("id") })
             .map { it.optString("id") }.filter { it.isNotBlank() }.distinct()
     }
-    /** Historie, nicht Vorlagen: auch ältere Einheiten mit demselben Namen zählen. */
+    /** History, not templates: older sessions with the same name count too. */
     fun strengthImports(limit: Int = 100): JSONArray = locked {
         JSONArray().also { result ->
             db.rawQuery("SELECT id FROM strength_workouts ORDER BY time DESC,id DESC LIMIT ?",
@@ -761,7 +761,7 @@ class RunStore(context: Context) : DocumentStore {
     fun strengthImport(id: String): JSONObject? = locked { rawStrengthImport(id)?.let { withEndCorrection(it, id) } }
     private fun rawStrengthImport(id: String): JSONObject? {
         getDocument("strength_import_$id")?.let { return it }
-        // Frühere Importe haben nur Tabellenzeilen; eine Leseansicht ändert keine Originale.
+        // Earlier imports only have table rows; a read view does not change the originals.
         val workout = db.rawQuery("SELECT time,name,durationSec,source,extra FROM strength_workouts WHERE id=?",
             arrayOf(id)).use { rows ->
             if (!rows.moveToFirst()) return null
@@ -778,13 +778,13 @@ class RunStore(context: Context) : DocumentStore {
         }
         return StrengthImport.legacyDocument(workout, sets)
     }
-    // ---- Ende korrigieren: neben dem Original, nie statt seiner (Grundregel 1). ----
+    // ---- Correct the end: next to the original, never instead of it (ground rule 1). ----
 
-    /** Lauf: Ende und Dauer nach der Korrektur; das Original bleibt unter `original*` sichtbar. */
+    /** Run: end and duration after the correction; the original stays visible under `original*`. */
     /**
-     * Pausen ohne bekannten Zeitpunkt: Die Aufzeichnungszeit ist deutlich kürzer als Start bis Ende,
-     * aber keine Pause ist als Ereignis gespeichert (etwa FIT-Importe). Dann wäre jede gekürzte
-     * Dauer geraten.
+     * Pauses without a known time: the recording time is clearly shorter than start to end,
+     * but no pause is stored as an event (e.g. FIT imports). Then any shortened
+     * duration would be a guess.
      */
     private fun unexplainedPauseMs(run: JSONObject): Long {
         val originalEnd = run.optLong("endTime"); val start = run.optLong("startTime")
@@ -798,8 +798,8 @@ class RunStore(context: Context) : DocumentStore {
         val pausedAfter = pauseIntervals(run.getString("id"), originalEnd).sumOf { range ->
             maxOf(0L, minOf(range.last, originalEnd) - maxOf(range.first, end)) }
         val activeAfter = maxOf(0L, originalEnd - end - pausedAfter)
-        // Werte aus einer Import-Zusammenfassung gelten für die ganze Aufzeichnung und lassen sich
-        // nicht kürzen: Nach dem gesetzten Ende sind sie unbekannt; im Original bleiben sie.
+        // Values from an import summary apply to the whole recording and cannot be shortened:
+        // after the set end they are unknown; the original keeps them.
         val id = run.getString("id")
         fun hasSamples(kind: String) = db.rawQuery("SELECT 1 FROM samples WHERE run_id=? AND kind=? LIMIT 1", arrayOf(id, kind)).use { it.moveToFirst() }
         val summaryOnly = mutableListOf("calories", "steps", "elevationGainMeters")
@@ -810,20 +810,24 @@ class RunStore(context: Context) : DocumentStore {
             .put("endTime", end).put("durationMs", maxOf(0L, run.optLong("durationMs") - activeAfter))
             .put("endCorrection", getDocument("trim_${run.getString("id")}"))
     }
-    /** `null` hebt die Korrektur auf. Nur abgeschlossene Läufe mit Verlauf: ohne Verlauf wäre das Ende geraten. */
+    /** `null` removes the correction. Only completed runs with a track: without a track the end would be a guess. */
     fun setRunEnd(id: String, endTime: Long?): JSONObject = locked {
-        check(activeId() != id) { "Beende zuerst die Aufzeichnung." }
+        check(activeId() != id) { Lang.tr("Beende zuerst die Aufzeichnung.", "End the recording first.") }
         val run = read(id)
         if (endTime == null) deleteDocument("trim_$id") else {
             val start = run.optLong("startTime"); val originalEnd = run.optLong("endTime")
-            require(endTime > start && endTime <= originalEnd) { "Das Ende muss zwischen Start und ursprünglichem Ende liegen." }
+            require(endTime > start && endTime <= originalEnd) {
+                Lang.tr("Das Ende muss zwischen Start und ursprünglichem Ende liegen.", "The end must lie between the start and the original end.")
+            }
             val samples = db.rawQuery("SELECT 1 FROM samples WHERE run_id=? LIMIT 1", arrayOf(id)).use { it.moveToFirst() }
-            require(samples) { "Ohne aufgezeichneten Verlauf lässt sich das Ende nicht prüfen." }
-            require(unexplainedPauseMs(run) <= MAX_UNEXPLAINED_PAUSE_MS) { UNEXPLAINED_PAUSE_MESSAGE }
-            // Mit GPS muss die Strecke bis zum Ende messbar bleiben; sonst wäre sie unbekannt, nicht null.
+            require(samples) { Lang.tr("Ohne aufgezeichneten Verlauf lässt sich das Ende nicht prüfen.", "The end cannot be checked without a recorded track.") }
+            require(unexplainedPauseMs(run) <= MAX_UNEXPLAINED_PAUSE_MS) { unexplainedPauseMessage() }
+            // With GPS, the distance must stay measurable up to the end; otherwise it would be unknown, not zero.
             val gps = { until: Long -> db.rawQuery("SELECT COUNT(*) FROM samples WHERE run_id=? AND kind='gps' AND time<=?",
                 arrayOf(id, until.toString())).use { it.moveToFirst(); it.getInt(0) } }
-            require(gps(Long.MAX_VALUE) < 2 || gps(endTime) >= 2) { "Vor diesem Ende gibt es noch keine GPS-Strecke. Wähle ein späteres Ende." }
+            require(gps(Long.MAX_VALUE) < 2 || gps(endTime) >= 2) {
+                Lang.tr("Vor diesem Ende gibt es noch keine GPS-Strecke. Wähle ein späteres Ende.", "There is no GPS track before this end yet. Choose a later end.")
+            }
             if (endTime >= originalEnd) deleteDocument("trim_$id")
             else putDocument("trim_$id", JSONObject().put("endTime", endTime).put("setAt", System.currentTimeMillis())
                 .put("by", "user").put("modelVersion", END_CORRECTION_VERSION))
@@ -831,16 +835,16 @@ class RunStore(context: Context) : DocumentStore {
         derive(id)
         present(read(id))
     }
-    /** Grundlage des Editors: Start, ursprüngliches Ende, Korrektur und ob es einen Verlauf gibt. */
+    /** Basis for the editor: start, original end, correction and whether there is a track. */
     fun runEndInfo(id: String): JSONObject = locked {
         val run = read(id)
         JSONObject().put("startTime", run.optLong("startTime")).put("originalEndTime", run.optLong("endTime"))
             .put("correctedEndTime", trimEnd(id) ?: JSONObject.NULL)
             .put("hasSamples", db.rawQuery("SELECT 1 FROM samples WHERE run_id=? LIMIT 1", arrayOf(id)).use { it.moveToFirst() })
-            .put("blockedReason", if (unexplainedPauseMs(run) > MAX_UNEXPLAINED_PAUSE_MS) UNEXPLAINED_PAUSE_MESSAGE else JSONObject.NULL)
+            .put("blockedReason", if (unexplainedPauseMs(run) > MAX_UNEXPLAINED_PAUSE_MS) unexplainedPauseMessage() else JSONObject.NULL)
     }
 
-    /** Krafteinheit: Start, aufgezeichnetes bzw. gemeldetes Ende und die Korrektur. */
+    /** Strength session: start, recorded or reported end, and the correction. */
     data class StrengthWindow(val start: Long, val recordedEnd: Long?, val reportedEnd: Long?, val correctedEnd: Long?) {
         val end: Long? get() = correctedEnd ?: recordedEnd
     }
@@ -862,20 +866,21 @@ class RunStore(context: Context) : DocumentStore {
         val correction = getDocument("strength_end_$id") ?: return document
         return JSONObject(document.toString()).put("endCorrection", correction)
     }
-    /** `null` hebt die Korrektur auf. Höchstens 24 Stunden nach dem Start. */
+    /** `null` removes the correction. At most 24 hours after the start. */
     fun setStrengthEnd(id: String, endTime: Long?) = locked {
-        val window = strengthWindow(id) ?: error("Einheit nicht gefunden")
+        val window = strengthWindow(id) ?: error(Lang.tr("Einheit nicht gefunden", "Session not found"))
         if (endTime == null) { deleteDocument("strength_end_$id"); return@locked }
         require(endTime > window.start && endTime <= window.start + MAX_RUN_DURATION_MS) {
-            "Das Ende muss nach dem Start und höchstens 24 Stunden später liegen." }
+            Lang.tr("Das Ende muss nach dem Start und höchstens 24 Stunden später liegen.", "The end must be after the start and at most 24 hours later.")
+        }
         putDocument("strength_end_$id", JSONObject().put("endTime", endTime).put("setAt", System.currentTimeMillis())
             .put("by", "user").put("modelVersion", END_CORRECTION_VERSION))
     }
 
-    /** Importierte Pulswerte zwischen `from` und `to`, höchstens 50.000; Tagesmittel zählen nicht. */
+    /** Imported heart rate values between `from` and `to`, at most 50,000; daily averages do not count. */
     fun importedHeartPoints(from: Long, to: Long): List<ImportedHeart.Point> = locked {
         val result = ArrayList<ImportedHeart.Point>()
-        // Tagesmittel (Mi Fitness ohne Ende, Fitbit mit Ende) sind keine Messung zu einer Uhrzeit.
+        // Daily averages (Mi Fitness without an end, Fitbit with one) are not a measurement at a time of day.
         db.rawQuery("SELECT source,time,value FROM wellness WHERE kind IN (${ImportedHeart.KINDS.joinToString(",") { "?" }}) " +
             "AND end_time=0 AND value IS NOT NULL AND time>=? AND time<? " +
             "AND (extra NOT LIKE ? OR extra LIKE ?) ORDER BY time LIMIT 50000",
@@ -889,7 +894,7 @@ class RunStore(context: Context) : DocumentStore {
         if (to <= from) return@locked null
         ImportedHeart.summarize(importedHeartPoints(from, to), from, to)
     }
-    /** Konsistente, vollständige Kopie für den eigenen Server; keine Rohsamples. */
+    /** Consistent, complete copy for the own server; no raw samples. */
     fun serverSnapshot(runs: Boolean, strength: Boolean, coach: Boolean, gps: Boolean, health: Boolean): Map<String, JSONObject> = locked {
         val result = linkedMapOf<String, JSONObject>()
         if (runs) db.rawQuery("SELECT id FROM runs ORDER BY id", null).use { rows ->
@@ -900,7 +905,7 @@ class RunStore(context: Context) : DocumentStore {
                 result["run/$id"] = run
                 val display = series(id, 300)
                 result["runDetail/$id"] = JSONObject().put("series", display).apply {
-                    // Dieselben begrenzten Positionen wie im Graphen; keine Neuberechnung des Originals.
+                    // The same limited positions as in the chart; the original is not recomputed.
                     if (gps) put("route", JSONArray().also { route ->
                         val points = display.optJSONArray("rows") ?: JSONArray()
                         for (index in 0 until points.length()) {
@@ -923,7 +928,7 @@ class RunStore(context: Context) : DocumentStore {
         }
         if (health) db.rawQuery("SELECT id,kind,time,end_time,value,unit,source FROM wellness ORDER BY id", null).use { rows ->
             while (rows.moveToNext()) {
-                // Importkennungen können länger sein als ein Protokollschlüssel.
+                // Import IDs can be longer than a protocol key.
                 val id = rows.getString(0)
                 val key = java.security.MessageDigest.getInstance("SHA-256").digest(id.toByteArray())
                     .joinToString("") { "%02x".format(it) }
@@ -937,7 +942,7 @@ class RunStore(context: Context) : DocumentStore {
     }
 
     fun settings(): JSONObject = getDocument("settings") ?: JSONObject().put("rawBudgetMb",512).put("weatherEnabled",false)
-    fun saveSettings(value: JSONObject) { putDocument("settings",value) }
+    fun saveSettings(value: JSONObject) { putDocument("settings",value); Lang.update(value) }
     fun saveFeedback(id: String, value: JSONObject) = locked {
         read(id); val feedback = getDocument("feedback_$id") ?: JSONObject()
         value.keys().forEach { feedback.put(it,value.get(it)) }; feedback.put("updatedAt",System.currentTimeMillis())
@@ -976,6 +981,7 @@ class RunStore(context: Context) : DocumentStore {
     private fun isTechnicalImportedName(value: String): Boolean {
         val name = value.trim().lowercase()
         if (name.isBlank()) return true
+        // Generic names importers give activities, German ones included; they are data, not UI text.
         if (name in setOf("lauf", "laufen", "run", "running", "activity", "track", "workout",
                 "training", "importierter lauf", "garmin lauf", "google fit lauf", "mi fitness lauf")) return true
         if (Regex("\\d{6,}").containsMatchIn(name)) return true
@@ -1001,7 +1007,7 @@ class RunStore(context: Context) : DocumentStore {
     }
 
     fun addImportedRun(summary: JSONObject, samples: JSONArray, sourceHash: String, batchId: String? = null): JSONObject = locked {
-        val start = summary.optLong("startTime",summary.optLong("startedAt"));require(start>0){"Startzeit fehlt"}
+        val start = summary.optLong("startTime",summary.optLong("startedAt"));require(start>0){Lang.tr("Startzeit fehlt", "Start time is missing")}
         val fingerprint = "start:${start/1000}"
         db.rawQuery("SELECT id FROM tombstones WHERE id IN (?,?)",arrayOf(sourceHash,fingerprint)).use { if(it.moveToFirst())return@locked JSONObject().put("status","deleted") }
         var duplicate: String? = null
@@ -1037,7 +1043,7 @@ class RunStore(context: Context) : DocumentStore {
         var inserted = 0
         transaction {
             rows.take(MAX_WELLNESS_BATCH).forEach { row ->
-                require(row.kind.length in 1..64 && row.time > 0) { "Ungültiger Wellness-Wert" }
+                require(row.kind.length in 1..64 && row.time > 0) { Lang.tr("Ungültiger Wellness-Wert", "Invalid wellness value") }
                 val id = wellnessRowId(row)
                 val changed = db.insertWithOnConflict("wellness", null, ContentValues().apply {
                     put("id", id.take(220)); put("kind", row.kind.take(64)); put("time", row.time)
@@ -1072,14 +1078,16 @@ class RunStore(context: Context) : DocumentStore {
         result
     }
     fun addStrengthWorkout(workout: StrengthWorkout, sets: List<StrengthSet>, importDocument: JSONObject? = null, batchId: String? = null): JSONObject = locked {
-        require(workout.time > 0) { "Trainingszeit fehlt" }
-        require(sets.size <= 2000) { "Zu viele Sätze für ein Krafttraining" }
-        require(workout.id.length <= 120 && workout.id.isNotBlank()) { "Ungültige Trainingskennung" }
-        require(importDocument == null || importDocument.optString("id") == workout.id) { "Importabbild gehört zu einer anderen Einheit" }
+        require(workout.time > 0) { Lang.tr("Trainingszeit fehlt", "Workout time is missing") }
+        require(sets.size <= 2000) { Lang.tr("Zu viele Sätze für ein Krafttraining", "Too many sets for one strength session") }
+        require(workout.id.length <= 120 && workout.id.isNotBlank()) { Lang.tr("Ungültige Trainingskennung", "Invalid workout ID") }
+        require(importDocument == null || importDocument.optString("id") == workout.id) {
+            Lang.tr("Importabbild gehört zu einer anderen Einheit", "Import snapshot belongs to another session")
+        }
         transaction {
             val exists = db.rawQuery("SELECT 1 FROM strength_workouts WHERE id=?", arrayOf(workout.id)).use { it.moveToFirst() }
             if (exists) {
-                // Neue Importregeln liegen neben alten Originalen, sie ersetzen sie nicht.
+                // New import rules sit next to old originals; they do not replace them.
                 if (importDocument != null && getDocument("strength_import_${workout.id}") == null) {
                     putDocument("strength_import_${workout.id}", importDocument)
                 }
@@ -1104,7 +1112,7 @@ class RunStore(context: Context) : DocumentStore {
             JSONObject().put("id", workout.id).put("sets", sets.size).put("status", "imported")
         }
     }
-    /** Nur die neueste Einheit je Name, höchstens 50 Vorlagen und 10.000 Satzwerte für JS. */
+    /** Only the newest session per name, at most 50 templates and 10,000 set values for JS. */
     fun strengthImportCandidates(): JSONObject = locked {
         val workouts = JSONArray()
         var setCount = 0
@@ -1115,7 +1123,7 @@ class RunStore(context: Context) : DocumentStore {
         db.rawQuery("SELECT id,name FROM strength_workouts ORDER BY time DESC,id DESC", null).use { rows ->
             while (rows.moveToNext()) {
                 val id = rows.getString(0)
-                // Ohne Vorschläge importiert: die Einheit zählt, wird aber keine Vorlage.
+                // Imported without suggestions: the session counts, but does not become a template.
                 val batches = memberships("strength", id)
                 if (batches.isNotEmpty() && batches.all { it in quiet }) continue
                 val document = getDocument("strength_import_$id") ?: continue
@@ -1149,11 +1157,11 @@ class RunStore(context: Context) : DocumentStore {
     }
     /** Summary-only activity (CSV summary without track samples). Never invents samples. */
     fun addSummaryRun(summary: JSONObject, sourceHash: String, batchId: String? = null): JSONObject = locked {
-        val start = summary.optLong("startTime", summary.optLong("startedAt"));require(start>0){"Startzeit fehlt"}
+        val start = summary.optLong("startTime", summary.optLong("startedAt"));require(start>0){Lang.tr("Startzeit fehlt", "Start time is missing")}
         val duration = summary.optDouble("durationSeconds", 0.0)
-        require(duration.isFinite() && duration >= 0.0) { "Ungültige Laufdauer" }
+        require(duration.isFinite() && duration >= 0.0) { Lang.tr("Ungültige Laufdauer", "Invalid run duration") }
         val distance = summary.optDouble("distanceMeters", 0.0)
-        require(distance.isFinite() && distance >= 0.0) { "Ungültige Laufdistanz" }
+        require(distance.isFinite() && distance >= 0.0) { Lang.tr("Ungültige Laufdistanz", "Invalid run distance") }
         val fingerprint = "start:${start/1000}"
         db.rawQuery("SELECT id FROM tombstones WHERE id IN (?,?)",arrayOf(sourceHash,fingerprint)).use { if(it.moveToFirst())return@locked JSONObject().put("status","deleted") }
         var duplicate: String? = null
@@ -1176,10 +1184,10 @@ class RunStore(context: Context) : DocumentStore {
             JSONObject().put("status","imported").put("id",id)
         }
     }
-    // ---- Importe als Einheit: jeder Eintrag merkt sich, welche Importe ihn geliefert haben. ----
-    // Ein Eintrag verschwindet erst, wenn ihn kein Import mehr trägt. Einträge aus der Zeit
-    // vor dieser Liste gehören zum Import "legacy:<Quelle>". Eigene Aufzeichnungen und
-    // Health-Connect-Läufe gehören nie zu einem Import, auch wenn eine Datei sie doppelt enthält.
+    // ---- Imports as sessions: each entry remembers which imports delivered it. ----
+    // An entry only disappears once no import carries it anymore. Entries from the time
+    // before this list belong to the import "legacy:<source>". Own recordings and
+    // Health Connect runs never belong to an import, even if a file contains them twice.
     private fun memberships(kind: String, id: String): List<String> =
         db.rawQuery("SELECT batch_id FROM import_items WHERE kind=? AND item_id=?", arrayOf(kind, id)).use { rows ->
             val result = ArrayList<String>(); while (rows.moveToNext()) result.add(rows.getString(0)); result }
@@ -1202,7 +1210,7 @@ class RunStore(context: Context) : DocumentStore {
         if (memberships("run", id).isEmpty()) addMembership("run", id, LEGACY_BATCH + legacyRunSource(run))
         addMembership("run", id, batchId)
     }
-    /** Aus einer Datei importiert, nicht aufgezeichnet, nicht von der Uhr, nicht aus Health Connect. */
+    /** Imported from a file, not recorded, not from the watch, not from Health Connect. */
     private fun isFileImportRun(run: JSONObject): Boolean {
         val version = run.optString("sourceVersion")
         return run.has("importVersion") && !version.startsWith("raw-") && !version.startsWith("wear:") &&
@@ -1213,9 +1221,9 @@ class RunStore(context: Context) : DocumentStore {
         db.rawQuery("SELECT json FROM documents WHERE key LIKE 'import\\_batch\\_%' ESCAPE '\\'", null).use { rows ->
             val result = ArrayList<JSONObject>(); while (rows.moveToNext()) result.add(JSONObject(rows.getString(0))); result }
 
-    /** Vorschau ohne Schreiben: dieselben Prüfungen wie [addImportedRun]. */
+    /** Preview without writing: the same checks as [addImportedRun]. */
     fun previewRunStatus(summary: JSONObject, sourceHash: String): String = locked {
-        val start = summary.optLong("startTime", summary.optLong("startedAt")); require(start > 0) { "Startzeit fehlt" }
+        val start = summary.optLong("startTime", summary.optLong("startedAt")); require(start > 0) { Lang.tr("Startzeit fehlt", "Start time is missing") }
         db.rawQuery("SELECT id FROM tombstones WHERE id IN (?,?)", arrayOf(sourceHash, "start:${start / 1000}")).use {
             if (it.moveToFirst()) return@locked "deleted" }
         db.rawQuery("SELECT 1 FROM hashes WHERE hash=?", arrayOf(sourceHash)).use { if (it.moveToFirst()) return@locked "duplicate" }
@@ -1224,7 +1232,7 @@ class RunStore(context: Context) : DocumentStore {
     fun strengthWorkoutExists(id: String): Boolean = locked {
         db.rawQuery("SELECT 1 FROM strength_workouts WHERE id=?", arrayOf(id)).use { it.moveToFirst() }
     }
-    /** Welche dieser Kontextwerte schon gespeichert sind (Kennung wie in [addWellnessBatch]). */
+    /** Which of these context values are already saved (ID as in [addWellnessBatch]). */
     fun existingWellnessIds(ids: Collection<String>): Set<String> = locked {
         val existing = HashSet<String>()
         ids.distinct().chunked(400).forEach { chunk ->
@@ -1234,16 +1242,16 @@ class RunStore(context: Context) : DocumentStore {
         existing
     }
     fun saveImportBatch(batch: JSONObject) = locked {
-        val id = batch.optString("id"); require(id.matches(Regex("[A-Za-z0-9_-]{1,80}"))) { "Ungültige Importkennung" }
+        val id = batch.optString("id"); require(id.matches(Regex("[A-Za-z0-9_-]{1,80}"))) { Lang.tr("Ungültige Importkennung", "Invalid import ID") }
         putDocument("import_batch_$id", batch)
     }
-    /** Ein Import ohne neue oder geteilte Einträge erscheint nicht in der Liste. */
+    /** An import without new or shared entries does not appear in the list. */
     fun finishImportBatch(batch: JSONObject) = locked {
         val id = batch.optString("id")
         val any = db.rawQuery("SELECT 1 FROM import_items WHERE batch_id=? LIMIT 1", arrayOf(id)).use { it.moveToFirst() }
         if (any) saveImportBatch(batch) else deleteDocument("import_batch_$id")
     }
-    /** Importe mit ihren noch vorhandenen Einträgen, neueste zuerst; ältere Importe je Quelle. */
+    /** Imports with their entries still present, newest first; older imports per source. */
     fun importBatches(): JSONArray = locked {
         fun counts(where: String, args: Array<String>): JSONObject {
             val result = JSONObject().put("runs", 0).put("strength", 0).put("wellness", 0)
@@ -1271,7 +1279,7 @@ class RunStore(context: Context) : DocumentStore {
         JSONArray(result.sortedWith(compareBy<JSONObject> { it.optBoolean("legacy") }.thenByDescending { it.optLong("createdAt") }
             .thenBy { it.optString("id") }))
     }
-    /** Ohne fremde Mitgliedschaft oder ausdrücklich beim älteren Import dieser Quelle. */
+    /** Without a foreign membership, or explicitly at the older import of this source. */
     private fun legacyCondition(kind: String) = "(NOT EXISTS(SELECT 1 FROM import_items i WHERE i.kind='$kind' AND i.item_id=t.id AND i.batch_id NOT LIKE '$LEGACY_BATCH%') OR " +
         "EXISTS(SELECT 1 FROM import_items i WHERE i.kind='$kind' AND i.item_id=t.id AND i.batch_id='$LEGACY_BATCH' || t.source))"
     private fun legacyRuns(source: String?): List<Pair<String, String>> {
@@ -1293,11 +1301,11 @@ class RunStore(context: Context) : DocumentStore {
         return result
     }
     /**
-     * Löscht, was nur dieser Import geliefert hat, ohne Sperre: ein erneuter Import legt es
-     * wieder an. Vorlagen sind eigene Dokumente und bleiben, ebenso abgelehnte Vorschläge.
+     * Deletes what only this import delivered, without a lock: a new import adds it
+     * back. Templates are their own documents and stay, as do rejected suggestions.
      */
     fun deleteImportBatch(batchId: String): JSONObject = locked {
-        require(batchId.isNotBlank() && batchId.length <= 200) { "Ungültige Importkennung" }
+        require(batchId.isNotBlank() && batchId.length <= 200) { Lang.tr("Ungültige Importkennung", "Invalid import ID") }
         transaction {
             val candidates = ArrayList<Pair<String, String>>()
             if (batchId.startsWith(LEGACY_BATCH)) {
@@ -1340,7 +1348,7 @@ class RunStore(context: Context) : DocumentStore {
             .put("runs", listRuns(1).length())
     }
     fun deleteRun(id: String) = locked {
-        check(activeId()!=id){"Beende zuerst die Aufzeichnung."}
+        check(activeId()!=id){Lang.tr("Beende zuerst die Aufzeichnung.", "End the recording first.")}
         transaction {
             val run=read(id)
             db.execSQL("INSERT OR IGNORE INTO tombstones(id) SELECT hash FROM hashes WHERE run_id=?",arrayOf(id))
@@ -1351,6 +1359,7 @@ class RunStore(context: Context) : DocumentStore {
             addDocumentDeletionNotice(id)
         }
     }
+    // Stored reason text stays German like other persisted user-facing notes; it is data, not a UI label.
     private fun addDocumentDeletionNotice(id:String){putDocument("deleted_$id",JSONObject().put("at",System.currentTimeMillis()).put("reason","Vom Nutzer gelöscht; frühere Auswertungen nicht mehr vollständig berechenbar."))}
     fun clearAllData() = locked { check(activeId()==null);transaction { tables.forEach {db.delete(it,null,null)} } }
     fun backup(output: OutputStream) = locked {
@@ -1358,7 +1367,10 @@ class RunStore(context: Context) : DocumentStore {
             zip.putNextEntry(ZipEntry("manifest.json"));zip.write(JSONObject().put("schemaVersion",3).put("app","Runback").put("createdAt",System.currentTimeMillis()).toString().toByteArray());zip.closeEntry()
             tables.forEach { table ->
                 zip.putNextEntry(ZipEntry("$table.ndjson"))
-                db.rawQuery("SELECT * FROM $table",null).use { c ->while(c.moveToNext()){
+                // Display names are sent again by the app on start, so they stay out of a backup.
+                val cursor = if (table == "documents") db.rawQuery("SELECT * FROM documents WHERE key<>?", arrayOf(DisplayNames.DOCUMENT))
+                    else db.rawQuery("SELECT * FROM $table", null)
+                cursor.use { c ->while(c.moveToNext()){
                     val row=JSONObject(); for(i in 0 until c.columnCount) when(c.getType(i)){
                         android.database.Cursor.FIELD_TYPE_BLOB -> row.put(c.getColumnName(i),android.util.Base64.encodeToString(c.getBlob(i),android.util.Base64.NO_WRAP))
                         android.database.Cursor.FIELD_TYPE_INTEGER -> row.put(c.getColumnName(i),c.getLong(i))
@@ -1369,14 +1381,14 @@ class RunStore(context: Context) : DocumentStore {
         }
     }
     fun restore(input: InputStream): JSONObject = locked {
-        check(activeId()==null){"Beende zuerst die Aufzeichnung."}
+        check(activeId()==null){Lang.tr("Beende zuerst die Aufzeichnung.", "End the recording first.")}
         transaction {
             ZipInputStream(BufferedInputStream(input)).use { zip ->
-                require(zip.nextEntry?.name=="manifest.json"){"Kein Runback-Backup"}
-                val manifest=JSONObject(readEntry(zip,65536).toString(Charsets.UTF_8));require(manifest.getInt("schemaVersion") in listOf(1,2,3)){"Backup-Version wird nicht unterstützt"}
+                require(zip.nextEntry?.name=="manifest.json"){Lang.tr("Kein Runback-Backup", "Not a Runback backup")}
+                val manifest=JSONObject(readEntry(zip,65536).toString(Charsets.UTF_8));require(manifest.getInt("schemaVersion") in listOf(1,2,3)){Lang.tr("Backup-Version wird nicht unterstützt", "Backup version is not supported")}
                 tables.forEach {db.delete(it,null,null)}
                 var total=0L; val seen=HashSet<String>()
-                while(true){val entry=zip.nextEntry?:break;val table=entry.name.removeSuffix(".ndjson");require(table in tables && seen.add(table)){"Ungültiger Backup-Inhalt"}
+                while(true){val entry=zip.nextEntry?:break;val table=entry.name.removeSuffix(".ndjson");require(table in tables && seen.add(table)){Lang.tr("Ungültiger Backup-Inhalt", "Invalid backup content")}
                     val bytes=readEntry(zip,512L*1024*1024-total);total+=bytes.size
                     bytes.inputStream().bufferedReader().forEachLine { line -> if(line.isNotBlank()){
                         val row=JSONObject(line);val values=ContentValues();row.keys().forEach { key ->
@@ -1387,7 +1399,7 @@ class RunStore(context: Context) : DocumentStore {
                                 else->values.put(key,row.getString(key)) }
                         };db.insertOrThrow(table,null,values)
                     } }
-                };require(seen.containsAll(legacyTables)){ "Backup ist unvollständig" }
+                };require(seen.containsAll(legacyTables)){ Lang.tr("Backup ist unvollständig", "Backup is incomplete") }
                 db.rawQuery("SELECT id,json FROM runs",null).use { c->while(c.moveToNext()){val run=JSONObject(c.getString(1));if(run.optString("status")=="recording"){run.put("status","interrupted");run.remove("_tick");write(run)}} }
             };JSONObject().put("restored",true).put("count",listRuns(10000).length())
         }
@@ -1395,7 +1407,7 @@ class RunStore(context: Context) : DocumentStore {
     fun exportSession(id: String): File = locked {
         val file=File.createTempFile("runback-session-",".zip",app.cacheDir)
         ZipOutputStream(file.outputStream().buffered()).use { zip ->
-            // Ursprüngliche Zeiten plus Korrektur getrennt: Die Gegenseite kann beides wiederherstellen.
+            // Original times plus correction kept apart: the other side can restore both.
             val run = detail(id)
             if (run.has("originalEndTime")) {
                 val ms = run.optLong("originalDurationMs")
@@ -1483,9 +1495,9 @@ class RunStore(context: Context) : DocumentStore {
                 derive(id)
                 JSONObject().put("status", "merged").put("id", id)
             } else addImportedRun(run, samples, "wear:$id")
-            require(result.optString("status")!="deleted"){"Der Lauf wurde auf dem Handy gelöscht"}
+            require(result.optString("status")!="deleted"){Lang.tr("Der Lauf wurde auf dem Handy gelöscht", "The run was deleted on the phone")}
             val storedId = result.optString("id").takeIf { it.isNotBlank() } ?: id
-            require(storedId == id) { "Die Übertragung enthält einen bereits vorhandenen anderen Lauf" }
+            require(storedId == id) { Lang.tr("Die Übertragung enthält einen bereits vorhandenen anderen Lauf", "The transfer contains a different run that already exists") }
             mergeEvents(storedId, session.optJSONArray("events") ?: JSONArray())
             mergeSessionMetadata(storedId, run)
             if (result.optString("status") == "imported" || result.optString("status") == "merged") {
@@ -1500,7 +1512,7 @@ class RunStore(context: Context) : DocumentStore {
         }
     }
     private fun readEntry(input:InputStream,limit:Long):ByteArray {val out=ByteArrayOutputStream();val buffer=ByteArray(32768);var total=0L
-        while(true){val n=input.read(buffer);if(n<0)break;total+=n;require(total<=limit){"Backup überschreitet das Größenlimit"};out.write(buffer,0,n)};return out.toByteArray()}
+        while(true){val n=input.read(buffer);if(n<0)break;total+=n;require(total<=limit){Lang.tr("Backup überschreitet das Größenlimit", "Backup exceeds the size limit")};out.write(buffer,0,n)};return out.toByteArray()}
     private class Database(context:Context):SQLiteOpenHelper(context,"runback.db",null,3){
         override fun onConfigure(db:SQLiteDatabase){db.execSQL("PRAGMA synchronous=FULL")}
         override fun onCreate(db:SQLiteDatabase){
@@ -1518,9 +1530,9 @@ class RunStore(context: Context) : DocumentStore {
         override fun onUpgrade(db:SQLiteDatabase,oldVersion:Int,newVersion:Int){
             if (oldVersion < 2) createVendorTables(db)
             if (oldVersion < 3) createImportTables(db)
-            if (oldVersion > 3 || newVersion > 3) error("Datenbankversion wird nicht unterstützt")
+            if (oldVersion > 3 || newVersion > 3) error("Database version is not supported")
         }
-        /** Welcher Import einen Eintrag angelegt oder ebenfalls geliefert hat. */
+        /** Which import created an entry or also delivered it. */
         private fun createImportTables(db: SQLiteDatabase) {
             db.execSQL("CREATE TABLE IF NOT EXISTS import_items(kind TEXT NOT NULL,item_id TEXT NOT NULL,batch_id TEXT NOT NULL,PRIMARY KEY(kind,item_id,batch_id))")
             db.execSQL("CREATE INDEX IF NOT EXISTS import_items_batch ON import_items(batch_id)")
@@ -1536,10 +1548,10 @@ class RunStore(context: Context) : DocumentStore {
     }
     companion object {
         /**
-         * Ein Lauf, der beim Öffnen der Datenbank noch „recording“ ist, hat seinen
-         * Prozess verloren (Absturz, Akku leer, Gerät aus). Er reicht bis zum
-         * letzten gespeicherten Messwert: Dauer und Ende werden dorthin
-         * verlängert, dort beginnt die Unterbrechung. Alles danach ist unbekannt.
+         * A run that is still “recording” when the database is opened has lost its
+         * process (crash, battery empty, device off). It lasts until the last saved
+         * sensor value: duration and end are extended there, and the interruption
+         * starts there. Everything after that is unknown.
          */
         private fun orphaned(db: SQLiteDatabase): List<JSONObject> = db.rawQuery("SELECT json FROM runs", null).use { rows ->
             buildList { while (rows.moveToNext()) JSONObject(rows.getString(0)).takeIf { it.optString("status") == "recording" }?.let(::add) }
@@ -1550,7 +1562,7 @@ class RunStore(context: Context) : DocumentStore {
             val lastSample = db.rawQuery("SELECT MAX(time) FROM samples WHERE run_id=?", arrayOf(id)).use {
                 if (it.moveToFirst() && !it.isNull(0)) it.getLong(0) else null
             }
-            // Nur das laufende Aufzeichnungsstück zählt: ab dem letzten Start oder Weiter.
+            // Only the running recording piece counts: from the last start or resume.
             val resumedAt = db.rawQuery("SELECT json FROM events WHERE run_id=?", arrayOf(id)).use { rows ->
                 var latest = 0L
                 while (rows.moveToNext()) JSONObject(rows.getString(0)).takeIf { it.optString("type") in setOf("start", "resume") }
@@ -1568,7 +1580,7 @@ class RunStore(context: Context) : DocumentStore {
                 db.insertOrThrow("events", null, ContentValues().apply { put("run_id", id); put("json", JSONObject()
                     .put("type", "interrupted").put("at", last)
                     .put("source", run.optString("source").takeIf { it.isNotBlank() } ?: JSONObject.NULL)
-                    .put("data", JSONObject().put("message", "Aufzeichnung abgebrochen, etwa weil das Gerät ausging. Bisherige Daten sind gesichert.")
+                    .put("data", JSONObject().put("message", Lang.tr("Aufzeichnung abgebrochen, etwa weil das Gerät ausging. Bisherige Daten sind gesichert.", "Recording was cut off, e.g. because the device switched off. Data so far is saved."))
                         .put("recovered", true)).toString()) })
                 db.setTransactionSuccessful()
             } finally { db.endTransaction() }
@@ -1577,7 +1589,10 @@ class RunStore(context: Context) : DocumentStore {
         const val LEGACY_BATCH = "legacy:"
         const val END_CORRECTION_VERSION = "end-correction-v1"
         private const val MAX_UNEXPLAINED_PAUSE_MS = 60_000L
-        private const val UNEXPLAINED_PAUSE_MESSAGE = "Diese Aufzeichnung hat Pausen ohne bekannten Zeitpunkt; eine gekürzte Dauer wäre geraten."
+        private fun unexplainedPauseMessage() = Lang.tr(
+            "Diese Aufzeichnung hat Pausen ohne bekannten Zeitpunkt; eine gekürzte Dauer wäre geraten.",
+            "This recording has pauses without a known time; a shortened duration would be a guess.",
+        )
         fun wellnessRowId(row: WellnessRow) = row.id.ifBlank { "wellness:${row.kind}:${row.time}:${row.source}:${row.value}" }.take(220)
        private val KIND_KEYS = mapOf("run" to "runs", "strength" to "strength", "wellness" to "wellness")}
 }

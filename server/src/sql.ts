@@ -2,14 +2,26 @@ import { spawn } from 'node:child_process';
 import { PUBLIC_VIEWS } from './db';
 
 /**
- * Lesender SQL-Zugriff. Jede Abfrage läuft in einem eigenen Prozess mit einer
- * schreibgeschützten Verbindung; nach `timeoutMs` wird er beendet. So kann
- * auch eine endlose Abfrage den Server nicht anhalten.
+ * Read-only SQL access. Each query runs in its own process with a read-only
+ * connection, and that process is killed after `timeoutMs`. So even an endless
+ * query cannot stall the server.
  *
- * Erlaubt ist genau eine Anweisung, die mit SELECT oder WITH beginnt. ATTACH,
- * PRAGMA und Erweiterungen sind gesperrt; die Verbindung selbst kann ohnehin
- * nicht schreiben.
+ * Exactly one statement that starts with SELECT or WITH is allowed. ATTACH,
+ * PRAGMA and extensions are blocked; the connection could not write anyway.
  */
+
+/** A message in both languages; the website shows the visitor's language. */
+export interface Message {
+  de: string;
+  en: string;
+}
+
+/** A query that was refused or failed. `message` is the English text. */
+export class SqlError extends Error {
+  constructor(readonly text: Message) {
+    super(text.en);
+  }
+}
 
 export interface SqlResult {
   columns: string[];
@@ -60,23 +72,31 @@ try {
 }
 `;
 
-export function checkSql(sql: string): string | null {
+export function checkSql(sql: string): Message | null {
   const text = sql.trim().replace(/;\s*$/, '');
-  if (!text) return 'Gib eine Abfrage ein.';
-  if (text.length > 20_000) return 'Die Abfrage ist zu lang.';
+  if (!text) return { de: 'Gib eine Abfrage ein.', en: 'Enter a query.' };
+  if (text.length > 20_000)
+    return { de: 'Die Abfrage ist zu lang.', en: 'The query is too long.' };
   const withoutStrings = text
     .replace(/'(?:[^']|'')*'/g, "''")
     .replace(/"(?:[^"]|"")*"/g, '""')
     .replace(/--[^\n]*/g, ' ')
     .replace(/\/\*[\s\S]*?\*\//g, ' ');
-  if (withoutStrings.includes(';')) return 'Schicke genau eine Abfrage.';
+  if (withoutStrings.includes(';'))
+    return { de: 'Schicke genau eine Abfrage.', en: 'Send exactly one query.' };
   if (!/^\s*(select|with)\b/i.test(withoutStrings)) {
-    return 'Erlaubt sind nur Abfragen, die mit SELECT oder WITH beginnen.';
+    return {
+      de: 'Erlaubt sind nur Abfragen, die mit SELECT oder WITH beginnen.',
+      en: 'Only queries that start with SELECT or WITH are allowed.',
+    };
   }
   if (
     /\b(attach|detach|pragma|load_extension|vacuum)\b/i.test(withoutStrings)
   ) {
-    return 'ATTACH, PRAGMA und Erweiterungen sind gesperrt.';
+    return {
+      de: 'ATTACH, PRAGMA und Erweiterungen sind gesperrt.',
+      en: 'ATTACH, PRAGMA and extensions are blocked.',
+    };
   }
   return null;
 }
@@ -87,9 +107,9 @@ export function runSql(
   { maxRows = SQL_MAX_ROWS, timeoutMs = SQL_TIMEOUT_MS } = {},
 ): Promise<SqlResult> {
   const problem = checkSql(sql);
-  if (problem) return Promise.reject(new Error(problem));
+  if (problem) return Promise.reject(new SqlError(problem));
   return new Promise((resolve, reject) => {
-    // Ein Betriebssystemprozess lässt sich auch während sqlite3_step abbrechen.
+    // An OS process can be killed even while sqlite3_step is running.
     const child = spawn(
       process.execPath,
       [
@@ -126,13 +146,17 @@ export function runSql(
       clearTimeout(timer);
       if (timedOut)
         return reject(
-          new Error(
-            `Die Abfrage hat länger als ${timeoutMs / 1000} s gedauert.`,
-          ),
+          new SqlError({
+            de: `Die Abfrage hat länger als ${timeoutMs / 1000} s gedauert.`,
+            en: `The query took longer than ${timeoutMs / 1000} s.`,
+          }),
         );
       try {
         const message = JSON.parse(output);
-        if (!message.ok) return reject(new Error(message.message));
+        if (!message.ok)
+          return reject(
+            new SqlError({ de: message.message, en: message.message }),
+          );
         resolve({
           columns: message.columns,
           rows: message.rows,
@@ -140,7 +164,12 @@ export function runSql(
           ms: message.ms,
         });
       } catch {
-        reject(new Error('Die Abfrage konnte nicht abgeschlossen werden.'));
+        reject(
+          new SqlError({
+            de: 'Die Abfrage konnte nicht abgeschlossen werden.',
+            en: 'The query could not finish.',
+          }),
+        );
       }
     });
   });

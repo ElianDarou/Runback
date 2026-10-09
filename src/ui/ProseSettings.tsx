@@ -3,6 +3,7 @@ import { StyleSheet, Switch, TextInput } from 'react-native';
 import { nativeCall } from '../native';
 import type { RunAnalysis } from '../domain/types';
 import { Button, Copy, Row, Section, color } from './components';
+import { tr } from '../domain/i18n';
 
 export function ProseSettings() {
   const [settings, setSettings] = useState<any>(null);
@@ -35,30 +36,39 @@ export function ProseSettings() {
       setMessage(
         error instanceof Error
           ? error.message
-          : 'Einstellung konnte nicht gespeichert werden.',
+          : tr(
+              'Einstellung konnte nicht gespeichert werden.',
+              'The setting could not be saved.',
+            ),
       );
     } finally {
       setBusy(false);
     }
   };
   return (
-    <Section title="OpenRouter & Chat">
+    <Section title={tr('OpenRouter & Chat', 'OpenRouter & chat')}>
       <Copy muted>
-        Hier verbindest du deinen eigenen OpenRouter-Schlüssel. Im Trainingschat
-        kannst du Fragen stellen und lokale Trainingsdaten einbeziehen. Die
-        Laufanalyse und Empfehlungen werden weiterhin unabhängig lokal
-        berechnet.
+        {tr(
+          'Hier verbindest du deinen eigenen OpenRouter-Schlüssel. Im Trainingschat kannst du Fragen stellen und lokale Trainingsdaten einbeziehen. Die Laufanalyse und Empfehlungen werden weiterhin unabhängig lokal berechnet.',
+          'Connect your own OpenRouter key here. In the training chat, you can ask questions and include local training data. Run analysis and recommendations are still calculated locally, independently.',
+        )}
       </Copy>
       <Row
-        title="OpenRouter verwenden"
+        title={tr('OpenRouter verwenden', 'Use OpenRouter')}
         subtitle={
           settings?.hasKey
-            ? 'Eigener Schlüssel ist gespeichert'
-            : 'Eigener API-Schlüssel erforderlich'
+            ? tr('Eigener Schlüssel ist gespeichert', 'Your own key is saved')
+            : tr(
+                'Eigener API-Schlüssel erforderlich',
+                'Your own API key is required',
+              )
         }
         trailing={
           <Switch
-            accessibilityLabel="OpenRouter aktivieren"
+            accessibilityLabel={tr(
+              'OpenRouter aktivieren',
+              'Turn on OpenRouter',
+            )}
             value={enabled}
             onValueChange={setEnabled}
             trackColor={{ false: color.line, true: color.green }}
@@ -66,9 +76,12 @@ export function ProseSettings() {
           />
         }
       />
-      <Copy>API-Schlüssel</Copy>
+      <Copy>{tr('API-Schlüssel', 'API key')}</Copy>
       <TextInput
-        accessibilityLabel="OpenRouter API-Schlüssel"
+        accessibilityLabel={tr(
+          'OpenRouter API-Schlüssel',
+          'OpenRouter API key',
+        )}
         secureTextEntry
         autoCapitalize="none"
         autoCorrect={false}
@@ -76,15 +89,15 @@ export function ProseSettings() {
         onChangeText={setKey}
         placeholder={
           settings?.hasKey
-            ? 'Gespeicherten Schlüssel ersetzen'
-            : 'Eigenen Schlüssel eingeben'
+            ? tr('Gespeicherten Schlüssel ersetzen', 'Replace saved key')
+            : tr('Eigenen Schlüssel eingeben', 'Enter your own key')
         }
         placeholderTextColor={color.muted}
         style={styles.input}
       />
-      <Copy>Modell</Copy>
+      <Copy>{tr('Modell', 'Model')}</Copy>
       <TextInput
-        accessibilityLabel="OpenRouter Modell"
+        accessibilityLabel={tr('OpenRouter Modell', 'OpenRouter model')}
         autoCapitalize="none"
         autoCorrect={false}
         value={model}
@@ -92,14 +105,14 @@ export function ProseSettings() {
         style={styles.input}
       />
       <Copy muted>
-        Standard: openrouter/free. Auch andere gültige
-        OpenRouter-Modellkennungen sind erlaubt; kostenpflichtige Modelle nutzen
-        dein OpenRouter-Guthaben. Runback hat kein tägliches Token- oder
-        Anfragelimit. Die Limits des Anbieters gelten weiterhin.
+        {tr(
+          'Standard: openrouter/free. Auch andere gültige OpenRouter-Modellkennungen sind erlaubt; kostenpflichtige Modelle nutzen dein OpenRouter-Guthaben. Runback hat kein tägliches Token- oder Anfragelimit. Die Limits des Anbieters gelten weiterhin.',
+          "Default: openrouter/free. Other valid OpenRouter model IDs are allowed too; paid models use your OpenRouter credit. Runback has no daily token or request limit. The provider's limits still apply.",
+        )}
       </Copy>
       <Button
         secondary
-        title="OpenRouter speichern"
+        title={tr('OpenRouter speichern', 'Save OpenRouter')}
         disabled={busy}
         onPress={() => {
           void act(async () => {
@@ -112,14 +125,14 @@ export function ProseSettings() {
               ),
             );
             setKey('');
-            setMessage('Einstellungen gespeichert.');
+            setMessage(tr('Einstellungen gespeichert.', 'Settings saved.'));
           });
         }}
       />
       {settings?.hasKey ? (
         <Button
           secondary
-          title="Schlüssel entfernen"
+          title={tr('Schlüssel entfernen', 'Remove key')}
           disabled={busy}
           onPress={() => {
             void act(async () => {
@@ -133,12 +146,12 @@ export function ProseSettings() {
       <Button
         secondary
         small
-        title="Textcache leeren"
+        title={tr('Textcache leeren', 'Clear text cache')}
         disabled={busy}
         onPress={() => {
           void act(async () => {
             await nativeCall('clearProseCache');
-            setMessage('Textcache geleert.');
+            setMessage(tr('Textcache geleert.', 'Text cache cleared.'));
           });
         }}
       />
@@ -157,10 +170,10 @@ export function ProseExplanation({ analysis }: { analysis: RunAnalysis }) {
     setText('');
   }, [input]);
   return (
-    <Section title="Alternative Darstellung">
+    <Section title={tr('Alternative Darstellung', 'Alternative view')}>
       <Button
         secondary
-        title="Aussagen kompakt darstellen"
+        title={tr('Aussagen kompakt darstellen', 'Show statements compactly')}
         disabled={busy}
         onPress={() => {
           setBusy(true);
@@ -175,14 +188,25 @@ export function ProseExplanation({ analysis }: { analysis: RunAnalysis }) {
                 result.focus !== analysis.focus ||
                 result.nextAction !== analysis.nextAction
               ) {
-                setText('Die ursprüngliche Einordnung bleibt gültig.');
+                setText(
+                  tr(
+                    'Die ursprüngliche Einordnung bleibt gültig.',
+                    'The original classification still stands.',
+                  ),
+                );
                 return;
               }
               setText(
                 result.text +
                   (result.source === 'template'
-                    ? '\n\nLokale Textvorlage; kein externer Text verwendet.'
-                    : '\n\nDarstellung aus unveränderten Engine-Aussagen.'),
+                    ? tr(
+                        '\n\nLokale Textvorlage; kein externer Text verwendet.',
+                        '\n\nLocal text template; no external text used.',
+                      )
+                    : tr(
+                        '\n\nDarstellung aus unveränderten Engine-Aussagen.',
+                        '\n\nPresentation of unchanged engine statements.',
+                      )),
               );
             })
             .catch(error => {

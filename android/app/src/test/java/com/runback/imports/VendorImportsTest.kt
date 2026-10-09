@@ -64,13 +64,13 @@ class VendorImportsTest {
     }
 
     @Test fun unknownActivitiesFallBackToThePaceWindow() {
-        // 5 km in 25 min -> Laufen.
+        // 5 km in 25 min -> running.
         assertTrue(VendorImports.acceptAsRun(null, 5000.0, 1500.0))
-        // 5 km in 60 min (12:00 min/km) -> Gehen.
+        // 5 km in 60 min (12:00 min/km) -> walking.
         assertFalse(VendorImports.acceptAsRun(null, 5000.0, 3600.0))
-        // 30 km in 60 min -> Radfahren.
+        // 30 km in 60 min -> cycling.
         assertFalse(VendorImports.acceptAsRun("Cardio", 30000.0, 3600.0))
-        // Ohne Distanz oder Dauer laesst sich kein Tempo bilden.
+        // Without distance or duration no pace can be formed.
         assertTrue(VendorImports.acceptAsRun(null, 0.0, 3600.0))
     }
 

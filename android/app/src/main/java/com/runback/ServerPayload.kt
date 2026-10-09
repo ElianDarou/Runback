@@ -2,9 +2,10 @@ package com.runback
 
 import org.json.JSONArray
 import org.json.JSONObject
+import com.runback.core.Lang
 import java.net.URI
 
-/** Freigabe ist eine Positivliste; Schlüssel und geräteinterne Konfiguration gehen nie hinaus. */
+/** Sharing is an allowlist; keys and on-device configuration never leave the phone. */
 object ServerPayload {
     const val PROTOCOL = 1
     val DEFAULT_SCOPE get() = JSONObject().put("runs", true).put("strength", true).put("coach", true).put("gps", false).put("health", false)
@@ -26,9 +27,9 @@ object ServerPayload {
     }
     fun checkedAddress(value: String): String {
         val uri = URI(value)
-        require(uri.scheme in listOf("https", "http") && uri.host != null && uri.rawUserInfo == null && uri.rawQuery == null && uri.rawFragment == null && uri.rawPath.orEmpty().isEmpty()) { "Ungültige Serveradresse." }
-        require(uri.port == -1 || uri.port in 1..65535) { "Ungültiger Port." }
-        require(uri.scheme == "https" || localHost(uri.host)) { "Nutze https außerhalb deines Heimnetzes." }
+        require(uri.scheme in listOf("https", "http") && uri.host != null && uri.rawUserInfo == null && uri.rawQuery == null && uri.rawFragment == null && uri.rawPath.orEmpty().isEmpty()) { Lang.tr("Ungültige Serveradresse.", "Invalid server address.") }
+        require(uri.port == -1 || uri.port in 1..65535) { Lang.tr("Ungültiger Port.", "Invalid port.") }
+        require(uri.scheme == "https" || localHost(uri.host)) { Lang.tr("Nutze https außerhalb deines Heimnetzes.", "Use https outside your home network.") }
         return uri.toString()
     }
     fun clean(value: JSONObject, gps: Boolean, settings: Boolean = false): JSONObject {

@@ -5,20 +5,57 @@ import {
   isSetCompleted,
   type StrengthSession,
 } from '../../../src/domain/strength';
+import type { Translator } from './i18n';
 
 /**
- * Zahlen und Daten wie in der App: deutsches Format, „–“ für Unbekanntes,
- * nie eine erfundene Null. Datum und Uhrzeit in der Zeitzone des Servers
- * (`TZ`, im Container standardmäßig Europe/Berlin).
+ * Numbers and dates as in the app: German or English format for the response
+ * language, „–“ for unknown values, never an invented zero. Dates and times use
+ * the server's time zone (`TZ`, Europe/Berlin in the container by default).
  */
 
 export const DASH = '–';
 
-export const decimal = (value: number, digits = 1) =>
-  value.toFixed(digits).replace('.', ',');
+const dateFormats = new Map<string, Intl.DateTimeFormat>();
+const numberFormats = new Map<string, Intl.NumberFormat>();
 
-export const counted = (count: number, singular: string, plural: string) =>
-  `${count} ${count === 1 ? singular : plural}`;
+function dateFormat(locale: string, options: Intl.DateTimeFormatOptions) {
+  const key = `${locale}|${JSON.stringify(options)}`;
+  let format = dateFormats.get(key);
+  if (!format) {
+    format = new Intl.DateTimeFormat(locale, options);
+    dateFormats.set(key, format);
+  }
+  return format;
+}
+
+export function numberFormat(
+  tx: Translator,
+  options: Intl.NumberFormatOptions = {},
+): Intl.NumberFormat {
+  const key = `${tx.locale}|${JSON.stringify(options)}`;
+  let format = numberFormats.get(key);
+  if (!format) {
+    format = new Intl.NumberFormat(tx.locale, options);
+    numberFormats.set(key, format);
+  }
+  return format;
+}
+
+export const decimal = (tx: Translator, value: number, digits = 1) => {
+  const text = value.toFixed(digits);
+  return tx.lang === 'de' ? text.replace('.', ',') : text;
+};
+
+/** Count with the matching singular or plural; the caller gives both per language. */
+export const counted = (
+  tx: Translator,
+  count: number,
+  de: [singular: string, plural: string],
+  en: [singular: string, plural: string],
+) => {
+  const [singular, plural] = tx.lang === 'en' ? en : de;
+  return `${count} ${count === 1 ? singular : plural}`;
+};
 
 export const formatDuration = (seconds: number) => {
   const whole = Math.max(0, Math.round(seconds));
@@ -27,7 +64,7 @@ export const formatDuration = (seconds: number) => {
   return hours ? `${hours} h ${minutes} min` : `${minutes} min`;
 };
 
-/** „24:12“ oder „1:04:30“. */
+/** „24:12“ or „1:04:30“. */
 export const formatClock = (seconds: number) => {
   const whole = Math.max(0, Math.round(seconds));
   const h = Math.floor(whole / 3600);
@@ -38,37 +75,44 @@ export const formatClock = (seconds: number) => {
     : `${m}:${String(s).padStart(2, '0')}`;
 };
 
-export const km = (meters: number, digits = 2) =>
-  decimal(meters / 1000, digits);
+export const km = (tx: Translator, meters: number, digits = 2) =>
+  decimal(tx, meters / 1000, digits);
 
-const dayFormat = new Intl.DateTimeFormat('de-DE', {
-  weekday: 'short',
-  day: '2-digit',
-  month: '2-digit',
-});
-const dateFormat = new Intl.DateTimeFormat('de-DE', {
-  day: '2-digit',
-  month: '2-digit',
-  year: 'numeric',
-});
-const timeFormat = new Intl.DateTimeFormat('de-DE', {
-  hour: '2-digit',
-  minute: '2-digit',
-});
-const longDateFormat = new Intl.DateTimeFormat('de-DE', {
-  weekday: 'long',
-  day: 'numeric',
-  month: 'long',
-  year: 'numeric',
-});
+export const day = (tx: Translator, at: number) =>
+  dateFormat(tx.locale, {
+    weekday: 'short',
+    day: '2-digit',
+    month: '2-digit',
+  }).format(new Date(at));
+export const date = (tx: Translator, at: number) =>
+  dateFormat(tx.locale, {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(new Date(at));
+export const dayMonth = (tx: Translator, at: number) =>
+  dateFormat(tx.locale, {
+    day: '2-digit',
+    month: '2-digit',
+  }).format(new Date(at));
+export const clock = (tx: Translator, at: number) =>
+  dateFormat(tx.locale, {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(at));
+export const longDate = (tx: Translator, at: number) =>
+  dateFormat(tx.locale, {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(new Date(at));
 
-export const day = (at: number) => dayFormat.format(new Date(at));
-export const date = (at: number) => dateFormat.format(new Date(at));
-export const clock = (at: number) => timeFormat.format(new Date(at));
-export const longDate = (at: number) => longDateFormat.format(new Date(at));
-
-/** Tempo bei Läufen, Geschwindigkeit bei anderen Sportarten — wie in der App. */
-export function tempo(run: Run): { value: string; unit: string } {
+/** Pace for running, speed for other sports, as in the app. */
+export function tempo(
+  tx: Translator,
+  run: Run,
+): { value: string; unit: string } {
   if (usesPace(run.sport)) {
     if (run.distanceMeters < 20 || run.durationSeconds <= 0)
       return { value: DASH, unit: 'min / km' };
@@ -79,7 +123,10 @@ export function tempo(run: Run): { value: string; unit: string } {
     };
   }
   const speed = speedKmh(run);
-  return { value: speed === null ? DASH : decimal(speed), unit: 'km/h' };
+  return {
+    value: speed === null ? DASH : decimal(tx, speed),
+    unit: 'km/h',
+  };
 }
 
 export function completedSets(session: StrengthSession): number {
@@ -98,14 +145,45 @@ export function sessionSeconds(session: StrengthSession): number | null {
     : null;
 }
 
-/** „heute, 18:04“, „gestern, 07:12“ oder Datum. */
-export function relative(at: number, now: number): string {
+/** „today, 18:04“, „yesterday, 07:12“ or a date. */
+export function relative(tx: Translator, at: number, now: number): string {
   const startOfDay = (value: number) => {
     const d = new Date(value);
     return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   };
   const days = Math.round((startOfDay(now) - startOfDay(at)) / 86_400_000);
-  if (days === 0) return `heute, ${clock(at)}`;
-  if (days === 1) return `gestern, ${clock(at)}`;
-  return `${date(at)}, ${clock(at)}`;
+  if (days === 0)
+    return tx.t(`heute, ${clock(tx, at)}`, `today, ${clock(tx, at)}`);
+  if (days === 1)
+    return tx.t(`gestern, ${clock(tx, at)}`, `yesterday, ${clock(tx, at)}`);
+  return `${date(tx, at)}, ${clock(tx, at)}`;
+}
+
+const finite = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value);
+
+/** Weight without trailing zeros: „62,5“ in German, „62.5“ in English. */
+export function weightText(tx: Translator, value: number): string {
+  const rounded = Math.round(value * 100) / 100;
+  return tx.lang === 'de' ? String(rounded).replace('.', ',') : String(rounded);
+}
+
+/** „80 kg × 8“, „8 Wdh.“ / „8 reps“, „45 s“ — or empty if nothing is given. */
+export function setText(
+  tx: Translator,
+  set: { weightKg?: number; reps?: number; seconds?: number },
+): string {
+  if (finite(set.weightKg) && set.weightKg > 0 && finite(set.reps)) {
+    return `${weightText(tx, set.weightKg)} kg × ${set.reps}`;
+  }
+  if (finite(set.reps) && set.reps > 0) {
+    return tx.t(
+      `${set.reps} Wdh.`,
+      `${set.reps} ${set.reps === 1 ? 'rep' : 'reps'}`,
+    );
+  }
+  if (finite(set.seconds) && set.seconds > 0) {
+    return `${Math.round(set.seconds)} s`;
+  }
+  return '';
 }

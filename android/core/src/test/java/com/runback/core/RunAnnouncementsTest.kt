@@ -2,9 +2,12 @@ package com.runback.core
 
 import org.json.JSONObject
 import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Test
 
 class RunAnnouncementsTest {
+    @Before fun setUp() { Lang.set("de") }
+
     private fun config(trigger: String = "distance", interval: Double = 1.0) = JSONObject()
         .put("version", 1).put("trigger", trigger).put("interval", interval)
         .put("kilometer", true).put("distance", true).put("lastKilometerPace", true)

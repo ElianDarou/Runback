@@ -7,8 +7,8 @@ class RunPhasesTest {
     private val start = 1_700_000_000_000L
     private val grid = RunPhases.GRID_SECONDS
 
-    // Synthetischer Track: je Sekunde ein Punkt, Tempo in m/s je Sekunde; 0 m/s ist
-    // Stehen mit ±1,5 m Zickzack (unter dem Rauschboden von 4 m Genauigkeit).
+    // Synthetic track: one point per second, speed in m/s per second; 0 m/s is
+    // standing with ±1.5 m zigzag (below the 4 m accuracy noise floor).
     private fun track(speeds: List<Double>, accuracy: Double = 4.0, from: Int = 0): List<RunTimeline.GpsPoint> {
         var north = 0.0
         return speeds.mapIndexed { i, speed ->
@@ -24,7 +24,7 @@ class RunPhasesTest {
     }
 
     @Test fun runWalkStopPatternWithHysteresisAndBudgetInvariant() {
-        // 120 s laufen (3 m/s), 90 s gehen (1,3 m/s), 60 s stehen, 120 s laufen.
+        // 120 s running (3 m/s), 90 s walking (1.3 m/s), 60 s standing, 120 s running.
         val speeds = List(120) { 3.0 } + List(90) { 1.3 } + List(60) { 0.0 } + List(120) { 3.0 }
         val end = start + speeds.size * 1000L
         val gps = track(speeds)
@@ -42,12 +42,12 @@ class RunPhasesTest {
         assertEquals(1, result.metrics.runWalkTransitions)
         assertEquals(0, result.metrics.trailingIdleSeconds)
         assertNull(result.metrics.fastestSustained300sSecondsPerKm)
-        // Stehen sammelt keine Strecke; nur die Fensterränder tragen ein paar Meter hinein.
+        // Standing collects no distance; only the window edges carry a few meters into it.
         assertTrue("stopped meters ${result.metrics.stopped.meters}", result.metrics.stopped.meters < 25.0)
     }
 
     @Test fun shortBlipsAreAbsorbedIntoThePreviousPhase() {
-        // 10 s Stehen mitten im Lauf: unter 20 s, geht im RUN auf.
+        // 10 s standing in the middle of a run: under 20 s, merges into RUN.
         val speeds = List(100) { 3.0 } + List(10) { 0.0 } + List(100) { 3.0 }
         val end = start + speeds.size * 1000L
         val result = RunPhases.build(start, end, rows(track(speeds), end), emptyList(), List(speeds.size / grid) { null })
@@ -55,19 +55,19 @@ class RunPhasesTest {
     }
 
     @Test fun cadenceDecidesBeforeSpeed() {
-        // Langsam (1,5 m/s) aber mit 165 spm: das ist Laufen, kein Gehen.
+        // Slow (1.5 m/s) but at 165 spm: that is running, not walking.
         val speeds = List(120) { 1.5 }
         val end = start + speeds.size * 1000L
         val cadence = (0 until 120).map { RunTimeline.Reading(start + it * 1000L, 165.0) }
         val result = RunPhases.build(start, end, rows(track(speeds), end, cadence), emptyList(), List(24) { null })
         assertEquals(listOf(RunPhases.State.RUN), result.phases.map { it.state })
-        // Ohne Kadenz wäre es Gehen.
+        // Without cadence it would be walking.
         val withoutCadence = RunPhases.build(start, end, rows(track(speeds), end), emptyList(), List(24) { null })
         assertEquals(listOf(RunPhases.State.WALK), withoutCadence.phases.map { it.state })
     }
 
     @Test fun gpsLossIsUnknownUnlessAccelerometerProvesStillness() {
-        // 60 s laufen, dann 60 s ohne GPS.
+        // 60 s running, then 60 s without GPS.
         val speeds = List(60) { 3.0 }
         val end = start + 120_000L
         val gpsRows = rows(track(speeds), end)
@@ -82,7 +82,7 @@ class RunPhasesTest {
     }
 
     @Test fun pauseEventsArePausedNotStopped() {
-        // 60 s laufen, 60 s Pause (keine Samples), 60 s laufen.
+        // 60 s running, 60 s pause (no samples), 60 s running.
         val gps = track(List(60) { 3.0 }) + track(List(60) { 3.0 }, from = 120)
         val end = start + 180_000L
         val pauses = listOf((start + 60_000L)..(start + 120_000L))
@@ -98,7 +98,7 @@ class RunPhasesTest {
         val end = start + speeds.size * 1000L
         val result = RunPhases.build(start, end, rows(track(speeds), end), emptyList(), List(80) { null })
         val pace = result.metrics.fastestSustained300sSecondsPerKm!!
-        // 3 m/s = 5:33 /km; Anker-Rundung erlaubt ein paar Sekunden.
+        // 3 m/s = 5:33 /km; anchor rounding allows a few seconds.
         assertTrue("pace $pace", pace in 320.0..345.0)
         assertEquals(400, result.metrics.longestRunSeconds)
     }
@@ -124,8 +124,8 @@ class RunPhasesTest {
     }
 
     @Test fun regressionRunWalkSessionWithTrailingIdle() {
-        // Nachbau des Beispiel-Laufs: 4,36 km Run/Walk in ~37 min, danach 13 min
-        // mit laufender Aufzeichnung im Stand (Uhr nicht gestoppt).
+        // Rebuild of the example run: 4.36 km run/walk in ~37 min, then 13 min
+        // standing with the recording still running (watch not stopped).
         val pattern = List(6) { List(240) { 3.0 } + List(130) { 1.4 } }.flatten() + List(780) { 0.0 }
         val end = start + pattern.size * 1000L
         val gps = track(pattern)

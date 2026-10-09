@@ -1,21 +1,21 @@
+import { tr } from './i18n';
 import type { Sport } from './types';
 import type { StrengthSession } from './strength';
 import type { SorenessReport } from './sorenessInput';
 
 /**
- * Welche Funktionen der Nutzer sehen will und wann Runback fragt.
+ * Which features the user wants to see and when Runback asks.
  *
- * Die Spec verspricht: „Jede Funktion ist abwählbar und erzeugt abgewählt
- * weder Hinweise noch leere Flächen.“ Dieses Modul ist die eine Stelle, an
- * der das entschieden wird. Abschalten versteckt nur; Daten bleiben, damit
- * Wiedereinschalten alles zurückbringt (Grundregel 1 und 10).
+ * The spec promises: "Every feature can be switched off, and switched off it
+ * creates neither hints nor empty areas." This module is the one place where
+ * that is decided. Switching off only hides; data stays, so switching back on
+ * brings everything back (ground rules 1 and 10).
  *
- * Fehlende oder kaputte Werte fallen auf den Standard zurück, nie auf einen
- * Fehler. Der Standard entspricht dem bisherigen Verhalten der App — mit einer
- * Ausnahme: Nach Muskelkater fragt Runback jetzt nach Krafttraining statt
- * täglich.
+ * Missing or broken values fall back to the default, never to an error. The
+ * default matches the app's earlier behavior, with one exception: after
+ * soreness, Runback now asks after strength training instead of daily.
  */
-export const FEATURES_VERSION = 2 as const;
+export const FEATURES_VERSION = 3 as const;
 
 export type SorenessPrompt =
   | 'never'
@@ -36,13 +36,22 @@ export type AfterRun = 'detail' | 'feeling' | 'home';
 export type StatsModule = 'distribution' | 'records' | 'consistency' | 'body';
 export type Area = 'running' | 'strength';
 export type OptionalTab =
-  | 'Plan'
-  | 'Coach'
-  | 'Statistik'
-  | 'Routen'
-  | 'Vorlagen'
-  | 'Muskelkater';
-export type Tab = 'Heute' | 'Verlauf' | OptionalTab;
+  | 'plan'
+  | 'coach'
+  | 'statistics'
+  | 'routes'
+  | 'templates'
+  | 'soreness';
+export type Tab = 'today' | 'history' | OptionalTab;
+/** Tab ids before the English rename; saved navigation still carries them. */
+const LEGACY_TABS: Record<string, OptionalTab> = {
+  Plan: 'plan',
+  Coach: 'coach',
+  Statistik: 'statistics',
+  Routen: 'routes',
+  Vorlagen: 'templates',
+  Muskelkater: 'soreness',
+};
 export type FeatureId =
   | 'planning'
   | 'coach'
@@ -50,62 +59,119 @@ export type FeatureId =
   | 'routes'
   | 'templates'
   | 'soreness'
-  | 'goals';
+  | 'goals'
+  | 'music';
+/**
+ * Feature list in settings and home. Titles and descriptions are getters so
+ * they follow the active language at read time, not at import time.
+ */
 export const FEATURE_CATALOG: readonly {
-  id: FeatureId;
-  title: string;
-  description: string;
-  tab?: OptionalTab;
+  readonly id: FeatureId;
+  readonly title: string;
+  readonly description: string;
+  readonly tab?: OptionalTab;
 }[] = [
   {
     id: 'coach',
-    title: 'Coach',
-    description: 'Empfehlungen und ihre Prüfung',
-    tab: 'Coach',
+    get title() {
+      return tr('Coach', 'Coach');
+    },
+    get description() {
+      return tr(
+        'Empfehlungen und ihre Prüfung',
+        'Recommendations and how they are checked',
+      );
+    },
+    tab: 'coach',
   },
   {
     id: 'planning',
-    title: 'Planung',
-    description: 'Woche und Monat planen',
-    tab: 'Plan',
+    get title() {
+      return tr('Planung', 'Planning');
+    },
+    get description() {
+      return tr('Woche und Monat planen', 'Plan the week and the month');
+    },
+    tab: 'plan',
   },
   {
     id: 'goals',
-    title: 'Ziele & Fokus',
-    description: 'Vorhaben je Bereich festlegen',
+    get title() {
+      return tr('Ziele & Fokus', 'Goals & focus');
+    },
+    get description() {
+      return tr('Vorhaben je Bereich festlegen', 'Set goals for each area');
+    },
   },
   {
     id: 'statistics',
-    title: 'Statistik',
-    description: 'Läufe und Krafttraining auswerten',
-    tab: 'Statistik',
+    get title() {
+      return tr('Statistik', 'Statistics');
+    },
+    get description() {
+      return tr(
+        'Läufe und Krafttraining auswerten',
+        'Review runs and strength training',
+      );
+    },
+    tab: 'statistics',
   },
   {
     id: 'routes',
-    title: 'Routen',
-    description: 'Runden planen und mit Ansagen laufen',
-    tab: 'Routen',
+    get title() {
+      return tr('Routen', 'Routes');
+    },
+    get description() {
+      return tr(
+        'Runden planen und mit Ansagen laufen',
+        'Plan loops and run with announcements',
+      );
+    },
+    tab: 'routes',
   },
   {
     id: 'templates',
-    title: 'Vorlagen',
-    description: 'Kraft- und Lauftraining vorbereiten',
-    tab: 'Vorlagen',
+    get title() {
+      return tr('Vorlagen', 'Templates');
+    },
+    get description() {
+      return tr(
+        'Kraft- und Lauftraining vorbereiten',
+        'Prepare strength and running workouts',
+      );
+    },
+    tab: 'templates',
+  },
+  {
+    id: 'music',
+    get title() {
+      return tr('Musik', 'Music');
+    },
+    get description() {
+      return tr(
+        'Mit Spotify zum Schrittrhythmus laufen',
+        'Run to your stride rhythm with Spotify',
+      );
+    },
   },
   {
     id: 'soreness',
-    title: 'Muskelkater',
-    description: 'Muskelkater melden und ansehen',
-    tab: 'Muskelkater',
+    get title() {
+      return tr('Muskelkater', 'Soreness');
+    },
+    get description() {
+      return tr('Muskelkater melden und ansehen', 'Report and review soreness');
+    },
+    tab: 'soreness',
   },
 ];
 const OPTIONAL_TABS: OptionalTab[] = [
-  'Plan',
-  'Coach',
-  'Statistik',
-  'Routen',
-  'Vorlagen',
-  'Muskelkater',
+  'plan',
+  'coach',
+  'statistics',
+  'routes',
+  'templates',
+  'soreness',
 ];
 
 export interface FeatureSettings {
@@ -121,6 +187,7 @@ export interface FeatureSettings {
   home: { sections: HomeSection[] };
   coach: { enabled: boolean };
   goals: { enabled: boolean };
+  music: { enabled: boolean };
   templates: { enabled: boolean };
   navigation: { tabs: OptionalTab[] };
   planning: { enabled: boolean; suggest: boolean; month: boolean };
@@ -138,9 +205,9 @@ export interface FeatureSettings {
   };
   strength: {
     restTimer: boolean;
-    /** Kurz, kurz, lang am Pausenende: auf der verbundenen Uhr, sonst am Handy. */
+    /** Short, short, long at the end of a rest: on the paired watch, otherwise on the phone. */
     restVibration: boolean;
-    /** Kurz, kurz, lang als Ton, nur am Handy. */
+    /** Short, short, long as a sound, phone only. */
     restSound: boolean;
     defaultRestSeconds: number;
     rir: boolean;
@@ -199,8 +266,9 @@ export const DEFAULT_FEATURES: FeatureSettings = {
   planning: { enabled: true, suggest: true, month: true },
   coach: { enabled: true },
   goals: { enabled: true },
+  music: { enabled: false },
   templates: { enabled: true },
-  navigation: { tabs: ['Plan', 'Coach'] },
+  navigation: { tabs: ['plan', 'coach'] },
   recommendations: {
     running: 'suggest',
     strength: 'suggest',
@@ -232,7 +300,7 @@ const oneOf = <T extends string>(value: unknown, allowed: T[], fallback: T) =>
   typeof value === 'string' && (allowed as string[]).includes(value)
     ? (value as T)
     : fallback;
-/** Teilmenge einer festen Liste in deren Reihenfolge; Unbekanntes fällt weg. */
+/** Subset of a fixed list, in its order; unknown values are dropped. */
 const subset = <T extends string>(
   value: unknown,
   allowed: T[],
@@ -243,8 +311,8 @@ const subset = <T extends string>(
     : [...fallback];
 
 /**
- * Liest gespeicherte Einstellungen. `legacy` trägt ältere Einzelschalter, die
- * vor diesem Modul existierten; sie gelten nur, solange `features` fehlt.
+ * Reads saved settings. `legacy` carries older single switches that existed
+ * before this module; they apply only while `features` is missing.
  */
 export function normalizeFeatures(
   raw: unknown,
@@ -264,6 +332,7 @@ export function normalizeFeatures(
       planning: { ...d.planning },
       coach: { ...d.coach },
       goals: { ...d.goals },
+      music: { ...d.music },
       templates: { ...d.templates },
       navigation: { tabs: [...d.navigation.tabs] },
       recommendations: { ...d.recommendations },
@@ -291,10 +360,12 @@ export function normalizeFeatures(
   const restSeconds = Number(strength.defaultRestSeconds);
   const coach = isRecord(raw.coach) ? raw.coach : {};
   const goals = isRecord(raw.goals) ? raw.goals : {};
+  const music = isRecord(raw.music) ? raw.music : {};
   const templates = isRecord(raw.templates) ? raw.templates : {};
   const navigation = isRecord(raw.navigation) ? raw.navigation : {};
   const navigationTabs = Array.isArray(navigation.tabs)
     ? navigation.tabs
+        .map(tab => (typeof tab === 'string' && LEGACY_TABS[tab]) || tab)
         .filter(
           (tab, index, all): tab is OptionalTab =>
             OPTIONAL_TABS.includes(tab as OptionalTab) &&
@@ -304,7 +375,7 @@ export function normalizeFeatures(
     : [...d.navigation.tabs];
   const normalized: FeatureSettings = {
     version: FEATURES_VERSION,
-    // Mindestens ein Bereich bleibt an, sonst gäbe es nichts zu starten.
+    // At least one area stays on, otherwise there would be nothing to start.
     areas:
       running || strengthArea
         ? { running, strength: strengthArea }
@@ -312,6 +383,7 @@ export function normalizeFeatures(
     sports: { cycling: bool(sports.cycling, d.sports.cycling) },
     coach: { enabled: bool(coach.enabled, d.coach.enabled) },
     goals: { enabled: bool(goals.enabled, d.goals.enabled) },
+    music: { enabled: bool(music.enabled, d.music.enabled) },
     templates: { enabled: bool(templates.enabled, d.templates.enabled) },
     navigation: { tabs: navigationTabs },
     soreness: {
@@ -384,7 +456,7 @@ export function normalizeFeatures(
   return { ...normalized, navigation: { tabs: pinnedTabs(normalized) } };
 }
 
-/** Schaltet einen Bereich; der letzte aktive Bereich lässt sich nicht abwählen. */
+/** Switches an area; the last active area cannot be switched off. */
 export function withArea(
   features: FeatureSettings,
   area: Area,
@@ -398,7 +470,7 @@ export function withArea(
   return { ...updated, navigation: { tabs: pinnedTabs(updated) } };
 }
 
-/** Sportarten, die in der Auswahl vor einer Aufzeichnung stehen. */
+/** Sports offered in the picker before a recording. */
 export function enabledSports(features: FeatureSettings): Sport[] {
   const sports: Sport[] = [];
   if (features.areas.running) {
@@ -410,7 +482,7 @@ export function enabledSports(features: FeatureSettings): Sport[] {
   return sports;
 }
 
-/** Verfügbare Funktionen und ihre Plätze sind unabhängig; Abschalten belegt keinen Platz. */
+/** Available features and their tab slots are independent; switching off frees the slot. */
 export function featureEnabled(
   features: FeatureSettings,
   id: FeatureId,
@@ -431,7 +503,7 @@ export function withFeature(
     id === 'routes'
       ? { ...features, recording: { ...features.recording, routes: enabled } }
       : { ...features, [id]: { ...features[id], enabled } };
-  // Ein ausgeschalteter Platz wird frei; Wiedereinschalten heftet nichts automatisch an.
+  // A switched-off slot is freed; switching back on does not pin anything automatically.
   return {
     ...next,
     navigation: {
@@ -451,10 +523,31 @@ export function pinnedTabs(features: FeatureSettings): OptionalTab[] {
     .filter(tab => availableTabs(features).includes(tab))
     .slice(0, 2);
 }
-export function visibleTabs(features: FeatureSettings): Tab[] {
-  return ['Heute', ...pinnedTabs(features), 'Verlauf'];
+/** Visible name of a tab in the active language. */
+export function tabLabel(tab: Tab): string {
+  switch (tab) {
+    case 'today':
+      return tr('Heute', 'Today');
+    case 'history':
+      return tr('Verlauf', 'History');
+    case 'plan':
+      return tr('Plan', 'Plan');
+    case 'coach':
+      return tr('Coach', 'Coach');
+    case 'statistics':
+      return tr('Statistik', 'Statistics');
+    case 'routes':
+      return tr('Routen', 'Routes');
+    case 'templates':
+      return tr('Vorlagen', 'Templates');
+    case 'soreness':
+      return tr('Muskelkater', 'Soreness');
+  }
 }
-/** Unbekannte, doppelte und ausgeschaltete Ziele kommen nie in die Leiste. */
+export function visibleTabs(features: FeatureSettings): Tab[] {
+  return ['today', ...pinnedTabs(features), 'history'];
+}
+/** Unknown, duplicate, and switched-off targets never reach the bar. */
 export function withNavigation(
   features: FeatureSettings,
   tabs: OptionalTab[],
@@ -473,7 +566,7 @@ export function withNavigation(
   };
 }
 
-/** Ob eine Empfehlung dieses Bereichs überhaupt gerechnet und gezeigt wird. */
+/** Whether a recommendation for this area is calculated and shown at all. */
 export function recommendationsShown(
   features: FeatureSettings,
   area: Area,
@@ -485,7 +578,7 @@ export function recommendationsShown(
   );
 }
 
-/** Ob die Empfehlung dieses Bereichs ungefragt auf Heute und nach der Einheit steht. */
+/** Whether the recommendation for this area appears unasked on Today and after the workout. */
 export function recommendationsSuggested(
   features: FeatureSettings,
   area: Area,
@@ -498,9 +591,9 @@ export function recommendationsSuggested(
 }
 
 /**
- * Blöcke auf Heute, die der Nutzer angehakt hat und deren Funktion an ist.
- * Eine abgeschaltete Funktion nimmt ihren Block mit — er steht dann auch
- * nicht mehr zur Auswahl. Die Startkarte ist kein Block; sie bleibt immer.
+ * Blocks on Today that the user has ticked and whose feature is on.
+ * A switched-off feature takes its block along — it then also drops out of
+ * the choices. The start card is not a block; it always stays.
  */
 export function availableHomeSections(
   features: FeatureSettings,
@@ -530,7 +623,7 @@ export function visibleHomeSections(features: FeatureSettings): HomeSection[] {
 }
 
 const HOUR = 3600 * 1000;
-/** Muskelkater kommt verzögert: gefragt wird frühestens 8 und spätestens 72 Stunden nach der Einheit. */
+/** Soreness shows up late: it is asked no earlier than 8 and no later than 72 hours after the workout. */
 const AFTER_STRENGTH_MIN = 8 * HOUR;
 const AFTER_STRENGTH_MAX = 72 * HOUR;
 
@@ -543,7 +636,7 @@ const sameDay = (a: number, b: number) => {
     x.getDate() === y.getDate()
   );
 };
-/** Montag 0:00 Ortszeit der Woche, in der `at` liegt. */
+/** Monday 0:00 local time of the week that contains `at`. */
 const weekStart = (at: number) => {
   const d = new Date(at);
   d.setHours(0, 0, 0, 0);
@@ -553,9 +646,9 @@ const weekStart = (at: number) => {
 };
 
 /**
- * Soll die Muskelkater-Abfrage jetzt ungefragt erscheinen? Rein aus
- * Einstellung, Meldungen und Krafteinheiten; wer die Abfrage schon in dieser
- * Sitzung gesehen hat, hält das der Aufrufer fest.
+ * Should the soreness question appear now, unasked? Decided purely from the
+ * setting, reports, and strength sessions; the caller records whether the
+ * question was already seen in this session.
  */
 export function shouldPromptSoreness(
   features: FeatureSettings,
@@ -592,7 +685,7 @@ export function shouldPromptSoreness(
         if (age < AFTER_STRENGTH_MIN || age > AFTER_STRENGTH_MAX) {
           return false;
         }
-        // Einmal je Einheit: eine Meldung nach ihrem Ende genügt.
+        // Once per session: one report after its end is enough.
         return !reports.some(report => report.at >= end);
       });
     }
@@ -601,45 +694,92 @@ export function shouldPromptSoreness(
   }
 }
 
-/** Anzeigename je Option. Für Zeilenuntertitel, die den aktuellen Wert nennen. */
-export const SORENESS_PROMPT_LABELS: Record<SorenessPrompt, string> = {
-  never: 'Nie – nur selbst melden',
-  after_strength: 'Nach Krafttraining',
-  daily: 'Täglich beim ersten Öffnen',
-  training_days: 'An Trainingstagen',
-  weekly: 'Einmal pro Woche',
-};
-export const RECOMMENDATION_MODE_LABELS: Record<RecommendationMode, string> = {
-  suggest: 'Vorschlagen',
-  on_request: 'Nur auf Nachfrage',
-  off: 'Aus',
-};
-export const AFTER_RUN_LABELS: Record<AfterRun, string> = {
-  detail: 'Detailseite öffnen',
-  feeling: 'Nur Gefühl abfragen',
-  home: 'Direkt zurück zu Heute',
-};
-export const HOME_SECTION_LABELS: Record<HomeSection, string> = {
-  week: 'Wochenleiste',
-  recommendation: 'Empfehlung',
-  goal: 'Zielnähe',
-  body: 'Muskelkater melden',
-  recent: 'Zuletzt',
-};
-export const RECORDING_METRIC_LABELS: Record<RecordingMetric, string> = {
-  distance: 'Kilometer',
-  pace: 'Tempo',
-  heartRate: 'Herzfrequenz',
-  target: 'Laufen nach',
-};
-export const RECORDING_PRIMARY_LABELS: Record<RecordingPrimary, string> = {
-  duration: 'Dauer',
-  distance: 'Kilometer',
-  heartRate: 'Herzfrequenz',
-};
-export const STATS_MODULE_LABELS: Record<StatsModule, string> = {
-  distribution: 'Verteilung',
-  records: 'Bestwerte',
-  consistency: 'Konsistenz',
-  body: 'Körperwerte',
-};
+/** Option label for the soreness prompt setting, in the active language. */
+export function sorenessPromptLabel(value: SorenessPrompt): string {
+  switch (value) {
+    case 'never':
+      return tr('Nie – nur selbst melden', 'Never – only report it yourself');
+    case 'after_strength':
+      return tr('Nach Krafttraining', 'After strength training');
+    case 'daily':
+      return tr('Täglich beim ersten Öffnen', 'Daily, on first open');
+    case 'training_days':
+      return tr('An Trainingstagen', 'On training days');
+    case 'weekly':
+      return tr('Einmal pro Woche', 'Once a week');
+  }
+}
+/** Option label for a recommendation mode, in the active language. */
+export function recommendationModeLabel(value: RecommendationMode): string {
+  switch (value) {
+    case 'suggest':
+      return tr('Vorschlagen', 'Suggest');
+    case 'on_request':
+      return tr('Nur auf Nachfrage', 'Only on request');
+    case 'off':
+      return tr('Aus', 'Off');
+  }
+}
+/** Option label for what happens after a recording, in the active language. */
+export function afterRunLabel(value: AfterRun): string {
+  switch (value) {
+    case 'detail':
+      return tr('Detailseite öffnen', 'Open the detail page');
+    case 'feeling':
+      return tr('Nur Gefühl abfragen', 'Only ask how it felt');
+    case 'home':
+      return tr('Direkt zurück zu Heute', 'Straight back to Today');
+  }
+}
+/** Name of a home section, in the active language. */
+export function homeSectionLabel(value: HomeSection): string {
+  switch (value) {
+    case 'week':
+      return tr('Wochenleiste', 'Week bar');
+    case 'recommendation':
+      return tr('Empfehlung', 'Recommendation');
+    case 'goal':
+      return tr('Zielnähe', 'Goal progress');
+    case 'body':
+      return tr('Muskelkater melden', 'Report soreness');
+    case 'recent':
+      return tr('Zuletzt', 'Recent');
+  }
+}
+/** Name of a recording metric, in the active language. */
+export function recordingMetricLabel(value: RecordingMetric): string {
+  switch (value) {
+    case 'distance':
+      return tr('Kilometer', 'Kilometers');
+    case 'pace':
+      return tr('Tempo', 'Pace');
+    case 'heartRate':
+      return tr('Herzfrequenz', 'Heart rate');
+    case 'target':
+      return tr('Laufen nach', 'Run to');
+  }
+}
+/** Name of the primary recording value, in the active language. */
+export function recordingPrimaryLabel(value: RecordingPrimary): string {
+  switch (value) {
+    case 'duration':
+      return tr('Dauer', 'Duration');
+    case 'distance':
+      return tr('Kilometer', 'Kilometers');
+    case 'heartRate':
+      return tr('Herzfrequenz', 'Heart rate');
+  }
+}
+/** Name of a statistics module, in the active language. */
+export function statsModuleLabel(value: StatsModule): string {
+  switch (value) {
+    case 'distribution':
+      return tr('Verteilung', 'Distribution');
+    case 'records':
+      return tr('Bestwerte', 'Personal bests');
+    case 'consistency':
+      return tr('Konsistenz', 'Consistency');
+    case 'body':
+      return tr('Körperwerte', 'Body values');
+  }
+}

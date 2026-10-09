@@ -6,12 +6,13 @@
  * Data usefulness per vendor (why Runback keeps it):
  * - Runs (GPS track or summary): same pacing/effort rules as native runs.
  *   Summaries without samples stay summary-only and never invent samples.
- * - Resting HR / HRV / sleep / weight / steps: Alltag context for the next run
+ * - Resting HR / HRV / sleep / weight / steps: everyday context for the next run
  *   (e.g. explaining training days), displayed only. They never create a
  *   readiness score, diagnosis or automatic plan change.
  * - Strength sessions (Strong/Hevy/FitNotes CSV): cross-training load context
  *   (sessions, sets, volume). They never count as running evidence.
  */
+import { getLanguage, tr } from './i18n';
 
 export type VendorId =
   | 'fitbit'
@@ -38,9 +39,9 @@ export interface VendorInfo {
   short: string;
   exportSteps: string[];
   /**
-   * Besonderheiten genau dieser Quelle (etwa das ZIP-Passwort, das nur Mi
-   * Fitness verschickt). Sie werden erst nach der Auswahl gezeigt, damit die
-   * Übersicht nicht die Hinweise aller Anbieter gleichzeitig trägt.
+   * Specifics of this source only (e.g. the ZIP password that only Mi Fitness
+   * sends). Shown after selection so the overview does not carry every
+   * vendor's notes at once.
    */
   notes?: string[];
   filePatterns: string[];
@@ -49,7 +50,8 @@ export interface VendorInfo {
   privacy: string;
 }
 
-export const VENDOR_INFOS: VendorInfo[] = [
+/** German vendor texts; `VENDOR_INFOS` reads them or the English table per language. */
+const VENDOR_INFOS_DE: VendorInfo[] = [
   {
     id: 'fitbit',
     name: 'Fitbit / Google Health',
@@ -497,10 +499,473 @@ export const VENDOR_INFOS: VendorInfo[] = [
   },
 ];
 
+/** English vendor texts; same vendors and order as the German table. */
+const VENDOR_INFOS_EN: VendorInfo[] = [
+  {
+    id: 'fitbit',
+    name: 'Fitbit / Google Health',
+    short: 'Runs, heart rate, sleep, steps, weight',
+    exportSteps: [
+      'Full archive: open takeout.google.com, choose only "Fitbit", request the export as ZIP and download it.',
+      'Current period: Google Health app → Profile → Settings → Export data, choose the period and CSV or JSON.',
+      'Single GPS runs: open the workout in the app → Menu → Export as TCX (per run, includes the route).',
+      'Import everything into Runback together: the Takeout ZIP plus single TCX files.',
+    ],
+    filePatterns: [
+      'Takeout ZIP with folders Physical Activity, Heart Rate, Sleep, Weight, HRV, SpO2',
+      'heart_rate-YYYY-MM-DD.json (heart rate over the day)',
+      'sleep-YYYY-MM-DD.json (sleep stages per night)',
+      'Single TCX per GPS workout',
+    ],
+    useful: [
+      {
+        label: 'Runs (TCX + activity log)',
+        why: 'Distance, duration and route for pace and pacing analysis.',
+        howUsed: 'Like your own runs, where time and distance are suitable.',
+      },
+      {
+        label: 'Heart rate trace (per minute)',
+        why: 'Heart rate during strength sessions from Strong or without a watch.',
+        howUsed: 'Appears for each session in this period and helps find a forgotten end.',
+      },
+      {
+        label: 'Resting HR & HRV (nightly)',
+        why: 'Recovery context without a claim about today\'s form.',
+        howUsed: 'Display only in the import overview, no rating.',
+      },
+      {
+        label: 'Sleep (duration, stages)',
+        why: 'Everyday context for planned run days.',
+        howUsed: 'Display only, no readiness score.',
+      },
+      {
+        label: 'Steps, distance, calories (daily totals)',
+        why: 'Activity context outside running.',
+        howUsed: 'Display only in the overview.',
+      },
+      {
+        label: 'Weight & BMI',
+        why: 'Body trend as context.',
+        howUsed: 'Display only, no model correction.',
+      },
+    ],
+    limitations: [
+      'No bulk TCX export: GPS routes only one workout at a time.',
+      'Very large Takeout archives take time; intraday series are imported in a limited way.',
+      'Sleep stages via Health Connect are coarser than in the Takeout archive.',
+    ],
+    privacy:
+      'The archive contains sensitive health data. It stays on the device; Runback uploads nothing.',
+  },
+  {
+    id: 'google_fit',
+    name: 'Google Fit (Takeout)',
+    short: 'Sessions, daily totals, steps',
+    exportSteps: [
+      'Open takeout.google.com, choose only "Google Fit" or "Fit" and request the export.',
+      'Import the downloaded ZIP into Runback.',
+      'Also back up GPS workouts individually as TCX/GPX if the Fit app offers it.',
+    ],
+    filePatterns: [
+      'Takeout/Fit with sessions and daily totals (JSON)',
+      'All Data/…heart_rate.bpm….json (heart rate trace)',
+      'Optional TCX/GPX per workout',
+    ],
+    useful: [
+      {
+        label: 'Run sessions (start, end, distance)',
+        why: 'History for pace analysis, even without a GPS track.',
+        howUsed: 'Summary runs without invented samples.',
+      },
+      {
+        label: 'Daily totals (steps, distance, calories)',
+        why: 'Activity context.',
+        howUsed: 'Display only.',
+      },
+      {
+        label: 'Heart rate trace (per minute)',
+        why: 'Heart rate during strength sessions from Strong or without a watch.',
+        howUsed: 'Appears for each session in this period and helps find a forgotten end.',
+      },
+      {
+        label: 'Weight (if logged)',
+        why: 'Body context.',
+        howUsed: 'Display only.',
+      },
+    ],
+    limitations: [
+      'Depending on the account, sessions are summaries only, without a GPS track.',
+      'Field names vary; unknown fields are skipped instead of guessed.',
+    ],
+    privacy:
+      'Takeout contains the entire Fit account. Import only what you want as context.',
+  },
+  {
+    id: 'strong',
+    name: 'Strong (strength training)',
+    short: 'Sessions, sets and reusable templates',
+    exportSteps: [
+      'Open Strong → Profile → Settings → Export Strong Data (iOS) or Export data (Android).',
+      'Get the CSV file (one row per set) to the phone by file, email or Drive.',
+      'Import the CSV into Runback and take over the recognized templates in the plan.',
+    ],
+    filePatterns: [
+      'strong.csv or export CSV with columns Date, Exercise Name, Set Order, Weight, Reps',
+    ],
+    useful: [
+      {
+        label: 'Strength sessions (date, name, duration)',
+        why: 'Training outside running stays visible.',
+        howUsed: 'Count and dates in the overview, no running rating.',
+      },
+      {
+        label: 'Sets (exercise, weight, reps)',
+        why: 'Volume per exercise as context.',
+        howUsed: 'Set values stay saved; the latest session per name becomes the template preview.',
+      },
+      {
+        label: 'RPE & notes (if logged)',
+        why: 'Subjective load complements the run RPE.',
+        howUsed: 'Display only in the session.',
+      },
+      {
+        label: 'Cardio rows (distance, seconds)',
+        why: 'Treadmill or interval hints.',
+        howUsed: 'Stay strength context; without a GPS track no pacing run.',
+      },
+    ],
+    limitations: [
+      'Import templates into the plan; existing templates and fixed training days are kept.',
+      'Without a weight unit or rest time, the value stays open in the template.',
+      'Strong runs without a GPS track do not become pace runs.',
+    ],
+    privacy: 'The CSV contains training notes in plain text and stays local.',
+  },
+  {
+    id: 'mi_fitness',
+    name: 'Mi Fitness / Zepp Life (Xiaomi)',
+    short: 'Runs, per-minute heart rate, steps',
+    exportSteps: [
+      'Single outdoor runs: open the workout in Mi Fitness or Zepp → export the route → save as GPX/TCX/FIT.',
+      'Full archive (GDPR): Mi Fitness settings or user.huami.com/privacy → export data.',
+      'Import both into Runback: single files for GPS, archive CSVs for heart rate and step context.',
+    ],
+    notes: [
+      'The full archive comes as a password-protected ZIP; the password is in the email from Xiaomi.',
+      'Runback cannot open encrypted ZIPs: unzip with the password first, then choose the unzipped files.',
+    ],
+    filePatterns: [
+      'Single GPX/TCX/FIT per outdoor workout (with route)',
+      'SPORT*.csv (workout summaries)',
+      'HEARTRATE_AUTO*.csv (per-minute heart rate)',
+      'ACTIVITY_MINUTE*.csv (per-minute steps)',
+    ],
+    useful: [
+      {
+        label: 'Outdoor runs (GPX/TCX/FIT)',
+        why: 'Full route, heart rate and cadence for pace analysis.',
+        howUsed: 'Like your own runs.',
+      },
+      {
+        label: 'SPORT summaries',
+        why: 'Runs without a single file stay in the history.',
+        howUsed: 'Summary runs without an invented track.',
+      },
+      {
+        label: 'Per-minute heart rate & steps',
+        why: 'Load and activity context.',
+        howUsed: 'Limited import, display only.',
+      },
+    ],
+    limitations: [
+      'The bulk archive contains no GPS tracks, only summaries.',
+      'Minute data is rough; gaps stay gaps.',
+      'Unofficial cloud scripts are not needed and not supported.',
+    ],
+    privacy:
+      'The archive contains location and health histories. Keep it local and do not share it.',
+  },
+  {
+    id: 'apple_health',
+    name: 'Apple Health (iPhone export)',
+    short: 'Workouts, resting HR, HRV, sleep, weight',
+    exportSteps: [
+      'iPhone: Health app → profile picture → Export All Health Data.',
+      'Get the export.zip to the Android phone (file, Drive, USB).',
+      'Import the ZIP into Runback. Routes are included as workout-routes/*.gpx and are read in too.',
+    ],
+    notes: [
+      'export.xml can be several hundred MB with a long history; the import then takes a few minutes.',
+    ],
+    filePatterns: [
+      'export.zip with export.xml',
+      'workout-routes/*.gpx (routes for the workouts)',
+    ],
+    useful: [
+      {
+        label: 'Running workouts (duration, distance, energy)',
+        why: 'Running history for pace analysis.',
+        howUsed: 'Summary runs; with a GPX route, full analysis.',
+      },
+      {
+        label: 'Resting HR & HRV (SDNN)',
+        why: 'Recovery context.',
+        howUsed: 'Display only. SDNN is not mixed with the RMSSD of other apps.',
+      },
+      {
+        label: 'Sleep analysis (stages per interval)',
+        why: 'Everyday context.',
+        howUsed: 'Display only, no score.',
+      },
+      {
+        label: 'Weight, height, VO2max, steps',
+        why: 'Body and activity context.',
+        howUsed: 'Display only; VO2max drives no models.',
+      },
+    ],
+    limitations: [
+      'export.xml can be very large; Runback reads it as a stream with fixed limits.',
+      'Intraday heart rate is not imported row by row (size); heart rate near a workout comes via GPX/TCX.',
+      'Apple HRV is SDNN and stays separate from Fitbit/Garmin RMSSD.',
+    ],
+    privacy:
+      'The export contains the entire Health history. Import it only if you want the context.',
+  },
+  {
+    id: 'samsung',
+    name: 'Samsung Health',
+    short: 'Workouts, heart rate, sleep, steps',
+    exportSteps: [
+      'Samsung Health → Menu → Settings → Download personal data, confirm with your Samsung account.',
+      'Get the ZIP (many com.samsung.*.csv files plus a jsons folder) to the phone.',
+      'Import the ZIP into Runback. Also back up single GPS runs as GPX (open the workout → export as GPX), because the GPX export contains no heart rate.',
+    ],
+    filePatterns: [
+      'com.samsung.shealth.exercise.*.csv (workouts)',
+      'com.samsung.shealth.tracker.heart_rate.*.csv (heart rate)',
+      'com.samsung.shealth.sleep.*.csv + com.samsung.health.sleep_stage.*.csv',
+      'com.samsung.shealth.tracker.pedometer_* (steps)',
+    ],
+    useful: [
+      {
+        label: 'Running workouts (start, end, distance, calories)',
+        why: 'History for pace analysis.',
+        howUsed: 'Summary runs; with single GPX, the full route.',
+      },
+      {
+        label: 'Heart rate, HRV (sleep), SpO2, stress',
+        why: 'Recovery and load context.',
+        howUsed: 'Display only; no scores as a basis for recommendations.',
+      },
+      {
+        label: 'Sleep (score, efficiency, stages 40001–40004)',
+        why: 'Everyday context.',
+        howUsed: 'Display only.',
+      },
+      {
+        label: 'Steps, weight, body composition (BIA)',
+        why: 'Activity and body context.',
+        howUsed: 'Display only.',
+      },
+    ],
+    limitations: [
+      'Single GPX files contain no heart rate (a Samsung decision); heart rate comes from the CSVs.',
+      'Minute-binned JSON files are summarized, not imported in full.',
+      'Some column names are localized; unknown columns are skipped.',
+    ],
+    privacy:
+      'The package contains years of health data. Process it locally and store backups deliberately.',
+  },
+  {
+    id: 'garmin',
+    name: 'Garmin Connect',
+    short: 'FIT workouts, daily summaries',
+    exportSteps: [
+      'Single: connect.garmin.com → activity → gear icon → export Original (FIT), or TCX/GPX.',
+      'Everything: account → Settings → Export data (ZIP with FITs in DI_CONNECT plus wellness JSON).',
+      'Also back up the activity list as CSV (one row per workout). Import everything together.',
+    ],
+    filePatterns: [
+      'Single FIT/TCX/GPX per workout (complete)',
+      'Bulk ZIP with DI_CONNECT/* (FITs in UploadedFiles_*.zip)',
+      'summarizedActivities.json + wellness JSON (sleepData and others)',
+      'activities.csv (one row per workout)',
+    ],
+    useful: [
+      {
+        label: 'Workouts (FIT/TCX/GPX)',
+        why: 'Most complete source: GPS, heart rate, cadence, elevation.',
+        howUsed: 'Full run analysis like your own recording.',
+      },
+      {
+        label: 'Summaries (CSV/JSON)',
+        why: 'Fills gaps when single data is missing.',
+        howUsed: 'Summary runs without invented samples.',
+      },
+      {
+        label: 'Wellness (sleep, HRV, stress, Body Battery)',
+        why: 'Recovery context.',
+        howUsed: 'Display only; training status labels are not imported.',
+      },
+    ],
+    limitations: [
+      'The bulk export takes time and arrives by email.',
+      'Training status and VO2max trends cannot be exported historically.',
+      'FIT file names are timestamps; names come from summarizedActivities.json.',
+    ],
+    privacy:
+      'FIT files contain GPS tracks at one-second resolution. Process them locally only.',
+  },
+  {
+    id: 'polar',
+    name: 'Polar Flow',
+    short: 'TCX/GPX workouts, summaries',
+    exportSteps: [
+      'flow.polar.com → workout → export as TCX or GPX.',
+      'Save the workout list or diary as CSV, if offered.',
+      'Import both into Runback.',
+    ],
+    filePatterns: [
+      'Single TCX/GPX per workout',
+      'Workout CSV (if available)',
+    ],
+    useful: [
+      {
+        label: 'Running workouts (TCX/GPX)',
+        why: 'Route, heart rate and laps for pace analysis.',
+        howUsed: 'Full run analysis.',
+      },
+      {
+        label: 'Summaries',
+        why: 'History without a single file.',
+        howUsed: 'Summary runs.',
+      },
+    ],
+    limitations: [
+      'No documented bulk wellness export; sleep and recovery only as far as the CSV contains them.',
+    ],
+    privacy: 'Workouts contain GPS tracks; process them locally.',
+  },
+  {
+    id: 'strava',
+    name: 'Strava (bulk)',
+    short: 'GPX/FIT tracks plus activities.csv',
+    exportSteps: [
+      'strava.com → Settings → Download my data → request the export.',
+      'Import the ZIP (activities.csv plus track files) into Runback.',
+      'Single FIT/GPX/TCX files you already have are recognized as duplicates.',
+    ],
+    filePatterns: [
+      'activities.csv (one row per activity)',
+      'Track files (GPX/FIT/TCX) in the same ZIP',
+    ],
+    useful: [
+      {
+        label: 'Runs with a track',
+        why: 'Full pace and pacing analysis.',
+        howUsed: 'Like your own runs.',
+      },
+      {
+        label: 'Summaries (distance, time, average HR)',
+        why: 'History without a track.',
+        howUsed: 'Summary runs.',
+      },
+    ],
+    limitations: [
+      'Only your own, visible activities are included.',
+      'Errors in single files do not stop the import; they are counted.',
+    ],
+    privacy: 'The archive contains all your own tracks with timestamps.',
+  },
+  {
+    id: 'huawei',
+    name: 'Huawei Health',
+    short: 'Workouts, heart rate, sleep (depending on export)',
+    exportSteps: [
+      'Huawei Health → Me → Settings → Export data, or submit a privacy request.',
+      'Also back up single outdoor runs as TCX/GPX, if offered.',
+      'Import all files together into Runback.',
+    ],
+    notes: [
+      'If the export is password-protected, unzip it first with the password you were sent.',
+    ],
+    filePatterns: [
+      'Huawei export (CSV/JSON, depending on version)',
+      'Single TCX/GPX per run (if offered)',
+    ],
+    useful: [
+      {
+        label: 'Running workouts',
+        why: 'History for pace analysis.',
+        howUsed: 'Full with a track, otherwise as a summary.',
+      },
+      {
+        label: 'Heart rate, sleep, steps',
+        why: 'Recovery and activity context.',
+        howUsed: 'Display only.',
+      },
+    ],
+    limitations: [
+      'Formats vary by app version; unknown data is skipped and counted.',
+      'No automatic cloud sync: manual export per period.',
+    ],
+    privacy: 'Contains health histories; process locally.',
+  },
+  {
+    id: 'generic',
+    name: 'Other apps (generic)',
+    short: 'Coros, Suunto, Adidas, Withings and others',
+    exportSteps: [
+      'In the app, look for "Export", "Download data" or a GDPR export.',
+      'Save runs as FIT, TCX or GPX (preferred) and summaries as CSV.',
+      'Save wellness data (weight, sleep) as CSV/JSON and import everything together.',
+    ],
+    filePatterns: [
+      'FIT/TCX/GPX per run (preferred)',
+      'activities.csv-like summaries',
+      'Flat {time, value} JSON series',
+    ],
+    useful: [
+      {
+        label: 'Runs with a track',
+        why: 'Full analysis.',
+        howUsed: 'Like your own runs.',
+      },
+      {
+        label: 'Summaries & simple series',
+        why: 'History and context without a track.',
+        howUsed: 'Summary runs or a limited wellness import.',
+      },
+    ],
+    limitations: [
+      'Unknown columns are skipped instead of guessed.',
+      'Nike Run Club and others without an export need third-party workarounds; these are not recommended.',
+    ],
+    privacy:
+      'Check third-party export workarounds: do not share login details if a manual export is enough.',
+  },
+];
+
+/** Vendor entries in the active language. Fields are read on access, so a language change applies at once. */
+export const VENDOR_INFOS: VendorInfo[] = VENDOR_INFOS_DE.map(german => {
+  const english = VENDOR_INFOS_EN.find(item => item.id === german.id);
+  if (!english) {
+    throw new Error(`Missing English vendor text: ${german.id}`);
+  }
+  const info = {} as VendorInfo;
+  for (const key of Object.keys(german) as (keyof VendorInfo)[]) {
+    Object.defineProperty(info, key, {
+      enumerable: true,
+      get: () => (getLanguage() === 'en' ? english[key] : german[key]),
+    });
+  }
+  return info;
+});
+
 export function vendorById(id: VendorId): VendorInfo {
   const found = VENDOR_INFOS.find(v => v.id === id);
   if (!found) {
-    throw new Error(`Unbekannte Datenquelle: ${id}`);
+    throw new Error(tr(`Unbekannte Datenquelle: ${id}`, `Unknown data source: ${id}`));
   }
   return found;
 }
@@ -592,11 +1057,10 @@ export function detectVendorForFile(fileName: string): VendorId {
 export const STRONG_IMPORT_VERSION = 'strong-import-v3';
 
 /**
- * Strong exportiert je Satz keine Uhrzeit, nur Start und „Workout beenden“.
- * Das echte Ende einer vergessenen Einheit steht deshalb nicht in der Datei.
- * Erkennbar ist nur eine Dauer, die zu keiner Satzzahl passt: großzügig
- * 30 Minuten Rahmen plus 6 Minuten je Satz. Gleiche Regel in Kotlin
- * (`StrongDuration`).
+ * Strong exports no time per set, only the start and "Finish workout". The real
+ * end of a forgotten session is therefore not in the file. Only a duration that
+ * fits no set count is detectable: a generous 30-minute frame plus 6 minutes
+ * per set. Same rule in Kotlin (`StrongDuration`).
  */
 export const STRONG_DURATION_MODEL = 'strong-duration-v1';
 export function strongDurationLimitSeconds(sets: number): number {
@@ -637,11 +1101,11 @@ export interface StrongWorkout {
   sets: StrongSet[];
   workoutNotes: string;
   incomplete?: boolean;
-  /** Vorschau: Dauer passt zu keiner Satzzahl. */
+  /** Preview: duration fits no set count. */
   durationSuspect?: boolean;
-  /** Gespeichert: gemeldete Dauer, die als unbekannt gilt, und warum. */
+  /** Stored: reported duration that counts as unknown, and why. */
   reportedDurationSeconds?: number | null;
-  /** Vom Nutzer gesetztes Ende (Kotlin `strength_end_<id>`), roh. */
+  /** End set by the user (Kotlin `strength_end_<id>`), raw. */
   endCorrection?: unknown;
   durationRejected?: {
     reason: 'not_finished';
@@ -683,6 +1147,9 @@ function splitCsvLine(line: string, delimiter = csvDelimiter(line)): string[] {
   cells.push(cell.trim());
   return cells;
 }
+function tooManyRows(): string {
+  return tr('Zu viele Zeilen im Strong-Export', 'Too many rows in the Strong export');
+}
 function strongCsvRecords(text: string, maxRows: number): string[] {
   const records: string[] = [];
   let start = 0,
@@ -696,16 +1163,20 @@ function strongCsvRecords(text: string, maxRows: number): string[] {
       const record = text.slice(start, i);
       if (record.trim()) records.push(record);
       if (records.length > maxRows + 1)
-        throw new Error('Zu viele Zeilen im Strong-Export');
+        throw new Error(tooManyRows());
       if (c === '\r' && text[i + 1] === '\n') i++;
       start = i + 1;
     }
   }
   if (quoted)
-    throw new Error('Nicht geschlossene Anführungszeichen im Strong-Export');
+    throw new Error(
+      tr(
+        'Nicht geschlossene Anführungszeichen im Strong-Export',
+        'Unclosed quotation marks in the Strong export',
+      ),
+    );
   if (text.slice(start).trim()) records.push(text.slice(start));
-  if (records.length > maxRows + 1)
-    throw new Error('Zu viele Zeilen im Strong-Export');
+  if (records.length > maxRows + 1) throw new Error(tooManyRows());
   return records;
 }
 function parseNumberFlexible(raw: string | undefined): number | null {
@@ -770,7 +1241,7 @@ export function isStrongCsvContent(text: string): boolean {
   );
 }
 
-/** Testbare Vorschau; dieselben Satz- und Pausenregeln gelten beim nativen Import. */
+/** Testable preview; the same set and rest rules apply to the native import. */
 export function parseStrongCsvPreview(
   text: string,
   maxRows = 120000,
@@ -809,7 +1280,10 @@ export function parseStrongCsvPreview(
     cRpe = col('rpe');
   if (cDate < 0 || cExercise < 0 || cOrder < 0)
     throw new Error(
-      'Keine Strong-Kopfzeile (Date, Exercise Name, Set Order erwartet)',
+      tr(
+        'Keine Strong-Kopfzeile (Date, Exercise Name, Set Order erwartet)',
+        'No Strong header (Date, Exercise Name, Set Order expected)',
+      ),
     );
   const weightHeader = header[cWeight] ?? '';
   const weightUnit = weightHeader.includes('lb')
@@ -834,6 +1308,7 @@ export function parseStrongCsvPreview(
       skipped++;
       continue;
     }
+    // Stored fallback name for unnamed workouts; kept German so existing imports stay unchanged.
     const name = (get(cWorkout) || 'Krafttraining').slice(0, 120);
     const key = `${time}|${name}|${get(cNumber)}`;
     let workout = groups.get(key);
@@ -928,7 +1403,9 @@ export function parseStrongCsvPreview(
     });
     workout.lastExercise = exercise;
     if (workout.sets.length > 2000)
-      throw new Error('Zu viele Sätze in einer Strong-Einheit');
+      throw new Error(
+      tr('Zu viele Sätze in einer Strong-Einheit', 'Too many sets in one Strong session'),
+    );
   }
   return {
     workouts: Array.from(groups.values())

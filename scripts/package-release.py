@@ -97,23 +97,23 @@ def main():
     (output / "SHA256SUMS").write_text(sums, encoding="utf-8")
     source_url = f"https://github.com/{repository}/blob/{commit}"
     ci_run = os.environ.get("GITHUB_RUN_ID")
-    ci_line = (f"[CI-Protokoll](https://github.com/{repository}/actions/runs/{ci_run})" if ci_run else "Lokaler Build; kein CI-Lauf behauptet.")
-    notes = f"""Automatisches **Test-Release** für Android-Telefon und Wear OS.
+    ci_line = (f"[CI log](https://github.com/{repository}/actions/runs/{ci_run})" if ci_run else "Local build; no CI run claimed.")
+    notes = f"""Automatic **test release** for Android phone and Wear OS.
 
 Commit: `{commit}` · Version: `{version_name}` · Version code: `{version_code}`
 
-- `runback-phone-*.apk`: Telefon, ARM64 / ARMv7 / x86_64, JavaScript eingebettet; kein Metro-Server nötig.
-- `runback-wear-*.apk`: eigenständige Wear-OS-App.
-- Beide Apps verwenden `com.runback` und denselben öffentlichen Debug-Testschlüssel. Updates mit `adb install -r` sind möglich.
-- `SHA256SUMS` und `BUILD-METADATA.json` dokumentieren Dateien, Versionen und Signatur.
+- `runback-phone-*.apk`: phone, ARM64 / ARMv7 / x86_64, JavaScript embedded; no Metro server needed.
+- `runback-wear-*.apk`: standalone Wear OS app.
+- Both apps use `com.runback` and the same public debug test key. Updates with `adb install -r` are possible.
+- `SHA256SUMS` and `BUILD-METADATA.json` document files, versions, and signature.
 
-Enthält eine freiwillige Einrichtung mit Import, Statistik unter „Mehr“ und einen optionalen OpenRouter-Trainingschat. `openrouter/free` bleibt Standard; andere Modelle sind erlaubt, ohne Runback-Tageslimit. Den eigenen Schlüssel unter „Mehr → Auswertung & Modelle“ speichern.
+Includes optional setup with import, a statistics tab, and an optional OpenRouter training chat. `openrouter/free` stays the default; other models are allowed, without the Runback daily limit. Save your own key under “Settings → AI wording & training chat”.
 
-Der Workflow prüft TypeScript, JavaScript-Tests, native Core- und Chat-Unit-Tests, Android-Lint, beide Release-Builds sowie APK-Inhalte und Signaturen. {ci_line}
+The workflow checks TypeScript, JavaScript tests, native core and chat unit tests, Android lint, both release builds, and APK contents and signatures. {ci_line}
 
-[Installation und Hinweise]({source_url}/README.md) · [Spec]({source_url}/docs/spec.md)
+[Installation and notes]({source_url}/README.md) · [Spec]({source_url}/docs/spec.md)
 
-Dieses Release ist Testsoftware. CI baut und prüft automatisch; reale GPS-/Sensorgenauigkeit, Akkuverbrauch, lange Hintergrundaufzeichnung und Geräteverbindungen sind auf echten Geräten nicht vollständig nachgewiesen.
+This release is test software. CI builds and checks automatically; real-world GPS/sensor accuracy, battery use, long background recording, and device connections have not been fully verified on real devices.
 """
     (output / "RELEASE-NOTES.md").write_text(notes, encoding="utf-8")
     print(f"Verified {len(metadata['apps'])} APKs at {commit}; release assets: {output}")

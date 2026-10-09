@@ -1,4 +1,5 @@
 export * from './types';
+export * from './i18n';
 export * from './analysis';
 export * from './runTitle';
 export * from './sport';

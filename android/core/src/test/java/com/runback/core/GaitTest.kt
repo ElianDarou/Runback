@@ -20,8 +20,8 @@ class GaitTest {
     @Test
     fun wristSwingGivesCadenceAndSwingAngle() {
         val rate = 50.0; val n = 500
-        val stride = 1.4 // Hz → 168 Schritte je Minute
-        val theta = 0.5 // rad je Seite → 57,3° Spannweite
+        val stride = 1.4 // Hz → 168 steps per minute
+        val theta = 0.5 // rad per side → 57.3° span
         val gyro = axes(n, { theta * 2 * PI * stride * cos(2 * PI * stride * it) }, { 0.05 * sin(7.0 * it) }, { 0.0 }, rate)
         val acc = axes(n, { 0.0 }, { 3.0 * sin(2 * PI * stride * it) },
             { 9.81 + 6.0 * max(0.0, cos(2 * PI * 2 * stride * it)).pow(8) }, rate)
@@ -39,7 +39,7 @@ class GaitTest {
     fun rotationAboutTheVerticalCountsAsCrossing() {
         val rate = 50.0; val n = 500; val stride = 1.4
         val w = { t: Double -> 0.5 * 2 * PI * stride * cos(2 * PI * stride * t) }
-        // Schwungachse halb waagerecht, halb senkrecht (Schwerkraft liegt auf z).
+        // Swing axis half horizontal, half vertical (gravity lies on z).
         val gyro = axes(n, { 0.8 * w(it) }, { 0.0 }, { 0.6 * w(it) }, rate)
         val acc = axes(n, { 0.0 }, { 3.0 * sin(2 * PI * stride * it) }, { 9.81 + 2.0 * cos(2 * PI * 2 * stride * it) }, rate)
         val m = Gait.analyze(acc, gyro, rate, Gait.Placement.HAND)
@@ -50,7 +50,7 @@ class GaitTest {
     fun waistGivesBounceContactImpactAndBraking() {
         val rate = 100.0; val n = 1000
         val step = 170.0 / 60.0; val stride = step / 2
-        val amplitude = 0.04 // m → 8 cm Spannweite
+        val amplitude = 0.04 // m → 8 cm span
         val omega = 2 * PI * step
         val acc = axes(n,
             { 1.0 * sin(2 * PI * stride * it) },
@@ -140,7 +140,7 @@ class GaitTest {
             samples.add(window(i * 10_000L, "phone", mapOf("placement" to "hand", "cadence" to 170.0, "armSwingDeg" to 60.0 - i, "fits" to (i != 0))))
             samples.add(window(i * 10_000L + 1, "wear_os", mapOf("placement" to "wrist", "cadence" to 172.0, "armSwingDeg" to 80.0)))
         }
-        // Doppelt empfangenes Fenster zählt einmal; ein gegangenes gar nicht.
+        // A window received twice counts once; a walked one not at all.
         samples.add(window(0L, "phone", mapOf("placement" to "hand", "cadence" to 170.0, "armSwingDeg" to 60.0)))
         samples.add(window(200_000L, "phone", mapOf("placement" to "hand", "cadence" to 110.0)))
         val summary = GaitSummary.build(samples) { from, _ -> from < 150_000L }!!

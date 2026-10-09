@@ -21,36 +21,35 @@ import {
   type RegionId,
   type Side,
 } from '../domain/regions';
+import { tr } from '../domain/i18n';
 import { Chevron, color, radius, space, type } from './components';
 
 /**
- * Körperfigur: zeigt den Zustand je Region, kein Urteil.
+ * Body figure: shows the state per region, not a verdict.
  *
- * Die Figur zeigt einen Zustand, kein Urteil. Sie sagt nichts über Gesundheit,
- * Belastbarkeit oder Verletzungen — nur, was gemeldet wurde beziehungsweise was
- * das Modell aus erfassten Einheiten und Meldungen gerechnet hat.
+ * The figure shows a state, not a verdict. It says nothing about health, load
+ * tolerance or injuries — only what was reported, or what the model calculated
+ * from logged sessions and reports.
  *
- * Zwei Größen, zwei getrennte Skalen. `soreness` ist eine Nutzerangabe von 0
- * bis 10, `freshness` eine gerechnete Größe von 0 bis 100. Sie werden niemals
- * in eine gemeinsame Farbskala gemischt; die Ansicht stellt immer genau eine
- * von beiden dar.
+ * Two quantities, two separate scales. `soreness` is a user input from 0 to 10,
+ * `freshness` a calculated quantity from 0 to 100. They are never mixed into a
+ * shared color scale; the view always shows exactly one of the two.
  *
- * `null` bedeutet unbekannt. Unbekannt ist nicht „frisch“: es bekommt eine
- * Schraffur und einen gestrichelten Rand, damit es auch ohne
- * Farbunterscheidungsvermögen eindeutig bleibt.
+ * `null` means unknown. Unknown is not "fresh": it gets hatching and a dashed
+ * outline, so it stays unambiguous even without color discrimination.
  */
 
 export type BodyView = 'front' | 'back';
 export type BodyMapMode = 'soreness' | 'freshness';
 
 const WIDTH = 200;
-/** Zuschnitt auf den tatsächlich bemalten Bereich, ohne leere Ränder. */
+/** Crop to the area actually painted, without empty margins. */
 const VIEW_BOX = '30 0 140 438';
 const HATCH_ID = 'runbackUnknownHatch';
 /**
- * Eigene Töne für die Figur. Sie sind heller als die Kartenfläche, damit Körper
- * und Muskelflächen auch bei Sonnenlicht auseinandergehen; die Schraffur für
- * „unbekannt“ muss ohne Farbunterscheidung als eigene Sorte lesbar bleiben.
+ * Own tones for the figure. They are lighter than the card surface so body and
+ * muscle areas stay apart even in sunlight; the hatching for "unknown" must stay
+ * readable as its own kind without color discrimination.
  */
 const figure = {
   body: '#262D24',
@@ -62,7 +61,7 @@ const SCALE_ID = 'runbackScaleGradient';
 
 type Point = [number, number];
 
-/** Punkt auf der Kante von `corner` Richtung `towards`, höchstens halbe Kante. */
+/** Point on the edge from `corner` toward `towards`, at most half the edge. */
 function shorten(corner: Point, towards: Point, r: number): Point {
   const dx = towards[0] - corner[0];
   const dy = towards[1] - corner[1];
@@ -72,8 +71,8 @@ function shorten(corner: Point, towards: Point, r: number): Point {
 }
 
 /**
- * Weiche Ecken an einem Polygon. Muskeln haben keine rechten Winkel; die
- * Rundung ist der einzige Unterschied zwischen „Kasten“ und „Körper“.
+ * Soft corners on a polygon. Muscles have no right angles; rounding is the only
+ * difference between "box" and "body".
  */
 function rounded(points: Point[], r: number): string {
   const count = points.length;
@@ -105,8 +104,8 @@ interface Blob {
 }
 
 /**
- * Flächen der linken Bildhälfte. Die rechte Hälfte entsteht durch Spiegelung.
- * Nicht seitige Regionen liegen mittig und werden nur einmal gezeichnet.
+ * Shapes for the left half of the image. The right half is made by mirroring.
+ * Non-sided regions sit centered and are drawn only once.
  */
 const FRONT: Partial<Record<RegionBase, Blob>> = {
   shoulder_side: {
@@ -340,9 +339,9 @@ const BACK: Partial<Record<RegionBase, Blob>> = {
 };
 
 /**
- * Halber Umriss, von der Halsbasis über Schulter und Arm zum Fuß und innen
- * hoch bis zur Mitte. Die zweite Hälfte ist die gespiegelte Umkehrung, damit
- * die Figur zwangsläufig symmetrisch bleibt.
+ * Half outline, from the base of the neck over shoulder and arm to the foot and
+ * up the inside to the middle. The second half is the mirrored reverse, so the
+ * figure stays symmetric by construction.
  */
 const HALF_OUTLINE: Point[] = [
   [91, 40],
@@ -384,7 +383,7 @@ const SILHOUETTE = rounded(
   4,
 );
 
-/** Hals. Er schließt die Lücke zwischen Kopfkreis und Schulterlinie. */
+/** Neck. It closes the gap between the head circle and the shoulder line. */
 const NECK = rounded(
   [
     [90, 30],
@@ -401,9 +400,9 @@ interface Shape {
 }
 
 /**
- * In der Vorderansicht liegt die rechte Körperseite links im Bild, in der
- * Rückansicht die linke. Genau so sieht der Nutzer sich im Spiegel
- * beziehungsweise von hinten.
+ * In the front view the person's right side is on the left of the image; in the
+ * back view, the left. That is how the user sees themselves in a mirror or from
+ * behind.
  */
 function shapesFor(view: BodyView): Shape[] {
   const blobs = view === 'front' ? FRONT : BACK;
@@ -428,23 +427,23 @@ function shapesFor(view: BodyView): Shape[] {
   return shapes;
 }
 
-/** Alle konkreten Regionen einer Ansicht, in Reihenfolge der Regionenliste. */
+/** All concrete regions of a view, in the order of the region list. */
 export function regionsInView(view: BodyView): RegionId[] {
   return shapesFor(view).map(shape => shape.id);
 }
 
-// --- Zwei getrennte Skalen. Sie werden nie gemischt. --------------------------
+// --- Two separate scales. They are never mixed. -------------------------------
 
 type ColorStop = [number, [number, number, number]];
 
-/** Gemeldeter Muskelkater 0–10. Warm, weil es eine Empfindung ist. */
+/** Reported soreness 0–10. Warm, because it is a sensation. */
 const SORENESS_STOPS: ColorStop[] = [
   [0, [58, 70, 54]],
   [5, [212, 165, 90]],
   [10, [217, 106, 74]],
 ];
 
-/** Gerechnete Frische 0–100. Grün, die Hausfarbe der App. */
+/** Estimated freshness 0–100. Green, the app's brand color. */
 const FRESHNESS_STOPS: ColorStop[] = [
   [0, [74, 90, 70]],
   [100, [165, 216, 121]],
@@ -472,23 +471,29 @@ function ramp(stops: ColorStop[], value: number): string {
   return `rgb(${last[0]},${last[1]},${last[2]})`;
 }
 
-export const MODE_SCALE: Record<
-  BodyMapMode,
-  { title: string; hint: string; max: number }
-> = {
-  soreness: {
-    title: 'Gemeldeter Muskelkater',
-    hint: 'Skala 0 bis 10 · deine eigene Angabe, keine Messung',
-    max: 10,
-  },
-  freshness: {
-    title: 'Gerechnete Frische',
-    hint: `Skala 0 bis 100 · gerechnet aus erfassten Einheiten und deinen Meldungen (${REGIONS_VERSION})`,
-    max: 100,
-  },
-};
+/** Title, hint and maximum of a scale. Text is read at render time, so the language can change. */
+export const modeScale = (
+  mode: BodyMapMode,
+): { title: string; hint: string; max: number } =>
+  mode === 'soreness'
+    ? {
+        title: tr('Gemeldeter Muskelkater', 'Reported soreness'),
+        hint: tr(
+          'Skala 0 bis 10 · deine eigene Angabe, keine Messung',
+          'Scale 0 to 10 · your own report, not a measurement',
+        ),
+        max: 10,
+      }
+    : {
+        title: tr('Gerechnete Frische', 'Estimated freshness'),
+        hint: tr(
+          `Skala 0 bis 100 · gerechnet aus erfassten Einheiten und deinen Meldungen (${REGIONS_VERSION})`,
+          `Scale 0 to 100 · estimated from logged sessions and your reports (${REGIONS_VERSION})`,
+        ),
+        max: 100,
+      };
 
-/** Zahl oder „–“. Fehlende Daten erscheinen nie als 100 und nie als 0. */
+/** Number or "–". Missing data never appears as 100 or as 0. */
 export function displayValue(value: number | null | undefined): string {
   return typeof value === 'number' && Number.isFinite(value)
     ? String(Math.round(value))
@@ -504,7 +509,7 @@ function fillFor(mode: BodyMapMode, value: number | null | undefined): string {
     : ramp(FRESHNESS_STOPS, value);
 }
 
-/** Der gesprochene Zustand einer Region, ohne Wertung. */
+/** The spoken state of a region, without judgment. */
 export function regionSpeech(
   mode: BodyMapMode,
   id: RegionId,
@@ -512,14 +517,23 @@ export function regionSpeech(
 ): string {
   const name = regionLabel(id);
   if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return `${name}: unbekannt, keine ausreichende Grundlage`;
+    return tr(
+      `${name}: unbekannt, keine ausreichende Grundlage`,
+      `${name}: unknown, not enough basis`,
+    );
   }
   return mode === 'soreness'
-    ? `${name}: gemeldeter Muskelkater ${Math.round(value)} von 10`
-    : `${name}: gerechnete Frische ${Math.round(value)} von 100`;
+    ? tr(
+        `${name}: gemeldeter Muskelkater ${Math.round(value)} von 10`,
+        `${name}: reported soreness ${Math.round(value)} of 10`,
+      )
+    : tr(
+        `${name}: gerechnete Frische ${Math.round(value)} von 100`,
+        `${name}: estimated freshness ${Math.round(value)} of 100`,
+      );
 }
 
-/** Mittelpunkt einer Fläche, für die Zahl auf der Figur. */
+/** Center of a shape, for the number on the figure. */
 function centroid(points: Point[]): Point {
   const sum = points.reduce<Point>(
     (acc, [x, y]) => [acc[0] + x, acc[1] + y],
@@ -528,7 +542,7 @@ function centroid(points: Point[]): Point {
   return [sum[0] / points.length, sum[1] / points.length];
 }
 
-/** Schraffurmuster für „unbekannt“. Auf Figur und Legende identisch. */
+/** Hatch pattern for "unknown". Identical on figure and legend. */
 function UnknownHatch({ id }: { id: string }) {
   return (
     <Pattern height="6" id={id} patternUnits="userSpaceOnUse" width="6">
@@ -546,22 +560,22 @@ function UnknownHatch({ id }: { id: string }) {
 }
 
 export interface BodyMapProps {
-  /** Werte je konkreter Region. `null` heißt unbekannt, nicht „unbelastet“. */
+  /** Values per concrete region. `null` means unknown, not "unloaded". */
   values: Record<RegionId, number | null>;
-  /** Genau eine Größe wird dargestellt. Vermischen ist nicht vorgesehen. */
+  /** Exactly one quantity is shown. Mixing them is not intended. */
   mode: BodyMapMode;
   view?: BodyView;
   onChangeView?: (view: BodyView) => void;
   onSelectRegion?: (id: RegionId) => void;
-  /** Hervorgehobene Region, etwa während einer Rückfrage. */
+  /** Highlighted region, e.g. during a follow-up question. */
   selected?: RegionId | null;
-  /** Liste unter der Figur ausblenden, wenn der Aufrufer eine eigene zeigt. */
+  /** Hide the list under the figure when the caller shows its own. */
   showList?: boolean;
-  /** Zahlen auf der Figur. Beim Erfassen stören sie mehr, als sie helfen. */
+  /** Numbers on the figure. While capturing they distract more than they help. */
   showNumbers?: boolean;
-  /** Kopfzeile mit Skalenname und -hinweis ausblenden. */
+  /** Hide the header with the scale name and hint. */
   showScaleTitle?: boolean;
-  /** Höhe der Figur. Erfassung darf größer sein als eine Übersicht. */
+  /** Height of the figure. Capture may be larger than an overview. */
   height?: number;
 }
 
@@ -585,7 +599,7 @@ export function BodyMap({
     onChangeView?.(next);
   };
   const shapes = useMemo(() => shapesFor(current), [current]);
-  const scale = MODE_SCALE[mode];
+  const scale = modeScale(mode);
 
   return (
     <View style={styles.wrap}>
@@ -596,8 +610,14 @@ export function BodyMap({
             accessibilityState={{ selected: current === option }}
             accessibilityLabel={
               option === 'front'
-                ? 'Vorderansicht der Körperfigur zeigen'
-                : 'Rückansicht der Körperfigur zeigen'
+                ? tr(
+                    'Vorderansicht der Körperfigur zeigen',
+                    'Show front view of the figure',
+                  )
+                : tr(
+                    'Rückansicht der Körperfigur zeigen',
+                    'Show back view of the figure',
+                  )
             }
             key={option}
             onPress={() => setView(option)}
@@ -613,7 +633,7 @@ export function BodyMap({
                 current === option && styles.tabTextActive,
               ]}
             >
-              {option === 'front' ? 'Vorn' : 'Hinten'}
+              {option === 'front' ? tr('Vorn', 'Front') : tr('Hinten', 'Back')}
             </Text>
           </Pressable>
         ))}
@@ -631,15 +651,16 @@ export function BodyMap({
           height={height}
           viewBox={VIEW_BOX}
           width="100%"
-          accessibilityLabel={`Körperfigur, ${
-            current === 'front' ? 'Vorderansicht' : 'Rückansicht'
-          }`}
+          accessibilityLabel={tr(
+            `Körperfigur, ${current === 'front' ? 'Vorderansicht' : 'Rückansicht'}`,
+            `Body figure, ${current === 'front' ? 'front view' : 'back view'}`,
+          )}
         >
           <Defs>
             <UnknownHatch id={HATCH_ID} />
           </Defs>
 
-          {/* Kopf, Hals und Umriss sind Beiwerk und nicht antippbar. */}
+          {/* Head, neck and outline are decoration and not tappable. */}
           <Path d={NECK} fill={figure.body} />
           <Circle
             cx={100}
@@ -692,7 +713,7 @@ export function BodyMap({
         </Svg>
       </View>
 
-      {/* Skala als Balken statt als Absatz: kürzer und genauso eindeutig. */}
+      {/* Scale as a bar instead of a paragraph: shorter and just as clear. */}
       <View style={styles.legend}>
         <Text style={styles.legendEnd}>0</Text>
         <View style={styles.legendBar}>
@@ -730,7 +751,7 @@ export function BodyMap({
               y="0"
             />
           </Svg>
-          <Text style={styles.legendEnd}>unbekannt</Text>
+          <Text style={styles.legendEnd}>{tr('unbekannt', 'unknown')}</Text>
         </View>
       </View>
 
@@ -746,7 +767,9 @@ export function BodyMap({
             ]}
           >
             <Text style={styles.disclosureText}>
-              {listOpen ? 'Liste ausblenden' : 'Alle Regionen als Liste'}
+              {listOpen
+                ? tr('Liste ausblenden', 'Hide list')
+                : tr('Alle Regionen als Liste', 'All regions as a list')}
             </Text>
             <Chevron open={listOpen} />
           </Pressable>
@@ -773,7 +796,7 @@ export function BodyMap({
                     >
                       {typeof value === 'number'
                         ? displayValue(value)
-                        : 'unbekannt'}
+                        : tr('unbekannt', 'unknown')}
                     </Text>
                   </Pressable>
                 );

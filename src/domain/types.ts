@@ -6,14 +6,14 @@ export type RunPurpose =
   | 'free'
   | 'unknown';
 /**
- * Sportart einer Aufzeichnung. Fehlt das Feld, ist es ein Lauf — so bleiben
- * ältere Datensätze ohne Migration lesbar. Labels und Regeln: sport.ts.
+ * Sport of a recording. A missing field means a run, so older records stay
+ * readable without migration. Labels and rules: sport.ts.
  */
 export type Sport = 'running' | 'cycling';
 /**
- * Bereich einer Empfehlung, eines Fokus oder Ziels. Laufen und Krafttraining
- * werden an getrennten Daten geprüft und haben je höchstens eine aktive
- * Empfehlung. Fehlt das Feld, ist es Laufen (ältere Datensätze).
+ * Area of a recommendation, focus, or goal. Running and strength training are
+ * checked on separate data and each have at most one active recommendation.
+ * A missing field means running (older records).
  */
 export type Area = 'running' | 'strength';
 
@@ -21,31 +21,31 @@ export type Area = 'running' | 'strength';
 export interface SegmentAggregate {
   id?: string;
   distanceMeters: number;
-  /** Zeitspanne des Abschnitts ohne Pausen; GPS-Lücken sind enthalten (siehe gapSeconds). */
+  /** Time span of the segment without pauses; GPS gaps are included (see gapSeconds). */
   durationSeconds: number;
-  /** Sekunden in RUN- oder WALK-Phasen innerhalb des Abschnitts (ab Distanzmodell 3.0). */
+  /** Seconds in RUN or WALK phases within the segment (from distance model 3.0). */
   movingSeconds?: number;
   startElapsedSeconds?: number;
   endElapsedSeconds?: number;
   avgHeartRate?: number;
   avgCadence?: number;
-  /** Nur ab 50 m Strecke und aus geglätteter Höhe (RunElevation). */
+  /** Only from 50 m of distance and from smoothed elevation (RunElevation). */
   gradePercent?: number;
-  /** Summe der Anstiege bzw. Abstiege im Abschnitt (mit Hysterese), in m. */
+  /** Sum of the climbs and descents in the segment (with hysteresis), in m. */
   ascentMeters?: number;
   descentMeters?: number;
-  /** Sekunden ohne gültige GPS-Schritte im Abschnitt; ab 5 s nicht für Pacing geeignet. */
+  /** Seconds without valid GPS steps in the segment; from 5 s not suitable for pacing. */
   gapSeconds?: number;
   phase?: 'warmup' | 'work' | 'recovery' | 'cooldown' | 'pause';
   sourceVersion?: string;
 }
 export type MovementState = 'RUN' | 'WALK' | 'STOPPED' | 'PAUSED' | 'UNKNOWN';
 /**
- * Zeitbudget einer Aufzeichnung (RunPhases). Geht ohne Rest auf:
+ * Time budget of a recording (RunPhases). Adds up without remainder:
  * elapsed = paused + running + walking + stopped + unknown.
- * `activeSeconds` ist die Aufzeichnungszeit ohne Pausen, `movingSeconds`
- * die Bewegungszeit (RUN + WALK). Fehlt das Objekt (Altdaten, Importe),
- * gibt es nur `durationSeconds` — und die ist keine Bewegungszeit.
+ * `activeSeconds` is the recorded time without pauses, `movingSeconds` the
+ * moving time (RUN + WALK). If the object is missing (old data, imports), there
+ * is only `durationSeconds` — and that is not moving time.
  */
 export interface TimeBudget {
   model_version: string;
@@ -78,14 +78,14 @@ export interface PhaseMetrics {
   longestRunMeters?: number;
   longestMovingSeconds?: number;
   runWalkTransitions: number;
-  /** STOPPED/UNKNOWN am Ende; ab 5 min vermutlich nicht gestoppt. */
+  /** STOPPED/UNKNOWN at the end; from 5 min probably not stopped. */
   trailingIdleSeconds: number;
   fastestSustained300sSecondsPerKm?: number;
   running: StateSummary;
   walking: StateSummary;
   stopped: StateSummary;
 }
-/** Höhenmeter aus RunElevation; ohne belastbare Quelle nur `available: false` mit Grund. */
+/** Elevation gain from RunElevation; without a reliable source only `available: false` with a reason. */
 export type ElevationSummary =
   | {
       model_version: string;
@@ -103,7 +103,7 @@ export interface GpsGap {
   toElapsedSeconds: number;
   reason: 'timeout' | 'accuracy' | 'speed' | 'invalid' | string;
 }
-/** Trageort eines Geräts beim Laufen; die Uhr ist immer `wrist`. */
+/** Where a device is carried while running; the watch is always `wrist`. */
 export type GaitPlacement =
   | 'hand'
   | 'upper_arm'
@@ -112,38 +112,38 @@ export type GaitPlacement =
   | 'chest'
   | 'wrist'
   | 'unknown';
-/** Laufstil-Werte, jeweils Median der gelaufenen 10-s-Fenster (Kotlin `Gait`). */
+/** Running form values, each the median of the run's 10-s windows (Kotlin `Gait`). */
 export interface GaitValues {
-  /** Schritte je Minute. */
+  /** Steps per minute. */
   cadence?: number;
-  /** Ähnlichkeit eines Doppelschritts mit dem nächsten, 0–1. */
+  /** Similarity of one double step to the next, 0–1. */
   regularity?: number;
-  /** Winkel von ganz vorn bis ganz hinten. */
+  /** Angle from fully forward to fully back. */
   armSwingDeg?: number;
-  /** Anteil der Armdrehung um die Hochachse, 0–1. */
+  /** Share of the arm rotation around the vertical axis, 0–1. */
   crossShare?: number;
   oscillationCm?: number;
   contactMs?: number;
-  /** Spitze der Vertikalbeschleunigung je Schritt in g. */
+  /** Peak vertical acceleration per step, in g. */
   impactG?: number;
-  /** Tempo-Schwankung vor–zurück je Schritt. */
+  /** Forward–backward pace variation per step. */
   brakingMps?: number;
   leanDeg?: number;
 }
 export interface GaitDevice extends GaitValues {
   source: string;
   placement: GaitPlacement;
-  /** Gelaufene Fenster. */
+  /** Windows run. */
   windows: number;
-  /** Davon mit erkanntem Schritt. */
+  /** Of those, windows with a detected step. */
   usable: number;
-  /** Fenster, deren Signal zum Trageort geprüft werden konnte, und davon unpassende. */
+  /** Windows whose signal could be checked against the carry position, and how many did not fit. */
   checked: number;
   mismatch: number;
   early?: GaitValues;
   late?: GaitValues;
 }
-/** Laufstil eines Laufs je Gerät; fehlt, wenn keins Fenster aufgezeichnet hat. */
+/** Running form of a run per device; missing if no window was recorded. */
 export interface RunGait {
   model_version: string;
   phone?: GaitDevice;
@@ -151,7 +151,7 @@ export interface RunGait {
 }
 export interface RunSummary {
   id: string;
-  /** Name aus der Quelle. Für die Anzeige immer runTitle() benutzen. */
+  /** Name from the source. Always use runTitle() for display. */
   name?: string;
   startTime: number;
   endTime: number;
@@ -161,9 +161,9 @@ export interface RunSummary {
   sport?: Sport;
   source: string;
   status: string;
-  /** Zeitgewichtet. Fehlt die Abdeckung, stammt der Wert aus Altdaten oder Importen. */
+  /** Time-weighted. If coverage is missing, the value comes from old data or imports. */
   avgHeartRate?: number;
-  /** Anteil der Bewegungszeit mit Pulswerten (0–1). */
+  /** Share of moving time with heart rate values (0–1). */
   heartRateCoverage?: number;
   avgCadence?: number;
   cadenceCoverage?: number;
@@ -180,7 +180,7 @@ export interface RunSummary {
   elevation?: ElevationSummary;
   gaps?: GpsGap[];
   gapCount?: number;
-  /** Version des nativen Distanzmodells, mit dem Abschnitte und Distanz abgeleitet wurden. */
+  /** Version of the native distance model used to derive segments and distance. */
   model_version?: string;
   sensorSources?: { gps?: string; heartRate?: string };
   gait?: RunGait;
@@ -219,8 +219,8 @@ export interface EffortEstimate extends Provenance {
   kind: 'estimate';
   speedIndex?: number;
   /**
-   * Belastung nach Session-RPE (Foster 2001): RPE × Bewegungsminuten. Beine
-   * und Atmung bleiben getrennt; fehlt eine Angabe, fehlt ihr Wert.
+   * Load from session RPE (Foster 2001): RPE × minutes of movement. Legs
+   * and breathing stay separate; if a value is missing, its figure is missing too.
    */
   sessionLoad?: { legs?: number; breathing?: number };
   unit: 'index (100 = 3 m/s)';
@@ -249,11 +249,11 @@ export interface Recommendation extends Provenance {
 }
 export interface ExperimentCriteria {
   method: 'pacing-fade-v2';
-  /** Auslösender Lauf plus vergleichbare Vorläufe; die Basis ist ihr Median. */
+  /** Triggering run plus comparable earlier runs; the baseline is their median. */
   baselineRunIds: string[];
-  /** Median des späten Tempoabfalls der Vergleichsläufe, in Prozent. */
+  /** Median late pace fade of the comparison runs, in percent. */
   baselineFadePercent: number;
-  /** Vorab festgelegtes Niveau des Vorzeichentests (zweiseitig). */
+  /** Level of the sign test fixed in advance (two-sided). */
   signTestAlpha: number;
   baselineDurationSeconds: number;
   baselineDistanceMeters: number;
@@ -271,19 +271,19 @@ export interface ExperimentCriteria {
   exclusions: string[];
   stopConditions: string[];
 }
-/** Empfehlung im Bereich Krafttraining: die Last einer Übung. */
+/** Recommendation in the strength area: the load of one exercise. */
 export interface StrengthCriteria {
   method: 'strength-e1rm-v2';
   exerciseId: string;
   baselineSessionIds: string[];
-  /** Median des besten Arbeits-e1RM der Vergleichseinheiten, in kg. */
+  /** Median of the best working e1RM of the comparison sessions, in kg. */
   baselineE1RM: number;
   targetMinKg: number;
   targetMaxKg: number;
   targetReps: number;
   outcome: 'best_working_e1rm_percent';
   minimumRelevantChangePercent: number;
-  /** Vorab festgelegtes Niveau des Vorzeichentests (zweiseitig). */
+  /** Level of the sign test fixed in advance (two-sided). */
   signTestAlpha: number;
   minimumObservations: number;
   reviewAfterSessions: number;
@@ -303,7 +303,7 @@ export interface StrengthRecommendation extends Provenance {
   exerciseId: string;
   exerciseName: string;
   direction: 'increase' | 'reduce' | 'plateau';
-  /** Hauptregionen der Übung; entscheidet, ob sie Laufergebnisse beeinflusst. */
+  /** Primary regions of the exercise; decides whether it affects running results. */
   regions: string[];
   criteria: StrengthCriteria;
 }
@@ -334,7 +334,7 @@ export interface ExperimentEvaluation extends Provenance {
   }[];
   changePercentPoints?: number;
   observedRange?: [number, number];
-  /** Vorzeichentest gegen die Relevanzschwelle; Bindungen zählen nicht. */
+  /** Sign test against the relevance threshold; ties do not count. */
   signTest?: {
     positives: number;
     negatives: number;

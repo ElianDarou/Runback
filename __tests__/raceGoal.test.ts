@@ -7,6 +7,7 @@ import {
   predictRace,
   riegelSeconds,
 } from '../src/domain/raceGoal';
+import { setLanguage } from '../src/domain/i18n';
 
 const localAt = (date: string, hour = 9): number => {
   const [year, month, day] = date.split('-').map(Number);
@@ -36,8 +37,8 @@ const runAt = (
 
 const NOW = localAt('2026-09-22', 18);
 
-describe('Zieltext', () => {
-  it('erkennt benannte und numerische Strecken', () => {
+describe('Goal text', () => {
+  it('recognizes named and numeric distances', () => {
     expect(parseGoalDistanceKm('Halbmarathon im April')).toBeCloseTo(HALF_MARATHON_KM);
     expect(parseGoalDistanceKm('HM unter 2 h')).toBeCloseTo(HALF_MARATHON_KM);
     expect(parseGoalDistanceKm('Marathon Berlin')).toBeCloseTo(42.195);
@@ -48,7 +49,16 @@ describe('Zieltext', () => {
     expect(parseGoalDistanceKm('Regelmäßig laufen')).toBeUndefined();
   });
 
-  it('liest Zielzeiten je nach Strecke als h:mm oder mm:ss', () => {
+  it('reads English goal texts when the app language is English', () => {
+    setLanguage('en');
+    expect(parseGoalDistanceKm('half marathon in April')).toBeCloseTo(HALF_MARATHON_KM);
+    expect(parseGoalDistanceKm('10k under 50 min')).toBe(10);
+    expect(parseGoalDistanceKm('21.1 kilometers')).toBeCloseTo(21.1);
+    expect(parseGoalDistanceKm('ultra')).toBeUndefined();
+    setLanguage('de');
+  });
+
+  it('reads goal times as h:mm or mm:ss depending on the distance', () => {
     expect(parseGoalTime('1:59:30')).toBe(7170);
     expect(parseGoalTime('1:59', HALF_MARATHON_KM)).toBe(7140);
     expect(parseGoalTime('49:30', 10)).toBe(2970);
@@ -59,21 +69,21 @@ describe('Zieltext', () => {
   });
 });
 
-describe('Schätzung', () => {
-  it('rechnet nach Riegel und peilt neun Zehntel als langen Lauf an', () => {
+describe('Estimate', () => {
+  it('calculates with Riegel and aims at nine tenths as the long run', () => {
     expect(riegelSeconds(3000, 10, 20)).toBeCloseTo(3000 * Math.pow(2, 1.06));
     expect(peakLongRunKm(HALF_MARATHON_KM)).toBe(19);
     expect(peakLongRunKm(42.195)).toBe(31.6);
   });
 
-  it('bleibt ohne Ziel oder Strecke ehrlich leer', () => {
+  it('honestly stays empty without a goal or distance', () => {
     expect(predictRace({ goal: '', runs: [], now: NOW }).status).toBe('no_goal');
     expect(
       predictRace({ goal: 'Fitter werden', runs: [], now: NOW }).status,
     ).toBe('no_distance');
   });
 
-  it('verlangt einen Lauf über ein Viertel der Zielstrecke aus den letzten acht Wochen', () => {
+  it('requires a run over a quarter of the goal distance from the last eight weeks', () => {
     const short = predictRace({
       goal: 'Halbmarathon',
       runs: [runAt('a', '2026-09-20', 5, 1500)],
@@ -89,7 +99,7 @@ describe('Schätzung', () => {
     expect(old.status).toBe('insufficient_data');
   });
 
-  it('nimmt den Lauf mit der besten Hochrechnung, nicht den längsten', () => {
+  it('takes the run with the best projection, not the longest', () => {
     const prediction = predictRace({
       goal: 'Halbmarathon',
       targetSeconds: 2 * 3600,
@@ -104,7 +114,7 @@ describe('Schätzung', () => {
     expect(prediction.predictedSeconds).toBe(
       Math.round(riegelSeconds(3000, 10, HALF_MARATHON_KM)),
     );
-    // 15 km von 19 km: die Strecke begrenzt, die Zeit (≈1:50 h) liegt drin.
+    // 15 km of 19 km: the distance limits it, the time (≈1:50 h) fits.
     expect(prediction.limitedBy).toBe('distance');
     expect(prediction.progress).toBeCloseTo(15 / 19, 2);
     expect(prediction.timeShare).toBe(1);
@@ -112,7 +122,7 @@ describe('Schätzung', () => {
     expect(prediction.message).toContain('liegt dein Ziel');
   });
 
-  it('nennt die fehlende Zeit je Kilometer, wenn die Zeit begrenzt', () => {
+  it('names the missing time per kilometer when the time is the limit', () => {
     const prediction = predictRace({
       goal: 'Halbmarathon',
       targetSeconds: 100 * 60,
@@ -128,7 +138,7 @@ describe('Schätzung', () => {
     expect(prediction.limits.length).toBe(2);
   });
 
-  it('ignoriert Duplikate und andere Sportarten', () => {
+  it('ignores duplicates and other sports', () => {
     const prediction = predictRace({
       goal: '10 km',
       runs: [

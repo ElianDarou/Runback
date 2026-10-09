@@ -1,4 +1,5 @@
 import { finite } from './inference';
+import { tr } from './i18n';
 import {
   assessExerciseProgression,
   type ProgressionAssessment,
@@ -8,17 +9,17 @@ import type { StrengthSession } from './strength';
 import { exerciseBreakdown, type BestSet } from './strengthSession';
 
 /**
- * Verlauf einer Übung über alle abgeschlossenen Einheiten — die Tiefe, die
- * bei Läufen die Detailseite hat. Die Richtung kommt allein aus dem
- * versionierten Kraftverlauf (`progression.ts`); hier wird sie nur in
- * Worte übersetzt, nie neu bewertet.
+ * History of one exercise across all finished sessions: the depth that runs
+ * get from their detail page. The direction comes solely from the versioned
+ * strength progression (`progression.ts`); here it is only put into words,
+ * never re-assessed.
  */
 export const EXERCISE_HISTORY_VERSION = 'exercise-history-v2';
 
 export interface ExerciseSessionPoint {
   sessionId: string;
   sessionName: string;
-  /** Start der Einheit. */
+  /** Start of the session. */
   at: number;
   workingSets: number;
   volumeKg: number;
@@ -35,9 +36,9 @@ export interface ExerciseRecord {
 
 export interface ExerciseTrend {
   verdict: ProgressionVerdict;
-  /** Zustand als Label (Design Language): kurz, ohne Fachwort. */
+  /** State as a label (design language): short, no jargon. */
   label: string;
-  /** Ein Satz, warum. */
+  /** One sentence on why. */
   reason: string;
 }
 
@@ -45,44 +46,69 @@ export interface ExerciseHistory {
   version: typeof EXERCISE_HISTORY_VERSION;
   exerciseId: string;
   name: string;
-  /** Älteste zuerst. */
+  /** Oldest first. */
   points: ExerciseSessionPoint[];
   records: ExerciseRecord[];
   trend: ExerciseTrend;
   progression: ProgressionAssessment;
 }
 
-const TREND_LABEL: Record<ProgressionVerdict, string> = {
-  increase: 'Steigt',
-  reduce: 'Fällt',
-  plateau: 'Stabil',
-  keep_going: 'Noch nicht klar',
-  not_assessable: 'Noch nicht klar',
-};
+function trendLabel(verdict: ProgressionVerdict): string {
+  switch (verdict) {
+    case 'increase':
+      return tr('Steigt', 'Rising');
+    case 'reduce':
+      return tr('Fällt', 'Falling');
+    case 'plateau':
+      return tr('Stabil', 'Stable');
+    case 'keep_going':
+    case 'not_assessable':
+      return tr('Noch nicht klar', 'Not clear yet');
+  }
+}
 
 /**
- * Beobachtung statt Handlung: Die Begründungen des Kraftverlaufs sprechen
- * zum Teil schon eine Empfehlung aus („Probiere …“). Die gehört nur in die
- * Empfehlung des Coachs, deshalb hier eigene, neutrale Sätze.
+ * Observation instead of action: the strength progression's reasons partly
+ * already state a recommendation ("Try …"). That belongs only in the coach's
+ * recommendation, so here we use our own neutral sentences.
  */
-const TREND_REASON: Partial<Record<ProgressionVerdict, string>> = {
-  increase:
-    'Dein geschätztes Maximum steigt — deutlicher, als die Tagesform erklärt.',
-  reduce: 'Dein geschätztes Maximum fällt über die letzten Einheiten.',
-  plateau: 'Seit mindestens vier Wochen nachweislich stabil.',
-  keep_going: 'Der Verlauf lässt Steigerung und Stillstand noch beide zu.',
-};
+function trendReason(verdict: ProgressionVerdict): string | undefined {
+  switch (verdict) {
+    case 'increase':
+      return tr(
+        'Dein geschätztes Maximum steigt — deutlicher, als die Tagesform erklärt.',
+        'Your estimated max is rising — more than day-to-day form explains.',
+      );
+    case 'reduce':
+      return tr(
+        'Dein geschätztes Maximum fällt über die letzten Einheiten.',
+        'Your estimated max has been falling over the last sessions.',
+      );
+    case 'plateau':
+      return tr(
+        'Seit mindestens vier Wochen nachweislich stabil.',
+        'Demonstrably stable for at least four weeks.',
+      );
+    case 'keep_going':
+      return tr(
+        'Der Verlauf lässt Steigerung und Stillstand noch beide zu.',
+        'The trend still allows both progress and a plateau.',
+      );
+    case 'not_assessable':
+      return undefined;
+  }
+}
 
 export function exerciseTrend(assessment: ProgressionAssessment): ExerciseTrend {
   return {
     verdict: assessment.verdict,
-    label: TREND_LABEL[assessment.verdict],
-    // „Noch nicht klar: Erst ab fünf Trainingstagen …“ ist schon neutral.
-    reason: TREND_REASON[assessment.verdict] ?? assessment.reason,
+    label: trendLabel(assessment.verdict),
+    // “Not clear yet: only from five training days …” is already neutral.
+    reason: trendReason(assessment.verdict) ?? assessment.reason,
   };
 }
 
-/** Alle Einheiten mit mindestens einem abgehakten Arbeitssatz dieser Übung. */
+/** All sessions with at least one ticked working set of this exercise. */
 export function exercisePoints(
   sessions: StrengthSession[],
   exerciseId: string,
@@ -92,7 +118,7 @@ export function exercisePoints(
     if (session.status !== 'finished' || !finite(session.startTime)) {
       continue;
     }
-    // Kommt eine Übung zweimal vor, zählt sie als ein Eintrag mit allen Sätzen.
+    // If an exercise appears twice, it counts as one entry with all its sets.
     const parts = exerciseBreakdown(session).filter(
       part => part.exerciseId === exerciseId && part.workingSets > 0,
     );
@@ -135,7 +161,7 @@ function recordOf(
   let bestValue = 0;
   for (const point of points) {
     const candidate = value(point);
-    // Bei Gleichstand gilt der erste Tag, an dem der Wert erreicht wurde.
+    // On a tie, the first day the value was reached counts.
     if (finite(candidate) && candidate > bestValue) {
       best = point;
       bestValue = candidate;
@@ -159,22 +185,38 @@ export function exerciseHistory(
   const records: ExerciseRecord[] = [];
   const e1rm = recordOf(points, point => point.bestSet?.e1rm);
   if (e1rm) {
-    records.push({ id: 'e1rm', label: 'Höchstes geschätztes Maximum', point: e1rm });
+    records.push({
+      id: 'e1rm',
+      label: tr('Höchstes geschätztes Maximum', 'Highest estimated max'),
+      point: e1rm,
+    });
   }
   const weight = recordOf(points, point => point.topWeightKg);
   if (weight) {
-    records.push({ id: 'weight', label: 'Schwerstes Gewicht', point: weight });
+    records.push({
+      id: 'weight',
+      label: tr('Schwerstes Gewicht', 'Heaviest weight'),
+      point: weight,
+    });
   }
-  // Wiederholungen nur ohne Last vergleichen; mit Last sagt das Maximum mehr.
+  // Compare reps only without load; with load, the max says more.
   if (!weight) {
     const reps = recordOf(points, point => point.bestSet?.reps);
     if (reps) {
-      records.push({ id: 'reps', label: 'Meiste Wiederholungen', point: reps });
+      records.push({
+        id: 'reps',
+        label: tr('Meiste Wiederholungen', 'Most reps'),
+        point: reps,
+      });
     }
   }
   const volume = recordOf(points, point => point.volumeKg);
   if (volume) {
-    records.push({ id: 'volume', label: 'Größtes Volumen', point: volume });
+    records.push({
+      id: 'volume',
+      label: tr('Größtes Volumen', 'Largest volume'),
+      point: volume,
+    });
   }
   return {
     version: EXERCISE_HISTORY_VERSION,

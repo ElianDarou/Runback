@@ -18,9 +18,9 @@ import type { Experiment } from '../../src/domain/types';
 import type { Store } from './db';
 
 /**
- * Liest die Kopie aus `objects` mit denselben Funktionen wie die App
- * (`domain/bridgeRecords`). Website, API und SQL-Tabellen sehen deshalb
- * dieselben Läufe und Einheiten wie das Telefon.
+ * Reads the copy in `objects` with the same functions the app uses
+ * (`domain/bridgeRecords`). The website, API and SQL tables therefore see the
+ * same runs and workouts as the phone.
  */
 
 export interface WellnessRow {
@@ -35,15 +35,15 @@ export interface WellnessRow {
 
 export interface Dataset {
   revision: number;
-  /** Abgeschlossene Einheiten aller Sportarten, neueste zuerst. */
+  /** Finished workouts of all sports, newest first. */
   runs: Run[];
-  /** Eigene und importierte Krafteinheiten, neueste zuerst. */
+  /** Own and imported strength sessions, newest first. */
   strength: StrengthSession[];
   heart: Record<string, StrengthHeartSummary>;
   settings: Settings | null;
   experiments: Experiment[];
   wellness: WellnessRow[];
-  /** Was das Telefon beim letzten Abgleich freigegeben hat; `null` vor dem ersten. */
+  /** What the phone shared at the last sync; `null` before the first one. */
   scope: ServerScope | null;
   lastCommitAt: number | null;
   lastCompleteAt: number | null;
@@ -136,7 +136,7 @@ export function loadDataset(store: Store): Dataset {
   return dataset;
 }
 
-/** Verlauf und Strecke eines Laufs; beides fehlt, wenn das Telefon es nicht geschickt hat. */
+/** Trace and route of a run; either is missing if the phone did not send it. */
 export function loadRunDetail(store: Store, id: string): RunDetail {
   const raw = loadObject(store, `runDetail/${id}`);
   const series =
@@ -152,7 +152,7 @@ export function loadRunDetail(store: Store, id: string): RunDetail {
   return { series, route: route && route.length >= 2 ? route : null };
 }
 
-/** Schreibt die flachen Tabellen neu. Läuft in der Transaktion des Abgleichs. */
+/** Rewrites the flat tables. Runs inside the sync transaction. */
 export function rebuildDerived(store: Store) {
   const data = loadDataset(store);
   const db = store.db;

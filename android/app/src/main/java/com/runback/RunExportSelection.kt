@@ -1,10 +1,11 @@
 package com.runback
 
+import com.runback.core.Lang
 import org.json.JSONArray
 
-/** Liest alle Seiten nativ; nur Kennungen abgeschlossener Läufe gehen über die Brücke. */
+/** Reads all pages natively; only IDs of completed runs cross the bridge. */
 internal fun runIdsForExport(from: Double, until: Double, page: (Int, Int) -> JSONArray): JSONArray {
-    require(from.isFinite() && until.isFinite() && from < until) { "Ungültiger Zeitraum." }
+    require(from.isFinite() && until.isFinite() && from < until) { Lang.tr("Ungültiger Zeitraum.", "Invalid time range.") }
     val ids = JSONArray()
     var offset = 0
     do {

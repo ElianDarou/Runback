@@ -10,29 +10,28 @@ import {
   type SorenessReport,
   type StructuredSorenessItem,
 } from '../domain/sorenessInput';
+import { quote, tr } from '../domain/i18n';
 import { BodyMap, type BodyView } from './BodyMap';
 import { Button, color, radius, space, type } from './components';
 
 /**
- * Kurze Muskelkater-Abfrage: in Sekunden gemeldet, sofort auf der Figur sichtbar.
+ * Short soreness check: reported in seconds, visible on the figure right away.
  *
- * Ein Bildschirm, eine Aufgabe: antippen, Stärke wählen, speichern. Sprache ist
- * der schnelle Nebenweg, nicht der Notweg. Gespeichert wird erst nach einem
- * Tippen auf „Speichern“. „Heute nichts“ ist eine eigenständige, wertvolle
- * Antwort. Überspringen ist jederzeit möglich und hat keine Folgen für die
- * Auswertung.
+ * One screen, one task: tap, choose a strength, save. Speech is the quick side
+ * path, not the fallback. Nothing is saved until the user taps "Save". "Nothing
+ * today" is a complete, valuable answer. Skipping is always possible and has no
+ * effect on the analysis.
  *
- * Text steht nur dort, wo er eine Entscheidung trägt. Erklärungen zur Skala
- * übernimmt die Stärkeauswahl selbst, Erklärungen zur Farbe die Legende der
- * Figur.
+ * Text appears only where it carries a decision. The strength picker explains
+ * the scale itself; the figure's legend explains the color.
  */
 
 export interface TranscriptResult {
   text: string;
   /**
-   * Optionale strukturierte Felder aus dem zuschaltbaren OpenRouter-Durchlauf.
-   * Sie gehen durch dasselbe Lexikon wie die gesprochene Eingabe; was dort
-   * nicht steht, wird verworfen (Grundregel 6).
+   * Optional structured fields from the switchable OpenRouter pass. They go
+   * through the same lexicon as spoken input; anything not found there is
+   * discarded (ground rule 6).
    */
   structured?: StructuredSorenessItem[];
 }
@@ -40,9 +39,9 @@ export interface TranscriptResult {
 export interface SorenessCaptureProps {
   now: number;
   busy?: boolean;
-  /** Sprachweg verfügbar. Fehlt er, bleibt das Tippen vollständig nutzbar. */
+  /** Voice path available. If missing, tapping stays fully usable. */
   voiceAvailable: boolean;
-  /** Grund, warum der Sprachweg gerade nicht geht. Wird unverändert gezeigt. */
+  /** Why the voice path is unavailable right now. Shown as given. */
   voiceHint?: string;
   onTranscribe?: () => Promise<TranscriptResult>;
   onSave: (report: SorenessReport) => void;
@@ -50,18 +49,46 @@ export interface SorenessCaptureProps {
 }
 
 /**
- * Stärkeschritte des Lexikons plus die beiden Ränder. `label` ist der
- * Vorlesetext und bleibt unverändert; auf dem Schirm steht die Zahl groß und
- * das Wort klein darunter, damit die Reihe in eine Zeile passt.
+ * Strength steps of the lexicon plus the two ends. `label` is the text read
+ * aloud; on screen the number is large and the word small beneath it, so the
+ * row fits on one line.
  */
-const STEPS: { value: number; word: string; label: string }[] = [
-  { value: 0, word: 'kein', label: 'kein Muskelkater · 0' },
-  { value: 3, word: 'leicht', label: 'leicht · 3' },
-  { value: 5, word: 'mittel', label: 'mittel · 5' },
-  { value: 6, word: 'ordentlich', label: 'ordentlich · 6' },
-  { value: 8, word: 'stark', label: 'stark · 8' },
-  { value: 9, word: 'extrem', label: 'extrem · 9' },
-  { value: 10, word: 'maximal', label: 'mehr geht nicht · 10' },
+const steps = (): { value: number; word: string; label: string }[] => [
+  {
+    value: 0,
+    word: tr('kein', 'none'),
+    label: tr('kein Muskelkater · 0', 'no soreness · 0'),
+  },
+  {
+    value: 3,
+    word: tr('leicht', 'light'),
+    label: tr('leicht · 3', 'light · 3'),
+  },
+  {
+    value: 5,
+    word: tr('mittel', 'moderate'),
+    label: tr('mittel · 5', 'moderate · 5'),
+  },
+  {
+    value: 6,
+    word: tr('ordentlich', 'considerable'),
+    label: tr('ordentlich · 6', 'considerable · 6'),
+  },
+  {
+    value: 8,
+    word: tr('stark', 'strong'),
+    label: tr('stark · 8', 'strong · 8'),
+  },
+  {
+    value: 9,
+    word: tr('extrem', 'extreme'),
+    label: tr('extrem · 9', 'extreme · 9'),
+  },
+  {
+    value: 10,
+    word: tr('maximal', 'maximum'),
+    label: tr('mehr geht nicht · 10', "can't get worse · 10"),
+  },
 ];
 
 type Values = Record<RegionId, number | null>;
@@ -125,8 +152,8 @@ export function SorenessCapture({
       const result = await onTranscribe();
       setTranscript(result.text || '');
       setUsedVoice(true);
-      // Der regelbasierte Weg ist immer maßgeblich. Strukturierte Felder aus
-      // OpenRouter ergänzen nur, was er offen gelassen hat.
+      // The rule-based path always takes precedence. Structured fields from
+      // OpenRouter only fill what it left open.
       const rules = parseSoreness(result.text || '');
       if (result.structured && result.structured.length) {
         const checked = fromStructured(result.structured, result.text || '');
@@ -144,13 +171,21 @@ export function SorenessCapture({
         absorb(rules);
       }
       if (rules.nothingToday) {
-        setNotice('Verstanden: heute nichts. Bitte noch bestätigen.');
+        setNotice(
+          tr(
+            'Verstanden: heute nichts. Bitte noch bestätigen.',
+            'Got it: nothing today. Please confirm.',
+          ),
+        );
       }
     } catch (error) {
       setNotice(
         error instanceof Error
           ? error.message
-          : 'Die Spracherkennung hat nicht geantwortet. Tippen geht weiter.',
+          : tr(
+              'Die Spracherkennung hat nicht geantwortet. Tippen geht weiter.',
+              'Speech recognition did not respond. Tapping still works.',
+            ),
       );
     } finally {
       setListening(false);
@@ -178,19 +213,23 @@ export function SorenessCapture({
     onSave(buildReport(values, now, source, transcript));
   }, [now, onSave, transcript, usedTap, usedVoice, values]);
 
-  const pendingLabel = pending.map(regionLabel).join(' und ');
+  const pendingLabel = pending
+    .map(regionLabel)
+    .join(tr(' und ', ' and '));
 
   return (
     <View style={styles.screen}>
       <View style={styles.head}>
         <View style={styles.headText}>
           <Text accessibilityRole="header" style={styles.title}>
-            Muskelkater
+            {tr('Muskelkater', 'Soreness')}
           </Text>
-          <Text style={styles.subtitle}>Tippe an, wo es zieht.</Text>
+          <Text style={styles.subtitle}>
+            {tr('Tippe an, wo es zieht.', 'Tap where it aches.')}
+          </Text>
           {voiceAvailable && onTranscribe ? (
             <Pressable
-              accessibilityLabel="Stattdessen sprechen"
+              accessibilityLabel={tr('Stattdessen sprechen', 'Speak instead')}
               accessibilityRole="button"
               disabled={busy || listening}
               onPress={() => {
@@ -199,7 +238,9 @@ export function SorenessCapture({
               style={({ pressed }) => [styles.link, pressed && styles.pressed]}
             >
               <Text style={styles.linkText}>
-                {listening ? 'Hört zu …' : 'Stattdessen sprechen'}
+                {listening
+                  ? tr('Hört zu …', 'Listening …')
+                  : tr('Stattdessen sprechen', 'Speak instead')}
               </Text>
             </Pressable>
           ) : voiceHint ? (
@@ -207,13 +248,13 @@ export function SorenessCapture({
           ) : null}
         </View>
         <Pressable
-          accessibilityLabel="Überspringen"
+          accessibilityLabel={tr('Überspringen', 'Skip')}
           accessibilityRole="button"
           disabled={busy}
           onPress={onSkip}
           style={({ pressed }) => [styles.skip, pressed && styles.pressed]}
         >
-          <Text style={styles.skipText}>Überspringen</Text>
+          <Text style={styles.skipText}>{tr('Überspringen', 'Skip')}</Text>
         </Pressable>
       </View>
 
@@ -226,9 +267,10 @@ export function SorenessCapture({
           <View style={styles.summary}>
             {answered.map(id => (
               <Pressable
-                accessibilityLabel={`${regionLabel(id)} ändern, aktuell ${
-                  values[id]
-                } von 10`}
+                accessibilityLabel={tr(
+                  `${regionLabel(id)} ändern, aktuell ${values[id]} von 10`,
+                  `Change ${regionLabel(id)}, currently ${values[id]} of 10`,
+                )}
                 accessibilityRole="button"
                 key={`set-${id}`}
                 onPress={() => setPending([id])}
@@ -266,7 +308,9 @@ export function SorenessCapture({
         ) : null}
 
         {transcript ? (
-          <Text style={styles.subtitle}>Gehört: „{transcript}“</Text>
+          <Text style={styles.subtitle}>
+            {`${tr('Gehört', 'Heard')}: ${quote(transcript)}`}
+          </Text>
         ) : null}
 
         {questions.map((question, index) => (
@@ -283,7 +327,7 @@ export function SorenessCapture({
                     />
                   ))}
                   <Chip
-                    label="beide"
+                    label={tr('beide', 'both')}
                     onPress={() => answerQuestion(question, question.candidates)}
                   />
                 </>
@@ -296,7 +340,7 @@ export function SorenessCapture({
                   />
                 ))
               ) : question.kind === 'intensity' ? (
-                STEPS.map(step => (
+                steps().map(step => (
                   <Chip
                     key={step.value}
                     label={step.label}
@@ -321,7 +365,7 @@ export function SorenessCapture({
               {pendingLabel}
             </Text>
             <Pressable
-              accessibilityLabel="Angabe entfernen"
+              accessibilityLabel={tr('Angabe entfernen', 'Remove entry')}
               accessibilityRole="button"
               onPress={() => {
                 apply(pending, null);
@@ -329,11 +373,11 @@ export function SorenessCapture({
               }}
               style={({ pressed }) => [styles.skip, pressed && styles.pressed]}
             >
-              <Text style={styles.skipText}>Entfernen</Text>
+              <Text style={styles.skipText}>{tr('Entfernen', 'Remove')}</Text>
             </Pressable>
           </View>
           <View style={styles.scaleRow}>
-            {STEPS.map(step => {
+            {steps().map(step => {
               const active = pending.every(id => values[id] === step.value);
               return (
                 <Pressable
@@ -374,19 +418,21 @@ export function SorenessCapture({
           <View style={styles.footerHalf}>
             <Button
               disabled={busy}
-              label="Heute nichts"
+              label={tr('Heute nichts', 'Nothing today')}
               onPress={nothingToday}
               secondary
-              title="Nichts heute"
+              title={tr('Nichts heute', 'Nothing today')}
             />
           </View>
           <View style={styles.footerHalf}>
             <Button
               disabled={busy || !answered.length}
-              label="Übernehmen und speichern"
+              label={tr('Übernehmen und speichern', 'Confirm and save')}
               onPress={confirm}
               title={
-                answered.length ? `Speichern (${answered.length})` : 'Speichern'
+                answered.length
+                  ? tr(`Speichern (${answered.length})`, `Save (${answered.length})`)
+                  : tr('Speichern', 'Save')
               }
             />
           </View>

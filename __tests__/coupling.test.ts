@@ -36,8 +36,8 @@ function coupledRuns(count: number): CoupledRun[] {
   }));
 }
 
-describe('Kopplung von Lauf und Krafttraining', () => {
-  it('kann vollständig abgeschaltet werden, ohne die Frischequelle aufzurufen', () => {
+describe('Coupling of run and strength training', () => {
+  it('can be switched off completely without calling the freshness source', () => {
     const result = evaluateCoupling({
       enabled: false,
       runs: coupledRuns(10),
@@ -51,7 +51,7 @@ describe('Kopplung von Lauf und Krafttraining', () => {
     expect(result.causalClaim).toBe(false);
   });
 
-  it('verwendet unter zehn Läufen nur den 10-Punkte-Caliper', () => {
+  it('uses only the 10-point caliper below ten runs', () => {
     const entries = coupledRuns(3);
     const freshness: Record<string, number> = {
       '0': 50,
@@ -69,7 +69,7 @@ describe('Kopplung von Lauf und Krafttraining', () => {
     expect(result.matchedPairs?.[0].freshnessDifference).toBeLessThanOrEqual(10);
   });
 
-  it('orientiert Caliper-Paare nach Frische statt nach Datum', () => {
+  it('orients caliper pairs by freshness instead of date', () => {
     const result = evaluateCoupling({
       enabled: true,
       runs: [
@@ -86,7 +86,7 @@ describe('Kopplung von Lauf und Krafttraining', () => {
     expect(result.matchedPairs?.[0].fadeDifferencePercent).toBeCloseTo(5);
   });
 
-  it('wählt den größten Regionsproxy unabhängig von der Eingabereihenfolge', () => {
+  it('picks the largest region proxy regardless of input order', () => {
     const runs = coupledRuns(5).map((entry, index) => ({
       ...entry,
       regionBase: index < 2 ? 'calf' : 'legs',
@@ -102,7 +102,7 @@ describe('Kopplung von Lauf und Krafttraining', () => {
     expect(reversed.comparableRunIds).toEqual(forward.comparableRunIds);
   });
 
-  it('wechselt ab zehn vergleichbaren Läufen zur kleinen Regression', () => {
+  it('switches to the small regression from ten comparable runs on', () => {
     const entries = coupledRuns(10);
     const result = evaluateCoupling({
       enabled: true,
@@ -112,7 +112,7 @@ describe('Kopplung von Lauf und Krafttraining', () => {
     expect(result.assessment).toBe('observation');
     expect(result.method).toBe('covariate_regression');
     expect(result.regression?.covariates).toEqual(['100_minus_leg_freshness']);
-    // Kein bereinigter Wert ohne Standardfehler und Intervall.
+    // No adjusted value without a standard error and interval.
     expect(result.regression?.standardErrors).toHaveLength(2);
     expect(result.regression?.residualDegreesOfFreedom).toBeGreaterThanOrEqual(8);
     const [lower, upper] = result.regression!.adjustedFadeInterval;
@@ -121,7 +121,7 @@ describe('Kopplung von Lauf und Krafttraining', () => {
     expect(result.causalClaim).toBe(false);
   });
 
-  it('gibt bei nicht ausreichenden Daten keine Zahl zurück', () => {
+  it('returns no number when the data is insufficient', () => {
     const result = evaluateCoupling({
       enabled: true,
       runs: [coupledRuns(1)[0]],
@@ -131,7 +131,7 @@ describe('Kopplung von Lauf und Krafttraining', () => {
     expect(result.adjustedFadePercent).toBeNull();
   });
 
-  it('simuliert geplante Frische je Termin und Region', () => {
+  it('simulates planned freshness per appointment and region', () => {
     const result = simulatePlannedFreshness(
       [
         {
@@ -148,7 +148,7 @@ describe('Kopplung von Lauf und Krafttraining', () => {
     expect(result[0].assessment).toBe('observation');
   });
 
-  it('zählt den kleinen Wochentagsraum vollständig durch und hält Fixtermine ein', () => {
+  it('enumerates the small weekday space completely and keeps fixed dates', () => {
     const weekStartAt = 0;
     const result = searchMonthlyPlan({
       enabled: true,
@@ -185,7 +185,7 @@ describe('Kopplung von Lauf und Krafttraining', () => {
     expect(result.suggestion?.checkCriterion).toBeTruthy();
   });
 
-  it('liefert ohne Frischequelle im Plan ausdrücklich keine Bewertung', () => {
+  it('explicitly gives no rating in the plan without a freshness source', () => {
     const result = searchMonthlyPlan({
       enabled: true,
       weekStartAt: 0,
@@ -202,7 +202,7 @@ describe('Kopplung von Lauf und Krafttraining', () => {
     expect(result.selected).toBeNull();
   });
 
-  it('verwirft eine Planung mit kollidierenden Fixterminen', () => {
+  it('rejects a plan with colliding fixed dates', () => {
     const result = searchMonthlyPlan({
       enabled: true,
       weekStartAt: 0,
@@ -228,7 +228,7 @@ describe('Kopplung von Lauf und Krafttraining', () => {
     expect(result.selected).toBeNull();
   });
 
-  it('verwirft doppelte Sitzungskennungen statt sie in der Zuordnung zu überschreiben', () => {
+  it('rejects duplicate session ids instead of overwriting them in the mapping', () => {
     const result = searchMonthlyPlan({
       enabled: true,
       weekStartAt: 0,
@@ -252,7 +252,7 @@ describe('Kopplung von Lauf und Krafttraining', () => {
     expect(result.selected).toBeNull();
   });
 
-  it('verwirft Termine außerhalb des Tagesfensters', () => {
+  it('rejects appointments outside the day window', () => {
     const result = searchMonthlyPlan({
       enabled: true,
       weekStartAt: 0,

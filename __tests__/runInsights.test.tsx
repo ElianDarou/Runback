@@ -6,6 +6,7 @@ import { Stat, color } from '../src/ui/components';
 import { pacingFor } from '../src/domain/analysis';
 import type { RunSeries } from '../src/domain/runSeries';
 import type { RunSummary } from '../src/domain/types';
+import { setLanguage } from '../src/domain/i18n';
 
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = 1_700_000_000_000;
@@ -115,8 +116,25 @@ const texts = (tree: TestRenderer.ReactTestRenderer) =>
     )
     .join('\n');
 
-describe('Einblicke auf der Detailseite', () => {
-  it('zeigt Bewegung, Einteilung, Puls, Bedingungen und Vergleich', () => {
+describe('Comparison deltas', () => {
+  afterEach(() => setLanguage('de'));
+
+  it('writes drift differences in points, without a doubled unit', () => {
+    const item = {
+      metric: 'drift',
+      value: 6.5,
+      reference: 4.2,
+      deltaPercent: 0,
+      rating: 'worse',
+    } as Parameters<typeof deltaText>[0];
+    expect(deltaText(item)).toBe('+2,3 Punkte');
+    setLanguage('en');
+    expect(deltaText(item)).toBe('+2.3 points');
+  });
+});
+
+describe('Insights on the detail page', () => {
+  it('shows movement, pacing, heart rate, conditions and comparison', () => {
     let tree!: TestRenderer.ReactTestRenderer;
     act(() => {
       tree = TestRenderer.create(
@@ -157,7 +175,7 @@ describe('Einblicke auf der Detailseite', () => {
     expect(all).toContain('Basis 5:12 /km');
   });
 
-  it('färbt bessere Werte grün und schreibt den Pfeil dazu', () => {
+  it('colors better values green and adds the arrow', () => {
     const comparison = {
       count: 3,
       samePurpose: true,
@@ -209,7 +227,7 @@ describe('Einblicke auf der Detailseite', () => {
     ).toBeGreaterThan(0);
   });
 
-  it('lässt Sektionen ohne Daten weg und bietet den Maxpuls zum Eintragen an', () => {
+  it('leaves out sections without data and offers to enter the max heart rate', () => {
     const bare: RunSummary = {
       id: 'bare',
       startTime: NOW,

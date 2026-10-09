@@ -12,6 +12,7 @@ import {
   RunPurpose,
   RunSummary,
 } from './types';
+import { tr } from './i18n';
 
 export interface RunPreset {
   id: string;
@@ -23,32 +24,35 @@ export interface RunPreset {
   targetPaceSecondsPerKm?: number;
   updatedAt?: number;
 }
-export const DEFAULT_PRESETS: RunPreset[] = [
-  {
-    id: 'easy-30',
-    name: 'Ruhig · 30 Minuten',
-    purpose: 'easy',
-    durationMinutes: 30,
-    requiredDeviceIds: [],
-    cuesEnabled: false,
-  },
-  {
-    id: 'long-60',
-    name: 'Lange Runde · 60 Minuten',
-    purpose: 'long',
-    durationMinutes: 60,
-    requiredDeviceIds: [],
-    cuesEnabled: false,
-  },
-  {
-    id: 'free',
-    name: 'Einfach laufen',
-    purpose: 'free',
-    durationMinutes: 30,
-    requiredDeviceIds: [],
-    cuesEnabled: false,
-  },
-];
+/** Built-in presets; names are text, so they are a function (see ground rule 6). */
+export function defaultPresets(): RunPreset[] {
+  return [
+    {
+      id: 'easy-30',
+      name: tr('Ruhig · 30 Minuten', 'Easy · 30 minutes'),
+      purpose: 'easy',
+      durationMinutes: 30,
+      requiredDeviceIds: [],
+      cuesEnabled: false,
+    },
+    {
+      id: 'long-60',
+      name: tr('Lange Runde · 60 Minuten', 'Long run · 60 minutes'),
+      purpose: 'long',
+      durationMinutes: 60,
+      requiredDeviceIds: [],
+      cuesEnabled: false,
+    },
+    {
+      id: 'free',
+      name: tr('Einfach laufen', 'Just run'),
+      purpose: 'free',
+      durationMinutes: 30,
+      requiredDeviceIds: [],
+      cuesEnabled: false,
+    },
+  ];
+}
 export function validatePreset(
   preset: RunPreset,
   connectedDeviceIds: string[],
@@ -60,11 +64,21 @@ export function validatePreset(
     preset.durationMinutes < 1 ||
     preset.durationMinutes > 360
   ) {
-    warnings.push('Laufdauer muss zwischen 1 und 360 Minuten liegen.');
+    warnings.push(
+      tr(
+        'Laufdauer muss zwischen 1 und 360 Minuten liegen.',
+        'Run duration must be between 1 and 360 minutes.',
+      ),
+    );
   }
   for (const id of preset.requiredDeviceIds) {
     if (!connectedDeviceIds.includes(id)) {
-      warnings.push(`Gerät ${id} fehlt. Konfiguration vor dem Start anpassen.`);
+      warnings.push(
+        tr(
+          `Gerät ${id} fehlt. Konfiguration vor dem Start anpassen.`,
+          `Device ${id} is missing. Adjust the setup before starting.`,
+        ),
+      );
     }
   }
   if (
@@ -73,14 +87,22 @@ export function validatePreset(
       preset.targetPaceSecondsPerKm < 120 ||
       preset.targetPaceSecondsPerKm > 1200)
   ) {
-    warnings.push('Tempoziel liegt außerhalb des unterstützten Bereichs.');
+    warnings.push(
+      tr(
+        'Tempoziel liegt außerhalb des unterstützten Bereichs.',
+        'Pace goal is outside the supported range.',
+      ),
+    );
   }
   if (
     preset.targetPaceSecondsPerKm &&
     (!preset.updatedAt || now - preset.updatedAt > 90 * 86400000)
   ) {
     warnings.push(
-      'Tempoziel ist älter als 90 Tage oder undatiert. Bitte prüfen.',
+      tr(
+        'Tempoziel ist älter als 90 Tage oder undatiert. Bitte prüfen.',
+        'Pace goal is older than 90 days or undated. Please check it.',
+      ),
     );
   }
   return { ready: warnings.length === 0, warnings };
@@ -109,16 +131,19 @@ export interface CueInput {
   hourlyBudget?: number;
   rules?: CueRule[];
 }
-export const DEFAULT_CUE_RULES: CueRule[] = [
-  {
-    id: 'ease-start',
-    priority: 100,
-    cooldownSeconds: 300,
-    minimumDeviationPercent: 8,
-    direction: 'too_fast',
-    text: 'Etwas ruhiger laufen.',
-  },
-];
+/** Built-in cue rules; the cue text is shown and spoken, so it is a function. */
+export function defaultCueRules(): CueRule[] {
+  return [
+    {
+      id: 'ease-start',
+      priority: 100,
+      cooldownSeconds: 300,
+      minimumDeviationPercent: 8,
+      direction: 'too_fast',
+      text: tr('Etwas ruhiger laufen.', 'Ease off a little.'),
+    },
+  ];
+}
 /** Call on aggregates only. The caller persists events, including across reconnects. */
 export function scheduleCue(input: CueInput): CueEvent | undefined {
   if (
@@ -152,7 +177,7 @@ export function scheduleCue(input: CueInput): CueEvent | undefined {
     return undefined;
   }
   const deviation = (current / target - 1) * 100;
-  const candidates = (input.rules ?? DEFAULT_CUE_RULES).filter(
+  const candidates = (input.rules ?? defaultCueRules()).filter(
     rule =>
       Number.isFinite(rule.minimumDeviationPercent) &&
       rule.minimumDeviationPercent > 0 &&
@@ -181,48 +206,62 @@ export interface ModelAvailability {
   enabled: boolean;
   reason: string;
 }
-/** Complex estimates remain gated until a shipped, prospectively validated model exists. */
+/** Complex estimates stay gated until a shipped, prospectively validated model exists. */
 export function modelAvailability(): ModelAvailability[] {
   return [
     {
       id: 'pacing',
-      name: 'Pacing & Tempoindex',
+      name: tr('Pacing & Tempoindex', 'Pacing & pace index'),
       enabled: true,
-      reason: 'Transparente Ausgangsregeln mit sichtbaren Modellgrenzen.',
+      reason: tr(
+        'Transparente Ausgangsregeln mit sichtbaren Modellgrenzen.',
+        'Transparent baseline rules with visible model limits.',
+      ),
     },
     {
       id: 'critical-speed',
       name: 'Critical Speed & D′',
       enabled: false,
-      reason:
+      reason: tr(
         'Zeitlich getrennte Leistungsdaten und Validierung gegen eine einfache Referenz fehlen.',
+        'Time-separated performance data and validation against a simple reference are missing.',
+      ),
     },
     {
       id: 'fitness',
-      name: 'Fitness & Durability',
+      name: tr('Fitness & Durability', 'Fitness & durability'),
       enabled: false,
-      reason: 'Kein validiertes persönliches Prognosemodell verfügbar.',
+      reason: tr(
+        'Kein validiertes persönliches Prognosemodell verfügbar.',
+        'No validated personal forecast model is available.',
+      ),
     },
     {
       id: 'environment',
-      name: 'Persönliche Umweltmodelle',
+      name: tr('Persönliche Umweltmodelle', 'Personal environment models'),
       enabled: false,
-      reason:
+      reason: tr(
         'Steigung, Hitze und Wind sind noch nicht ausreichend getrennt identifizierbar.',
+        'Slope, heat and wind cannot yet be told apart reliably.',
+      ),
     },
     {
       id: 'race',
-      name: 'Race Simulator & Szenarien',
+      name: tr('Race Simulator & Szenarien', 'Race simulator & scenarios'),
       enabled: false,
-      reason:
+      reason: tr(
         'Benötigt ein validiertes persönliches Modell samt Gültigkeitsbereich.',
+        'Needs a validated personal model with its scope of validity.',
+      ),
     },
     {
       id: 'fuel',
-      name: 'Fuel-Prognose',
+      name: tr('Fuel-Prognose', 'Fuel forecast'),
       enabled: false,
-      reason:
+      reason: tr(
         'Individuelle Verträglichkeit und validierte Bedarfsannahmen fehlen; kein Glykogen-Messwert.',
+        'Individual tolerance and validated demand assumptions are missing; there is no glycogen measurement.',
+      ),
     },
   ];
 }
@@ -237,14 +276,27 @@ export function compareRuns(
     ['unknown', 'free', 'intervals', 'race'].includes(a.purpose)
   ) {
     limitations.push(
-      'Keine ausreichend vergleichbare gleichmäßige Laufart.',
+      tr(
+        'Keine ausreichend vergleichbare gleichmäßige Laufart.',
+        'No sufficiently comparable, even run type.',
+      ),
     );
   }
   if (!assessQuality(a).paceUsable || !assessQuality(b).paceUsable) {
-    limitations.push('Zeit oder Distanz sind nicht ausreichend geeignet.');
+    limitations.push(
+      tr(
+        'Zeit oder Distanz sind nicht ausreichend geeignet.',
+        'Time or distance is not suitable enough.',
+      ),
+    );
   }
   if ((a.canonicalId && a.canonicalId === b.canonicalId) || a.id === b.id) {
-    limitations.push('Beide Quellen gehören zum selben Lauf.');
+    limitations.push(
+      tr(
+        'Beide Quellen gehören zum selben Lauf.',
+        'Both sources belong to the same run.',
+      ),
+    );
   }
   if (
     !a.context ||
@@ -255,14 +307,20 @@ export function compareRuns(
     b.context.windMps === undefined
   ) {
     limitations.push(
-      'Wetter fehlt: Keine Rangfolge der äußeren Gesamtanforderung.',
+      tr(
+        'Wetter fehlt: Keine Rangfolge der äußeren Gesamtanforderung.',
+        'Weather is missing: no ranking of the overall external demand.',
+      ),
     );
   } else if (
     Math.abs(a.context.temperatureC - b.context.temperatureC) > 5 ||
     Math.abs(a.context.windMps - b.context.windMps) > 2
   ) {
     limitations.push(
-      'Wetter ist ohne validierte Korrektur nicht ausreichend vergleichbar.',
+      tr(
+        'Wetter ist ohne validierte Korrektur nicht ausreichend vergleichbar.',
+        'Weather is not comparable enough without a validated correction.',
+      ),
     );
   }
   if (
@@ -272,30 +330,40 @@ export function compareRuns(
     )
   ) {
     limitations.push(
-      'Streckenprofil fehlt oder liegt außerhalb der einfachen flachen Referenz.',
+      tr(
+        'Streckenprofil fehlt oder liegt außerhalb der einfachen flachen Referenz.',
+        'Route profile is missing or outside the simple flat reference.',
+      ),
     );
   }
   if (limitations.length) {
     return {
       comparable: false,
-      summary:
+      summary: tr(
         'Keine belastbare Rangfolge. Einzelne Messwerte bleiben sichtbar.',
+        'No reliable ranking. Individual measurements stay visible.',
+      ),
       limitations,
     };
   }
-  const faster =
-    a.distanceMeters / a.durationSeconds > b.distanceMeters / b.durationSeconds
-      ? 'Der erste'
-      : 'Der zweite';
+  const firstIsFaster =
+    a.distanceMeters / a.durationSeconds > b.distanceMeters / b.durationSeconds;
+  const faster = firstIsFaster
+    ? tr('Der erste', 'The first')
+    : tr('Der zweite', 'The second');
+  const minutesA = Math.round(a.durationSeconds / 60);
+  const minutesB = Math.round(b.durationSeconds / 60);
   return {
     comparable: true,
-    summary: `${faster} Lauf hatte das höhere mittlere Tempo. Dauer: ${Math.round(
-      a.durationSeconds / 60,
-    )} / ${Math.round(
-      b.durationSeconds / 60,
-    )} Minuten. Das ist keine Rangfolge der persönlichen Anstrengung.`,
+    summary: tr(
+      `${faster} Lauf hatte das höhere mittlere Tempo. Dauer: ${minutesA} / ${minutesB} Minuten. Das ist keine Rangfolge der persönlichen Anstrengung.`,
+      `${faster} run had the higher average pace. Duration: ${minutesA} / ${minutesB} minutes. This is not a ranking of personal effort.`,
+    ),
     limitations: [
-      'Keine Korrektur für Untergrund, individuellen Windschutz oder Tagesform.',
+      tr(
+        'Keine Korrektur für Untergrund, individuellen Windschutz oder Tagesform.',
+        'No correction for surface, individual wind shelter or daily form.',
+      ),
     ],
   };
 }
@@ -313,13 +381,22 @@ export function queryEngine(
     ? analyzeRun(latest, active, runs)
     : undefined;
   const answer = !analysis
-    ? 'Noch keine Läufe vorhanden. Für eine Empfehlung fehlen noch passende Daten.'
+    ? tr(
+        'Noch keine Läufe vorhanden. Für eine Empfehlung fehlen noch passende Daten.',
+        'No runs yet. A recommendation still needs suitable data.',
+      )
     : question === 'why'
     ? active?.recommendation.reason ?? analysis.focus
     : question === 'what_would_change'
     ? active
-      ? 'Die Auswertung späterer passender Läufe, ein geändertes Ziel oder ein Fehler im Rechenmodell können Anlass sein, neu zu entscheiden. Neue Daten allein ersetzen deine Empfehlung nicht.'
-      : 'Wenn klar ist, wofür du gelaufen bist, können mindestens vier passende flache Abschnitte zeigen, ob ein ruhigerer Start sinnvoll wäre.'
+      ? tr(
+          'Die Auswertung späterer passender Läufe, ein geändertes Ziel oder ein Fehler im Rechenmodell können Anlass sein, neu zu entscheiden. Neue Daten allein ersetzen deine Empfehlung nicht.',
+          'Later matching runs, a changed goal or an error in the calculation model can be reason to decide again. New data alone does not replace your recommendation.',
+        )
+      : tr(
+          'Wenn klar ist, wofür du gelaufen bist, können mindestens vier passende flache Abschnitte zeigen, ob ein ruhigerer Start sinnvoll wäre.',
+          'Once it is clear what you ran for, at least four matching flat sections can show whether a calmer start would help.',
+        )
     : analysis.focus;
   return {
     answer,
@@ -331,12 +408,21 @@ export function nextRunPlan(
   preset: RunPreset,
   active?: Experiment<Recommendation>,
 ): string {
-  return `${preset.name}: etwa ${preset.durationMinutes} Minuten.${
+  const detail =
     active?.status === 'active' &&
     active.recommendation.purpose === preset.purpose
       ? ` ${active.recommendation.action}`
       : preset.targetPaceSecondsPerKm
-      ? ` Tempoziel ${formatPace(preset.targetPaceSecondsPerKm)} min/km.`
-      : ' Laufart und verfügbaren Umfang beachten.'
-  }`;
+      ? tr(
+          ` Tempoziel ${formatPace(preset.targetPaceSecondsPerKm)} min/km.`,
+          ` Pace goal ${formatPace(preset.targetPaceSecondsPerKm)} min/km.`,
+        )
+      : tr(
+          ' Laufart und verfügbaren Umfang beachten.',
+          ' Check the run type and the time available.',
+        );
+  return tr(
+    `${preset.name}: etwa ${preset.durationMinutes} Minuten.${detail}`,
+    `${preset.name}: about ${preset.durationMinutes} minutes.${detail}`,
+  );
 }

@@ -4,7 +4,7 @@ import {
 } from '../src/domain/statisticsView';
 import type { Run } from '../src/native';
 
-// Montag, 9. März 2026, lokale Zeit.
+// Monday, 9 March 2026, local time.
 const NOW = new Date(2026, 2, 9, 12).getTime();
 const days = (count: number) => count * 24 * 60 * 60 * 1000;
 
@@ -103,7 +103,7 @@ describe('buildStatisticsView', () => {
     expect(rich.available.heartRate).toBe(true);
     expect(rich.buckets[rich.buckets.length - 1].effort).toBe(7);
 
-    // Nur Beine bewertet: kein Gefühlswert, sonst wechselt seine Bedeutung.
+    // Only legs rated: no feeling value, otherwise its meaning would change.
     const half = buildStatisticsView(
       [run({ rpe: { legs: 6, recordedAt: 1 } })],
       '4w',
@@ -224,7 +224,7 @@ describe('buildStatisticsView', () => {
     expect(view.consistency.weekCount).toBe(4);
     expect(view.consistency.activeWeeks).toBe(3);
     expect(view.consistency.longestStreakWeeks).toBe(3);
-    // Die laufende Woche hat noch keinen Lauf und beendet die Serie nicht.
+    // The current week has no run yet and does not end the streak.
     expect(view.consistency.currentStreakWeeks).toBe(3);
     expect(view.consistency.activeDays).toBe(3);
   });

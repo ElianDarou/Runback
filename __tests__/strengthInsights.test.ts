@@ -85,7 +85,7 @@ describe('session breakdown', () => {
       topWeightKg: 85,
       medianRir: 1.5,
     });
-    // 85 × 5 → 99,2 kg schlägt 80 × 8 → 101,3 kg nicht.
+    // 85 × 5 → 99.2 kg does not beat 80 × 8 → 101.3 kg.
     expect(setLabel(bench.bestSet!)).toBe('80 kg × 8');
     expect(bench.bestSet!.e1rm).toBeCloseTo(101.33, 1);
     expect(plank.bestSet).toMatchObject({ seconds: 60 });
@@ -152,7 +152,7 @@ describe('comparisons', () => {
     expect(result.sessionIds).toEqual(['p0', 'p1', 'p3']);
     expect(result.sets!.deltaPercent).toBeCloseTo(50);
     expect(result.durationSeconds!.median).toBe(3000);
-    // Ohne Puls in den Vergleichseinheiten kein Vergleich.
+    // Without heart rate in the comparison sessions, no comparison.
     expect(result.averageBpm).toBeUndefined();
   });
 
@@ -162,7 +162,7 @@ describe('comparisons', () => {
     expect(result.last).toMatchObject({ sessionId: 'p0', label: '80 kg × 8' });
     expect(result.deltaPercent).toBeCloseTo((90 / 82.5 - 1) * 100);
     expect(result.rating).toBe('better');
-    // Mit nur einer früheren Einheit gibt es das letzte Mal, aber kein Urteil.
+    // With only one earlier session there is the last time, but no verdict.
     const single = exerciseComparison(current, [past(0, 80)], 'barbell_bench_press')!;
     expect(single.last).toBeDefined();
     expect(single.rating).toBeUndefined();
@@ -189,8 +189,8 @@ describe('heart rate in a session', () => {
       ],
     ],
   ]);
-  // 5-s-Fenster über 12 Minuten: Ruhe 90, 30 s vor jedem Abhaken bis 140,
-  // eine Minute danach wieder 110.
+  // 5 s window over 12 minutes: rest 90, 30 s before each tick up to 140,
+  // one minute after that back to 110.
   const values: (number | null)[] = Array.from({ length: 144 }, (_, i) => {
     const t = i * 5 + 2.5;
     const near = [2, 5, 8, 9].some(
@@ -216,7 +216,7 @@ describe('heart rate in a session', () => {
   it('finds the set peak and the drop in the first minute of rest', () => {
     const insight = sessionHeartInsight(session, heart);
     expect(insight.sets.map(set => set.peakBpm)).toEqual([140, 140, 140, 140]);
-    // Satz 3 wird nach 60 s schon vom nächsten Satz überlagert: keine Erholung.
+    // Set 3 is overlaid by the next set after 60 s already: no recovery.
     expect(insight.sets.map(set => set.recoveryBpm)).toEqual([
       30,
       30,

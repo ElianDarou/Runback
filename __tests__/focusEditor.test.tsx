@@ -5,7 +5,7 @@ import { Button, ChipGroup, Input } from '../src/ui/components';
 import { suggestedFocus } from '../src/domain/focus';
 import { relevance } from '../src/domain/prioritization';
 
-describe('Dauerhafter Fokus', () => {
+describe('Lasting focus', () => {
   it('starts without a suggested or selected focus when there is no goal', async () => {
     const persist = jest.fn(async () => {});
     let tree!: TestRenderer.ReactTestRenderer;
@@ -58,7 +58,7 @@ describe('Dauerhafter Fokus', () => {
   });
 });
 
-describe('Feste Auswahlregeln', () => {
+describe('Fixed selection rules', () => {
   it('blocks volume rather than merely downranking it for injury-free focus', () => {
     expect(relevance('volume', 'injury_free').blocked).toBeTruthy();
     expect(relevance('calmer_start', 'injury_free')).toEqual({ weight: 3 });

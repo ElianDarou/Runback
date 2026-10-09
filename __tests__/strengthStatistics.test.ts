@@ -5,7 +5,7 @@ import {
 import type { StrengthHeartSummary } from '../src/domain/strengthHeart';
 import { DAY, MINUTE, strengthSession } from './fixtures/strengthSessions';
 
-// Montag, 9. März 2026, lokale Zeit.
+// Monday, 9 March 2026, local time.
 const NOW = new Date(2026, 2, 9, 12).getTime();
 
 const bench = (weightKg: number, at = 5) => ({
@@ -100,10 +100,10 @@ describe('buildStrengthStatisticsView', () => {
     const view = buildStrengthStatisticsView(sessions, '4w', NOW);
     const [first] = view.exercises;
     expect(first.exerciseId).toBe('barbell_bench_press');
-    // Im Zeitraum liegen die letzten beiden (vor 14 Tagen und heute).
+    // The last two (14 days ago and today) fall in the range.
     expect(first.sessions).toBe(2);
     expect(first.best).toMatchObject({ weightKg: 82.5, reps: 8 });
-    // Der Trend sieht alle sechs Einheiten, nicht nur die im Zeitraum.
+    // The trend sees all six sessions, not only those in the range.
     expect(first.trend.label).toBe('Steigt');
   });
 
@@ -132,7 +132,7 @@ describe('buildStrengthStatisticsView', () => {
     expect(view.totals.averageBpm).toBe(120);
     expect(view.totals.maxBpm).toBe(160);
     expect(view.totals.heartSessions).toBe(1);
-    // NOW ist ein Montag; beide Einheiten liegen in der Woche davor.
+    // NOW is a Monday; both sessions fall in the week before.
     const week = view.buckets[view.buckets.length - 2];
     expect(week.sessionCount).toBe(2);
     expect(strengthBucketValue(week, 'heartRate')).toBe(120);

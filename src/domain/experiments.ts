@@ -7,6 +7,7 @@ import {
   provenance,
 } from './analysis';
 import { signTest } from './inference';
+import { tr } from './i18n';
 import { isRunRecommendation, recommendationArea } from './areas';
 import type { StrengthSession } from './strength';
 import { evaluateStrengthExperiment } from './strengthRecommendation';
@@ -30,8 +31,8 @@ function immutable<T>(value: T): T {
   return value;
 }
 /**
- * `existing` ist die offene Empfehlung desselben Bereichs. Je Bereich läuft
- * höchstens eine; ein anderer Bereich blockiert die Annahme nicht.
+ * `existing` is the open recommendation of the same area. At most one runs
+ * per area; another area does not block acceptance.
  */
 export function acceptRecommendation<R extends AnyRecommendation>(
   recommendation: R,
@@ -39,7 +40,7 @@ export function acceptRecommendation<R extends AnyRecommendation>(
   existing?: Experiment,
 ): Experiment<R> {
   if (!Number.isFinite(now)) {
-    throw new Error('Ungültiger Annahmezeitpunkt.');
+    throw new Error(tr('Ungültiger Annahmezeitpunkt.', 'Invalid acceptance time.'));
   }
   if (
     existing &&
@@ -47,7 +48,12 @@ export function acceptRecommendation<R extends AnyRecommendation>(
     recommendationArea(existing.recommendation) ===
       recommendationArea(recommendation)
   ) {
-    throw new Error('Zuerst die bestehende Empfehlung beenden.');
+    throw new Error(
+      tr(
+        'Zuerst die bestehende Empfehlung beenden.',
+        'End the existing recommendation first.',
+      ),
+    );
   }
   const snapshot = JSON.parse(JSON.stringify(recommendation)) as R;
   return immutable({
@@ -59,7 +65,10 @@ export function acceptRecommendation<R extends AnyRecommendation>(
       {
         at: now,
         status: 'active',
-        reason: 'Empfehlung und Regeln für die Prüfung angenommen.',
+        reason: tr(
+          'Empfehlung und Regeln für die Prüfung angenommen.',
+          'Recommendation and review rules accepted.',
+        ),
       },
     ],
   } as Experiment<R>);
@@ -71,16 +80,31 @@ export function transitionExperiment<R extends AnyRecommendation>(
   reason: string,
 ): Experiment<R> {
   if (!reason.trim()) {
-    throw new Error('Ein Zustandswechsel braucht eine Begründung.');
+    throw new Error(
+      tr(
+        'Ein Zustandswechsel braucht eine Begründung.',
+        'A status change needs a reason.',
+      ),
+    );
   }
   if (
     !Number.isFinite(now) ||
     now < experiment.history[experiment.history.length - 1].at
   ) {
-    throw new Error('Zeitpunkt liegt vor der letzten Änderung.');
+    throw new Error(
+      tr(
+        'Zeitpunkt liegt vor der letzten Änderung.',
+        'The time is before the last change.',
+      ),
+    );
   }
   if (experiment.status === 'completed' || experiment.status === 'aborted') {
-    throw new Error('Beendete Empfehlungen bleiben unverändert.');
+    throw new Error(
+      tr(
+        'Beendete Empfehlungen bleiben unverändert.',
+        'Completed recommendations stay unchanged.',
+      ),
+    );
   }
   if (status === experiment.status) {
     return experiment;
@@ -116,7 +140,7 @@ function activeAt(experiment: Experiment, time: number): boolean {
   }
   return status === 'active';
 }
-/** Prüft eine Empfehlung an den Daten ihres Bereichs. */
+/** Checks a recommendation against the data of its area. */
 export function evaluateAnyExperiment(
   experiment: Experiment,
   runs: RunSummary[],
@@ -144,8 +168,10 @@ export function evaluateExperiment(
   const result: ExperimentEvaluation = {
     ...provenance([]),
     verdict: 'insufficient_evidence',
-    summary:
+    summary: tr(
       'Noch keine geeigneten Folgeläufe. Die Umsetzung und das Ergebnis werden getrennt geprüft.',
+      'No suitable follow-up runs yet. Follow-through and the result are checked separately.',
+    ),
     eligibleRunIds: [],
     excluded: [],
     adherence: [],
@@ -157,8 +183,10 @@ export function evaluateExperiment(
   ) {
     return {
       ...result,
-      summary:
+      summary: tr(
         'Der gespeicherte Modellstand ist hier nicht verfügbar. Die vor dem Start festgelegten Regeln bleiben erhalten.',
+        'The saved model version is not available here. The rules set before the start stay in place.',
+      ),
     };
   }
   const outcomes: { run: RunSummary; fade: number }[] = [];
@@ -174,15 +202,15 @@ export function evaluateExperiment(
     const exclude = (reason: string) =>
       result.excluded.push({ runId: run.id, reason });
     if (!activeAt(experiment, run.startTime)) {
-      exclude('Empfehlung war bei Laufbeginn nicht aktiv.');
+      exclude(tr('Empfehlung war bei Laufbeginn nicht aktiv.', 'Recommendation was not active when the run started.'));
       continue;
     }
     if (run.startTime > experiment.acceptedAt + c.maxDays * DAY) {
-      exclude('Vorab festgelegter Beobachtungszeitraum abgelaufen.');
+      exclude(tr('Vorab festgelegter Beobachtungszeitraum abgelaufen.', 'Observation period set in advance has ended.'));
       continue;
     }
     if (run.purpose !== experiment.recommendation.purpose) {
-      exclude('Andere Laufart.');
+      exclude(tr('Andere Laufart.', 'Different run type.'));
       continue;
     }
     if (
@@ -191,12 +219,12 @@ export function evaluateExperiment(
       Math.abs(run.distanceMeters / c.baselineDistanceMeters - 1) * 100 >
         c.distanceTolerancePercent
     ) {
-      exclude('Geplanter Umfang nicht ausreichend erhalten.');
+      exclude(tr('Geplanter Umfang nicht ausreichend erhalten.', 'Planned volume was not kept closely enough.'));
       continue;
     }
     const pacing = pacingFor(run);
     if (!pacing || !flatPacingContext(run, pacing)) {
-      exclude('Vergleichbare flache Laufabschnitte fehlen.');
+      exclude(tr('Vergleichbare flache Laufabschnitte fehlen.', 'Comparable flat run sections are missing.'));
       continue;
     }
     const base = c.baselineContext;
@@ -206,7 +234,7 @@ export function evaluateExperiment(
       current?.temperatureC !== undefined &&
       Math.abs(base.temperatureC - current.temperatureC) > 5
     ) {
-      exclude('Temperatur unterscheidet sich um mehr als 5 °C.');
+      exclude(tr('Temperatur unterscheidet sich um mehr als 5 °C.', 'Temperature differs by more than 5 °C.'));
       continue;
     }
     if (
@@ -214,7 +242,7 @@ export function evaluateExperiment(
       current?.windMps !== undefined &&
       Math.abs(base.windMps - current.windMps) > 2
     ) {
-      exclude('Wind unterscheidet sich um mehr als 2 m/s.');
+      exclude(tr('Wind unterscheidet sich um mehr als 2 m/s.', 'Wind differs by more than 2 m/s.'));
       continue;
     }
     result.eligibleRunIds.push(run.id);
@@ -246,8 +274,10 @@ export function evaluateExperiment(
     return {
       ...result,
       verdict: 'not_implemented',
-      summary:
+      summary: tr(
         'Du hast den ruhigeren Start bisher nicht probiert. Ob er hilft, bleibt noch offen.',
+        'You haven\'t tried the calmer start yet. Whether it helps is still open.',
+      ),
     };
   }
   if (outcomes.length === 0) {
@@ -261,13 +291,20 @@ export function evaluateExperiment(
     outcomes[outcomes.length - 1].run.startTime - experiment.acceptedAt >=
     c.minimumDays * DAY;
   if (outcomes.length < c.minimumObservations || !enoughTime) {
-    result.summary = `${
-      outcomes.length
-    } umgesetzte, geeignete Läufe; Prüfung ab ${
-      c.minimumObservations
-    } Läufen über mindestens ${c.minimumDays} Tage. ${
-      outcomes.length >= c.reviewAfterRuns ? 'Zwischenstand verfügbar. ' : ''
-    }Der beobachtete Unterschied beweist keine Ursache.`;
+    const interim =
+      outcomes.length >= c.reviewAfterRuns
+        ? tr('Zwischenstand verfügbar. ', 'Interim result available. ')
+        : '';
+    result.summary = tr(
+      `${
+        outcomes.length
+      } umgesetzte, geeignete Läufe; Prüfung ab ${
+        c.minimumObservations
+      } Läufen über mindestens ${c.minimumDays} Tage. ${interim}Der beobachtete Unterschied beweist keine Ursache.`,
+      `${outcomes.length} followed, suitable runs; review from ${
+        c.minimumObservations
+      } runs over at least ${c.minimumDays} days. ${interim}The observed difference does not prove a cause.`,
+    );
     return result;
   }
   const weatherUnknown = outcomes.some(
@@ -277,39 +314,58 @@ export function evaluateExperiment(
       o.run.context?.temperatureC === undefined ||
       o.run.context?.windMps === undefined,
   );
-  const causal = ` Beobachtung, kein Ursachennachweis.${
-    weatherUnknown
-      ? ' Fehlender Wetterkontext begrenzt die Zuordnung zusätzlich.'
-      : ''
-  }`;
-  // Ein ruhigerer Start senkt den Tempoabfall schon rechnerisch. Das Ergebnis
-  // heißt deshalb „gleichmäßiger“, nie „schneller“ oder „fitter“.
+  const causal = tr(
+    ` Beobachtung, kein Ursachennachweis.${
+      weatherUnknown
+        ? ' Fehlender Wetterkontext begrenzt die Zuordnung zusätzlich.'
+        : ''
+    }`,
+    ` An observation, not proof of cause.${
+      weatherUnknown
+        ? ' Missing weather context further limits the attribution.'
+        : ''
+    }`,
+  );
+  // A calmer start already lowers the late fade by arithmetic. So the result
+  // says "more even", never "faster" or "fitter".
   const test = signTest(changes, c.minimumRelevantChangePercentPoints);
   result.signTest = { ...test, alpha: c.signTestAlpha };
   if (test.pValue <= c.signTestAlpha && test.positives > test.negatives) {
     return {
       ...result,
       verdict: 'improved',
-      summary: `Bei gleicher Laufart und gleichem Umfang lief die zweite Hälfte in ${test.positives} von ${outcomes.length} umgesetzten Läufen gleichmäßiger als in den Vergleichsläufen; das ist häufiger als zufällig. Über Tempo oder Fitness sagt das nichts.${causal}`,
+      summary: tr(
+        `Bei gleicher Laufart und gleichem Umfang lief die zweite Hälfte in ${test.positives} von ${outcomes.length} umgesetzten Läufen gleichmäßiger als in den Vergleichsläufen; das ist häufiger als zufällig. Über Tempo oder Fitness sagt das nichts.${causal}`,
+        `With the same run type and volume, the second half was more even than in the comparison runs in ${test.positives} of ${outcomes.length} followed runs; that is more often than chance. It says nothing about pace or fitness.${causal}`,
+      ),
     };
   }
   if (test.pValue <= c.signTestAlpha && test.negatives > test.positives) {
     return {
       ...result,
       verdict: 'worsened',
-      summary: `In ${test.negatives} von ${outcomes.length} umgesetzten Läufen war der späte Tempoabfall größer als in den Vergleichsläufen; das ist häufiger als zufällig.${causal}`,
+      summary: tr(
+        `In ${test.negatives} von ${outcomes.length} umgesetzten Läufen war der späte Tempoabfall größer als in den Vergleichsläufen; das ist häufiger als zufällig.${causal}`,
+        `In ${test.negatives} of ${outcomes.length} followed runs, the late pace fade was larger than in the comparison runs; that is more often than chance.${causal}`,
+      ),
     };
   }
   if (test.ties === changes.length) {
     return {
       ...result,
       verdict: 'no_relevant_effect',
-      summary: `Alle ${outcomes.length} umgesetzten Läufe lagen innerhalb von ±${c.minimumRelevantChangePercentPoints} Prozentpunkten der Vergleichsläufe.${causal}`,
+      summary: tr(
+        `Alle ${outcomes.length} umgesetzten Läufe lagen innerhalb von ±${c.minimumRelevantChangePercentPoints} Prozentpunkten der Vergleichsläufe.${causal}`,
+        `All ${outcomes.length} followed runs were within ±${c.minimumRelevantChangePercentPoints} percentage points of the comparison runs.${causal}`,
+      ),
     };
   }
   return {
     ...result,
-    summary: `Noch nicht klar. ${test.positives} Läufe gleichmäßiger, ${test.negatives} ungleichmäßiger, ${test.ties} unverändert; das kann Zufall sein.${causal}`,
+    summary: tr(
+      `Noch nicht klar. ${test.positives} Läufe gleichmäßiger, ${test.negatives} ungleichmäßiger, ${test.ties} unverändert; das kann Zufall sein.${causal}`,
+      `Not clear yet. ${test.positives} runs more even, ${test.negatives} less even, ${test.ties} unchanged; this may be chance.${causal}`,
+    ),
   };
 }
 

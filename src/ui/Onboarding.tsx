@@ -11,18 +11,24 @@ import type { RunPurpose } from '../domain/types';
 import { RUN_PURPOSES } from '../domain/runTitle';
 import {
   SORENESS_PROMPTS,
-  SORENESS_PROMPT_LABELS,
   normalizeFeatures,
+  sorenessPromptLabel,
   withArea,
   type FeatureSettings,
 } from '../domain/features';
 import { nativeCall, type Settings } from '../native';
 import { Button, Copy, Section, color } from './components';
+import { getLanguage, tr } from '../domain/i18n';
 
 const STEPS = ['welcome', 'goal', 'features', 'import', 'ready'] as const;
 type Step = (typeof STEPS)[number];
-const DAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 const PURPOSES = RUN_PURPOSES;
+
+// Built per call: the language can change at runtime. Index 0 is Monday.
+const dayLabels = () =>
+  getLanguage() === 'en'
+    ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    : ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
 export interface OnboardingProps {
   settings: Settings;
@@ -60,7 +66,7 @@ export function Onboarding({
   const [purpose, setPurpose] = useState<RunPurpose>(
     settings.purpose || 'free',
   );
-  // Was der Nutzer nutzen will. Überspringen heißt: alles an.
+  // What the user wants to use. Skipping means: everything is on.
   const [features, setFeatures] = useState<FeatureSettings>(() =>
     normalizeFeatures(settings.features, {
       showHeartRate: settings.showHeartRate,
@@ -88,7 +94,9 @@ export function Onboarding({
       setStep(next);
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : 'Speichern fehlgeschlagen.',
+        cause instanceof Error
+          ? cause.message
+          : tr('Speichern fehlgeschlagen.', 'Saving failed.'),
       );
     } finally {
       setSaving(false);
@@ -106,7 +114,9 @@ export function Onboarding({
       onDone();
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : 'Speichern fehlgeschlagen.',
+        cause instanceof Error
+          ? cause.message
+          : tr('Speichern fehlgeschlagen.', 'Saving failed.'),
       );
     } finally {
       setSaving(false);
@@ -125,7 +135,9 @@ export function Onboarding({
       onDone();
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : 'Speichern fehlgeschlagen.',
+        cause instanceof Error
+          ? cause.message
+          : tr('Speichern fehlgeschlagen.', 'Saving failed.'),
       );
     } finally {
       setSaving(false);
@@ -145,14 +157,23 @@ export function Onboarding({
       const result = await nativeCall<any>('requestRecordingPermissions');
       setPermissionStatus(
         result?.locationPermission && result?.notificationPermission
-          ? 'Standort und Mitteilungen sind freigegeben.'
-          : 'Mindestens eine Berechtigung ist noch nicht freigegeben. Die Aufzeichnung fragt beim Start erneut.',
+          ? tr(
+              'Standort und Mitteilungen sind freigegeben.',
+              'Location and notifications are allowed.',
+            )
+          : tr(
+              'Mindestens eine Berechtigung ist noch nicht freigegeben. Die Aufzeichnung fragt beim Start erneut.',
+              'At least one permission is not allowed yet. Recording asks again when you start.',
+            ),
       );
     } catch (cause) {
       setError(
         cause instanceof Error
           ? cause.message
-          : 'Berechtigungen konnten nicht angefragt werden.',
+          : tr(
+              'Berechtigungen konnten nicht angefragt werden.',
+              'Permissions could not be requested.',
+            ),
       );
     } finally {
       setPermissionBusy(false);
@@ -165,14 +186,14 @@ export function Onboarding({
     >
       <View style={styles.header}>
         <Text style={styles.progress}>
-          Einrichtung · {index + 1}/{STEPS.length}
+          {tr('Einrichtung', 'Setup')} · {index + 1}/{STEPS.length}
         </Text>
         <Pressable
           accessibilityRole="button"
           onPress={skip}
           disabled={!canLeave}
         >
-          <Text style={styles.link}>Später</Text>
+          <Text style={styles.link}>{tr('Später', 'Later')}</Text>
         </Pressable>
       </View>
       <View style={styles.progressLine}>
@@ -188,42 +209,65 @@ export function Onboarding({
       </View>
       {step === 'welcome' ? (
         <>
-          <Text style={styles.title}>Willkommen bei Runback</Text>
+          <Text style={styles.title}>
+            {tr('Willkommen bei Runback', 'Welcome to Runback')}
+          </Text>
           <Copy muted>
-            Vier kurze Schritte, alle optional. Deine Daten bleiben auf diesem
-            Gerät.
+            {tr(
+              'Vier kurze Schritte, alle optional. Deine Daten bleiben auf diesem Gerät.',
+              'Four short steps, all optional. Your data stays on this device.',
+            )}
           </Copy>
-          <Button title="Einrichten" onPress={next} disabled={saving || busy} />
+          <Button
+            title={tr('Einrichten', 'Set up')}
+            onPress={next}
+            disabled={saving || busy}
+          />
         </>
       ) : null}
       {step === 'goal' ? (
         <>
-          <Text style={styles.title}>Dein nächster Lauf</Text>
-          <Section title="Ziel (optional)">
+          <Text style={styles.title}>
+            {tr('Dein nächster Lauf', 'Your next run')}
+          </Text>
+          <Section title={tr('Ziel (optional)', 'Goal (optional)')}>
             <TextInput
-              accessibilityLabel="Laufziel"
+              accessibilityLabel={tr('Laufziel', 'Running goal')}
               value={goal}
               onChangeText={setGoal}
-              placeholder="Zum Beispiel: Halbmarathon im April"
+              placeholder={tr(
+                'Zum Beispiel: Halbmarathon im April',
+                'For example: half marathon in April',
+              )}
               placeholderTextColor={color.muted}
               style={styles.input}
             />
           </Section>
-          <Section title="Zeitbudget in Minuten">
+          <Section
+            title={tr('Zeitbudget in Minuten', 'Time budget in minutes')}
+          >
             <TextInput
-              accessibilityLabel="Zeitbudget in Minuten"
+              accessibilityLabel={tr(
+                'Zeitbudget in Minuten',
+                'Time budget in minutes',
+              )}
               value={minutes}
               onChangeText={setMinutes}
               keyboardType="number-pad"
               style={styles.input}
             />
             {!validMinutes ? (
-              <Copy muted>Bitte zwischen 5 und 600 Minuten eingeben.</Copy>
+              <Copy muted>
+                {tr(
+                  'Bitte zwischen 5 und 600 Minuten eingeben.',
+                  'Enter between 5 and 600 minutes.',
+                )}
+              </Copy>
             ) : null}
           </Section>
-          <Section title="Mögliche Lauftage">
+          <Section title={tr('Mögliche Lauftage', 'Possible running days')}>
             <View style={styles.days}>
-              {DAYS.map((label, day) => (
+              {dayLabels().map((label, day) => (
                 <Pressable
                   key={label}
                   accessibilityRole="checkbox"
@@ -249,7 +293,9 @@ export function Onboarding({
               ))}
             </View>
           </Section>
-          <Section title="Wie läufst du meistens?">
+          <Section
+            title={tr('Wie läufst du meistens?', 'How do you usually run?')}
+          >
             {PURPOSES.map(option => (
               <Pressable
                 key={option.value}
@@ -266,7 +312,7 @@ export function Onboarding({
             ))}
           </Section>
           <Button
-            title="Weiter"
+            title={tr('Weiter', 'Next')}
             onPress={next}
             disabled={saving || busy || !validMinutes}
           />
@@ -274,16 +320,23 @@ export function Onboarding({
       ) : null}
       {step === 'features' ? (
         <>
-          <Text style={styles.title}>Was möchtest du nutzen?</Text>
+          <Text style={styles.title}>
+            {tr('Was möchtest du nutzen?', 'What do you want to use?')}
+          </Text>
           <Copy muted>
-            Abgewähltes verschwindet. Ändern kannst du das jederzeit in den
-            Einstellungen.
+            {tr(
+              'Abgewähltes verschwindet. Ändern kannst du das jederzeit in den Einstellungen.',
+              'Anything you deselect disappears. You can change this anytime in Settings.',
+            )}
           </Copy>
-          <Section title="Bereiche">
+          <Section title={tr('Bereiche', 'Areas')}>
             {(
               [
-                { key: 'running', label: 'Laufen' },
-                { key: 'strength', label: 'Krafttraining' },
+                { key: 'running', label: tr('Laufen', 'Running') },
+                {
+                  key: 'strength',
+                  label: tr('Krafttraining', 'Strength training'),
+                },
               ] as const
             ).map(option => {
               const checked = features.areas[option.key];
@@ -307,7 +360,7 @@ export function Onboarding({
             })}
             <Pressable
               accessibilityRole="checkbox"
-              accessibilityLabel="Radfahren"
+              accessibilityLabel={tr('Radfahren', 'Cycling')}
               accessibilityState={{ checked: features.sports.cycling }}
               onPress={() =>
                 setFeatures(current => ({
@@ -317,16 +370,18 @@ export function Onboarding({
               }
               style={styles.choice}
             >
-              <Text style={styles.choiceText}>Radfahren</Text>
+              <Text style={styles.choiceText}>
+                {tr('Radfahren', 'Cycling')}
+              </Text>
               <Text style={styles.check}>
                 {features.sports.cycling ? '✓' : ''}
               </Text>
             </Pressable>
           </Section>
-          <Section title="Muskelkater">
+          <Section title={tr('Muskelkater', 'Soreness')}>
             <Pressable
               accessibilityRole="checkbox"
-              accessibilityLabel="Muskelkater melden"
+              accessibilityLabel={tr('Muskelkater melden', 'Report soreness')}
               accessibilityState={{ checked: features.soreness.enabled }}
               onPress={() =>
                 setFeatures(current => ({
@@ -339,19 +394,23 @@ export function Onboarding({
               }
               style={styles.choice}
             >
-              <Text style={styles.choiceText}>Muskelkater melden</Text>
+              <Text style={styles.choiceText}>
+                {tr('Muskelkater melden', 'Report soreness')}
+              </Text>
               <Text style={styles.check}>
                 {features.soreness.enabled ? '✓' : ''}
               </Text>
             </Pressable>
             {features.soreness.enabled ? (
               <>
-                <Copy muted>Wann Runback fragt</Copy>
+                <Copy muted>
+                  {tr('Wann Runback fragt', 'When Runback asks')}
+                </Copy>
                 {SORENESS_PROMPTS.map(prompt => (
                   <Pressable
                     key={prompt}
                     accessibilityRole="radio"
-                    accessibilityLabel={SORENESS_PROMPT_LABELS[prompt]}
+                    accessibilityLabel={sorenessPromptLabel(prompt)}
                     accessibilityState={{
                       checked: features.soreness.prompt === prompt,
                     }}
@@ -364,7 +423,7 @@ export function Onboarding({
                     style={styles.choice}
                   >
                     <Text style={styles.choiceText}>
-                      {SORENESS_PROMPT_LABELS[prompt]}
+                      {sorenessPromptLabel(prompt)}
                     </Text>
                     <Text style={styles.check}>
                       {features.soreness.prompt === prompt ? '✓' : ''}
@@ -374,34 +433,59 @@ export function Onboarding({
               </>
             ) : null}
           </Section>
-          <Button title="Weiter" onPress={next} disabled={saving || busy} />
+          <Button
+            title={tr('Weiter', 'Next')}
+            onPress={next}
+            disabled={saving || busy}
+          />
         </>
       ) : null}
       {step === 'import' ? (
         <>
-          <Text style={styles.title}>Historie mitnehmen?</Text>
+          <Text style={styles.title}>
+            {tr('Historie mitnehmen?', 'Bring over your history?')}
+          </Text>
           <Copy muted>
-            FIT, GPX, TCX oder ein Export aus Strava, Garmin und anderen Apps.
-            Doppelte Aktivitäten werden erkannt.
+            {tr(
+              'FIT, GPX, TCX oder ein Export aus Strava, Garmin und anderen Apps. Doppelte Aktivitäten werden erkannt.',
+              'FIT, GPX, TCX, or an export from Strava, Garmin, and other apps. Duplicate activities are detected.',
+            )}
           </Copy>
           <Button
-            title={importRunning ? 'Import läuft …' : 'Dateien importieren'}
+            title={
+              importRunning
+                ? tr('Import läuft …', 'Import running …')
+                : tr('Dateien importieren', 'Import files')
+            }
             onPress={onImport}
             disabled={busy || importRunning}
           />
           {importRunning && onCancelImport ? (
             <Button
               secondary
-              title="Import abbrechen"
+              title={tr('Import abbrechen', 'Cancel import')}
               onPress={onCancelImport}
             />
           ) : null}
           {status.imported !== undefined && status.state !== 'review' ? (
             <Copy>
               {[
-                `Importiert: ${status.imported}`,
-                status.duplicates ? `Doppelt: ${status.duplicates}` : '',
-                status.skipped ? `Übersprungen: ${status.skipped}` : '',
+                tr(
+                  `Importiert: ${status.imported}`,
+                  `Imported: ${status.imported}`,
+                ),
+                status.duplicates
+                  ? tr(
+                      `Doppelt: ${status.duplicates}`,
+                      `Duplicates: ${status.duplicates}`,
+                    )
+                  : '',
+                status.skipped
+                  ? tr(
+                      `Übersprungen: ${status.skipped}`,
+                      `Skipped: ${status.skipped}`,
+                    )
+                  : '',
               ]
                 .filter(Boolean)
                 .join(' · ')}
@@ -409,7 +493,7 @@ export function Onboarding({
           ) : null}
           <Button
             secondary
-            title="Weiter"
+            title={tr('Weiter', 'Next')}
             onPress={next}
             disabled={saving || busy || importRunning}
           />
@@ -417,19 +501,27 @@ export function Onboarding({
       ) : null}
       {step === 'ready' ? (
         <>
-          <Text style={styles.title}>Bereit für den ersten Lauf</Text>
+          <Text style={styles.title}>
+            {tr('Bereit für den ersten Lauf', 'Ready for your first run')}
+          </Text>
           <Copy muted>
-            Die Einrichtung findest du jederzeit in den Einstellungen.
+            {tr(
+              'Die Einrichtung findest du jederzeit in den Einstellungen.',
+              'You can find setup anytime in Settings.',
+            )}
           </Copy>
           <Button
             secondary
-            title="Aufzeichnungsberechtigungen anfragen"
+            title={tr(
+              'Aufzeichnungsberechtigungen anfragen',
+              'Request recording permissions',
+            )}
             onPress={requestPermissions}
             disabled={saving || busy || permissionBusy}
           />
           {permissionStatus ? <Copy muted>{permissionStatus}</Copy> : null}
           <Button
-            title="Los geht’s"
+            title={tr('Los geht’s', 'Let’s go')}
             onPress={finish}
             disabled={saving || busy || permissionBusy}
           />
@@ -445,7 +537,7 @@ export function Onboarding({
           onPress={() => saveAnd(STEPS[Math.max(index - 1, 0)])}
           disabled={!canLeave}
         >
-          <Text style={styles.back}>Zurück</Text>
+          <Text style={styles.back}>{tr('Zurück', 'Back')}</Text>
         </Pressable>
       ) : null}
     </ScrollView>

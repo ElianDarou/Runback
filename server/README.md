@@ -1,13 +1,13 @@
-# Eigener Runback-Server
+# Own Runback server
 
-Eine Person, ein Telefon, eine lesende Website. Das Telefon sendet eine
-freigegebene Kopie; der Server ändert keine Trainingsdaten, Pläne oder
-Empfehlungen. Rohsamples, Originaldateien und Zugangsschlüssel bleiben auf dem
-Telefon. Der Server ersetzt deshalb kein vollständiges App-Backup.
+One person, one phone, one read-only website. The phone sends a shared copy;
+the server changes no training data, plans or recommendations. Raw samples,
+original files and access keys stay on the phone. The server is therefore not
+a complete app backup.
 
-## Starten
+## Start
 
-Im Repository:
+From the repository:
 
 ```sh
 cd server
@@ -16,72 +16,76 @@ docker compose up -d --build
 docker compose logs runback
 ```
 
-Öffne `http://DEINE-NAS-ADRESSE:8080`. Ohne `RUNBACK_PASSWORD` steht das erste
-Passwort einmal im Log. Ändere es auf der Website unter „Daten“. Ein gesetztes
-`RUNBACK_PASSWORD` überschreibt die Änderung beim Neustart.
+Open `http://YOUR-NAS-ADDRESS:8080`. Without `RUNBACK_PASSWORD`, the first
+password is printed once in the log. Change it on the website under “Data”. A
+set `RUNBACK_PASSWORD` overrides the change on restart.
 
-Für eine eigene öffentliche Domain nutze einen HTTPS-Reverse-Proxy, etwa die
-Konfiguration in `Caddyfile.example`. Binde Runback dann mit
-`RUNBACK_BIND=127.0.0.1` nur an den lokalen Proxy und setze
-`RUNBACK_TRUST_PROXY=1`. Der Proxy muss Forwarded-Header selbst setzen.
+For your own public domain, use an HTTPS reverse proxy, for example the setup
+in `Caddyfile.example`. Then bind Runback with `RUNBACK_BIND=127.0.0.1` to the
+local proxy only, and set `RUNBACK_TRUST_PROXY=1`. The proxy must set the
+forwarded headers itself.
 
-## Telefon verbinden
+## Language
 
-1. Melde dich auf der Website an und erzeuge unter „Daten“ einen Kopplungscode.
-2. Öffne in der App „Einstellungen › Eigener Server“.
-3. Trage die Adresse und den achtstelligen Code ein und wähle die Datenarten.
-4. Tippe „Server verbinden“.
+The website is in German by default. Add `?lang=en` to any address for English,
+or set your browser's language to English. An explicit `?lang=` wins over the
+browser setting and is kept when you navigate. Old German addresses such as
+`/verlauf` or `/daten` redirect to the English ones (`/history`, `/data`).
 
-Im Heimnetz sind `nas.local:8080` und `http://192.168.1.20:8080` erlaubt.
-Außerhalb des Heimnetzes verlangt die App HTTPS. Adressen mit Pfad werden
-nicht unterstützt. Ein neuer Kopplungscode ersetzt das vorherige Telefon.
+## Connect the phone
 
-Bei offener App versucht Runback den Abgleich etwa jede Minute, außerhalb
-eines laufenden Trainings. Im Hintergrund plant Android ihn mindestens alle
-15 Minuten bei vorhandener Netzwerkverbindung; Energiesparregeln können ihn
-verschieben. Unterwegs ohne Heimnetz signalisiert ein roter Punkt den
-Verbindungsfehler. Die App bleibt voll benutzbar. Nach Wiederverbindung folgt
-der vollständige Abgleich. Bereits übertragene Pakete müssen nicht erneut
-übertragen werden; Website und API behalten bis dahin den letzten vollständig
-bestätigten Stand.
+1. Sign in to the website and create a pairing code under “Data”.
+2. In the app, open “Settings › Own server”.
+3. Enter the address and the eight-digit code, and choose the kinds of data.
+4. Tap “Connect server”.
 
-GPS und Gesundheitswerte sind standardmäßig aus. Abgewählte und lokal gelöschte
-Daten verschwinden beim nächsten vollständigen Abgleich vom Server. Beim
-Trennen bleibt die Serverkopie erhalten; löschen kannst du sie auf der Website
-unter „Daten“. Kopie löschen trennt auch das Telefon.
+On your home network, `nas.local:8080` and `http://192.168.1.20:8080` are
+allowed. Outside your home network, the app requires HTTPS. Addresses with a
+path are not supported. A new pairing code replaces the previously paired phone.
 
-## API und Datenbank
+While the app is open, Runback tries to sync about every minute, outside a
+running workout. In the background, Android schedules a sync at least every 15
+minutes when a network connection is available; power-saving rules can delay
+it. Away from your home network, a red dot signals the connection error. The
+app stays fully usable. After reconnecting, the full sync follows. Packets that
+were already transferred do not need to be sent again; until then, the website
+and API keep the last fully confirmed state.
 
-Erzeuge unter „Daten“ einen Lese-Token. Sende ihn als
-`Authorization: Bearer DEIN_TOKEN`. Die API liegt unter `/api/v1`;
-die Beschreibung unter `/api/v1/openapi.json`.
+GPS and health values are off by default. Deselected and locally deleted data
+disappears from the server at the next full sync. Disconnecting keeps the
+server copy; you can delete it on the website under “Data”. Deleting the copy
+also disconnects the phone.
+
+## API and database
+
+Create a read token under “Data”. Send it as
+`Authorization: Bearer YOUR_TOKEN`. The API lives under `/api/v1`; its
+description is at `/api/v1/openapi.json`.
 
 ```sh
-curl -H 'Authorization: Bearer DEIN_TOKEN' https://runback.deine-domain.de/api/v1/runs
-curl -H 'Authorization: Bearer DEIN_TOKEN' -H 'Content-Type: application/json' \
+curl -H 'Authorization: Bearer YOUR_TOKEN' https://runback.your-domain.example/api/v1/runs
+curl -H 'Authorization: Bearer YOUR_TOKEN' -H 'Content-Type: application/json' \
   -d '{"sql":"SELECT start_utc, distance_m FROM v1_runs ORDER BY start_utc"}' \
-  https://runback.deine-domain.de/api/v1/sql
+  https://runback.your-domain.example/api/v1/sql
 ```
 
-SQL erlaubt ausschließlich lesende Abfragen auf `v1_runs`,
-`v1_strength_sessions`, `v1_strength_sets`, `v1_wellness` und
-`v1_recommendations` und `v1_documents`. Die Dokument-Sicht enthält die
-freigegebenen Inhalte einschließlich Plänen, Vorlagen und Muskelkatermeldungen;
-mit `json_extract` und `json_each` kannst du sie auswerten. Zugangsdaten und interne Tabellen sind gesperrt.
-Abfragen enden nach fünf Sekunden und liefern höchstens 5.000 Zeilen.
-Jede Sicht gibt `row_version` zurück. Neue Modelle ändern keine bereits
-übertragenen Bewertungen oder Empfehlungsregeln.
+SQL allows only read queries on `v1_runs`, `v1_strength_sessions`,
+`v1_strength_sets`, `v1_wellness`, `v1_recommendations` and `v1_documents`. The
+document view contains the shared content, including plans, templates and
+soreness reports; you can evaluate it with `json_extract` and `json_each`.
+Credentials and internal tables are blocked. Queries end after five seconds and
+return at most 5,000 rows. Every view returns `row_version`. New models do not
+change assessments or recommendation rules that were already transferred.
 
-Die Website bietet CSV, JSONL und einen SQLite-Download ohne Zugangsdaten.
-Für eigene Werkzeuge nutze die API oder diese Downloadkopie, statt die laufende
-Datenbank zu öffnen. Das Docker-Volume `runback-data` enthält die persistente
-Datenbank. Ein Volume-Backup enthält auch Zugangsdaten und gehört in deinen
-geschützten Speicher. Entferne das Volume nur, wenn du alle Serverdaten löschen
-willst.
+The website offers CSV, JSONL and a SQLite download without credentials. For
+your own tools, use the API or this download copy instead of opening the live
+database. The Docker volume `runback-data` holds the persistent database. A
+volume backup also contains credentials, so keep it in protected storage.
+Remove the volume only if you want to delete all server data.
 
-## Lokal entwickeln und prüfen
+## Develop and check locally
 
-Node ab 24.21:
+Node 24.21 or later:
 
 ```sh
 npm ci
@@ -91,6 +95,5 @@ RUNBACK_DATA_DIR=./data npm run dev
 npm run build
 ```
 
-Die Website übernimmt die Design-Token der App und nutzt deren versionierte
-Auswertungslogik für Statistiken. Sie zeigt Empfehlungen aus der App und
-erzeugt keine neuen.
+The website uses the app's design tokens and its versioned evaluation logic for
+statistics. It shows recommendations from the app and creates no new ones.

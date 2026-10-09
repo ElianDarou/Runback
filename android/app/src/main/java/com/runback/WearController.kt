@@ -12,6 +12,7 @@ import com.runback.core.WearControlOutbox
 import com.runback.core.RunStore
 import com.runback.core.WearProtocol
 import androidx.wear.remote.interactions.RemoteActivityHelper
+import com.runback.core.Lang
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.Executors
@@ -52,7 +53,7 @@ object WearController {
             scheduleRetry(context)
             return JSONObject()
                 .put("status", "queued")
-                .put("message", "Befehl wartet auf den vorherigen Aufzeichnungsbefehl")
+                .put("message", Lang.tr("Befehl wartet auf den vorherigen Aufzeichnungsbefehl", "Command is waiting for the previous recording command"))
                 .put("action", action).put("runId", runId)
                 .put("commandId", resolvedCommandId).put("sequence", resolvedSequence)
                 .put("updatedAt", System.currentTimeMillis())
@@ -61,14 +62,14 @@ object WearController {
             scheduleRetry(context)
             return JSONObject()
                 .put("status", "error")
-                .put("message", "Wear-OS-Dienst ist nicht verfügbar")
+                .put("message", Lang.tr("Wear-OS-Dienst ist nicht verfügbar", "Wear OS service is not available"))
                 .put("updatedAt", System.currentTimeMillis())
         }
         if (nodes.isEmpty()) {
             scheduleRetry(context)
             return JSONObject()
                 .put("status", "disconnected")
-                .put("message", "Keine Uhr verbunden")
+                .put("message", Lang.tr("Keine Uhr verbunden", "No watch connected"))
                 .put("action", action).put("runId", runId)
                 .put("commandId", resolvedCommandId).put("sequence", resolvedSequence)
                 .put("updatedAt", System.currentTimeMillis())
@@ -97,12 +98,12 @@ object WearController {
                 catch (error: Exception) { lastError = error }
             }
             if (remoteDelivered || messageDelivered) sent++
-            else errors.put("${node.displayName}: ${lastError?.message ?: lastError?.javaClass?.simpleName ?: "unbekannter Fehler"}")
+            else errors.put("${node.displayName}: ${lastError?.message ?: lastError?.javaClass?.simpleName ?: Lang.tr("unbekannter Fehler", "unknown error")}")
         }
         scheduleRetry(context)
         return JSONObject()
             .put("status", if (sent > 0) "sent" else "error")
-            .put("message", if (sent > 0) "Uhr wird ${actionLabel(action)}" else "Uhr konnte nicht erreicht werden")
+            .put("message", if (sent > 0) Lang.tr("Uhr wird ${actionLabel(action)}", "Watch ${actionLabel(action)}") else Lang.tr("Uhr konnte nicht erreicht werden", "Could not reach the watch"))
             .put("action", action)
             .put("runId", runId)
             .put("commandId", resolvedCommandId)
@@ -133,7 +134,7 @@ object WearController {
             .put("updatedAt", System.currentTimeMillis()))
         publisher.execute {
             val result = runCatching { sendCommand(app, action, runId, purpose, sport, routePlanId, target, resolvedCommandId, resolvedSequence) }
-                .getOrElse { JSONObject().put("status", "error").put("message", it.message ?: "Uhr konnte nicht erreicht werden") }
+                .getOrElse { JSONObject().put("status", "error").put("message", it.message ?: Lang.tr("Uhr konnte nicht erreicht werden", "Could not reach the watch")) }
             runCatching { RunStore(app).putDocument("wearLinkStatus", result) }
         }
     }
@@ -234,10 +235,10 @@ object WearController {
         .build()
 
     private fun actionLabel(action: String): String = when (action) {
-        "com.runback.recording.START" -> "gestartet"
-        "com.runback.recording.PAUSE" -> "pausiert"
-        "com.runback.recording.RESUME" -> "fortgesetzt"
-        "com.runback.recording.FINISH" -> "beendet"
-        else -> "aktualisiert"
+        "com.runback.recording.START" -> Lang.tr("gestartet", "started")
+        "com.runback.recording.PAUSE" -> Lang.tr("pausiert", "paused")
+        "com.runback.recording.RESUME" -> Lang.tr("fortgesetzt", "resumed")
+        "com.runback.recording.FINISH" -> Lang.tr("beendet", "finished")
+        else -> Lang.tr("aktualisiert", "updated")
     }
 }

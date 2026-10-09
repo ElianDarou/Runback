@@ -11,7 +11,7 @@ import { MINUTE, strengthSession } from './fixtures/strengthSessions';
 
 const START = Date.UTC(2026, 9, 1, 16);
 
-/** Einfacher CSV-Leser für die Tests: Anführungszeichen, Kommas, Zeilen. */
+/** Simple CSV reader for the tests: quotes, commas, lines. */
 function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
@@ -109,7 +109,7 @@ describe('strength export', () => {
       rir: '',
       gap_since_previous_set_s: '180',
     });
-    // Offen und übersprungen: Plan bleibt, Ist-Werte und Ableitungen fehlen.
+    // Open and skipped: the plan stays, actual values and derivations are missing.
     for (const set of [open, skipped]) {
       expect(set).toMatchObject({
         planned_reps: '8',
@@ -186,7 +186,7 @@ describe('strength export', () => {
   it('exports heart windows with gaps and the per-set heart', () => {
     const values: (number | null)[] = Array.from({ length: 720 }, () => 110);
     values[0] = null;
-    // Satz bei 5 min (Fenster 60): Spitze kurz davor.
+    // Set at 5 min (window 60): peak just before it.
     values[58] = 150;
     const heart: StrengthHeart = {
       model_version: 'strength-heart-v1',
@@ -213,9 +213,9 @@ describe('strength export', () => {
     expect(windows[1]).toMatchObject({ window_start_s: '5', bpm: '110' });
     const sets = table(headers.sets, chunk.sets);
     expect(sets[1].heart_peak_bpm).toBe('150');
-    // Nächster Satz erst 3 min später: Abfall in der ersten Minute zählt.
+    // Next set only 3 min later: the drop in the first minute counts.
     expect(sets[1].heart_recovery_bpm).toBe('40');
-    // Gleichbleibender Puls: Abfall 0, nicht leer.
+    // Constant pulse: drop 0, not empty.
     expect(sets[2].heart_recovery_bpm).toBe('0');
     expect(table(headers.sessions, chunk.sessions)[0]).toMatchObject({
       heart_source: 'watch',
@@ -261,7 +261,7 @@ describe('strength export', () => {
     expect(readme).toContain('Ziel Krafttraining: 100 kg Bankdrücken');
     expect(readme).toContain('Fokus Krafttraining: Stärker werden');
     expect(readme).toContain('Importe (z. B. Strong) fehlen');
-    // Zähler unbekannt: Der Ordner wird erwähnt, ohne eine Zahl zu erfinden.
+    // Counter unknown: the folder is mentioned without inventing a number.
     expect(readme).toContain(
       '`bewegungsdaten/`: Bewegungsdaten der Uhr, falls aufgezeichnet',
     );

@@ -5,21 +5,24 @@ import type {
   Recommendation,
   StrengthRecommendation,
 } from './types';
+import { tr } from './i18n';
 
 /**
- * Laufen und Krafttraining sind getrennte Bereiche: eigenes Ziel, eigener
- * Fokus, je höchstens eine aktive Empfehlung. Hier steht, wie Empfehlungen
- * ihrem Bereich zugeordnet werden und wann eine zweite Empfehlung die Prüfung
- * der ersten verfälschen könnte (Kopplungssperre).
+ * Running and strength training are separate areas: own goal, own focus, and
+ * at most one active recommendation each. This file defines how recommendations
+ * map to their area and when a second recommendation could distort the test of
+ * the first (coupling lock).
  */
 export const COUPLING_GATE_VERSION = 'coupling-v2';
 export const AREAS: readonly Area[] = ['running', 'strength'];
-export const AREA_LABELS: Record<Area, string> = {
-  running: 'Laufen',
-  strength: 'Krafttraining',
-};
+/** Visible name of an area in the active language. */
+export function areaLabel(area: Area): string {
+  return area === 'strength'
+    ? tr('Krafttraining', 'Strength training')
+    : tr('Laufen', 'Running');
+}
 
-/** Regionen, deren Belastung Laufergebnisse spürbar beeinflussen kann. */
+/** Regions whose load can noticeably affect running results. */
 const RUNNING_REGIONS = new Set([
   'hip_flexor',
   'glute',
@@ -42,7 +45,7 @@ export function isStrengthRecommendation(
   return recommendation.kind === 'strength_load';
 }
 
-/** Ältere Empfehlungen ohne Feld sind Laufempfehlungen. */
+/** Older recommendations without the field are running recommendations. */
 export function recommendationArea(recommendation: AnyRecommendation): Area {
   return isStrengthRecommendation(recommendation) ? 'strength' : 'running';
 }
@@ -69,12 +72,12 @@ export function activeExperimentFor(
 }
 
 /**
- * Welche fremden Bereiche eine Empfehlung beeinflussen kann. Ein ruhigerer
- * Start ändert keine Last; eine Lastempfehlung für die Beine wirkt auf Läufe.
+ * Which other areas a recommendation can influence. A calmer start changes no
+ * load; a load recommendation for the legs affects runs.
  */
 export function influencedAreas(recommendation: AnyRecommendation): Area[] {
   if (isStrengthRecommendation(recommendation)) {
-    // Ohne bekannte Regionen lässt sich eine Kopplung mit Laufen nicht ausschließen.
+    // Without known regions, a coupling with running cannot be ruled out.
     return !recommendation.regions.length || recommendation.regions.some(region => RUNNING_REGIONS.has(region))
       ? ['running']
       : [];
@@ -83,9 +86,9 @@ export function influencedAreas(recommendation: AnyRecommendation): Area[] {
 }
 
 /**
- * Kopplungssperre: Eine zweite Empfehlung darf nicht parallel laufen, wenn sie
- * die Zielgröße der ersten beeinflussen kann oder die erste ihre eigene.
- * Dann bleibt sie „Danach vorgesehen“.
+ * Coupling lock: a second recommendation must not run in parallel if it can
+ * influence the first one's target, or the first one can influence its own.
+ * It then stays "Up next".
  */
 export function couplingGate(
   candidate: AnyRecommendation,
@@ -99,13 +102,19 @@ export function couplingGate(
     if (influencedAreas(candidate).includes(otherArea)) {
       return {
         modelVersion: COUPLING_GATE_VERSION,
-        blocked: `Könnte die laufende Prüfung im Bereich ${AREA_LABELS[otherArea]} verfälschen. Erst danach.`,
+        blocked: tr(
+          `Könnte die laufende Prüfung im Bereich ${areaLabel(otherArea)} verfälschen. Erst danach.`,
+          `Could distort the running test in the ${areaLabel(otherArea)} area. Only after that.`,
+        ),
       };
     }
     if (influencedAreas(other.recommendation).includes(area)) {
       return {
         modelVersion: COUPLING_GATE_VERSION,
-        blocked: `Deine laufende Empfehlung im Bereich ${AREA_LABELS[otherArea]} kann dieses Ergebnis beeinflussen. Erst danach.`,
+        blocked: tr(
+          `Deine laufende Empfehlung im Bereich ${areaLabel(otherArea)} kann dieses Ergebnis beeinflussen. Erst danach.`,
+          `Your running recommendation in the ${areaLabel(otherArea)} area can affect this result. Only after that.`,
+        ),
       };
     }
   }

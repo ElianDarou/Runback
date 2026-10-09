@@ -8,47 +8,57 @@ import type {
   TemplateExercise,
   WorkoutTemplate,
 } from './strength';
+import { tr } from './i18n';
+import { displaySessionName } from './strength';
 
 /**
- * Trainingspläne.
+ * Training plans.
  *
- * Ein Plan ist ein Nutzerartefakt. Er schlägt vor, er verpflichtet nicht.
- * Alle Funktionen hier sind rein und geben eine neue Vorlage zurück; ob und
- * wann gespeichert wird, entscheiden die Aufrufer. Die Zeit kommt immer als
- * Parameter herein, damit dieselbe Eingabe dasselbe Ergebnis liefert.
+ * A plan is a user artifact. It suggests, it does not commit.
+ * All functions here are pure and return a new template; the callers decide
+ * whether and when to save. Time always comes in as a parameter, so the same
+ * input gives the same result.
  *
- * Zwei Regeln durchziehen die Datei:
- * - Die App ändert keinen Plan von sich aus. Ein Vorschlag ist Daten; erst ein
- *   ausdrückliches `applyProposal` des Nutzers macht ihn wirksam (T-6).
- * - Eine Abweichung zwischen Plan und Durchführung wird festgehalten, aber
- *   nicht bewertet. Es gibt hier kein Gut, kein Schlecht und kein Versäumnis
- *   (T-5, Grundregel 13: Umsetzung ist nicht Ergebnis).
+ * Two rules run through this file:
+ * - The app never changes a plan on its own. A suggestion is data; only an
+ *   explicit `applyProposal` from the user makes it take effect (T-6).
+ * - A difference between plan and execution is recorded but not judged. There
+ *   is no good, no bad and no failure here (T-5, ground rule 13: execution is
+ *   not a result).
  */
 
 export const PLAN_MODEL_VERSION = 'plans-v1';
 
-/** Abstand, den ein erneuter Strukturvorschlag zum letzten einhält (T-6). */
+/** Gap a new structure suggestion keeps from the last one (T-6). */
 export const STRUCTURE_PROPOSAL_INTERVAL_DAYS = 28;
 
-/** So lange kehrt ein abgelehnter Vorschlag unverändert nicht wieder (T-6). */
+/** For this long, a declined suggestion does not come back unchanged (T-6). */
 export const DECLINED_PROPOSAL_SILENCE_DAYS = 60;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** Wochentage 0 (Sonntag) bis 6, wie `Date.getDay`. */
-export const WEEKDAY_LABELS = [
-  'Sonntag',
-  'Montag',
-  'Dienstag',
-  'Mittwoch',
-  'Donnerstag',
-  'Freitag',
-  'Samstag',
+/** Weekday names, 0 (Sunday) to 6, as `Date.getDay`. Functions, so they follow the language. */
+export const weekdayLabels = (): string[] => [
+  tr('Sonntag', 'Sunday'),
+  tr('Montag', 'Monday'),
+  tr('Dienstag', 'Tuesday'),
+  tr('Mittwoch', 'Wednesday'),
+  tr('Donnerstag', 'Thursday'),
+  tr('Freitag', 'Friday'),
+  tr('Samstag', 'Saturday'),
 ];
 
-export const WEEKDAY_SHORT = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+export const weekdayShort = (): string[] => [
+  tr('So', 'Sun'),
+  tr('Mo', 'Mon'),
+  tr('Di', 'Tue'),
+  tr('Mi', 'Wed'),
+  tr('Do', 'Thu'),
+  tr('Fr', 'Fri'),
+  tr('Sa', 'Sat'),
+];
 
-/** Reihenfolge für die Anzeige: die Woche beginnt montags. */
+/** Display order: the week starts on Monday. */
 export const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 
 const DEFAULT_SET: PlannedSet = {
@@ -79,7 +89,7 @@ const replaceExercise = (
 const withinBounds = (index: number, length: number) =>
   Number.isInteger(index) && index >= 0 && index < length;
 
-// ── Anlegen, Bearbeiten, Vervielfältigen ───────────────────────────────────
+// ── Create, edit, duplicate ───────────────────────────────────
 
 const uniqueId = (existing: WorkoutTemplate[], base: string): string => {
   const taken = new Set(existing.map(template => template.id));
@@ -93,7 +103,7 @@ const uniqueId = (existing: WorkoutTemplate[], base: string): string => {
   return `${base}-${counter}`;
 };
 
-/** Leere Vorlage. Ohne Übungen; die Prüfung nennt das als offenen Punkt. */
+/** Empty template. Without exercises; the check lists that as an open point. */
 export function createTemplate(
   now: number,
   name = '',
@@ -115,7 +125,7 @@ export function renameTemplate(
   return { ...template, name };
 }
 
-/** Setzt die Wochentage. Eine leere Liste heißt ausdrücklich: kein fester Tag. */
+/** Sets the weekdays. An empty list explicitly means: no fixed day. */
 export function setTemplateDays(
   template: WorkoutTemplate,
   days: number[],
@@ -138,7 +148,7 @@ export function toggleTemplateDay(
   );
 }
 
-/** Nimmt jede Tagesbindung zurück. Ohne festen Tag ist ein Plan vollwertig. */
+/** Removes every day binding. Without a fixed day, a plan is still complete. */
 export function clearTemplateDays(template: WorkoutTemplate): WorkoutTemplate {
   return template.days.length ? { ...template, days: [] } : template;
 }
@@ -149,13 +159,13 @@ export function hasFixedDay(template: WorkoutTemplate): boolean {
 
 export function daysLabel(template: WorkoutTemplate): string {
   return template.days.length
-    ? template.days.map(day => WEEKDAY_SHORT[day]).join(', ')
-    : 'Kein fester Tag';
+    ? template.days.map(day => weekdayShort()[day]).join(', ')
+    : tr('Kein fester Tag', 'No fixed day');
 }
 
 /**
- * Fügt eine Katalogübung an. Die Vorbelegung ist eine Ausgangsannahme und
- * kein Zielwert; der Nutzer setzt die Sätze anschließend selbst.
+ * Adds a catalog exercise. The preset values are a starting assumption, not a
+ * target; the user sets the sets afterwards.
  */
 export function addTemplateExercise(
   template: WorkoutTemplate,
@@ -194,7 +204,7 @@ export function removeTemplateExercise(
   };
 }
 
-/** Verschiebt eine Übung an eine andere Stelle. Außerhalb wird abgeschnitten. */
+/** Moves an exercise to another position. Out-of-range positions are clamped. */
 export function moveTemplateExercise(
   template: WorkoutTemplate,
   from: number,
@@ -214,7 +224,7 @@ export function moveTemplateExercise(
   return { ...template, exercises };
 }
 
-/** Hängt einen Satz an, vorbelegt aus dem letzten Satz derselben Übung. */
+/** Appends a set, pre-filled from the last set of the same exercise. */
 export function addPlannedSet(
   template: WorkoutTemplate,
   exerciseIndex: number,
@@ -234,7 +244,7 @@ export function addPlannedSet(
   });
 }
 
-/** Entfernt einen Satz. Der letzte verbleibende Satz bleibt stehen. */
+/** Removes a set. The last remaining set stays. */
 export function removePlannedSet(
   template: WorkoutTemplate,
   exerciseIndex: number,
@@ -263,8 +273,8 @@ export interface PlannedSetValues {
 }
 
 /**
- * Ändert einen geplanten Satz. `undefined` in `values` löscht den Wert, damit
- * eine geleerte Eingabe auch wirklich „nicht vorgegeben“ bedeutet.
+ * Changes a planned set. `undefined` in `values` clears the value, so an
+ * emptied input really means "not preset".
  */
 export function updatePlannedSet(
   template: WorkoutTemplate,
@@ -301,7 +311,7 @@ export function updatePlannedSet(
   });
 }
 
-/** Legt eine Kopie an. Sie ist eigenständig und teilt keine Tage zu. */
+/** Creates a copy. It stands on its own and gets no days assigned. */
 export function duplicateTemplate(
   templates: WorkoutTemplate[],
   id: string,
@@ -314,7 +324,8 @@ export function duplicateTemplate(
   const copy: WorkoutTemplate = {
     ...source,
     id: uniqueId(templates, `template-${now.toString(36)}`),
-    name: `${source.name} (Kopie)`,
+    // A new name the user owns; created in the language of the moment.
+    name: tr(`${source.name} (Kopie)`, `${source.name} (copy)`),
     days: [],
     createdAt: now,
     exercises: source.exercises.map(exercise => ({
@@ -337,7 +348,7 @@ export function deleteTemplate(
   return templates.filter(template => template.id !== id);
 }
 
-/** Legt an oder ersetzt, je nachdem ob die Kennung schon vorkommt. */
+/** Adds or replaces, depending on whether the ID already exists. */
 export function upsertTemplate(
   templates: WorkoutTemplate[],
   template: WorkoutTemplate,
@@ -347,7 +358,7 @@ export function upsertTemplate(
     : [...templates, template];
 }
 
-/** Alle Vorlagen eines Wochentags. Keine ist auch ein zulässiges Ergebnis. */
+/** All templates for one weekday. None is also a valid result. */
 export function templatesForDay(
   templates: WorkoutTemplate[],
   day: number,
@@ -355,20 +366,19 @@ export function templatesForDay(
   return templates.filter(template => template.days.includes(day));
 }
 
-// ── Vorlage aus einer gelaufenen Einheit ───────────────────────────────────
+// ── Template from a logged session ───────────────────────────────────
 
 /**
- * Macht aus einer erfassten Einheit eine Vorlage: „so wie eben“ als Plan.
+ * Turns a logged session into a template: "just like that" as a plan.
  *
- * Übernommen wird, was tatsächlich stattgefunden hat — bestätigte Sätze mit
- * ihren tatsächlichen Werten. Übersprungene und offene Sätze wandern nicht in
- * den Plan; sie sind Teil der Einheit, nicht der Absicht. Die Einheit selbst
- * bleibt unverändert (Grundregel 1).
+ * What actually happened is carried over — confirmed sets with their actual
+ * values. Skipped and open sets don't go into the plan; they are part of the
+ * session, not the intent. The session itself stays unchanged (ground rule 1).
  */
 export function templateFromSession(
   session: StrengthSession,
   now: number,
-  name = session.name,
+  name = displaySessionName(session.name),
   existing: WorkoutTemplate[] = [],
 ): WorkoutTemplate {
   const exercises: TemplateExercise[] = [];
@@ -411,11 +421,11 @@ const plannedFromLogged = (set: LoggedSet): PlannedSet => {
   return next;
 };
 
-// ── Prüfung ────────────────────────────────────────────────────────────────
+// ── Check ────────────────────────────────────────────────────────────────
 
 export type TemplateProblemField = 'name' | 'exercises' | 'sets';
 
-/** Ein offener Punkt an der Vorlage. Daten, keine Ausnahme, kein Vorwurf. */
+/** An open point on the template. Data, not an exception, not a reproach. */
 export interface TemplateProblem {
   field: TemplateProblemField;
   message: string;
@@ -428,20 +438,26 @@ export interface TemplateValidation {
 }
 
 /**
- * Prüft eine Vorlage. Nutzereingaben werfen nie; ein offener Punkt ist ein
- * Eintrag in `problems`, den die Oberfläche neben dem Feld anzeigen kann.
+ * Checks a template. User input never throws; an open point is an entry in
+ * `problems` that the UI can show next to the field.
  */
 export function validateTemplate(
   template: WorkoutTemplate,
 ): TemplateValidation {
   const problems: TemplateProblem[] = [];
   if (!template.name.trim()) {
-    problems.push({ field: 'name', message: 'Der Plan braucht einen Namen.' });
+    problems.push({
+      field: 'name',
+      message: tr('Der Plan braucht einen Namen.', 'The plan needs a name.'),
+    });
   }
   if (!template.exercises.length) {
     problems.push({
       field: 'exercises',
-      message: 'Füge mindestens eine Übung hinzu.',
+      message: tr(
+        'Füge mindestens eine Übung hinzu.',
+        'Add at least one exercise.',
+      ),
     });
   }
   template.exercises.forEach((exercise, exerciseIndex) => {
@@ -449,18 +465,21 @@ export function validateTemplate(
       problems.push({
         field: 'sets',
         exerciseIndex,
-        message: `${exercise.name} hat noch keinen Satz.`,
+        message: tr(
+          `${exercise.name} hat noch keinen Satz.`,
+          `${exercise.name} has no set yet.`,
+        ),
       });
     }
   });
   return { ok: problems.length === 0, problems };
 }
 
-// ── Plan und Durchführung nebeneinander ────────────────────────────────────
+// ── Plan and execution side by side ────────────────────────────────────
 
 /**
- * Wie ein Satz zur Vorgabe steht. Ausdrücklich kein Urteil:
- * `deviated` heißt „anders als vorgesehen“, nicht „falsch“.
+ * How a set relates to the plan. Explicitly not a verdict:
+ * `deviated` means "different from planned", not "wrong".
  */
 export type SetAdherence =
   | 'matched'
@@ -477,7 +496,7 @@ export interface SetComparison {
   actualReps?: number;
   actualSeconds?: number;
   actualWeightKg?: number;
-  /** Tatsächlich minus vorgesehen. Vorzeichen, keine Wertung. */
+  /** Actual minus planned. A sign, not a judgment. */
   repsDelta?: number;
   secondsDelta?: number;
   weightDelta?: number;
@@ -486,12 +505,12 @@ export interface SetComparison {
 export interface ExerciseComparison {
   exerciseId: string;
   name: string;
-  /** Stand so im Plan. Sonst frei ergänzt. */
+  /** Taken from the plan as it was. Otherwise added freely. */
   planned: boolean;
   sets: SetComparison[];
 }
 
-/** Im Plan vorgesehen, in der Einheit nicht aufgetaucht. Kein Fehlzustand. */
+/** Planned, but not in the session. Not an error state. */
 export interface UntrainedExercise {
   exerciseId: string;
   name: string;
@@ -501,7 +520,7 @@ export interface UntrainedExercise {
 export interface PlanComparison {
   templateId?: string;
   templateName?: string;
-  /** Ohne Vorlage gibt es nichts zu vergleichen; das ist zulässig (T-5). */
+  /** Without a template there is nothing to compare; that is allowed (T-5). */
   hasPlan: boolean;
   exercises: ExerciseComparison[];
   untrained: UntrainedExercise[];
@@ -510,7 +529,7 @@ export interface PlanComparison {
   added: number;
   skipped: number;
   open: number;
-  /** Neutrale Zusammenfassung in einem Satz. */
+  /** Neutral one-sentence summary. */
   summary: string;
   modelVersion: string;
 }
@@ -563,11 +582,11 @@ const compareSet = (
 };
 
 /**
- * Stellt eine erfasste Einheit neben ihre Vorlage.
+ * Puts a logged session next to its template.
  *
- * Das Ergebnis ist eine Angabe zur Umsetzung nach T-5 und Grundregel 13. Es
- * enthält bewusst keine Bewertung, keine Quote und keinen Zielwert. Fehlt die
- * Vorlage, ist `hasPlan` falsch und alles Erfasste zählt als frei trainiert.
+ * The result is a statement about execution under T-5 and ground rule 13. It
+ * deliberately contains no judgment, no rate and no target. If the template
+ * is missing, `hasPlan` is false and everything logged counts as free training.
  */
 export function comparePlan(
   session: StrengthSession,
@@ -654,12 +673,12 @@ export function comparePlan(
   };
 }
 
-const setWord = (count: number) => (count === 1 ? 'Satz' : 'Sätze');
+const setWord = (count: number) =>
+  tr(count === 1 ? 'Satz' : 'Sätze', count === 1 ? 'set' : 'sets');
 
 /**
- * Ein Satz in neutraler Sprache. Zählt auf, was war, und lässt es dabei.
- * Wörter wie „gut“, „schlecht“, „verfehlt“ oder „geschafft“ kommen hier
- * bewusst nicht vor.
+ * One sentence in neutral language. Lists what happened and leaves it there.
+ * Words like "good", "bad", "missed" or "nailed" deliberately don't appear here.
  */
 function comparisonSummary(counts: {
   hasPlan: boolean;
@@ -673,38 +692,64 @@ function comparisonSummary(counts: {
   if (!counts.hasPlan) {
     const total = counts.matched + counts.deviated + counts.added;
     return total
-      ? `Freies Training, ${total} ${setWord(total)} erfasst.`
-      : 'Freies Training ohne erfasste Sätze.';
+      ? tr(
+          `Freies Training, ${total} ${setWord(total)} erfasst.`,
+          `Free training, ${total} ${setWord(total)} logged.`,
+        )
+      : tr(
+          'Freies Training ohne erfasste Sätze.',
+          'Free training with no logged sets.',
+        );
   }
   const parts: string[] = [];
   if (counts.matched) {
-    parts.push(`${counts.matched} ${setWord(counts.matched)} wie vorgesehen`);
+    parts.push(
+      tr(
+        `${counts.matched} ${setWord(counts.matched)} wie vorgesehen`,
+        `${counts.matched} ${setWord(counts.matched)} as planned`,
+      ),
+    );
   }
   if (counts.deviated) {
-    parts.push(`${counts.deviated} mit anderen Werten`);
+    parts.push(
+      tr(
+        `${counts.deviated} mit anderen Werten`,
+        `${counts.deviated} with different values`,
+      ),
+    );
   }
   if (counts.added) {
-    parts.push(`${counts.added} zusätzlich`);
+    parts.push(tr(`${counts.added} zusätzlich`, `${counts.added} extra`));
   }
   if (counts.skipped) {
-    parts.push(`${counts.skipped} übersprungen`);
+    parts.push(
+      tr(`${counts.skipped} übersprungen`, `${counts.skipped} skipped`),
+    );
   }
   if (counts.open) {
-    parts.push(`${counts.open} offen`);
+    parts.push(tr(`${counts.open} offen`, `${counts.open} open`));
   }
   if (counts.untrained) {
+    const exercises =
+      counts.untrained === 1
+        ? tr('Übung', 'exercise')
+        : tr('Übungen', 'exercises');
     parts.push(
-      `${counts.untrained} ${
-        counts.untrained === 1 ? 'Übung' : 'Übungen'
-      } nicht trainiert`,
+      tr(
+        `${counts.untrained} ${exercises} nicht trainiert`,
+        `${counts.untrained} ${exercises} not trained`,
+      ),
     );
   }
   return parts.length
     ? `${parts.join(', ')}.`
-    : 'Zu dieser Einheit wurde nichts erfasst.';
+    : tr(
+        'Zu dieser Einheit wurde nichts erfasst.',
+        'Nothing was logged for this session.',
+      );
 }
 
-// ── Vorschläge: vorschlagen, nie umschreiben ───────────────────────────────
+// ── Suggestions: suggest, never rewrite ───────────────────────────────
 
 export type PlanChange =
   | {
@@ -718,9 +763,9 @@ export type PlanChange =
   | { kind: 'days'; days: number[] };
 
 /**
- * `structure` betrifft Tage, Übungen und Umfang und bleibt selten.
- * `load` betrifft Last, Sätze und Wiederholungen und darf häufiger kommen,
- * weil diese Werte ohnehin je Einheit neu gesetzt werden (T-6).
+ * `structure` covers days, exercises and volume and stays rare.
+ * `load` covers load, sets and reps and may come more often, because these
+ * values are set anew for each session anyway (T-6).
  */
 export type ProposalScope = 'structure' | 'load';
 
@@ -728,13 +773,13 @@ export interface PlanProposal {
   id: string;
   templateId: string;
   scope: ProposalScope;
-  /** Anlass: woraus der Vorschlag entstanden ist. */
+  /** Trigger: what the suggestion came from. */
   reason: string;
-  /** Betroffene Stellen im Plan, in Worten. */
+  /** Affected parts of the plan, in words. */
   slots: string;
-  /** Erwartete Wirkung. */
+  /** Expected effect. */
   expectation: string;
-  /** Vorab festgelegtes Prüfkriterium, Grundregel 3. */
+  /** Check criterion set in advance, ground rule 3. */
   check: string;
   changes: PlanChange[];
   createdAt: number;
@@ -747,12 +792,12 @@ export interface ProposalRecord {
   templateId: string;
   scope: ProposalScope;
   decision: ProposalDecision;
-  /** Erkennungswert der Änderungen, um Wiederholungen zu bemerken. */
+  /** Fingerprint of the changes, to notice repeats. */
   fingerprint: string;
   decidedAt: number;
 }
 
-/** Stabiler Erkennungswert eines Änderungssatzes, unabhängig von Zeit und Id. */
+/** Stable fingerprint of a set of changes, independent of time and ID. */
 export function proposalFingerprint(proposal: PlanProposal): string {
   return `${proposal.templateId}|${proposal.scope}|${proposal.changes
     .map(change => JSON.stringify(change))
@@ -761,17 +806,17 @@ export function proposalFingerprint(proposal: PlanProposal): string {
 
 export interface ProposalGate {
   allowed: boolean;
-  /** Immer gefüllt, damit die Unterdrückung nachvollziehbar bleibt. */
+  /** Always filled, so the suppression stays traceable. */
   reason: string;
 }
 
 /**
- * Darf dieser Vorschlag jetzt erscheinen?
+ * May this suggestion appear now?
  *
- * Strukturvorschläge halten Abstand, damit ein Plan nicht unter ständiger
- * Bearbeitung steht. Ein abgelehnter Vorschlag kehrt unverändert eine Weile
- * nicht wieder. Beides sind Anzeigeregeln — der Plan bleibt in jedem Fall
- * unverändert, solange der Nutzer nicht zustimmt.
+ * Structure suggestions keep their distance, so a plan isn't under constant
+ * revision. A declined suggestion doesn't come back unchanged for a while.
+ * Both are display rules — the plan stays unchanged in any case until the
+ * user agrees.
  */
 export function proposalIsAllowed(
   proposal: PlanProposal,
@@ -788,11 +833,20 @@ export function proposalIsAllowed(
   if (declined) {
     return {
       allowed: false,
-      reason: 'Diesen Vorschlag hast du bereits abgelehnt.',
+      reason: tr(
+        'Diesen Vorschlag hast du bereits abgelehnt.',
+        'You have already declined this suggestion.',
+      ),
     };
   }
   if (proposal.scope === 'load') {
-    return { allowed: true, reason: 'Vorschlag zu Last und Wiederholungen.' };
+    return {
+      allowed: true,
+      reason: tr(
+        'Vorschlag zu Last und Wiederholungen.',
+        'Suggestion about load and reps.',
+      ),
+    };
   }
   const lastStructure = records
     .filter(
@@ -807,28 +861,36 @@ export function proposalIsAllowed(
   if (lastStructure === Number.NEGATIVE_INFINITY) {
     return {
       allowed: true,
-      reason: 'Erster Strukturvorschlag für diesen Plan.',
+      reason: tr(
+        'Erster Strukturvorschlag für diesen Plan.',
+        'First structure suggestion for this plan.',
+      ),
     };
   }
   const days = Math.floor((now - lastStructure) / DAY_MS);
   return days >= STRUCTURE_PROPOSAL_INTERVAL_DAYS
     ? {
         allowed: true,
-        reason: `Letzte Strukturfrage vor ${days} Tagen.`,
+        reason: tr(
+          `Letzte Strukturfrage vor ${days} Tagen.`,
+          `Last structure question ${days} days ago.`,
+        ),
       }
     : {
         allowed: false,
-        reason: `Struktur wurde vor ${days} Tagen zuletzt besprochen; frühestens nach ${STRUCTURE_PROPOSAL_INTERVAL_DAYS} Tagen wieder.`,
+        reason: tr(
+          `Struktur wurde vor ${days} Tagen zuletzt besprochen; frühestens nach ${STRUCTURE_PROPOSAL_INTERVAL_DAYS} Tagen wieder.`,
+          `Structure was last discussed ${days} days ago; it can come back after ${STRUCTURE_PROPOSAL_INTERVAL_DAYS} days at the earliest.`,
+        ),
       };
 }
 
 /**
- * Wendet einen bestätigten Vorschlag an.
+ * Applies a confirmed suggestion.
  *
- * Diese Funktion ist der einzige Weg, auf dem ein Vorschlag den Plan erreicht,
- * und sie wird ausschließlich nach ausdrücklicher Bestätigung aufgerufen
- * (T-6). Passt eine Änderung nicht mehr auf den Plan, bleibt sie wirkungslos,
- * statt etwas anderes zu treffen.
+ * This function is the only way a suggestion reaches the plan, and it is only
+ * called after explicit confirmation (T-6). If a change no longer fits the
+ * plan, it has no effect instead of hitting something else.
  */
 export function applyProposal(
   template: WorkoutTemplate,
@@ -863,7 +925,7 @@ export function applyProposal(
   }, template);
 }
 
-/** Hält eine Entscheidung fest. „Unverändert lassen“ ist ein gültiges Ergebnis. */
+/** Records a decision. "Leave unchanged" is a valid result. */
 export function recordDecision(
   proposal: PlanProposal,
   decision: ProposalDecision,

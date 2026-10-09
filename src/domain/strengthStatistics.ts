@@ -2,7 +2,12 @@ import { exerciseTrend, type ExerciseTrend } from './exerciseHistory';
 import { finite, medianOrNull } from './inference';
 import { muscleDistribution, type MuscleDistribution } from './muscleGroups';
 import { assessExerciseProgression } from './progression';
-import { isSetCompleted, sessionProgress, type StrengthSession } from './strength';
+import {
+  displaySessionName,
+  isSetCompleted,
+  sessionProgress,
+  type StrengthSession,
+} from './strength';
 import type { StrengthHeartSummary } from './strengthHeart';
 import {
   exerciseBreakdown,
@@ -11,6 +16,7 @@ import {
   type BestSet,
 } from './strengthSession';
 import { average } from './statistics';
+import { numberFormat, tr } from './i18n';
 import {
   advance,
   bucketLabels,
@@ -29,14 +35,14 @@ import {
 } from './statisticsView';
 
 /**
- * Statistik für den Bereich Krafttraining — dieselben Fragen wie bei Läufen
- * („Wie viel? Wie regelmäßig? Was waren die Bestwerte? Wie fühlte es sich
- * an?“), beantwortet mit Größen, die zum Krafttraining passen: Einheiten,
- * Sätze, Volumen, Sätze je Muskelgruppe, Verlauf je Übung und der Puls von
- * der Uhr. Laufen und Krafttraining werden nie verrechnet.
+ * Statistics for the strength training area — the same questions as for runs
+ * ("How much? How regularly? What were the personal bests? How did it feel?"),
+ * answered with measures that fit strength training: sessions, sets, volume,
+ * sets per muscle group, progress per exercise, and heart rate from the watch.
+ * Running and strength training are never combined.
  *
- * Gezählt werden nur abgeschlossene Einheiten und abgehakte Sätze. Reine
- * Funktionen; die einzige Zeitquelle ist `now`.
+ * Only finished sessions and ticked-off sets are counted. Pure functions; the
+ * only time source is `now`.
  */
 export const STRENGTH_STATS_VERSION = 'strength-stats-v2';
 
@@ -49,16 +55,16 @@ export type StrengthStatsMetric =
 
 export interface StrengthBucket {
   startTime: number;
-  /** Exklusiv. */
+  /** Exclusive. */
   endTime: number;
   label: string;
   fullLabel: string;
   sessionCount: number;
-  /** Abgehakte Sätze, wie in der Einheit gezählt (mit Aufwärmen). */
+  /** Ticked-off sets, counted as in the session (including warm-up). */
   sets: number;
   volumeKg: number | null;
   durationSeconds: number | null;
-  /** Mittel der Einheiten mit Puls; ohne Puls `null`. */
+  /** Average of the sessions with heart rate; without heart rate `null`. */
   averageBpm: number | null;
 }
 
@@ -67,7 +73,7 @@ export interface StrengthTotals {
   sets: number;
   workingSets: number;
   volumeKg: number;
-  /** Summe der Einheiten mit bekannter Dauer. */
+  /** Sum of the sessions with a known duration. */
   durationSeconds: number;
   averageDurationSeconds: number | null;
   setsPerSession: number | null;
@@ -88,9 +94,9 @@ export interface StrengthExerciseStat {
   workingSets: number;
   volumeKg: number;
   lastAt: number;
-  /** Bester Satz im Zeitraum. */
+  /** Best set in the period. */
   best?: BestSet;
-  /** Richtung aus allen Einheiten bis jetzt, nicht nur aus dem Zeitraum. */
+  /** Direction from all sessions so far, not just from the period. */
   trend: ExerciseTrend;
 }
 
@@ -99,7 +105,7 @@ export interface StrengthRecord {
   label: string;
   value: string;
   detail: string;
-  /** Genau die Einheiten, die den Bestwert tragen. */
+  /** Exactly the sessions that carry the personal best. */
   sessionIds: string[];
 }
 
@@ -267,7 +273,7 @@ function totalsFor(
     setsPerSession: sessions.length ? sets / sessions.length : null,
     sessionsPerWeek: weeks > 0 ? sessions.length / weeks : null,
     activeDays: distinctDays(sessions),
-    // RIR ist eine Zählung mit grober Selbsteinschätzung: Median statt Mittel.
+    // RIR is a count with a rough self-assessment: median instead of mean.
     medianRir: medianOrNull(rir),
     rirSets: rir.length,
     averageBpm: average(withHeart.map(entry => entry.averageBpm)),
@@ -279,8 +285,6 @@ function totalsFor(
   };
 }
 
-const kilograms = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 });
-
 function durationText(seconds: number) {
   const whole = Math.max(0, Math.round(seconds));
   const hours = Math.floor(whole / 3600);
@@ -288,10 +292,11 @@ function durationText(seconds: number) {
   return hours ? `${hours} h ${minutes} min` : `${minutes} min`;
 }
 
-const setsText = (count: number) => `${count} ${count === 1 ? 'Satz' : 'Sätze'}`;
+const setsText = (count: number) =>
+  `${count} ${count === 1 ? tr('Satz', 'set') : tr('Sätze', 'sets')}`;
 
 function sessionDetail(session: StrengthSession) {
-  return `${session.name || 'Krafttraining'} · ${dayLongFormat.format(
+  return `${displaySessionName(session.name) || tr('Krafttraining', 'Strength training')} · ${dayLongFormat.format(
     new Date(session.startTime),
   )}`;
 }
@@ -319,8 +324,8 @@ function buildRecords(
   if (volume) {
     records.push({
       id: 'biggest-volume',
-      label: 'Größtes Volumen',
-      value: `${kilograms.format(volume.value)} kg`,
+      label: tr('Größtes Volumen', 'Largest volume'),
+      value: `${numberFormat({ maximumFractionDigits: 0 }).format(volume.value)} kg`,
       detail: sessionDetail(volume.session),
       sessionIds: [volume.session.id],
     });
@@ -329,7 +334,7 @@ function buildRecords(
   if (sets) {
     records.push({
       id: 'most-sets',
-      label: 'Meiste Sätze',
+      label: tr('Meiste Sätze', 'Most sets'),
       value: setsText(sets.value),
       detail: sessionDetail(sets.session),
       sessionIds: [sets.session.id],
@@ -339,7 +344,7 @@ function buildRecords(
   if (longest) {
     records.push({
       id: 'longest',
-      label: 'Längste Einheit',
+      label: tr('Längste Einheit', 'Longest session'),
       value: durationText(longest.value),
       detail: sessionDetail(longest.session),
       sessionIds: [longest.session.id],
@@ -352,7 +357,7 @@ function buildRecords(
   if (week && week.sets > 0) {
     records.push({
       id: 'best-week',
-      label: 'Stärkste Woche',
+      label: tr('Stärkste Woche', 'Strongest week'),
       value: setsText(week.sets),
       detail: week.fullLabel,
       sessionIds: sessions
@@ -395,7 +400,7 @@ function buildExercises(
       entry.volumeKg += part.volumeKg;
       if (session.startTime >= entry.lastAt) {
         entry.lastAt = session.startTime;
-        // Der neueste Name gilt, falls die Übung umbenannt wurde.
+        // The newest name applies if the exercise was renamed.
         entry.name = part.name;
       }
       const best = part.bestSet;
@@ -424,7 +429,7 @@ function buildExercises(
     }));
 }
 
-/** Ganze Sicht für einen Zeitraum, in sich konsistent gerechnet. */
+/** Whole view for one period, computed consistently. */
 export function buildStrengthStatisticsView(
   input: StrengthSession[],
   range: StatsRange = '12w',

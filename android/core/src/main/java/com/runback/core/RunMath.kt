@@ -5,25 +5,26 @@ import kotlin.math.*
 /**
  * Conservative distance derivation; original coordinates are always retained.
  *
- * 2.1: Schritte unter dem GPS-Rauschboden zählen nicht (Zickzack im Stand
- * addierte sonst echte Meter), Auf- und Abstieg werden getrennt mit
- * Hysterese summiert, Puls und Kadenz werden zeitgewichtet gemittelt.
- * Überlappende Telefon- und Wear-Sensorwerte werden pro Quelle zusammengeführt.
- * 3.0: GPS-Lücken beenden keinen Abschnitt mehr, sondern werden als Lücke im
- * Abschnitt gezählt; Steigung und Höhenmeter kommen aus RunElevation statt
- * aus rohen Nachbarpunkten. Ältere Ableitungen behalten ihre Version.
+ * 2.1: Steps below the GPS noise floor don't count (zigzagging while standing
+ * would otherwise add real meters). Ascent and descent are summed separately
+ * with hysteresis; heart rate and cadence are averaged weighted by time.
+ * Overlapping phone and Wear sensor values are merged per source.
+ * 3.0: GPS gaps no longer end a segment; they count as a gap within it. Grade
+ * and elevation gain come from RunElevation instead of raw neighboring points.
+ * 3.1: Live distance uses the same noise-floor anchor as saved runs and timelines.
+ * Older derivations keep their version.
  */
 object RunMath {
-    const val MODEL_VERSION = "runback-distance-3.0"
-    /** Höhenänderung, die ein Barometer-Rauschen von ±1–2 m sicher übersteigt. */
+    const val MODEL_VERSION = "runback-distance-3.1"
+    /** Altitude change that safely exceeds barometer noise of ±1–2 m. */
     const val ELEVATION_HYSTERESIS_METERS = 3.0
-    /** GPS-Höhe rauscht ±5–15 m; darunter ist keine Änderung nachweisbar. */
+    /** GPS altitude is noisy by ±5–15 m; below that, no change can be shown. */
     const val GPS_ELEVATION_HYSTERESIS_METERS = 10.0
-    /** Längste Lücke zwischen zwei GPS-Punkten, die noch als ein Schritt zählt. */
+    /** Longest gap between two GPS points that still counts as one step. */
     const val MAX_STEP_SECONDS = 30.0
     const val MAX_ACCURACY_METERS = 50.0
     const val MAX_SPEED_MPS = 12.0
-    /** Längere Lücken zwischen Sensorwerten zählen nicht als abgedeckte Zeit. */
+    /** Longer gaps between sensor values don't count as covered time. */
     const val SENSOR_MAX_GAP_SECONDS = 10.0
 
     fun distanceMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
@@ -32,16 +33,16 @@ object RunMath {
         return 6371000.0 * 2 * atan2(sqrt(a.coerceIn(0.0, 1.0)), sqrt((1 - a).coerceIn(0.0, 1.0)))
     }
 
-    /** Gültigkeit eines Schritts: Zeit, Genauigkeit, Plausibilität. null heißt Lücke. */
+    /** Validity of a step: time, accuracy, plausibility. null means a gap. */
     fun acceptedDistance(lat1: Double, lon1: Double, time1: Long, accuracy1: Double,
                          lat2: Double, lon2: Double, time2: Long, accuracy2: Double): Double? =
         if (rejectionReason(lat1, lon1, time1, accuracy1, lat2, lon2, time2, accuracy2) == null)
             distanceMeters(lat1, lon1, lat2, lon2) else null
 
     /**
-     * Warum ein Schritt nicht zählt: `invalid` (Koordinaten), `timeout` (zu
-     * lange ohne Fix), `accuracy` (zu ungenau) oder `speed` (unplausibler
-     * Sprung). null heißt: der Schritt zählt.
+     * Why a step doesn't count: `invalid` (coordinates), `timeout` (too long
+     * without a fix), `accuracy` (too imprecise) or `speed` (implausible jump).
+     * null means the step counts.
      */
     fun rejectionReason(lat1: Double, lon1: Double, time1: Long, accuracy1: Double,
                         lat2: Double, lon2: Double, time2: Long, accuracy2: Double): String? {
@@ -55,23 +56,23 @@ object RunMath {
     }
 
     /**
-     * Barometrische Höhenformel (Standardatmosphäre). Absolut ist der Wert nur
-     * bei Normaldruck richtig; Differenzen zwischen zwei Messungen derselben
-     * Aufzeichnung sind davon unabhängig und auf ±1–2 m genau.
+     * Barometric altitude formula (standard atmosphere). The absolute value is
+     * only right at normal pressure; differences between two readings of the
+     * same recording don't depend on that and are accurate to ±1–2 m.
      */
     fun pressureToAltitudeMeters(hPa: Double): Double? {
         if (!hPa.isFinite() || hPa <= 0) return null
         return 44330.0 * (1 - (hPa / 1013.25).pow(1 / 5.255))
     }
 
-    /** Unter diesem Abstand ist eine Verschiebung von Messrauschen nicht zu unterscheiden. */
+    /** Below this distance, a shift can't be told apart from measurement noise. */
     fun noiseFloorMeters(accuracy1: Double, accuracy2: Double): Double =
         ((accuracy1.coerceAtLeast(0.0) + accuracy2.coerceAtLeast(0.0)) / 2)
 
     /**
-     * Abstand vom Ankerpunkt, sobald er den Rauschboden übersteigt; sonst null
-     * und der Anker bleibt stehen. Langsames Laufen sammelt so alle paar
-     * Sekunden echte Meter, Stillstand sammelt keine.
+     * Distance from the anchor point once it exceeds the noise floor; otherwise
+     * null and the anchor stays put. Slow running collects real meters every few
+     * seconds this way; standing still collects none.
      */
     fun anchoredDistance(anchorLat: Double, anchorLon: Double, anchorAccuracy: Double,
                          lat: Double, lon: Double, accuracy: Double): Double? {
@@ -79,7 +80,34 @@ object RunMath {
         return distance.takeIf { it >= noiseFloorMeters(anchorAccuracy, accuracy) }
     }
 
-    /** Summiert Auf- und Abstieg getrennt; kleine Schwankungen um die Referenz zählen nicht. */
+    /** Shared by live recording, saved splits and timelines; gaps reset the noise anchor. */
+    class DistanceAccumulator {
+        private data class Point(val time: Long, val latitude: Double, val longitude: Double, val accuracy: Double)
+        private var previous: Point? = null
+        private var anchor: Point? = null
+        var distanceMeters = 0.0; private set
+
+        /** null means no valid step; a valid shift below the noise floor contributes zero. */
+        fun add(time: Long, latitude: Double, longitude: Double, accuracy: Double, resetBefore: Boolean = false): Double? {
+            val point = Point(time, latitude, longitude, accuracy)
+            val before = previous
+            previous = point
+            if (before == null || resetBefore || rejectionReason(
+                    before.latitude, before.longitude, before.time, before.accuracy,
+                    latitude, longitude, time, accuracy,
+                ) != null) {
+                anchor = null
+                return null
+            }
+            val base = anchor ?: before
+            val step = anchoredDistance(base.latitude, base.longitude, base.accuracy, latitude, longitude, accuracy)
+            anchor = if (step != null) point else base
+            distanceMeters += step ?: 0.0
+            return step ?: 0.0
+        }
+    }
+
+    /** Sums ascent and descent separately; small fluctuations around the reference don't count. */
     class ElevationAccumulator(private val hysteresisMeters: Double = ELEVATION_HYSTERESIS_METERS) {
         var ascent = 0.0; private set
         var descent = 0.0; private set
@@ -95,8 +123,8 @@ object RunMath {
     }
 
     /**
-     * Zeitgewichtetes Mittel: jeder Wert gilt bis zum nächsten Sample, höchstens
-     * `maxGapSeconds`. Liefert Mittel und abgedeckte Sekunden; null ohne Werte.
+     * Time-weighted average: each value counts until the next sample, at most
+     * `maxGapSeconds`. Returns the average and covered seconds; null without values.
      */
     fun timeWeightedAverage(timesMs: List<Long>, values: List<Double>,
                             maxGapSeconds: Double = SENSOR_MAX_GAP_SECONDS,

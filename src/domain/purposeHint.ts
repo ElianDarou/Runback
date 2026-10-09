@@ -1,43 +1,44 @@
 import type { RunPurpose, RunSummary } from './types';
 import type { MaxHeartRate } from './insights';
 import { isAccidentalRun, isRun } from './sport';
+import { tr } from './i18n';
 
 /**
- * Vorschlag der Laufart nach dem Lauf. Er ist nur Vorschau: Erst wenn der
- * Nutzer ihn bestätigt, wird die Laufart gespeichert (mit dieser Version).
+ * Suggests the run type after a run. It is only a preview: the run type is
+ * saved (with this version) only once the user confirms it.
  *
- * Die Absicht steckt nicht im Tempo allein — wer jeden Tag dieselbe Runde auf
- * Zeit läuft, ist im Vergleich zu sich selbst nie „schneller als sonst“.
- * Deshalb entscheidet die Anstrengung (Puls gegen Maxpuls, sonst die eigene
- * Angabe zur Atmung). Fehlt beides oder widerspricht es sich, gibt es keinen
- * Vorschlag statt einer Vermutung. Tempowechsel braucht zusätzlich bekannte,
- * flache Höhe und ein Tempo, das mehrmals hin und her springt — ein stetiges
- * Nachlassen am Ende eines harten Laufs ist kein Tempowechsel.
+ * Intent isn't in pace alone — someone who runs the same loop against the
+ * clock every day is never "faster than usual" compared with themselves.
+ * So effort decides (heart rate against max heart rate, otherwise the user's
+ * own breathing rating). If both are missing or contradict each other, there
+ * is no suggestion instead of a guess. Pace changes also need a known, flat
+ * elevation and a pace that switches back and forth several times — a steady
+ * slowdown at the end of a hard run is not a pace change.
  */
 export const PURPOSE_HINT_VERSION = 'runback-purpose-hint-2';
 
 const DAY = 24 * 60 * 60 * 1000;
-/** Puls ab diesem Anteil vom Maxpuls gilt als hart, bis zu diesem als ruhig. */
+/** A heart rate from this share of max heart rate counts as hard, up to the easy share as easy. */
 const HARD_HEART_RATE_SHARE = 0.87;
 const EASY_HEART_RATE_SHARE = 0.78;
-/** Ohne ausreichende Pulsabdeckung ist der Durchschnitt keine Aussage. */
+/** Without enough heart rate coverage the average says nothing. */
 const MIN_HEART_RATE_COVERAGE = 0.8;
-/** Atmung auf der Skala 1–10. */
+/** Breathing on the 1–10 scale. */
 const HARD_BREATHING = 8;
 const EASY_BREATHING = 4;
-/** Schwankung der Kilometerzeiten (Variationskoeffizient), ab der es nach Tempowechsel aussieht. */
+/** Variation of kilometer times (coefficient of variation) from which it looks like a pace change. */
 const INTERVAL_PACE_VARIATION = 0.12;
 const MIN_SEGMENTS = 3;
-/** Ein Kilometerwechsel zählt ab dieser relativen Änderung als Richtungswechsel. */
+/** A change between kilometers counts as a change of direction from this relative change. */
 const PACE_STEP_SHARE = 0.05;
-/** Mindestens so oft muss das Tempo die Richtung wechseln (schnell–langsam–schnell). */
+/** The pace must change direction at least this often (fast–slow–fast). */
 const MIN_PACE_REVERSALS = 2;
 /**
- * Flach heißt: Anstieg höchstens 1 % der Strecke (Auf- plus Abstieg ≤ 2 % wie
- * `segmentIsFlat`, bei Importen ist nur der Anstieg bekannt).
+ * Flat means: ascent at most 1 % of the distance (ascent plus descent ≤ 2 %
+ * like `segmentIsFlat`; for imports only the ascent is known).
  */
 const FLAT_ASCENT_SHARE = 0.01;
-/** Lange Runde: deutlich länger als üblich und mindestens so weit. */
+/** Long run: clearly longer than usual and at least this far. */
 const LONG_FACTOR = 1.25;
 const LONG_MIN_METERS = 8000;
 const LONG_HISTORY_DAYS = 60;
@@ -56,9 +57,9 @@ export interface PurposeHint {
   purpose: Extract<RunPurpose, 'easy' | 'long' | 'intervals' | 'race'>;
   signals: PurposeHintSignal[];
   model_version: string;
-  /** Maxpuls, gegen den der Puls gelesen wurde, mit Herkunft. */
+  /** Max heart rate the heart rate was read against, with its source. */
   maxHeartRate?: MaxHeartRate;
-  /** Vergleichsläufe für „länger als sonst“. */
+  /** Comparison runs for "longer than usual". */
   baselineRunIds?: string[];
 }
 
@@ -109,7 +110,7 @@ function breathingIntensity(run: RunSummary): Intensity | undefined {
   return undefined;
 }
 
-/** Kilometerzeiten in Reihenfolge; nur volle, lückenlose Abschnitte ab 900 m. */
+/** Kilometer times in order; only full, gapless segments from 900 m. */
 function kilometerPaces(run: RunSummary): number[] {
   return (run.segments ?? [])
     .filter(
@@ -121,7 +122,7 @@ function kilometerPaces(run: RunSummary): number[] {
     .map(segment => segment.durationSeconds / (segment.distanceMeters / 1000));
 }
 
-/** Variationskoeffizient der Kilometerzeiten. */
+/** Coefficient of variation of the kilometer times. */
 function paceVariation(paces: number[]): number | undefined {
   if (paces.length < MIN_SEGMENTS) return undefined;
   const mean = paces.reduce((sum, pace) => sum + pace, 0) / paces.length;
@@ -130,7 +131,7 @@ function paceVariation(paces: number[]): number | undefined {
   return Math.sqrt(variance) / mean;
 }
 
-/** Wie oft das Tempo zwischen deutlich schneller und deutlich langsamer umschlägt. */
+/** How often the pace flips between clearly faster and clearly slower. */
 function paceReversals(paces: number[]): number {
   const mean = paces.reduce((sum, pace) => sum + pace, 0) / paces.length;
   const directions = paces
@@ -143,7 +144,7 @@ function paceReversals(paces: number[]): number {
     .filter((direction, index) => direction !== directions[index]).length;
 }
 
-/** `undefined`, wenn die Höhe unbekannt ist — dann ist auch „flach“ unbekannt. */
+/** `undefined` when the elevation is unknown — then "flat" is unknown too. */
 function flat(run: RunSummary): boolean | undefined {
   if (!(run.distanceMeters > 0)) return undefined;
   const ascent =
@@ -156,7 +157,7 @@ function flat(run: RunSummary): boolean | undefined {
   return ascent / run.distanceMeters <= FLAT_ASCENT_SHARE;
 }
 
-/** Vergleichsläufe, wenn der Lauf deutlich länger war als üblich; sonst `undefined`. */
+/** Comparison runs when the run was clearly longer than usual; otherwise `undefined`. */
 function longerThanUsual(
   run: RunSummary,
   history: RunSummary[],
@@ -180,9 +181,9 @@ function longerThanUsual(
 }
 
 /**
- * Schlägt eine Laufart vor oder gibt `undefined` zurück, wenn die Daten keine
- * eindeutige Aussage tragen. `maxHeartRate` kommt aus `maxHeartRate()` in
- * insights.ts (eingestellt oder geschätzt).
+ * Suggests a run type, or returns `undefined` when the data doesn't support a
+ * clear statement. `maxHeartRate` comes from `maxHeartRate()` in insights.ts
+ * (set or estimated).
  */
 export function suggestRunPurpose(
   run: RunSummary,
@@ -208,7 +209,7 @@ export function suggestRunPurpose(
       fromBreathing === 'hard' ? 'breathing_hard' : 'breathing_easy',
     );
   }
-  // Ohne Puls und ohne eigene Angabe fehlt jeder Hinweis auf die Absicht.
+  // Without heart rate and without the user's own rating, there is no hint of intent.
   if (!usesHeart && !fromBreathing) return undefined;
   const paces = kilometerPaces(run);
   const variation = paceVariation(paces);
@@ -226,8 +227,8 @@ export function suggestRunPurpose(
   });
 
   if (varied) {
-    // Tempowechsel nur bei bekannter flacher Strecke, ohne ruhige Anstrengung
-    // und mit echtem Hin und Her. Alles andere bleibt ohne Vorschlag.
+    // Pace changes only on a known flat course, without easy effort and with a
+    // real back and forth. Anything else gets no suggestion.
     if (
       flat(run) !== true ||
       intensity === 'easy' ||
@@ -249,22 +250,32 @@ export function suggestRunPurpose(
   return hint('easy');
 }
 
-const SIGNAL_WORDS: Record<PurposeHintSignal, string> = {
-  heart_rate_high: 'hoher Puls',
-  heart_rate_low: 'niedriger Puls',
-  breathing_hard: 'Atmung schwer',
-  breathing_easy: 'Atmung leicht',
-  pace_varied: 'Tempo stark wechselnd',
-  pace_even: 'gleichmäßiges Tempo',
-  longer_than_usual: 'länger als sonst',
-};
-
-/** Kurzer Grund für die Oberfläche, z. B. „niedriger Puls · länger als sonst“. */
-export function purposeHintReason(hint: PurposeHint): string {
-  return hint.signals.map(signal => SIGNAL_WORDS[signal]).join(' · ');
+/** Short label for one signal, in the active language. */
+function signalWord(signal: PurposeHintSignal): string {
+  switch (signal) {
+    case 'heart_rate_high':
+      return tr('hoher Puls', 'high heart rate');
+    case 'heart_rate_low':
+      return tr('niedriger Puls', 'low heart rate');
+    case 'breathing_hard':
+      return tr('Atmung schwer', 'breathing hard');
+    case 'breathing_easy':
+      return tr('Atmung leicht', 'breathing easy');
+    case 'pace_varied':
+      return tr('Tempo stark wechselnd', 'pace changes a lot');
+    case 'pace_even':
+      return tr('gleichmäßiges Tempo', 'even pace');
+    case 'longer_than_usual':
+      return tr('länger als sonst', 'longer than usual');
+  }
 }
 
-/** Was beim Bestätigen gespeichert wird: Ergebnis samt Spur (Grundregel 2). */
+/** Short reason for the UI, e.g. "low heart rate · longer than usual". */
+export function purposeHintReason(hint: PurposeHint): string {
+  return hint.signals.map(signalWord).join(' · ');
+}
+
+/** What is saved on confirming: the result with its trace (ground rule 2). */
 export function purposeHintProvenance(hint: PurposeHint) {
   return {
     model_version: hint.model_version,

@@ -1,24 +1,25 @@
 import { exactLowerRank, finite, median, robustScale } from './inference';
 import { isSetCompleted, epley1RM, type LoggedSet, type StrengthSession } from './strength';
+import { fixed, tr } from './i18n';
 
 /**
- * v2: exakte Kendall-Verteilung statt Normalapproximation bei kleinem n,
- * Richtungsaussage erst ab fünf Trainingstagen, Plateau als Äquivalenzprüfung,
- * Relevanzschwelle 4 % statt 2 % (Test-Retest-Streuung von 1RM ≈ 2–3 %).
+ * v2: exact Kendall distribution instead of the normal approximation for small
+ * n, direction only from five training days, plateau as an equivalence test,
+ * relevance threshold 4 % instead of 2 % (test-retest spread of 1RM ≈ 2–3 %).
  */
 export const PROGRESSION_MODEL_VERSION = 'strength-progression-v3';
-// v3 zählt auch importierte Ist-Sätze ohne Abhakzeit; die Prüfregel bleibt gleich.
+// v3 also counts imported actual sets without a tick-off time; the check rule stays the same.
 export const PROGRESSION_CHECK_METHOD = 'strength-e1rm-v2';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAY_MS;
 const PLATEAU_MS = 4 * WEEK_MS;
-/** Unter fünf Tagen ist selbst eine perfekt monotone Reihe zu häufig Zufall. */
+/** Under five days, even a perfectly monotonic series is too often chance. */
 export const MINIMUM_SESSIONS_FOR_DIRECTION = 5;
-/** Kleinste Änderung des e1RM, die über der Tagesform liegt (Setzung). */
+/** Smallest change in e1RM that exceeds day-to-day form (a set value). */
 export const MINIMUM_RELEVANT_CHANGE_PERCENT = 4;
-/** „Stabil“ heißt: die Wochensteigung liegt sicher innerhalb ± dieses Anteils. */
+/** "Stable" means: the weekly slope lies safely within ± this share. */
 export const PLATEAU_EQUIVALENCE_PERCENT_PER_WEEK = 0.5;
-/** Bis hierhin wird die exakte Verteilung gerechnet, darüber die Näherung. */
+/** Up to here the exact distribution is computed; above it, the approximation. */
 const EXACT_DISTRIBUTION_MAX_POINTS = 12;
 
 export interface E1RMPoint {
@@ -30,7 +31,7 @@ export interface E1RMPoint {
   setId: string;
 }
 
-/** Ein Arbeitsset wird nur aus einer abgeschlossenen Einheit übernommen. */
+/** A working set is only taken from a finished session. */
 export function bestWorkingSet(
   session: StrengthSession,
   exerciseId: string,
@@ -89,7 +90,7 @@ function isCompletedWorkingSet(set: LoggedSet): boolean {
   );
 }
 
-/** Serie je Übung; offene, unterbrochene und Aufwärmsätze bleiben draußen. */
+/** Series per exercise; open, interrupted and warm-up sets are left out. */
 export function buildE1RMSeries(
   sessions: StrengthSession[],
   exerciseId: string,
@@ -106,15 +107,15 @@ export interface RankConfidenceInterval {
   confidenceLevel: number;
   lowerRank: number;
   upperRank: number;
-  /** true: exakte Permutationsverteilung; false: Normalnäherung (n > 12). */
+  /** true: exact permutation distribution; false: normal approximation (n > 12). */
   exact: boolean;
 }
 
 /**
- * Rangbasierte Schranke für dieselben paarweisen Steigungen wie Theil-Sen.
- * Bis zwölf Punkten exakt über die Verteilung der Inversionen; darüber die
- * Normalnäherung nach Gilbert (1987) mit Bindungskorrektur. Kein Ergebnis,
- * wenn n das gewünschte Niveau nicht tragen kann – das ist kein Fehler.
+ * Rank-based bound for the same pairwise slopes as Theil-Sen. Up to twelve
+ * points exact via the distribution of inversions; above that the normal
+ * approximation after Gilbert (1987) with a tie correction. No result if n
+ * cannot support the requested level — that is not an error.
  */
 export function rankConfidenceInterval(
   slopes: number[],
@@ -166,7 +167,7 @@ export function rankConfidenceInterval(
   const variance =
     (observations * (observations - 1) * (2 * observations + 5) - tieTerm) / 18;
   const rankHalfWidth = z * Math.sqrt(Math.max(0, variance));
-  // Gilbert: M1 = (N − C)/2 ist ein 1-basierter Rang, hier 0-basiert.
+  // Gilbert: M1 = (N − C)/2 is a 1-based rank; here it is 0-based.
   const lowerRank = Math.max(
     0,
     Math.min(n - 1, Math.floor((n - rankHalfWidth) / 2) - 1),
@@ -196,7 +197,7 @@ export interface TheilSenTrend {
   predictAt: (at: number) => number;
 }
 
-/** Zwei Einheiten am selben Tag sind ein Beobachtungstag; die bessere zählt. */
+/** Two sessions on the same day are one observation day; the better one counts. */
 export function collapseToDays(series: E1RMPoint[]): E1RMPoint[] {
   const byDay = new Map<number, E1RMPoint>();
   for (const point of series) {
@@ -214,7 +215,7 @@ export function collapseToDays(series: E1RMPoint[]): E1RMPoint[] {
   );
 }
 
-/** Theil-Sen-Schätzung mit Zeitachse in Wochen ab dem ersten Punkt. */
+/** Theil-Sen estimate with the time axis in weeks from the first point. */
 export function theilSenSlope(
   series: E1RMPoint[],
   confidenceLevel = 0.95,
@@ -284,7 +285,7 @@ export interface CusumOptions {
   minimumConsecutive?: number;
 }
 
-/** CUSUM auf Trendresiduen; ein einzelner Ausschlag reicht standardmäßig nicht. */
+/** CUSUM on trend residuals; by default a single outlier is not enough. */
 export function detectCusumChangePoints(
   series: E1RMPoint[],
   trend: TheilSenTrend,
@@ -310,7 +311,7 @@ export function detectCusumChangePoints(
       ),
     };
   }
-  // MAD der Residuen selbst (nicht der Beträge): sonst halbiert sich σ.
+  // MAD of the residuals themselves (not of their magnitudes): otherwise σ would be halved.
   const baseline = Math.max(
     0.5,
     median(points.map(point => point.e1rm)) * 0.005,
@@ -387,19 +388,19 @@ export function detectCusumChangePoints(
 export type PlateauStatus = 'changing' | 'stable' | 'unclear';
 
 export interface PlateauAssessment {
-  /** true nur bei `status === 'stable'`; „Intervall enthält 0“ reicht nicht. */
+  /** true only for `status === 'stable'`; "interval contains 0" is not enough. */
   isPlateau: boolean;
   status: PlateauStatus;
   spanWeeks: number;
-  /** Zulässige Wochensteigung in kg, innerhalb derer „stabil“ gilt. */
+  /** Permissible weekly slope in kg within which "stable" applies. */
   equivalenceMarginKgPerWeek: number | null;
   criterion: string;
 }
 
 /**
- * Äquivalenzprüfung statt „kein Nachweis“: Stabil heißt, das gesamte
- * Steigungsintervall liegt innerhalb ± Marge. Ein breites Intervall um 0
- * ist „noch nicht klar“, kein Plateau.
+ * Equivalence test instead of "no evidence": stable means the entire slope
+ * interval lies within ± margin. A wide interval around 0 is "not clear yet",
+ * not a plateau.
  */
 export function assessPlateau(
   series: E1RMPoint[],
@@ -416,8 +417,10 @@ export function assessPlateau(
           PLATEAU_EQUIVALENCE_PERCENT_PER_WEEK) /
         100
       : null;
-  const criterion =
-    'Stabil bedeutet: das Steigungsintervall liegt vollständig innerhalb ±0,5 % des e1RM pro Woche und umfasst mindestens vier Wochen. Ein breites Intervall um 0 heißt nur „noch nicht klar“.';
+  const criterion = tr(
+    'Stabil bedeutet: das Steigungsintervall liegt vollständig innerhalb ±0,5 % des e1RM pro Woche und umfasst mindestens vier Wochen. Ein breites Intervall um 0 heißt nur „noch nicht klar“.',
+    'Stable means: the slope interval lies entirely within ±0.5% of the e1RM per week and spans at least four weeks. A wide interval around 0 only means "not clear yet".',
+  );
   if (!trend || margin === null) {
     return {
       isPlateau: false,
@@ -465,6 +468,7 @@ export interface TargetRange {
 export interface ProgressionCheckCriterion {
   method: typeof PROGRESSION_CHECK_METHOD;
   baselineSessionIds: string[];
+  /** Stored German value ("best working e1RM"); kept so saved assessments stay valid. */
   outcome: 'bestes Arbeits-e1RM';
   minimumRelevantChangePercent: number;
   reviewAfterSessions: number;
@@ -562,11 +566,14 @@ function makeSuggestion(
       : Math.max(targetKg, Math.min(upperCap, targetKg * 1.025));
   const freshnessText =
     freshness === null
-      ? 'Die Frische ist unbekannt; deshalb wird keine Frischemodulation behauptet.'
-      : `Die Frischemodulation bleibt mit ${(
-          freshnessFactor * 100 -
-          100
-        ).toFixed(1)} % unter der 8-%-Grenze.`;
+      ? tr(
+          'Die Frische ist unbekannt; deshalb wird keine Frischemodulation behauptet.',
+          'Freshness is unknown, so no freshness adjustment is claimed.',
+        )
+      : tr(
+          `Die Frischemodulation bleibt mit ${fixed(freshnessFactor * 100 - 100, 1)} % unter der 8-%-Grenze.`,
+          `The freshness adjustment stays at ${fixed(freshnessFactor * 100 - 100, 1)}%, below the 8% limit.`,
+        );
   return {
     kind: 'strength_load',
     verdict,
@@ -583,7 +590,10 @@ function makeSuggestion(
     },
     expectedEffort: {
       rir: targetRir,
-      text: `Ziel sind etwa ${targetRir} Wiederholungen im Tank (RIR); die Ausführung bleibt maßgeblich.`,
+      text: tr(
+        `Ziel sind etwa ${targetRir} Wiederholungen im Tank (RIR); die Ausführung bleibt maßgeblich.`,
+        `Aim for about ${targetRir} ${targetRir === 1 ? 'rep' : 'reps'} in reserve (RIR); execution still decides.`,
+      ),
     },
     checkCriterion: {
       method: PROGRESSION_CHECK_METHOD,
@@ -591,13 +601,15 @@ function makeSuggestion(
       outcome: 'bestes Arbeits-e1RM',
       minimumRelevantChangePercent: MINIMUM_RELEVANT_CHANGE_PERCENT,
       reviewAfterSessions: 3,
-      check:
+      check: tr(
         'Ab sechs umgesetzten Einheiten per Vorzeichentest prüfen, ob das beste Arbeits-e1RM häufiger als zufällig mindestens 4 % über dem Median der Vergleichseinheiten liegt; die Ausführung bleibt maßgeblich.',
+        'From six completed sessions, use a sign test to check whether the best working e1RM is at least 4% above the median of the comparison sessions more often than chance; execution still decides.',
+      ),
     },
   };
 }
 
-/** Eine Entscheidung für genau eine Empfehlung: die Last dieser Übung. */
+/** One decision for exactly one recommendation: the load of this exercise. */
 export function assessExerciseProgression(
   sessions: StrengthSession[],
   exerciseId: string,
@@ -628,9 +640,14 @@ export function assessExerciseProgression(
       cusum: null,
       verdict: 'not_assessable',
       suggestion: null,
-      reason: `Noch nicht klar: Erst ab ${MINIMUM_SESSIONS_FOR_DIRECTION} Trainingstagen mit geeigneten Arbeitssätzen trägt der Verlauf eine Richtung; es ${
-        missing === 1 ? 'fehlt noch einer' : `fehlen noch ${missing}`
-      }.`,
+      reason: tr(
+        `Noch nicht klar: Erst ab ${MINIMUM_SESSIONS_FOR_DIRECTION} Trainingstagen mit geeigneten Arbeitssätzen trägt der Verlauf eine Richtung; es ${
+          missing === 1 ? 'fehlt noch einer' : `fehlen noch ${missing}`
+        }.`,
+        `Not clear yet: the trend only supports a direction after ${MINIMUM_SESSIONS_FOR_DIRECTION} training days with suitable working sets; ${
+          missing === 1 ? 'one more is missing' : `${missing} more are missing`
+        }.`,
+      ),
     };
   }
   const trend = theilSenSlope(series, options.confidenceLevel);
@@ -646,8 +663,10 @@ export function assessExerciseProgression(
       cusum: null,
       verdict: 'not_assessable',
       suggestion: null,
-      reason:
+      reason: tr(
         'Noch nicht klar: Aus diesen Einheiten lässt sich kein Steigungsintervall auf dem gewählten Niveau bilden.',
+        'Not clear yet: these sessions cannot form a slope interval at the chosen level.',
+      ),
     };
   }
   const plateau = assessPlateau(series, trend);
@@ -662,12 +681,24 @@ export function assessExerciseProgression(
       : 'keep_going';
   const reason =
     verdict === 'increase'
-      ? 'Dein Leistungsverlauf spricht für eine kleine Steigerung. Probiere sie aus und prüfe, wie die nächsten Einheiten laufen.'
+      ? tr(
+          'Dein Leistungsverlauf spricht für eine kleine Steigerung. Probiere sie aus und prüfe, wie die nächsten Einheiten laufen.',
+          'Your performance trend points to a small increase. Try it and check how the next sessions go.',
+        )
       : verdict === 'reduce'
-      ? 'Dein Leistungsverlauf fällt ab. Die Empfehlung ist, etwas weniger Gewicht auszuprobieren.'
+      ? tr(
+          'Dein Leistungsverlauf fällt ab. Die Empfehlung ist, etwas weniger Gewicht auszuprobieren.',
+          'Your performance trend is falling. The suggestion is to try a little less weight.',
+        )
       : verdict === 'plateau'
-      ? 'Seit mindestens vier Wochen ist deine Leistung nachweislich stabil; das Steigungsintervall liegt eng um null.'
-      : 'Noch nicht klar: Der Verlauf lässt sowohl eine Änderung als auch Stillstand zu. Behalte dein Training vorerst bei.';
+      ? tr(
+          'Seit mindestens vier Wochen ist deine Leistung nachweislich stabil; das Steigungsintervall liegt eng um null.',
+          'Your performance has been demonstrably stable for at least four weeks; the slope interval sits tightly around zero.',
+        )
+      : tr(
+          'Noch nicht klar: Der Verlauf lässt sowohl eine Änderung als auch Stillstand zu. Behalte dein Training vorerst bei.',
+          'Not clear yet: the trend allows both a change and a plateau. Keep your training as it is for now.',
+        );
   return {
     model_version: PROGRESSION_MODEL_VERSION,
     inputSources,
@@ -691,12 +722,24 @@ export function suggestNextSession(
 ): ProgressionSuggestion {
   const reason =
     verdict === 'increase'
-      ? 'Dein Leistungsverlauf spricht dafür, etwas mehr Gewicht auszuprobieren.'
+      ? tr(
+          'Dein Leistungsverlauf spricht dafür, etwas mehr Gewicht auszuprobieren.',
+          'Your performance trend suggests trying a little more weight.',
+        )
       : verdict === 'reduce'
-      ? 'Dein Leistungsverlauf spricht dafür, etwas weniger Gewicht auszuprobieren.'
+      ? tr(
+          'Dein Leistungsverlauf spricht dafür, etwas weniger Gewicht auszuprobieren.',
+          'Your performance trend suggests trying a little less weight.',
+        )
       : verdict === 'plateau'
-      ? 'Seit mindestens vier Wochen ist deine Leistung nachweislich stabil.'
-      : 'Für eine neue Empfehlung ist der Verlauf noch zu unklar. Behalte dein Training vorerst bei.';
+      ? tr(
+          'Seit mindestens vier Wochen ist deine Leistung nachweislich stabil.',
+          'Your performance has been demonstrably stable for at least four weeks.',
+        )
+      : tr(
+          'Für eine neue Empfehlung ist der Verlauf noch zu unklar. Behalte dein Training vorerst bei.',
+          'The trend is still too unclear for a new recommendation. Keep your training as it is for now.',
+        );
   return makeSuggestion(verdict, reason, series, trend, options);
 }
 

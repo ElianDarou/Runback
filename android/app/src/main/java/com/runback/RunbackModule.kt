@@ -19,9 +19,11 @@ import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.facebook.react.modules.core.PermissionAwareActivity
 import com.facebook.react.modules.core.PermissionListener
+import com.runback.core.DisplayNames
 import com.runback.core.RunStore
 import com.runback.core.RecordingService
 import com.runback.core.BleSensors
+import com.runback.core.Lang
 import com.runback.imports.ActivityImporter
 import com.runback.integrations.HealthConnectIntegration
 import com.runback.integrations.TrainingChat
@@ -41,6 +43,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     private val store = RunStore(context)
     private val worker = Executors.newSingleThreadExecutor()
     private val aiWorker = Executors.newSingleThreadExecutor()
+    private val musicWorker = Executors.newSingleThreadExecutor()
     private val importWorker = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val importer = ActivityImporter(context, store)
@@ -75,7 +78,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     private fun task(promise: Promise, block: () -> Any?) {
         worker.execute {
             try { promise.resolve((block() ?: JSONObject.NULL).toString()) }
-            catch (error: Exception) { promise.reject("RUNBACK_ERROR", error.message ?: "Vorgang fehlgeschlagen", error) }
+            catch (error: Exception) { promise.reject("RUNBACK_ERROR", error.message ?: Lang.tr("Vorgang fehlgeschlagen", "Action failed"), error) }
         }
     }
 
@@ -116,7 +119,39 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     @ReactMethod fun listRuns(promise: Promise) = task(promise) { store.listRuns() }
     @ReactMethod fun getCapabilities(promise: Promise) = task(promise) { capabilities() }
     @ReactMethod fun getSettings(promise: Promise) = task(promise) { store.settings() }
-    @ReactMethod fun saveSettings(json: String, promise: Promise) = task(promise) { store.saveSettings(JSONObject(json)); store.settings() }
+    @ReactMethod fun saveSettings(json: String, promise: Promise) = task(promise) {
+        store.saveSettings(JSONObject(json)); MusicController.get(context).onSettingsChanged(); store.settings()
+    }
+
+    private fun musicTask(promise: Promise, block: () -> JSONObject) {
+        musicWorker.execute {
+            try { promise.resolve(block().toString()) }
+            catch (error: Exception) { promise.reject("MUSIC_ERROR", (if (error is IllegalArgumentException || error is IllegalStateException) error.message else null) ?: Lang.tr("Musikaktion fehlgeschlagen; prüfe Verbindung und Zugangsdaten und versuche es erneut.", "Music action failed; check your connection and credentials and try again.")) }
+        }
+    }
+    @ReactMethod fun getMusicStatus(promise: Promise) = task(promise) { MusicController.get(context).status() }
+    @ReactMethod fun configureMusic(json: String, clientId: String, bpmKey: String, promise: Promise) = musicTask(promise) { MusicController.get(context).configure(JSONObject(json), clientId.trim(), bpmKey.trim()) }
+    @ReactMethod fun authorizeMusic(promise: Promise) {
+        val activity = context.currentActivity ?: run { promise.reject("MUSIC_ERROR", Lang.tr("Öffne zuerst Runback.", "Open Runback first.")); return }
+        musicTask(promise) { MusicController.get(context).authorize(activity) }
+    }
+    @ReactMethod fun importMusicPlaylist(value: String, promise: Promise) = musicTask(promise) { MusicController.get(context).importPlaylist(value.trim()) }
+    @ReactMethod fun lookupMusicBpm(promise: Promise) = musicTask(promise) { MusicController.get(context).lookupMissing() }
+    @ReactMethod fun setMusicBpm(uri: String, bpm: Double, promise: Promise) = musicTask(promise) { MusicController.get(context).setBpm(uri, bpm) }
+    @ReactMethod fun clearMusicBpmKey(promise: Promise) = musicTask(promise) { MusicController.get(context).clearBpmKey() }
+    // Cancellation must not wait behind the authorization worker that it is cancelling.
+    @ReactMethod fun cancelMusicAuthorization(promise: Promise) = task(promise) { MusicController.get(context).cancelAuthorization() }
+    @ReactMethod fun disconnectMusic(promise: Promise) = task(promise) { MusicController.get(context).disconnect() }
+    @ReactMethod fun startMusic(runId: String, promise: Promise) {
+        val activity = context.currentActivity ?: run { promise.reject("MUSIC_ERROR", Lang.tr("Öffne zuerst Runback.", "Open Runback first.")); return }
+        val completed = java.util.concurrent.atomic.AtomicBoolean(false)
+        MusicController.get(context).start(activity, runId) { value, error ->
+            if (completed.compareAndSet(false, true)) {
+                if (error != null) promise.reject("MUSIC_ERROR", error) else promise.resolve(value.toString())
+            }
+        }
+    }
+    @ReactMethod fun stopMusic(promise: Promise) = task(promise) { MusicController.get(context).stopUser() }
     @ReactMethod fun getRun(id: String, promise: Promise) = task(promise) {
         store.detail(id).apply {
             put("route", optJSONArray("geometry") ?: JSONArray())
@@ -134,7 +169,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     }
     @ReactMethod fun getRunTimeline(id: String, maxRows: Int, promise: Promise) = task(promise) { store.timeline(id, maxRows) }
     @ReactMethod fun getRunSeries(id: String, maxRows: Int, promise: Promise) = task(promise) { store.series(id, maxRows) }
-    /** Ganzer Verlauf ohne Korrektur, damit man ein zu frühes Ende auch wieder zurücknehmen kann. */
+    /** Full history without correction, so an end that came too early can be taken back too. */
     @ReactMethod fun getRunEndEditor(id: String, promise: Promise) = task(promise) {
         val info = store.runEndInfo(id)
         info.put("series", if (info.optBoolean("hasSamples")) store.series(id, 300, untrimmed = true) else JSONObject.NULL)
@@ -147,14 +182,14 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     @ReactMethod fun saveRunContext(id: String, json: String, promise: Promise) = updateRunFeedback(id, json, promise)
     @ReactMethod fun deleteRun(id: String, promise: Promise) = task(promise) { store.deleteRun(id); state() }
     @ReactMethod fun clearAllData(promise: Promise) = task(promise) {
-        check(store.active() == null) { "Beende zuerst die laufende Aufzeichnung." }
+        check(store.active() == null) { Lang.tr("Beende zuerst die laufende Aufzeichnung.", "Finish the running recording first.") }
+        MusicController.get(context).disconnect()
         importer.cancel(); chat.resetData { store.clearAllData() }; MotionSessions.deleteFiles(context); state()
     }
     @ReactMethod fun deleteAllData(promise: Promise) = clearAllData(promise)
 
-    // Krafttraining. Liegt im vorhandenen Dokumentspeicher und ist damit vom
-    // Backup abgedeckt. Die laufende Einheit hat ein eigenes Dokument, damit ein
-    // bestätigter Satz nicht die gesamte Historie neu schreibt.
+    // Strength training. Stored in the existing document store, so the backup covers it.
+    // The running session has its own document, so a confirmed set does not rewrite the whole history.
     private fun strengthIndex() = store.getDocument("strength_index") ?: JSONObject().put("sessions", JSONArray())
     private fun strengthState() = JSONObject()
         .put("templates", (store.getDocument("strength_templates") ?: JSONObject()).optJSONArray("templates") ?: JSONArray())
@@ -162,7 +197,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         .put("history", strengthIndex().optJSONArray("sessions") ?: JSONArray())
 
     @ReactMethod fun getStrengthState(promise: Promise) = task(promise) {
-        // Nach einem Neustart der App: Benachrichtigung und Uhr wieder an die laufende Einheit hängen.
+        // After an app restart: reattach the notification and the watch to the running session.
         StrengthWorkout.resume(context, store)
         StrengthWorkout.publishTemplates(context)
         strengthState()
@@ -170,13 +205,18 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     @ReactMethod fun getStrengthSessions(limit: Int, promise: Promise) = task(promise) {
         JSONObject().put("sessions", store.strengthSessions(limit)).put("imports", store.strengthImports(limit))
     }
+    // Display-only: the language and the catalog names the native surfaces show; stored names never change.
+    @ReactMethod fun setDisplayNames(json: String, promise: Promise) = task(promise) {
+        DisplayNames.update(store, JSONObject(json))
+        JSONObject().put("saved", true)
+    }
     @ReactMethod fun saveStrengthTemplates(json: String, promise: Promise) = task(promise) {
         store.putDocument("strength_templates", JSONObject().put("templates", JSONArray(json)))
         StrengthWorkout.publishTemplates(context)
         strengthState()
     }
-    // Die Bewegungsaufzeichnung hängt nur an; sie darf das Speichern einer Einheit nie verhindern.
-    // `conflict`: Uhr oder Benachrichtigung haben inzwischen gespeichert; die App wiederholt auf deren Stand.
+    // Motion recording is only attached; it must never block saving a session.
+    // `conflict`: the watch or the notification has saved in the meantime; the app retries against their state.
     @ReactMethod fun saveStrengthSession(json: String, promise: Promise) = task(promise) {
         if (StrengthWorkout.save(context, store, JSONObject(json))) strengthState()
         else strengthState().put("conflict", true)
@@ -195,23 +235,23 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         StrengthWorkout.ended(context, store, session.optString("id"))
         strengthState()
     }
-    /** Für `NativeEventEmitter`; die Ereignisse gehen ohnehin an alle Zuhörer. */
+    /** For `NativeEventEmitter`; events go to all listeners anyway. */
     @ReactMethod fun addListener(eventName: String) = Unit
     @ReactMethod fun removeListeners(count: Double) = Unit
     @ReactMethod fun getStrengthSession(id: String, promise: Promise) = task(promise) {
-        store.strengthSession(id) ?: store.strengthImport(id) ?: error("Einheit nicht gefunden")
+        store.strengthSession(id) ?: store.strengthImport(id) ?: error(Lang.tr("Einheit nicht gefunden", "Session not found"))
     }
-    /** Ende einer Krafteinheit korrigieren; eine negative Zeit hebt die Korrektur auf. */
+    /** Correct the end of a strength session; a negative time removes the correction. */
     @ReactMethod fun setStrengthEnd(id: String, endTime: Double, promise: Promise) = task(promise) {
         store.setStrengthEnd(id, endTime.takeIf { it > 0 }?.toLong())
-        store.strengthSession(id) ?: store.strengthImport(id) ?: error("Einheit nicht gefunden")
+        store.strengthSession(id) ?: store.strengthImport(id) ?: error(Lang.tr("Einheit nicht gefunden", "Session not found"))
     }
     /**
-     * Grundlage für „Ende bearbeiten“: Zeitraum bis zum spätesten bekannten Ende
-     * (bei Strong die gemeldete Dauer, sonst vier Stunden) und der Puls darin.
+     * Basis for "Edit end": the time range up to the latest known end
+     * (for Strong the reported duration, otherwise four hours) and the heart rate within it.
      */
     @ReactMethod fun getStrengthEndEditor(id: String, promise: Promise) = task(promise) {
-        val window = store.strengthWindow(id) ?: error("Einheit nicht gefunden")
+        val window = store.strengthWindow(id) ?: error(Lang.tr("Einheit nicht gefunden", "Session not found"))
         val latest = listOfNotNull(window.recordedEnd, window.reportedEnd, window.correctedEnd).maxOrNull()
             ?: (window.start + 4 * 3600_000L)
         val rangeEnd = minOf(latest, window.start + 12 * 3600_000L)
@@ -229,32 +269,31 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         strengthState()
     }
 
-    // Puls einer Krafteinheit von der Uhr: Zusammenfassung mit höchstens 600 Fenstern, ohne Rohwerte.
+    // Heart rate of a strength session from the watch: summary with at most 600 windows, no raw values.
     @ReactMethod fun getStrengthHeart(id: String, promise: Promise) = task(promise) { MotionSessions.heart(context, store, id) }
     @ReactMethod fun getStrengthHeartSummaries(promise: Promise) = task(promise) {
         JSONObject().put("sessions", MotionSessions.heartSummaries(context, store))
     }
 
-    // Bewegungsdaten aus dem Krafttraining: Status und Löschen; exportiert
-    // werden sie mit dem Kraftexport (shareExportArchive). JS sieht nur Zähler.
+    // Motion data from strength training: status and delete; exported
+    // with the strength export (shareExportArchive). JS only sees counters.
     @ReactMethod fun getMotionStatus(promise: Promise) = task(promise) { MotionSessions.status(context, store) }
-    /** Was die Uhr zu einer Krafteinheit misst und übertragen hat; `null` ohne Uhr. */
+    /** What the watch measured and transferred for a strength session; `null` without a watch. */
     @ReactMethod fun getStrengthWatch(id: String, promise: Promise) = task(promise) { MotionSessions.watchInfo(context, store, id) ?: JSONObject.NULL }
     @ReactMethod fun deleteMotionData(promise: Promise) = task(promise) {
         MotionSessions.deleteAll(context, store)
         MotionSessions.status(context, store)
     }
 
-    // Muskelkatermeldungen liegen als ein versioniertes Dokument neben den
-    // übrigen Trainingsdokumenten. Dadurch nimmt das vorhandene Backup sie
-    // automatisch mit, ohne eine Datenbankmigration zu benötigen.
+    // Soreness reports are one versioned document next to the other training documents.
+    // The existing backup picks them up automatically, without a database migration.
     private fun sorenessState() = store.getDocument("soreness_reports")
         ?: JSONObject().put("reports", JSONArray())
 
     @ReactMethod fun getSorenessReports(promise: Promise) = task(promise) { sorenessState() }
     @ReactMethod fun saveSorenessReport(json: String, promise: Promise) = task(promise) {
         val report = JSONObject(json)
-        require(report.optLong("at") > 0) { "Muskelkatermeldung ohne Zeitpunkt." }
+        require(report.optLong("at") > 0) { Lang.tr("Muskelkatermeldung ohne Zeitpunkt.", "Soreness report without a time.") }
         val entries = report.optJSONArray("entries") ?: JSONArray()
         require(entries.length() <= 45) { "Zu viele Regionen in einer Muskelkatermeldung." }
         val previous = sorenessState().optJSONArray("reports") ?: JSONArray()
@@ -274,15 +313,15 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     @ReactMethod fun transcribeSoreness(promise: Promise) {
         context.runOnUiQueueThread {
             if (Build.VERSION.SDK_INT < 31 || !SpeechRecognizer.isOnDeviceRecognitionAvailable(context)) {
-                promise.reject("SPEECH_UNAVAILABLE", "Auf diesem Gerät ist keine Offline-Spracherkennung verfügbar.")
+                promise.reject("SPEECH_UNAVAILABLE", Lang.tr("Auf diesem Gerät ist keine Offline-Spracherkennung verfügbar.", "Offline speech recognition is not available on this device."))
                 return@runOnUiQueueThread
             }
             if (!granted(Manifest.permission.RECORD_AUDIO)) {
-                promise.reject("MICROPHONE_PERMISSION", "Für die Spracheingabe bitte den Mikrofonzugriff erlauben.")
+                promise.reject("MICROPHONE_PERMISSION", Lang.tr("Für die Spracheingabe bitte den Mikrofonzugriff erlauben.", "Allow microphone access for voice input."))
                 return@runOnUiQueueThread
             }
             if (speechPromise != null) {
-                promise.reject("SPEECH_BUSY", "Die Spracherkennung hört bereits zu.")
+                promise.reject("SPEECH_BUSY", Lang.tr("Die Spracherkennung hört bereits zu.", "Speech recognition is already listening."))
                 return@runOnUiQueueThread
             }
             try {
@@ -298,7 +337,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
                 override fun onPartialResults(partialResults: Bundle?) = Unit
                 override fun onEvent(eventType: Int, params: Bundle?) = Unit
                 override fun onError(error: Int) {
-                    finishSpeechError("Spracherkennung fehlgeschlagen (Code $error).")
+                    finishSpeechError(Lang.tr("Spracherkennung fehlgeschlagen (Code $error).", "Speech recognition failed (code $error)."))
                 }
                 override fun onResults(results: Bundle?) {
                     val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
@@ -309,8 +348,8 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
                 })
                 recognizer.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, "de-DE")
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "de-DE")
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, Lang.locale().toLanguageTag())
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, Lang.locale().toLanguageTag())
                     putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
                 })
             } catch (error: Exception) {
@@ -365,7 +404,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     private fun aiTask(promise: Promise, block: () -> Any?) {
         aiWorker.execute {
             try { promise.resolve((block() ?: JSONObject.NULL).toString()) }
-            catch (error: Exception) { promise.reject("CHAT_ERROR", error.message ?: "KI-Anfrage fehlgeschlagen", error) }
+            catch (error: Exception) { promise.reject("CHAT_ERROR", error.message ?: Lang.tr("KI-Anfrage fehlgeschlagen", "AI request failed"), error) }
         }
     }
     @ReactMethod fun getChatHistory(promise: Promise) = aiTask(promise) { chat.history() }
@@ -375,7 +414,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
 
     private fun recording(action: String, purpose: String, promise: Promise, sport: String = "running", routePlanId: String? = null, target: String? = null) {
         if (action == RecordingService.START && !granted(Manifest.permission.ACCESS_FINE_LOCATION)) {
-            promise.reject("LOCATION_PERMISSION", "Für die Aufzeichnung bitte den genauen Standort erlauben."); return
+            promise.reject("LOCATION_PERMISSION", Lang.tr("Für die Aufzeichnung bitte den genauen Standort erlauben.", "Allow precise location to record.")); return
         }
         context.runOnUiQueueThread {
             try {
@@ -389,7 +428,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
                         while (true) {
                             val current = store.active()
                             if ((expected == "completed" && current == null) || current?.optString("status") == expected) break
-                            check(android.os.SystemClock.elapsedRealtime() < deadline) { "Aufzeichnung reagiert nicht. Berechtigungen und Status prüfen." }
+                            check(android.os.SystemClock.elapsedRealtime() < deadline) { Lang.tr("Aufzeichnung reagiert nicht. Berechtigungen und Status prüfen.", "Recording is not responding. Check permissions and status.") }
                             android.os.SystemClock.sleep(50)
                         }
                         val snapshot = state()
@@ -398,7 +437,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
                             awaitWearAck(action, runId, commandId, sent.optLong("sequence", 0L), sent)
                         }.onSuccess { store.putDocument("wearLinkStatus", it) }
                             .onFailure { store.putDocument("wearLinkStatus", JSONObject()
-                                .put("status", "error").put("message", it.message ?: "Uhr konnte nicht erreicht werden")
+                                .put("status", "error").put("message", it.message ?: Lang.tr("Uhr konnte nicht erreicht werden", "Could not reach the watch"))
                                 .put("action", action).put("runId", runId).put("updatedAt", System.currentTimeMillis())) }
                         promise.resolve(snapshot.toString())
                     } catch(error:Exception) { promise.reject("RECORDING_ERROR",error.message,error) }
@@ -421,7 +460,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
             android.os.SystemClock.sleep(50)
         }
         return JSONObject(sent.toString()).put("status", "pending")
-            .put("message", "Uhrbefehl gesendet; Bestätigung steht noch aus.")
+            .put("message", Lang.tr("Uhrbefehl gesendet; Bestätigung steht noch aus.", "Watch command sent; confirmation is still pending."))
     }
     @ReactMethod fun startRun(purpose: String, sport: String, target: String, promise: Promise) =
         recording(RecordingService.START, purpose, promise, sport, target = target)
@@ -444,7 +483,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     private fun permissions(names: Array<String>, promise: Promise) {
         context.runOnUiQueueThread {
             val activity = context.currentActivity as? PermissionAwareActivity
-            if (activity == null) { promise.reject("NO_ACTIVITY", "Öffne die App, um Berechtigungen zu erlauben."); return@runOnUiQueueThread }
+            if (activity == null) { promise.reject("NO_ACTIVITY", Lang.tr("Öffne die App, um Berechtigungen zu erlauben.", "Open the app to allow permissions.")); return@runOnUiQueueThread }
             val missing = names.filterNot(::granted).toTypedArray()
             if (missing.isEmpty()) { promise.resolve(capabilities().toString()); return@runOnUiQueueThread }
             activity.requestPermissions(missing, PERMISSION_REQUEST, PermissionListener { code, _, _ ->
@@ -462,15 +501,15 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     private fun launch(intent: Intent, promise: Promise, result: (Int, Intent?) -> Unit) {
         context.runOnUiQueueThread {
             val activity = context.currentActivity
-            if (activity == null) { promise.reject("NO_ACTIVITY", "Öffne die App für die Dateiauswahl."); return@runOnUiQueueThread }
-            if (pending != null) { promise.reject("PICKER_BUSY", "Eine Auswahl ist bereits geöffnet."); return@runOnUiQueueThread }
+            if (activity == null) { promise.reject("NO_ACTIVITY", Lang.tr("Öffne die App für die Dateiauswahl.", "Open the app to choose a file.")); return@runOnUiQueueThread }
+            if (pending != null) { promise.reject("PICKER_BUSY", Lang.tr("Eine Auswahl ist bereits geöffnet.", "A file picker is already open.")); return@runOnUiQueueThread }
             pending = promise to result
             try { activity.startActivityForResult(intent, DOCUMENT_REQUEST) }
             catch (error: Exception) { pending = null; promise.reject("PICKER_ERROR", error.message, error) }
         }
     }
 
-    /** Öffnet die Dateiauswahl und liest nur: Ergebnis ist eine Vorschau, gespeichert wird mit [commitImport]. */
+    /** Opens the file picker and only reads: the result is a preview; saving happens with [commitImport]. */
     @ReactMethod fun importFiles(promise: Promise) {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
             .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
@@ -487,7 +526,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
             }
         }
     }
-    /** Speichert die geprüfte Vorschau mit den Wahlen aus der Oberfläche. */
+    /** Saves the checked preview with the choices made in the screen. */
     @ReactMethod fun commitImport(token: String, json: String, promise: Promise) {
         importWorker.execute {
             try { promise.resolve(importer.commit(token, JSONObject(json)).toString()) }
@@ -500,7 +539,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     }
     @ReactMethod fun getImportBatches(promise: Promise) = task(promise) { JSONObject().put("batches", store.importBatches()) }
     @ReactMethod fun deleteImportBatch(id: String, promise: Promise) = task(promise) {
-        check(importer.status().optString("state") != "running") { "Warte, bis der Import fertig ist." }
+        check(importer.status().optString("state") != "running") { Lang.tr("Warte, bis der Import fertig ist.", "Wait until the import is finished.") }
         store.deleteImportBatch(id)
     }
     @ReactMethod fun getImportStatus(promise: Promise) { promise.resolve(importer.status().toString()) }
@@ -528,14 +567,16 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
             val uri = data?.data
             if (code != Activity.RESULT_OK || uri == null) promise.resolve("{\"cancelled\":true}")
             else task(promise) {
-                check(store.active() == null) { "Beende zuerst die Aufzeichnung." }
-                chat.resetData { context.contentResolver.openInputStream(uri)!!.use(store::restore) }
+                check(store.active() == null) { Lang.tr("Beende zuerst die Aufzeichnung.", "Finish the recording first.") }
+                val restored = chat.resetData { context.contentResolver.openInputStream(uri)!!.use(store::restore) }
+                MusicController.get(context).resetConnection()
+                restored
             }
         }
     }
     @ReactMethod fun exportRun(id: String, format: String, promise: Promise) {
         val extension = format.lowercase()
-        if (extension !in listOf("gpx", "json", "fit")) { promise.reject("FORMAT", "Unterstützt: GPX, JSON, FIT"); return }
+        if (extension !in listOf("gpx", "json", "fit")) { promise.reject("FORMAT", Lang.tr("Unterstützt: GPX, JSON, FIT", "Supported: GPX, JSON, FIT")); return }
         launch(Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
             .setType(if (extension == "gpx") "application/gpx+xml" else if (extension == "json") "application/json" else "application/octet-stream")
             .putExtra(Intent.EXTRA_TITLE, "runback-$id.$extension"), promise) { code, data ->
@@ -544,7 +585,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
             else task(promise) {
                 context.contentResolver.openOutputStream(uri, "wt")!!.use { importer.exportRun(id, extension, it) }
                 JSONObject().put("exported", true).put("format", extension)
-                    .put("limitation", "Austauschformat; für den vollständigen App-Zustand ein Backup erstellen.")
+                    .put("limitation", Lang.tr("Austauschformat; für den vollständigen App-Zustand ein Backup erstellen.", "Exchange format; create a backup for the full app state."))
             }
         }
     }
@@ -565,21 +606,21 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         val chooser = Intent.createChooser(send, title)
         mainHandler.post {
             try {
-                val activity = context.currentActivity ?: error("Öffne die App, um den Bericht zu teilen.")
+                val activity = context.currentActivity ?: error(Lang.tr("Öffne die App, um den Bericht zu teilen.", "Open the app to share the report."))
                 activity.startActivity(chooser)
                 promise.resolve(JSONObject().put("shared", true).put("files", uris.size).toString())
             } catch (error: Exception) { promise.reject("SHARE_ERROR", error.message, error) }
         }
     }
     /**
-     * Teilt eine in JS erzeugte Textdatei (z. B. den Laufbericht) über das
-     * System-Share-Sheet. Die Datei liegt im Cache und wird nur per
-     * FileProvider freigegeben; nichts verlässt das Gerät ohne die Wahl des Nutzers.
+     * Shares a text file created in JS (e.g. the run report) through the
+     * system share sheet. The file lives in the cache and is only shared through
+     * FileProvider; nothing leaves the device without the user's choice.
      */
     @ReactMethod fun shareTextFile(fileName: String, mimeType: String, content: String, title: String, promise: Promise) {
         worker.execute {
             try {
-                require(content.length <= 4_000_000) { "Der Bericht ist zu groß zum Teilen." }
+                require(content.length <= 4_000_000) { Lang.tr("Der Bericht ist zu groß zum Teilen.", "The report is too large to share.") }
                 val file = File(exportDirectory(), safeExportName(fileName, "runback-export.txt"))
                 file.writeText(content, Charsets.UTF_8)
                 shareUris(listOf(FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)), mimeType.ifBlank { "text/plain" }, title, promise)
@@ -587,8 +628,8 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         }
     }
     /**
-     * Schreibt die 5-s-Zeitreihe eines Laufs als CSV in den Export-Cache. Die
-     * Zeilen bleiben nativ (Grundregel 8); JS bekommt nur den Dateinamen.
+     * Writes the 5-second time series of a run as CSV into the export cache. The
+     * rows stay native (ground rule 8); JS only gets the file name.
      */
     @ReactMethod fun writeRunTimeseries(id: String, fileName: String, promise: Promise) = task(promise) {
         val csv = store.timeseriesCsv(id)
@@ -597,9 +638,9 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         JSONObject().put("fileName", file.name).put("rows", (csv.count { it == '\n' } - 1).coerceAtLeast(0))
     }
     /**
-     * Teilt mehrere Dateien auf einmal (ACTION_SEND_MULTIPLE). `files` ist ein
-     * JSON-Array aus {fileName, mimeType, content?}; ohne `content` muss die
-     * Datei bereits im Export-Cache liegen (z. B. aus writeRunTimeseries).
+     * Shares several files at once (ACTION_SEND_MULTIPLE). `files` is a JSON array
+     * of {fileName, mimeType, content?}; without `content` the file must already be
+     * in the export cache (e.g. from writeRunTimeseries).
      */
     @ReactMethod fun shareFiles(filesJson: String, title: String, promise: Promise) {
         worker.execute {
@@ -614,10 +655,10 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
                     val file = File(directory, safeExportName(entry.optString("fileName"), "runback-export-$index.txt"))
                     if (entry.has("content")) {
                         val content = entry.getString("content")
-                        require(content.length <= 4_000_000) { "Der Bericht ist zu groß zum Teilen." }
+                        require(content.length <= 4_000_000) { Lang.tr("Der Bericht ist zu groß zum Teilen.", "The report is too large to share.") }
                         file.writeText(content, Charsets.UTF_8)
                     }
-                    check(file.isFile) { "Die Datei ${file.name} fehlt." }
+                    check(file.isFile) { Lang.tr("Die Datei ${file.name} fehlt.", "The file ${file.name} is missing.") }
                     mimeTypes.add(entry.optString("mimeType").ifBlank { "text/plain" })
                     uris.add(FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file))
                 }
@@ -632,16 +673,16 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         JSONObject().put("id", id)
     }
     @ReactMethod fun appendRunArchive(id: String, runId: String, filesJson: String, promise: Promise) = task(promise) {
-        val archive = analysisArchives[id] ?: error("Der Export ist nicht mehr verfügbar.")
+        val archive = analysisArchives[id] ?: error(Lang.tr("Der Export ist nicht mehr verfügbar.", "The export is no longer available."))
         val input = JSONObject(filesJson)
         val files = linkedMapOf<String, String>()
         for (key in listOf("markdown", "analysis")) {
             val entry = input.getJSONObject(key)
             val content = entry.getString("content")
-            require(content.length <= 4_000_000) { "Der Bericht ist zu groß zum Teilen." }
+            require(content.length <= 4_000_000) { Lang.tr("Der Bericht ist zu groß zum Teilen.", "The report is too large to share.") }
             files[safeExportName(entry.getString("fileName"), "runback-$key.txt")] = content
         }
-        // Wie beim Einzelbericht: Ohne Messdaten bleiben Bericht und Analyse erhalten.
+        // As with the single report: without motion data, the report and analysis are kept.
         val csv = runCatching { store.timeseriesCsv(runId) }.getOrNull()
         if (csv != null && csv.count { it == '\n' } > 1) {
             files[safeExportName(input.getString("timeseries"), "runback-timeseries.csv")] = csv
@@ -656,14 +697,14 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     @ReactMethod fun shareRunArchive(id: String, promise: Promise) {
         worker.execute {
             try {
-                val archive = analysisArchives[id] ?: error("Der Export ist nicht mehr verfügbar.")
+                val archive = analysisArchives[id] ?: error(Lang.tr("Der Export ist nicht mehr verfügbar.", "The export is no longer available."))
                 val file = archive.finish()
                 analysisArchives.remove(id)
                 shareUris(listOf(FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)), "application/zip", "Laufberichte teilen", promise)
             } catch (error: Exception) { promise.reject("SHARE_ERROR", error.message, error) }
         }
     }
-    // Allgemeines ZIP aus flachen Dateien, die JS stückweise anhängt (Kraftexport).
+    // Generic ZIP of flat files that JS appends piece by piece (strength export).
     @ReactMethod fun beginExportArchive(prefix: String, promise: Promise) = task(promise) {
         val id = UUID.randomUUID().toString()
         val name = prefix.replace(Regex("[^a-z0-9-]"), "").take(40).ifBlank { "runback-export" }
@@ -671,8 +712,8 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         JSONObject().put("id", id)
     }
     @ReactMethod fun appendExportArchive(id: String, filesJson: String, promise: Promise) = task(promise) {
-        val archive = exportArchives[id] ?: error("Der Export ist nicht mehr verfügbar.")
-        require(filesJson.length <= 8_000_000) { "Der Export ist zu groß zum Teilen." }
+        val archive = exportArchives[id] ?: error(Lang.tr("Der Export ist nicht mehr verfügbar.", "The export is no longer available."))
+        require(filesJson.length <= 8_000_000) { Lang.tr("Der Export ist zu groß zum Teilen.", "The export is too large to share.") }
         val input = JSONObject(filesJson)
         archive.append(input.keys().asSequence().associateWithTo(linkedMapOf()) { input.getString(it) })
         JSONObject().put("appended", true)
@@ -681,11 +722,11 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         exportArchives.remove(id)?.discard()
         JSONObject().put("discarded", true)
     }
-    // `includeMotion`: Bewegungsdaten der Uhr als Ordner `bewegungsdaten/` (Kraftexport).
+    // `includeMotion`: the watch's motion data as folder `bewegungsdaten/` (strength export; the folder name is kept).
     @ReactMethod fun shareExportArchive(id: String, title: String, includeMotion: Boolean, promise: Promise) {
         worker.execute {
             try {
-                val archive = exportArchives[id] ?: error("Der Export ist nicht mehr verfügbar.")
+                val archive = exportArchives[id] ?: error(Lang.tr("Der Export ist nicht mehr verfügbar.", "The export is no longer available."))
                 val file = archive.finish { zip ->
                     if (includeMotion) MotionSessions.exportInto(context, store, zip, "bewegungsdaten/")
                 }
@@ -714,12 +755,12 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
             JSONObject().put("status", if (nodes.isEmpty()) "disconnected" else "connected")
                 .put("connected", nodes.isNotEmpty())
                 .put("message", when {
-                    nodes.isEmpty() -> "Derzeit keine Uhr verbunden"
-                    link?.optString("status") in setOf("error", "pending", "retry") -> link?.optString("message", "Uhr konnte nicht erreicht werden")
-                    link?.optString("status") == "accepted" -> link.optString("message", "Uhr bestätigt")
-                    link?.optString("status") == "live" -> "Uhr verbunden · Sensordaten werden empfangen"
-                    link?.optString("status") == "sent" -> "Uhr verbunden · Befehl wartet auf Bestätigung"
-                    else -> "Uhr verbunden · Synchronisierung startet mit einer Aufzeichnung"
+                    nodes.isEmpty() -> Lang.tr("Derzeit keine Uhr verbunden", "No watch connected right now")
+                    link?.optString("status") in setOf("error", "pending", "retry") -> link?.optString("message", Lang.tr("Uhr konnte nicht erreicht werden", "Could not reach the watch"))
+                    link?.optString("status") == "accepted" -> link.optString("message", Lang.tr("Uhr bestätigt", "Watch confirmed"))
+                    link?.optString("status") == "live" -> Lang.tr("Uhr verbunden · Sensordaten werden empfangen", "Watch connected · receiving sensor data")
+                    link?.optString("status") == "sent" -> Lang.tr("Uhr verbunden · Befehl wartet auf Bestätigung", "Watch connected · command waiting for confirmation")
+                    else -> Lang.tr("Uhr verbunden · Synchronisierung startet mit einer Aufzeichnung", "Watch connected · syncing starts with a recording")
                 })
                 .put("lastCommand", link ?: JSONObject.NULL)
                 .put("nodes", JSONArray().apply {
@@ -727,7 +768,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
                 })
         } catch (error: Exception) {
             val status = JSONObject().put("status", "unavailable").put("connected", false)
-                .put("nodes", JSONArray()).put("message", "Wear OS-Dienst ist auf diesem Telefon nicht verfügbar.")
+                .put("nodes", JSONArray()).put("message", Lang.tr("Wear OS-Dienst ist auf diesem Telefon nicht verfügbar.", "The Wear OS service is not available on this phone."))
                 .put("error", error.message ?: error.javaClass.simpleName).put("updatedAt", System.currentTimeMillis())
             runCatching { store.putDocument("wearSyncStatus", status) }
             status
@@ -770,11 +811,12 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
             val promise = speechPromise
             speechPromise = null
             destroySpeechRecognizer()
-            promise?.reject("APP_CLOSED", "Die App wurde geschlossen.")
+            promise?.reject("APP_CLOSED", Lang.tr("Die App wurde geschlossen.", "The app was closed."))
         }
-        pending?.first?.reject("APP_CLOSED", "Die App wurde geschlossen.")
+        pending?.first?.reject("APP_CLOSED", Lang.tr("Die App wurde geschlossen.", "The app was closed."))
         pending = null
         chat.resetData {}
+        musicWorker.shutdown()
         aiWorker.shutdown()
         worker.execute {
             analysisArchives.values.forEach { runCatching { it.discard() } }

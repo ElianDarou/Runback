@@ -8,14 +8,14 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 /**
- * Puls einer Krafteinheit aus der Rohdatei der Uhr (MotionFormat ab Version 2).
+ * Heart rate of a strength session from the watch's raw file (MotionFormat from version 2).
  *
- * Die Rohwerte bleiben nativ (Grundregel 8). Nach JS geht eine Reihe aus
- * Zeitfenstern von mindestens 5 s, höchstens 600 Fenster, auf der Handyuhr
- * ab Start der Einheit. Ein Fenster ohne gültigen Wert bleibt leer statt
- * aufgefüllt; Werte ohne Hautkontakt oder mit unzuverlässiger Genauigkeit
- * zählen nicht. Alles Weitere (Puls je Satz, Erholung in der Pause) rechnet
- * `src/domain/strengthHeart.ts` aus dieser Reihe.
+ * The raw values stay native (ground rule 8). A series of time windows of at
+ * least 5 s, at most 600 windows, on the phone clock from the start of the
+ * session goes to JS. A window without a valid value stays empty instead of
+ * being filled; values without skin contact or with unreliable accuracy do not
+ * count. Everything else (heart rate per set, recovery during rest) is computed
+ * from this series by `src/domain/strengthHeart.ts`.
  */
 object StrengthHeart {
     const val VERSION = "strength-heart-v1"
@@ -23,15 +23,15 @@ object StrengthHeart {
     const val MAX_BPM = 230.0
     const val MAX_ROWS = 600
     const val BASE_STEP_SECONDS = 5
-    /** `SensorManager.SENSOR_STATUS_ACCURACY_LOW`; darunter: unzuverlässig oder kein Kontakt. */
+    /** `SensorManager.SENSOR_STATUS_ACCURACY_LOW`; below it: unreliable or no contact. */
     const val MIN_ACCURACY = 1
 
-    /** Gültiger Pulswert in Handyzeit (Unix-ms). */
+    /** Valid heart rate value in phone time (Unix ms). */
     data class Sample(val atMs: Double, val bpm: Double)
 
     /**
-     * Liest alle gültigen Pulswerte. `clockOffsetMs` ist Uhr − Handy aus den
-     * Pings; ohne ihn bleibt die Uhrzeit der Uhr stehen.
+     * Reads all valid heart rate values. `clockOffsetMs` is watch − phone from the
+     * pings; without it the watch's time stays as it is.
      */
     fun read(reader: MotionFormat.Reader, clockOffsetMs: Double?): List<Sample> {
         val samples = mutableListOf<Sample>()
@@ -53,16 +53,16 @@ object StrengthHeart {
         return samples
     }
 
-    /** Fensterbreite: 5 s, bei langen Einheiten so breit, dass höchstens 600 Fenster entstehen. */
+    /** Window width: 5 s, for long sessions wide enough that at most 600 windows result. */
     fun stepSeconds(durationSeconds: Double, minStepSeconds: Int = BASE_STEP_SECONDS): Int {
         val needed = durationSeconds / MAX_ROWS
         return max(minStepSeconds, (ceil(needed / BASE_STEP_SECONDS) * BASE_STEP_SECONDS).toInt())
     }
 
     /**
-     * Zusammenfassung und Darstellungsreihe zwischen `startMs` und `endMs`
-     * (Handyuhr). Ohne einen einzigen gültigen Wert im Zeitraum `null` —
-     * dann gibt es für diese Einheit keinen Puls, keine Ersatzwerte.
+     * Summary and display series between `startMs` and `endMs`
+     * (phone clock). Without a single valid value in the period, `null` —
+     * then there is no heart rate for this session, and no substitute values.
      */
     fun summarize(samples: List<Sample>, startMs: Long, endMs: Long, clockAligned: Boolean,
                   source: String = "watch", minStepSeconds: Int = BASE_STEP_SECONDS): JSONObject? {
@@ -114,13 +114,13 @@ object StrengthHeart {
     }
 
     /**
-     * Kürzt eine gespeicherte Reihe auf ein früheres Ende, wenn die Rohdatei nicht mehr da ist.
-     * Die Fenster bleiben, wie sie gerechnet wurden; die Zahl der Rohwerte ist danach unbekannt.
+     * Trims a stored series to an earlier end when the raw file is gone.
+     * The windows stay as they were computed; the number of raw values is unknown afterwards.
      */
     fun truncate(summary: JSONObject, endMs: Long): JSONObject? {
         val values = summary.optJSONArray("values") ?: return null
         val step = summary.optInt("stepSeconds").takeIf { it > 0 } ?: return null
-        // Nur vollständig erhaltene Fenster: Ein angeschnittenes enthält womöglich Werte nach dem Ende.
+        // Only fully kept windows: a cut-off one may contain values after the end.
         val count = floor((endMs - summary.optLong("startTime")) / 1000.0 / step).toInt().coerceAtMost(values.length())
         if (count <= 0) return null
         val kept = JSONArray()
@@ -141,7 +141,7 @@ object StrengthHeart {
         return result
     }
 
-    /** Kurzform ohne Reihe, für Übersichten über viele Einheiten. */
+    /** Short form without the series, for overviews of many sessions. */
     fun brief(full: JSONObject): JSONObject {
         val brief = JSONObject(full.toString())
         brief.remove("values")
@@ -152,17 +152,17 @@ object StrengthHeart {
 }
 
 /**
- * Puls aus Importen (Fitbit, Google Fit, Mi Fitness) im Zeitfenster einer Einheit.
- * Nichts wird fest zugeordnet: Jede Einheit sucht beim Lesen in ihrem eigenen
- * Fenster, egal in welcher Reihenfolge importiert wurde; ein gelöschter Import
- * nimmt seinen Puls mit. Quellen werden nicht gemischt — es zählt die mit den
- * meisten Werten im Fenster. Importe liefern meist Minutenmittel, deshalb
- * Fenster ab 60 s und keine Satzwerte daraus.
+ * Heart rate from imports (Fitbit, Google Fit, Mi Fitness) in a session's time window.
+ * Nothing is assigned permanently: each session looks in its own window when
+ * reading, regardless of the order in which things were imported; a deleted import
+ * takes its heart rate with it. Sources are not mixed — the one with the most
+ * values in the window counts. Imports mostly deliver minute averages, so windows
+ * start at 60 s and no set values are derived from them.
  */
 object ImportedHeart {
     const val VERSION = "imported-heart-v1"
     const val MIN_STEP_SECONDS = 60
-    /** Wellness-Arten mit Einzel- oder Minutenwerten; Tagesmittel haben ein Ende und zählen nicht. */
+    /** Wellness kinds with single or per-minute values; daily averages have an end and do not count. */
     val KINDS = listOf("heart_sample", "heart_rate")
 
     data class Point(val source: String, val atMs: Long, val bpm: Double)

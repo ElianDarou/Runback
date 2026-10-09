@@ -1,4 +1,5 @@
 import { BROAD_FOCUS, type FocusKind } from './focus';
+import { tr } from './i18n';
 
 export const RELEVANCE_VERSION = 'relevance-v2';
 export type ActionClass =
@@ -10,9 +11,9 @@ export type ActionClass =
   | 'taper'
   | 'strength_load';
 /**
- * Redaktionelle Gewichte 0–5 je Handlungsklasse und Fokus-Art. `null` ist eine
- * harte Sperre. Fehlt eine Fokus-Art, zählt sie wie „kein Fokus“ (0). Die
- * Gewichte werden nicht aus Nutzerdaten gelernt.
+ * Editorial weights 0–5 per action class and focus type. `null` is a hard
+ * block. A missing focus type counts as "no focus" (0). The weights are not
+ * learned from user data.
  */
 const weights: Record<
   ActionClass,
@@ -40,7 +41,7 @@ export function relevance(
   today?: string,
 ): { weight: number; blocked?: string } {
   const table = weights[action];
-  // `null` ist eine Sperre und darf nicht zu 0 werden.
+  // `null` is a block and must not turn into 0.
   const weight =
     focus && !BROAD_FOCUS.includes(focus) && focus in table
       ? (table[focus] as number | null)
@@ -48,8 +49,10 @@ export function relevance(
   if (weight === null)
     return {
       weight: 0,
-      blocked:
+      blocked: tr(
         'Bei Fokus „verletzungsfrei bleiben“ sind Empfehlungen für mehr Umfang gesperrt.',
+        'With the focus "Stay injury-free", recommendations for more volume are blocked.',
+      ),
     };
   if (targetDate && today) {
     const days = (Date.parse(targetDate) - Date.parse(today)) / 86400000;
@@ -57,12 +60,18 @@ export function relevance(
       if (action === 'technique' && days <= 21)
         return {
           weight,
-          blocked: 'So kurz vor deinem Ziel ist ein Technikumbau gesperrt.',
+          blocked: tr(
+            'So kurz vor deinem Ziel ist ein Technikumbau gesperrt.',
+            'So close to your goal, a technique build-up is blocked.',
+          ),
         };
       if (action === 'taper' && days > 84)
         return {
           weight,
-          blocked: 'Für die Entlastung vor deinem Ziel ist es noch zu früh.',
+          blocked: tr(
+            'Für die Entlastung vor deinem Ziel ist es noch zu früh.',
+            'It is still too early for a taper before your goal.',
+          ),
         };
     }
   }

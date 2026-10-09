@@ -5,18 +5,13 @@ import {
   importBatchTitle,
   type ImportBatch,
 } from '../domain/importReview';
+import { dateFormat, tr } from '../domain/i18n';
 import { Button, Copy, Disclosure, EmptyState, Notice, Title } from './components';
 
-const dayFormat = new Intl.DateTimeFormat('de-DE', {
-  day: '2-digit',
-  month: '2-digit',
-  year: 'numeric',
-});
-
 /**
- * Deine Importe: jeder Import lässt sich als Ganzes löschen und danach neu
- * importieren. Was ein anderer Import ebenfalls geliefert hat, bleibt;
- * gespeicherte Vorlagen und eigene Aufzeichnungen gehören keinem Import.
+ * Your imports: each import can be deleted as a whole and then imported again.
+ * What another import also delivered stays; saved templates and your own
+ * recordings do not belong to an import.
  */
 export function ImportHistory({
   batches,
@@ -33,12 +28,15 @@ export function ImportHistory({
 }) {
   const confirm = (batch: ImportBatch) =>
     Alert.alert(
-      'Import löschen?',
-      `${importBatchCounts(batch)} verschwinden, sofern kein anderer Import sie enthält. Gespeicherte Vorlagen bleiben; du kannst die Dateien später neu importieren.`,
+      tr('Import löschen?', 'Delete import?'),
+      tr(
+        `${importBatchCounts(batch)} verschwinden, sofern kein anderer Import sie enthält. Gespeicherte Vorlagen bleiben; du kannst die Dateien später neu importieren.`,
+        `${importBatchCounts(batch)} will be removed unless another import contains them. Saved templates stay; you can import the files again later.`,
+      ),
       [
-        { text: 'Behalten', style: 'cancel' },
+        { text: tr('Behalten', 'Keep'), style: 'cancel' },
         {
-          text: 'Import löschen',
+          text: tr('Import löschen', 'Delete import'),
           style: 'destructive',
           onPress: () => onDelete(batch),
         },
@@ -47,14 +45,22 @@ export function ImportHistory({
 
   return (
     <>
-      <Title>Deine Importe</Title>
+      <Title>{tr('Deine Importe', 'Your imports')}</Title>
       {error ? <Notice>{error}</Notice> : null}
-      {batches === null && !error ? <Copy muted>Lade Importe …</Copy> : null}
+      {batches === null && !error ? (
+        <Copy muted>{tr('Lade Importe …', 'Loading imports …')}</Copy>
+      ) : null}
       {batches?.length === 0 ? (
         <EmptyState
-          title="Noch keine Importe"
-          copy="Was du aus anderen Apps importierst, erscheint hier."
-          action={{ title: 'Dateien importieren', onPress: onImport }}
+          title={tr('Noch keine Importe', 'No imports yet')}
+          copy={tr(
+            'Was du aus anderen Apps importierst, erscheint hier.',
+            'What you import from other apps shows up here.',
+          )}
+          action={{
+            title: tr('Dateien importieren', 'Import files'),
+            onPress: onImport,
+          }}
         />
       ) : null}
       {batches?.map(batch => (
@@ -62,7 +68,13 @@ export function ImportHistory({
           key={batch.id}
           title={importBatchTitle(batch)}
           subtitle={[
-            batch.createdAt ? dayFormat.format(new Date(batch.createdAt)) : '',
+            batch.createdAt
+              ? dateFormat({
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                }).format(new Date(batch.createdAt))
+              : '',
             importBatchCounts(batch),
           ]
             .filter(Boolean)
@@ -72,15 +84,25 @@ export function ImportHistory({
             <Copy muted>{batch.files.join(', ')}</Copy>
           ) : null}
           {batch.state === 'cancelled' || batch.state === 'failed' ? (
-            <Copy muted>Abgebrochen — nur ein Teil wurde gespeichert.</Copy>
+            <Copy muted>
+              {tr(
+                'Abgebrochen — nur ein Teil wurde gespeichert.',
+                'Cancelled — only part of it was saved.',
+              )}
+            </Copy>
           ) : null}
           {batch.counts.strength && !batch.templateSuggestions ? (
-            <Copy muted>Ohne Vorlagenvorschläge importiert.</Copy>
+            <Copy muted>
+              {tr(
+                'Ohne Vorlagenvorschläge importiert.',
+                'Imported without template suggestions.',
+              )}
+            </Copy>
           ) : null}
           <Button
             danger
             small
-            title="Import löschen"
+            title={tr('Import löschen', 'Delete import')}
             disabled={busy}
             onPress={() => confirm(batch)}
           />

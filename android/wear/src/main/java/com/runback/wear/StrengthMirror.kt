@@ -17,6 +17,8 @@ import android.os.Vibrator
 import com.google.android.gms.tasks.Tasks
 import com.google.android.gms.wearable.Wearable
 import androidx.wear.remote.interactions.RemoteActivityHelper
+import com.runback.core.DisplayNames
+import com.runback.core.Lang
 import com.runback.core.RestCue
 import com.runback.core.RunStore
 import com.runback.core.StrengthLive
@@ -27,38 +29,38 @@ import java.util.Calendar
 import java.util.concurrent.TimeUnit
 
 /**
- * Krafteinheit vom Handy auf der Uhr. Das Handy bleibt die einzige Quelle:
- * Die Uhr zeigt den zuletzt empfangenen Stand (StrengthLive.mirror), schickt
- * Befehle und vibriert, wenn das Handy das Pausenende meldet.
+ * Strength session from the phone on the watch. The phone stays the only source:
+ * the watch shows the last state it received (StrengthLive.mirror), sends
+ * commands, and vibrates when the phone reports that the rest is over.
  */
 object StrengthMirror {
     private const val DOC = "strength_mirror"
     private const val TEMPLATES = "strength_templates_mirror"
     private const val CHANNEL = "runback_strength"
     private const val NOTIFICATION_ID = 4411
-    /** Ein Stand, den das Handy so lange nicht erneuert hat, gilt als verwaist. */
+    /** A state the phone has not renewed for this long counts as orphaned. */
     private const val STALE_MS = 12L * 60L * 60L * 1000L
     const val ACTION_COMMAND = "com.runback.wear.strength.COMMAND"
     const val EXTRA_COMMAND = "command"
     private val executor = Executors.newSingleThreadExecutor()
 
-    /** Meldet der offenen Uhr-App einen neuen Stand. */
+    /** Tells the open watch app about a new state. */
     @Volatile var listener: (() -> Unit)? = null
 
-    /** Start, den die Uhr gerade ans Handy geschickt hat: Einheit und Zeitpunkt. */
+    /** Start the watch just sent to the phone: session and time. */
     @Volatile var pendingStart: Pair<String, Long>? = null
         private set
 
-    /** Vorlagenliste vom Handy (StrengthLive.templateList). */
+    /** Template list from the phone (StrengthLive.templateList). */
     fun acceptTemplates(context: Context, list: JSONObject) {
         RunStore(context).putDocument(TEMPLATES, list)
         listener?.invoke()
     }
 
-    /** Vorlagen fürs Starten, heute geplante zuerst; leer, solange das Handy keine geschickt hat. */
+    /** Templates to start from, today's planned ones first; empty until the phone has sent some. */
     fun templates(context: Context, now: Long = System.currentTimeMillis()): List<Pair<JSONObject, Boolean>> {
         val list = RunStore(context).getDocument(TEMPLATES)?.optJSONArray("templates") ?: return emptyList()
-        // 0 = Sonntag wie `Date.getDay` in der App.
+        // 0 = Sunday, like `Date.getDay` in the app.
         val today = Calendar.getInstance().apply { timeInMillis = now }.get(Calendar.DAY_OF_WEEK) - 1
         return (0 until list.length()).mapNotNull { list.optJSONObject(it) }.map { template ->
             val days = template.optJSONArray("days")
@@ -67,9 +69,9 @@ object StrengthMirror {
     }
 
     /**
-     * Startet eine Einheit auf dem Handy. Das Handy legt sie an und schickt den
-     * Stand zurück; danach öffnet die Uhr die App am Handy, damit Benachrichtigung
-     * und Pausenwecker dort sicher laufen. `done(false)`: kein Handy erreicht.
+     * Starts a session on the phone. The phone creates it and sends the state
+     * back; then the watch opens the app on the phone, so the notification and
+     * rest alarm run reliably there. `done(false)`: no phone reached.
      */
     fun start(context: Context, templateId: String?, done: (Boolean) -> Unit) {
         val now = System.currentTimeMillis()
@@ -101,7 +103,7 @@ object StrengthMirror {
     fun accept(context: Context, state: JSONObject, phoneNode: String?) {
         val store = RunStore(context)
         val previous = store.getDocument(DOC)
-        // Ein älterer Stand, der nach einem neueren ankommt, ändert nichts.
+        // An older state that arrives after a newer one changes nothing.
         if (previous != null && previous.optString("sessionId") == state.optString("sessionId") &&
             (previous.optLong("updatedAt") > state.optLong("updatedAt") ||
                 (!previous.optBoolean("active") && state.optBoolean("active")))) return
@@ -109,7 +111,7 @@ object StrengthMirror {
         if (pendingStart?.first == state.optString("sessionId")) pendingStart = null
         if (state.optBoolean("active")) {
             notify(context, state)
-            // Jedes Mal: Das Handy vibriert nur dann auf der Uhr, wenn es weiß, dass sie mitliest.
+            // Every time: the phone only vibrates the watch if it knows the watch is reading along.
             if (phoneNode != null) seen(context, phoneNode, state.optString("sessionId"))
         } else {
             cancel(context)
@@ -117,7 +119,19 @@ object StrengthMirror {
         listener?.invoke()
     }
 
-    /** Laufender Stand oder `null`, wenn nichts läuft oder das Handy schweigt. */
+    /**
+     * Visible names. The phone sends them in its language (`displayName`); the
+     * stored name is only the fallback, and stored names never change here.
+     */
+    fun exerciseTitle(exercise: JSONObject?): String? =
+        exercise?.optString("displayName")?.takeIf { it.isNotBlank() }
+            ?: exercise?.optString("name")?.takeIf { it.isNotBlank() }?.let { DisplayNames.exercise(it) }
+
+    fun sessionTitle(state: JSONObject): String =
+        state.optString("displayName").takeIf { it.isNotBlank() }
+            ?: DisplayNames.session(state.optString("name", "Krafttraining"))
+
+    /** Running state, or `null` if nothing runs or the phone is silent. */
     fun current(context: Context): JSONObject? {
         val state = RunStore(context).getDocument(DOC) ?: return null
         if (!state.optBoolean("active")) return null
@@ -125,7 +139,7 @@ object StrengthMirror {
         return state
     }
 
-    /** Restsekunden der Pause mit der Uhrzeit der Uhr; beide Geräte gleichen ihre Zeit ab. */
+    /** Seconds left of the rest, using the watch's clock; both devices sync their time. */
     fun restRemaining(state: JSONObject, now: Long = System.currentTimeMillis()): Long? {
         val rest = state.optJSONObject("rest") ?: return null
         if (rest.optBoolean("paused") || !rest.has("endsAt")) return rest.optLong("remaining").takeIf { it > 0 }
@@ -133,7 +147,7 @@ object StrengthMirror {
         return remaining.takeIf { it > 0 }
     }
 
-    /** Befehl ans Handy; `done(false)`, wenn kein Handy erreichbar war. */
+    /** Command to the phone; `done(false)` if no phone was reachable. */
     fun send(context: Context, command: JSONObject, done: ((Boolean) -> Unit)? = null) {
         val app = context.applicationContext
         executor.execute {
@@ -168,7 +182,7 @@ object StrengthMirror {
         }
     }
 
-    /** Pausenende: kurz, kurz, lang. Wecker-Kategorie, damit es auch im Hintergrund vibriert. */
+    /** End of rest: short, short, long. Alarm category, so it vibrates even in the background. */
     fun alert(context: Context, sessionId: String) {
         if (current(context)?.optString("sessionId") != sessionId) return
         val vibrator = context.getSystemService(Vibrator::class.java) ?: return
@@ -177,7 +191,7 @@ object StrengthMirror {
         else @Suppress("DEPRECATION") vibrator.vibrate(effect, AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build())
     }
 
-    /** Pausenbefehle tragen die angezeigte Pause, damit sie keine neuere treffen. */
+    /** Rest commands carry the rest on display, so they never hit a newer one. */
     fun command(action: String, state: JSONObject, vararg fields: Pair<String, Any>) = JSONObject()
         .put("action", action).put("sessionId", state.optString("sessionId"))
         .apply {
@@ -189,7 +203,7 @@ object StrengthMirror {
 
     private fun notify(context: Context, state: JSONObject) {
         val manager = context.getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(NotificationChannel(CHANNEL, "Krafttraining vom Handy", NotificationManager.IMPORTANCE_DEFAULT).apply {
+        manager.createNotificationChannel(NotificationChannel(CHANNEL, Lang.tr("Krafttraining vom Handy", "Strength training from phone"), NotificationManager.IMPORTANCE_DEFAULT).apply {
             setSound(null, null)
             enableVibration(false)
             setShowBadge(false)
@@ -198,16 +212,22 @@ object StrengthMirror {
         val set = state.optJSONObject("set")
         val rest = state.optJSONObject("rest")
         val text = when {
-            set != null -> "Satz ${set.optInt("number")} von ${exercise?.optInt("total")} · ${set.optString("label")}"
-            exercise?.optBoolean("done") == true -> "Alle Sätze erledigt"
-            else -> "${state.optInt("completedSets")} von ${state.optInt("totalSets")} Sätzen"
+            set != null -> Lang.tr(
+                "Satz ${set.optInt("number")} von ${exercise?.optInt("total")} · ${set.optString("label")}",
+                "Set ${set.optInt("number")} of ${exercise?.optInt("total")} · ${set.optString("label")}",
+            )
+            exercise?.optBoolean("done") == true -> Lang.tr("Alle Sätze erledigt", "All sets done")
+            else -> Lang.tr(
+                "${state.optInt("completedSets")} von ${state.optInt("totalSets")} Sätzen",
+                "${state.optInt("completedSets")} of ${state.optInt("totalSets")} sets",
+            )
         }
         val open = PendingIntent.getActivity(context, 10,
             Intent(context, MainActivity::class.java).putExtra(MainActivity.EXTRA_PAGE, MainActivity.PAGE_STRENGTH),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val builder = Notification.Builder(context, CHANNEL)
             .setSmallIcon(R.drawable.ic_runback)
-            .setContentTitle(exercise?.optString("name")?.takeIf { it.isNotBlank() } ?: state.optString("name", "Krafttraining"))
+            .setContentTitle(exerciseTitle(exercise) ?: sessionTitle(state))
             .setContentText(text)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -215,18 +235,18 @@ object StrengthMirror {
             .setContentIntent(open)
         if (rest != null) {
             val paused = rest.optBoolean("paused")
-            builder.setSubText(if (paused) "Pause angehalten" else "Pause")
+            builder.setSubText(if (paused) Lang.tr("Pause angehalten", "Rest paused") else Lang.tr("Pause", "Rest"))
             if (!paused && rest.has("endsAt")) {
                 builder.setWhen(rest.optLong("endsAt")).setShowWhen(true).setUsesChronometer(true).setChronometerCountDown(true)
             }
         }
-        if (set != null) builder.addAction(action(context, "Satz abschließen", 1,
+        if (set != null) builder.addAction(action(context, Lang.tr("Satz abschließen", "Complete set"), 1,
             command(StrengthLive.COMPLETE_SET, state, "setId" to set.optString("id"), "exerciseIndex" to (exercise?.optInt("index") ?: 0))))
         if (rest != null) {
             val paused = rest.optBoolean("paused")
-            builder.addAction(action(context, if (paused) "Pause weiter" else "Pause anhalten", 2,
+            builder.addAction(action(context, if (paused) Lang.tr("Pause weiter", "Resume rest") else Lang.tr("Pause anhalten", "Pause rest"), 2,
                 command(if (paused) StrengthLive.RESUME_REST else StrengthLive.PAUSE_REST, state)))
-            builder.addAction(action(context, "Pause überspringen", 3, command(StrengthLive.SKIP_REST, state)))
+            builder.addAction(action(context, Lang.tr("Pause überspringen", "Skip rest"), 3, command(StrengthLive.SKIP_REST, state)))
         }
         manager.notify(NOTIFICATION_ID, builder.build())
     }
@@ -243,7 +263,7 @@ object StrengthMirror {
     }
 }
 
-/** Knöpfe der Trainingsbenachrichtigung auf der Uhr. */
+/** Buttons of the strength notification on the watch. */
 class StrengthCommandReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != StrengthMirror.ACTION_COMMAND) return

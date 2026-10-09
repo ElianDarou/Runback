@@ -35,7 +35,7 @@ const run = (overrides: Partial<RunSummary> = {}): RunSummary => ({
 
 const DAY = 86400000;
 const BASE_START = 30 * DAY;
-/** Zwei vergleichbare Vorläufe mit demselben Tempoabfall. */
+/** Two comparable earlier runs with the same pace fade. */
 const history = (overrides: Partial<RunSummary> = {}): RunSummary[] =>
   [1, 2].map(index =>
     run({
@@ -101,7 +101,7 @@ describe('domain rules', () => {
     expect(alone.recommendation).toBeUndefined();
     expect(alone.focus).toMatch(/1 von 3/);
 
-    // Zwei normale Vorläufe: der Median liegt unter 8 %, der Ausreißer zählt nicht.
+    // Two normal earlier runs: the median is below 8 %, the outlier does not count.
     const calm = history({
       segments: [segment(300), segment(300), segment(306), segment(306)],
     });

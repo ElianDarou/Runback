@@ -9,6 +9,7 @@ import com.facebook.react.ReactNativeHost
 import com.facebook.react.ReactPackage
 import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 import com.facebook.react.defaults.DefaultReactNativeHost
+import com.runback.core.DisplayNames
 import com.runback.core.RecordingControlSink
 import com.runback.core.RecordingSampleSink
 import com.runback.core.RecordingService
@@ -51,6 +52,8 @@ class MainApplication : Application(), ReactApplication {
         target = session?.optJSONObject("target")?.toString(),
       )
     }
+    DisplayNames.restore(RunStore(this))
+    RecordingService.musicSink = { run -> MusicController.get(this).onRun(run) }
     ServerLink.start(this)
     WearController.retryPending(this)
     loadReactNative(this)

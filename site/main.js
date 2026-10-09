@@ -1,6 +1,6 @@
-// Verlinkt die APKs des neuesten Test-Releases direkt. Alle Releases sind
-// Prereleases, deshalb funktioniert /releases/latest nicht. Schlägt die Abfrage
-// fehl, bleiben die Links auf der Release-Übersicht.
+// Links the APKs of the latest test release directly. All releases are
+// prereleases, so /releases/latest does not work. If the query fails,
+// the links stay on the release overview.
 (async () => {
   const en = document.documentElement.lang === 'en';
   try {
@@ -11,8 +11,8 @@
     if (!res.ok) return;
     const releases = await res.json();
 
-    // Nur ein Release mit beiden fertig hochgeladenen APKs zählt; ein
-    // halb hochgeladenes neuestes Release fällt auf das vorherige zurück.
+    // Only a release with both APKs fully uploaded counts; a half-uploaded
+    // newest release falls back to the previous one.
     const apk = (release, prefix) =>
       release.assets.find(
         a =>
@@ -48,6 +48,6 @@
       line.textContent = text;
     }
   } catch {
-    // Offline oder Rate-Limit: Links zeigen weiter auf die Release-Übersicht.
+    // Offline or rate limit: links keep pointing to the release overview.
   }
 })();

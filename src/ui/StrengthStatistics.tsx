@@ -3,7 +3,11 @@ import { View } from 'react-native';
 import type { StatsModule } from '../domain/features';
 import type { StatsRange } from '../domain/statisticsView';
 import { STATS_RANGES } from '../domain/statisticsView';
-import { isSetCompleted, type StrengthSession } from '../domain/strength';
+import {
+  displaySessionName,
+  isSetCompleted,
+  type StrengthSession,
+} from '../domain/strength';
 import type { StrengthHeartSummary } from '../domain/strengthHeart';
 import { setLabel } from '../domain/strengthSession';
 import {
@@ -14,6 +18,8 @@ import {
   type StrengthRecord,
   type StrengthStatsMetric,
 } from '../domain/strengthStatistics';
+import { dateFormat, numberFormat, tr } from '../domain/i18n';
+import { exerciseDisplayName } from '../domain/catalog';
 import {
   Badge,
   ChipGroup,
@@ -37,30 +43,53 @@ import {
 } from './StatsParts';
 
 /**
- * Statistik im Bereich Krafttraining, gebaut wie die Laufstatistik: Zeitraum,
- * drei Kennzahlen mit Vergleich, ein Verlauf mit wählbarer Kennzahl, darunter
- * Übungen und eingeklappte Abschnitte. Jede Übung öffnet ihren eigenen
- * Verlauf, jeder Bestwert seine Einheit.
+ * Statistics for the strength area, built like the running statistics: period,
+ * three figures with a comparison, a trend with a selectable metric, then
+ * exercises and collapsed sections. Each exercise opens its own history, each
+ * personal best its session.
  */
 export const STRENGTH_METRICS: {
   value: StrengthStatsMetric;
-  label: string;
   shape: 'bar' | 'point';
 }[] = [
-  { value: 'sessions', label: 'Einheiten', shape: 'bar' },
-  { value: 'sets', label: 'Sätze', shape: 'bar' },
-  { value: 'volume', label: 'Volumen', shape: 'bar' },
-  { value: 'duration', label: 'Dauer', shape: 'bar' },
-  { value: 'heartRate', label: 'Puls', shape: 'point' },
+  { value: 'sessions', shape: 'bar' },
+  { value: 'sets', shape: 'bar' },
+  { value: 'volume', shape: 'bar' },
+  { value: 'duration', shape: 'bar' },
+  { value: 'heartRate', shape: 'point' },
 ];
 
-/** Bis hierhin stehen Übungen offen da, der Rest unter „Alle Übungen“. */
+/** Metric names as shown to the user. */
+const strengthMetricLabel = (metric: StrengthStatsMetric) => {
+  switch (metric) {
+    case 'sessions':
+      return tr('Einheiten', 'Sessions');
+    case 'sets':
+      return tr('Sätze', 'Sets');
+    case 'volume':
+      return tr('Volumen', 'Volume');
+    case 'duration':
+      return tr('Dauer', 'Duration');
+    case 'heartRate':
+      return tr('Puls', 'Heart rate');
+  }
+};
+
+/** Up to this many exercises are shown open; the rest sit under "All exercises". */
 const VISIBLE_EXERCISES = 6;
 
-const kilograms = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 });
+const formatKg = (value: number) =>
+  numberFormat({ maximumFractionDigits: 0 }).format(value);
 
-const counted = (count: number, singular: string, plural: string) =>
-  `${count} ${count === 1 ? singular : plural}`;
+const sessionWord = (count: number) =>
+  tr(count === 1 ? 'Einheit' : 'Einheiten', count === 1 ? 'session' : 'sessions');
+const setWord = (count: number) =>
+  tr(count === 1 ? 'Satz' : 'Sätze', count === 1 ? 'set' : 'sets');
+const weekWord = (count: number) =>
+  tr(count === 1 ? 'Woche' : 'Wochen', count === 1 ? 'week' : 'weeks');
+
+const counted = (count: number, word: (count: number) => string) =>
+  `${count} ${word(count)}`;
 
 function formatStrength(
   metric: StrengthStatsMetric,
@@ -73,15 +102,15 @@ function formatStrength(
     case 'sessions':
       return {
         value: String(Math.round(value)),
-        unit: Math.round(value) === 1 ? 'Einheit' : 'Einheiten',
+        unit: sessionWord(Math.round(value)),
       };
     case 'sets':
       return {
         value: String(Math.round(value)),
-        unit: Math.round(value) === 1 ? 'Satz' : 'Sätze',
+        unit: setWord(Math.round(value)),
       };
     case 'volume':
-      return { value: kilograms.format(value), unit: 'kg' };
+      return { value: formatKg(value), unit: 'kg' };
     case 'duration':
       return { value: formatDuration(value), unit: '' };
     case 'heartRate':
@@ -117,7 +146,7 @@ export function StrengthStatistics({
   onOpenExercise?: (exerciseId: string) => void;
   busy?: boolean;
   modules: StatsModule[];
-  /** Nur für Tests; sonst die aktuelle Zeit. */
+  /** Only for tests; otherwise the current time. */
   now?: number;
 }) {
   const stats = useMemo(
@@ -125,7 +154,7 @@ export function StrengthStatistics({
     [sessions, range, now, heart],
   );
   const [selected, setSelected] = useState<number | null>(null);
-  // Eine Kennzahl ohne Daten wird nicht angeboten; eine gewählte fällt zurück.
+  // A metric without data is not offered; a chosen one falls back.
   const metrics = STRENGTH_METRICS.filter(
     entry =>
       (entry.value !== 'volume' || stats.available.volume) &&
@@ -135,8 +164,7 @@ export function StrengthStatistics({
   const metric = metrics.some(entry => entry.value === storedMetric)
     ? (storedMetric as StrengthStatsMetric)
     : 'sets';
-  const metricLabel =
-    STRENGTH_METRICS.find(entry => entry.value === metric)?.label ?? '';
+  const metricLabel = strengthMetricLabel(metric);
   const { totals, consistency } = stats;
   const exercises = stats.exercises;
   const topGroup = stats.muscles.groups[0];
@@ -146,7 +174,7 @@ export function StrengthStatistics({
   return (
     <>
       <Segmented
-        label="Zeitraum"
+        label={tr('Zeitraum', 'Period')}
         options={STATS_RANGES}
         value={range}
         onChange={next => {
@@ -159,20 +187,20 @@ export function StrengthStatistics({
         <Tile
           value={String(totals.sessionCount)}
           unit=""
-          label={totals.sessionCount === 1 ? 'Einheit' : 'Einheiten'}
+          label={sessionWord(totals.sessionCount)}
           delta={stats.deltas.sessions}
         />
         <Tile
           value={String(totals.sets)}
           unit=""
-          label={totals.sets === 1 ? 'Satz' : 'Sätze'}
+          label={setWord(totals.sets)}
           delta={stats.deltas.sets}
         />
         {stats.available.volume ? (
           <Tile
-            value={kilograms.format(totals.volumeKg)}
+            value={formatKg(totals.volumeKg)}
             unit="kg"
-            label="Volumen"
+            label={tr('Volumen', 'Volume')}
             delta={stats.deltas.volume}
           />
         ) : (
@@ -180,23 +208,26 @@ export function StrengthStatistics({
             value={stats.available.duration
               ? formatDuration(totals.durationSeconds) : DASH}
             unit=""
-            label="Zeit"
+            label={tr('Zeit', 'Time')}
             delta={stats.deltas.duration}
           />
         )}
       </View>
       {stats.comparisonLabel ? (
         <Copy muted style={styles.compare}>
-          {`Pfeile vergleichen mit ${stats.comparisonLabel}.`}
+          {tr(
+            `Pfeile vergleichen mit ${stats.comparisonLabel}.`,
+            `Arrows compare with ${stats.comparisonLabel}.`,
+          )}
         </Copy>
       ) : null}
 
-      <Section title="Zeitverlauf">
+      <Section title={tr('Zeitverlauf', 'Over time')}>
         <ChipGroup
-          label="Kennzahl im Verlauf"
+          label={tr('Kennzahl im Verlauf', 'Metric over time')}
           options={metrics.map(entry => ({
             value: entry.value,
-            label: entry.label,
+            label: strengthMetricLabel(entry.value),
           }))}
           value={metric}
           onChange={next => onMetricChange(next)}
@@ -227,7 +258,7 @@ export function StrengthStatistics({
       </Section>
 
       {exercises.length ? (
-        <Section title="Übungen">
+        <Section title={tr('Übungen', 'Exercises')}>
           {exercises.slice(0, VISIBLE_EXERCISES).map(entry => (
             <ExerciseRow
               key={entry.exerciseId}
@@ -238,8 +269,11 @@ export function StrengthStatistics({
           ))}
           {exercises.length > VISIBLE_EXERCISES ? (
             <Disclosure
-              title="Alle Übungen"
-              subtitle={`${exercises.length - VISIBLE_EXERCISES} weitere`}
+              title={tr('Alle Übungen', 'All exercises')}
+              subtitle={tr(
+                `${exercises.length - VISIBLE_EXERCISES} weitere`,
+                `${exercises.length - VISIBLE_EXERCISES} more`,
+              )}
             >
               {exercises.slice(VISIBLE_EXERCISES).map(entry => (
                 <ExerciseRow
@@ -255,17 +289,16 @@ export function StrengthStatistics({
       ) : null}
 
       {modules.length ? (
-        <Section title="Tiefer schauen">
+        <Section title={tr('Tiefer schauen', 'Explore further')}>
           {modules.includes('distribution') ? (
             <Panel
-              title="Muskeln"
+              title={tr('Muskeln', 'Muscles')}
               summary={
                 topGroup
-                  ? `${topGroup.label} führt mit ${counted(
-                      topGroup.sets,
-                      'Satz',
-                      'Sätzen',
-                    )}`
+                  ? tr(
+                      `${topGroup.label} führt mit ${topGroup.sets} ${topGroup.sets === 1 ? 'Satz' : 'Sätzen'}`,
+                      `${topGroup.label}: ${counted(topGroup.sets, setWord)}`,
+                    )
                   : DASH
               }
             >
@@ -275,36 +308,48 @@ export function StrengthStatistics({
                   <ShareRow
                     key={group.group}
                     label={group.label}
-                    value={counted(group.sets, 'Satz', 'Sätze')}
+                    value={counted(group.sets, setWord)}
                     share={topGroup ? group.sets / topGroup.sets : 0}
                     meta={
-                      weekly === null ? undefined : `${decimal(weekly)} je Woche`
+                      weekly === null
+                        ? undefined
+                        : tr(
+                            `${decimal(weekly)} je Woche`,
+                            `${decimal(weekly)} per week`,
+                          )
                     }
                   />
                 );
               })}
               {stats.muscles.unassignedSets > 0 ? (
                 <Copy muted>
-                  {`${counted(
-                    stats.muscles.unassignedSets,
-                    'Satz',
-                    'Sätze',
-                  )} ohne bekannte Muskelgruppe.`}
+                  {tr(
+                    `${counted(stats.muscles.unassignedSets, setWord)} ohne bekannte Muskelgruppe.`,
+                    `${counted(stats.muscles.unassignedSets, setWord)} without a known muscle group.`,
+                  )}
                 </Copy>
               ) : null}
               {stats.muscles.groups.length ? (
                 <Copy muted>
-                  Ein Arbeitssatz zählt für jede Hauptgruppe der Übung.
+                  {tr(
+                    'Ein Arbeitssatz zählt für jede Hauptgruppe der Übung.',
+                    'A working set counts toward each main group of the exercise.',
+                  )}
                 </Copy>
               ) : (
-                <Copy muted>Noch keine Arbeitssätze in diesem Zeitraum.</Copy>
+                <Copy muted>
+                  {tr(
+                    'Noch keine Arbeitssätze in diesem Zeitraum.',
+                    'No working sets in this period yet.',
+                  )}
+                </Copy>
               )}
             </Panel>
           ) : null}
 
           {modules.includes('records') ? (
             <Panel
-              title="Bestwerte"
+              title={tr('Bestwerte', 'Personal bests')}
               summary={stats.records.length ? stats.records[0].value : DASH}
             >
               {stats.records.length ? (
@@ -324,7 +369,10 @@ export function StrengthStatistics({
                 ))
               ) : (
                 <Copy muted>
-                  Für diesen Zeitraum gibt es noch keine Bestwerte.
+                  {tr(
+                    'Für diesen Zeitraum gibt es noch keine Bestwerte.',
+                    'There are no personal bests for this period yet.',
+                  )}
                 </Copy>
               )}
             </Panel>
@@ -332,23 +380,26 @@ export function StrengthStatistics({
 
           {modules.includes('consistency') ? (
             <Panel
-              title="Konsistenz"
-              summary={`${consistency.activeWeeks} von ${consistency.weekCount} Wochen`}
+              title={tr('Konsistenz', 'Consistency')}
+              summary={tr(
+                `${consistency.activeWeeks} von ${consistency.weekCount} Wochen`,
+                `${consistency.activeWeeks} of ${counted(consistency.weekCount, weekWord)}`,
+              )}
             >
               <ValueRow
-                label="Wochen mit Krafttraining"
+                label={tr('Wochen mit Krafttraining', 'Weeks with strength training')}
                 value={`${consistency.activeWeeks} / ${consistency.weekCount}`}
               />
               <ValueRow
-                label="Aktuelle Serie"
-                value={counted(consistency.currentStreakWeeks, 'Woche', 'Wochen')}
+                label={tr('Aktuelle Serie', 'Current streak')}
+                value={counted(consistency.currentStreakWeeks, weekWord)}
               />
               <ValueRow
-                label="Längste Serie"
-                value={counted(consistency.longestStreakWeeks, 'Woche', 'Wochen')}
+                label={tr('Längste Serie', 'Longest streak')}
+                value={counted(consistency.longestStreakWeeks, weekWord)}
               />
               <ValueRow
-                label="Einheiten je Woche"
+                label={tr('Einheiten je Woche', 'Sessions per week')}
                 value={
                   totals.sessionsPerWeek === null
                     ? DASH
@@ -356,7 +407,7 @@ export function StrengthStatistics({
                 }
               />
               <ValueRow
-                label="Tage mit Krafttraining"
+                label={tr('Tage mit Krafttraining', 'Days with strength training')}
                 value={String(consistency.activeDays)}
               />
             </Panel>
@@ -364,51 +415,71 @@ export function StrengthStatistics({
 
           {modules.includes('body') ? (
             <Panel
-              title="Körperwerte"
+              title={tr('Körperwerte', 'Body values')}
               summary={
                 totals.averageBpm === null
                   ? totals.medianRir === null
                     ? DASH
-                    : `${decimal(totals.medianRir)} im Tank`
+                    : tr(
+                        `${decimal(totals.medianRir)} im Tank`,
+                        `${decimal(totals.medianRir)} in reserve`,
+                      )
                   : `Ø ${bpm(totals.averageBpm)}`
               }
             >
               <ValueRow
-                label="Ø Puls"
+                label={tr('Ø Puls', 'Avg heart rate')}
                 value={bpm(totals.averageBpm)}
                 meta={
                   totals.heartSessions
-                    ? `Von der Uhr · ${totals.heartSessions} von ${counted(
-                        totals.sessionCount,
-                        'Einheit',
-                        'Einheiten',
-                      )}`
-                    : 'Mit Uhr gemessen; ohne Uhr bleibt er offen'
+                    ? tr(
+                        `Von der Uhr · ${totals.heartSessions} von ${counted(
+                          totals.sessionCount,
+                          sessionWord,
+                        )}`,
+                        `From the watch · ${totals.heartSessions} of ${counted(
+                          totals.sessionCount,
+                          sessionWord,
+                        )}`,
+                      )
+                    : tr(
+                        'Mit Uhr gemessen; ohne Uhr bleibt er offen',
+                        'Measured with the watch; without it, this stays open',
+                      )
                 }
               />
-              <ValueRow label="Höchster Puls" value={bpm(totals.maxBpm)} />
               <ValueRow
-                label="Wiederholungen im Tank"
+                label={tr('Höchster Puls', 'Highest heart rate')}
+                value={bpm(totals.maxBpm)}
+              />
+              <ValueRow
+                label={tr('Wiederholungen im Tank', 'Reps in reserve')}
                 value={
                   totals.medianRir === null ? DASH : decimal(totals.medianRir)
                 }
                 meta={
                   totals.rirSets
-                    ? `Median aus ${counted(totals.rirSets, 'Satz', 'Sätzen')}`
+                    ? tr(
+                        `Median aus ${totals.rirSets} ${totals.rirSets === 1 ? 'Satz' : 'Sätzen'}`,
+                        `Median of ${counted(totals.rirSets, setWord)}`,
+                      )
                     : undefined
                 }
               />
               <ValueRow
-                label="Satzabstand"
+                label={tr('Satzabstand', 'Set interval')}
                 value={
                   totals.medianSetGapSeconds === null
                     ? DASH
                     : formatClock(totals.medianSetGapSeconds)
                 }
-                meta="Median · Abhaken bis Abhaken, Pause und Satz"
+                meta={tr(
+                  'Median · Abhaken bis Abhaken, Pause und Satz',
+                  'Median · from tick to tick, including rest and set',
+                )}
               />
               <ValueRow
-                label="Ø Dauer je Einheit"
+                label={tr('Ø Dauer je Einheit', 'Avg duration per session')}
                 value={
                   totals.averageDurationSeconds === null
                     ? DASH
@@ -416,7 +487,7 @@ export function StrengthStatistics({
                 }
               />
               <ValueRow
-                label="Sätze je Einheit"
+                label={tr('Sätze je Einheit', 'Sets per session')}
                 value={
                   totals.setsPerSession === null
                     ? DASH
@@ -429,14 +500,14 @@ export function StrengthStatistics({
       ) : null}
 
       {onOpenSession && stats.sessions.length ? (
-        <Section title="Letzte Einheiten">
+        <Section title={tr('Letzte Einheiten', 'Recent sessions')}>
           {[...stats.sessions]
             .reverse()
             .slice(0, 3)
             .map(session => (
               <Row
                 key={session.id}
-                title={session.name || 'Krafttraining'}
+                title={displaySessionName(session.name) || tr('Krafttraining', 'Strength training')}
                 subtitle={sessionLine(session, heart[session.id])}
                 onPress={() => onOpenSession(session.id)}
                 disabled={busy}
@@ -448,17 +519,11 @@ export function StrengthStatistics({
   );
 }
 
-/** „2:45“ für Satzabstände. */
+/** "2:45" for set intervals. */
 export function formatClock(seconds: number): string {
   const whole = Math.max(0, Math.round(seconds));
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
 }
-
-const dayFormat = new Intl.DateTimeFormat('de-DE', {
-  weekday: 'short',
-  day: '2-digit',
-  month: '2-digit',
-});
 
 function sessionLine(
   session: StrengthSession,
@@ -472,8 +537,10 @@ function sessionLine(
     0,
   );
   return [
-    dayFormat.format(new Date(session.startTime)),
-    counted(sets, 'Satz', 'Sätze'),
+    dateFormat({ weekday: 'short', day: '2-digit', month: '2-digit' }).format(
+      new Date(session.startTime),
+    ),
+    counted(sets, setWord),
     heart ? `Ø ${Math.round(heart.averageBpm)} bpm` : null,
   ]
     .filter(Boolean)
@@ -492,10 +559,10 @@ function ExerciseRow({
   const best = entry.best ? setLabel(entry.best) : '';
   return (
     <Row
-      title={entry.name}
+      title={exerciseDisplayName(entry.exerciseId, entry.name)}
       subtitle={[
-        counted(entry.workingSets, 'Satz', 'Sätze'),
-        best ? `bester Satz ${best}` : null,
+        counted(entry.workingSets, setWord),
+        best ? tr(`bester Satz ${best}`, `best set ${best}`) : null,
       ]
         .filter(Boolean)
         .join(' · ')}
@@ -528,10 +595,10 @@ function BucketDetail({
       title={bucket.fullLabel}
       value={`${label} ${highlighted.value} ${highlighted.unit}`.trim()}
       meta={[
-        counted(bucket.sessionCount, 'Einheit', 'Einheiten'),
-        counted(bucket.sets, 'Satz', 'Sätze'),
+        counted(bucket.sessionCount, sessionWord),
+        counted(bucket.sets, setWord),
         bucket.volumeKg !== null && bucket.volumeKg > 0
-          ? `${kilograms.format(bucket.volumeKg)} kg` : null,
+          ? `${formatKg(bucket.volumeKg)} kg` : null,
         bucket.durationSeconds !== null && bucket.durationSeconds > 0
           ? formatDuration(bucket.durationSeconds)
           : null,

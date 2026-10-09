@@ -5,8 +5,8 @@ import org.junit.Test
 
 class RunTimelineTest {
     private val start = 1_700_000_000_000L
-    // Gleichmäßiger Lauf nach Norden: 0,0001° ≈ 11,1 m je Sekunde (~ 1:30 /km,
-    // absichtlich schnell, damit die Zahlen klar bleiben).
+    // Even run north: 0.0001° ≈ 11.1 m per second (~ 1:30 /km,
+    // deliberately fast so the numbers stay clear).
     private fun track(seconds: Int, from: Int = 0): List<RunTimeline.GpsPoint> =
         (from until from + seconds).map { RunTimeline.GpsPoint(start + it * 1000L, 52.0 + it * 0.0001, 13.0, 3.0, 100.0 + it * 0.1) }
 
@@ -45,16 +45,16 @@ class RunTimelineTest {
     }
 
     @Test fun pauseNeitherAddsDistanceNorMovingTime() {
-        // 60 s laufen, 60 s Pause ohne Samples, dann 60 s weiter.
+        // 60 s running, 60 s pause without samples, then 60 s more.
         val gps = track(60) + track(60, from = 120)
         val cuts = listOf(start + 60_500L, start + 119_500L)
         val result = RunTimeline.build(start, start + 180_000L, gps, emptyList(), emptyList(), cuts, maxRows = 120)
         val elapsed = result.rows.map { it.elapsedSeconds }
-        // Das Pausenfenster (60–90 s, 90–120 s) fehlt statt mit Nullen aufzutauchen.
+        // The pause windows (60–90 s, 90–120 s) are missing instead of showing up as zeros.
         assertEquals(listOf(30, 60, 150, 180), elapsed)
         val beforePause = result.rows[1]
         val afterPause = result.rows[2]
-        // Der Sprung über die Pause zählt weder als Strecke noch als Bewegung.
+        // The jump across the pause counts neither as distance nor as movement.
         assertEquals(29.0, afterPause.gpsCoveredSeconds, 0.01)
         assertTrue(afterPause.distanceMeters - beforePause.distanceMeters < 340.0)
         assertNull(afterPause.avgHeartRate)

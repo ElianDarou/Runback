@@ -3,16 +3,16 @@ import type { StrengthSession } from './strength';
 import { localDateKey as scheduleLocalDateKey } from './schedule';
 import type { ScheduleState } from './schedule';
 import { isAccidentalRun, isRun } from './sport';
+import { tr } from './i18n';
 
 /**
- * Fakten für die Entwicklungsansicht.
+ * Facts for the development view.
  *
- * Die Seite hält drei Dinge bewusst auseinander:
- * - `planPosition` kommt nur aus einem ausdrücklich gespeicherten Plan.
- * - `current` und `previous` werden ausschließlich aus abgeschlossenen
- *   Einheiten berechnet.
- * - `goalEvidence` beschreibt beobachtbare Werte. Sie ist keine Prognose und
- *   erzeugt keinen Bereitschafts- oder Fitnesswert.
+ * The page deliberately keeps three things apart:
+ * - `planPosition` comes only from an explicitly saved plan.
+ * - `current` and `previous` are calculated only from completed sessions.
+ * - `goalEvidence` describes observable values. It is not a forecast and
+ *   produces no readiness or fitness value.
  */
 
 const FOUR_WEEKS = 28;
@@ -30,7 +30,7 @@ export type { ScheduleState } from './schedule';
 
 export interface DevelopmentInput {
   runs: Run[];
-  /** Vollständige Einheiten, nicht nur die gekürzten SessionSummary-Werte. */
+  /** Full sessions, not just the shortened SessionSummary values. */
   sessions: StrengthSession[];
   goal: string;
   now: number;
@@ -40,7 +40,7 @@ export interface DevelopmentInput {
 export interface DevelopmentPeriod {
   startTime: number;
   endTime: number;
-  /** Ein Tag zählt höchstens einmal, auch bei Lauf und Krafttraining am selben Tag. */
+  /** A day counts at most once, even with a run and strength training on the same day. */
   trainingDays: number;
   runCount: number;
   distanceMeters: number;
@@ -103,7 +103,7 @@ export interface DevelopmentComparison {
 export interface DevelopmentFacts {
   version: typeof DEVELOPMENT_VERSION;
   planPosition: PlanPosition | null;
-  /** Synonyme für Aufrufer, die die beiden Fenster als `periods` lesen. */
+  /** Aliases for callers that read the two windows as `periods`. */
   current: DevelopmentPeriod;
   previous: DevelopmentPeriod;
   periods: {
@@ -113,7 +113,7 @@ export interface DevelopmentFacts {
   comparison: DevelopmentComparison;
   strengthHistory: StrengthHistory;
   goalEvidence: GoalEvidence;
-  /** Bekannte Grenzen der Fakten, damit die Oberfläche keine Lücken kaschiert. */
+  /** Known limits of the facts, so the UI doesn't hide gaps. */
   limits: string[];
 }
 
@@ -169,7 +169,7 @@ const isCompletedRun = (run: Run, now: number): boolean => {
   ) {
     return false;
   }
-  // Fehlstarts bleiben gespeichert, zählen aber nicht als Training.
+  // False starts stay stored but don't count as training.
   if (isAccidentalRun(run)) {
     return false;
   }
@@ -366,7 +366,7 @@ const goalEvidenceFor = (goal: string, runs: ActualRun[]): GoalEvidence => {
     return {
       goal: '',
       status: 'no_goal',
-      message: 'Noch kein Ziel hinterlegt.',
+      message: tr('Noch kein Ziel hinterlegt.', 'No goal set yet.'),
     };
   }
   const targetDistanceKm = parseGoalDistance(cleanGoal);
@@ -379,7 +379,10 @@ const goalEvidenceFor = (goal: string, runs: ActualRun[]): GoalEvidence => {
     return {
       goal: cleanGoal,
       status: 'insufficient_data',
-      message: 'Für einen Zielabgleich fehlen abgeschlossene Läufe.',
+      message: tr(
+        'Für einen Zielabgleich fehlen abgeschlossene Läufe.',
+        'A goal comparison needs completed runs.',
+      ),
       ...(targetDistanceKm === undefined ? {} : { targetDistanceKm }),
     };
   }
@@ -387,15 +390,19 @@ const goalEvidenceFor = (goal: string, runs: ActualRun[]): GoalEvidence => {
     return {
       goal: cleanGoal,
       status: 'observed',
-      message:
+      message: tr(
         'Abgeschlossene Einheiten sind vorhanden. Dieses Ziel enthält keine eindeutig messbare Strecke für einen direkten Abgleich.',
+        'Completed sessions exist. This goal has no clearly measurable distance for a direct comparison.',
+      ),
     };
   }
   return {
     goal: cleanGoal,
     status: 'observed',
-    message:
+    message: tr(
       'Die Strecke ist ein beobachteter Trainingswert; daraus folgt keine Prognose.',
+      'The distance is an observed training value; it implies no forecast.',
+    ),
     targetDistanceKm,
     longestRunDistanceKm: longest.distanceMeters / 1000,
     longestRunAt: longest.startTime,
@@ -456,11 +463,11 @@ const comparePeriods = (
 });
 
 /**
- * Erstellt lokale, abgeschlossene Trainingsfakten.
+ * Builds local, completed training facts.
  *
- * „Letzte vier Wochen“ meint 28 lokale Kalendertage einschließlich des heutigen
- * Tages. Die vorherigen vier Wochen liegen direkt davor. Einträge mit einem
- * Zeitpunkt in der Zukunft oder mit einem laufenden Status werden verworfen.
+ * "Last four weeks" means 28 local calendar days including today. The four
+ * weeks before them come directly before. Entries with a time in the future
+ * or with an ongoing status are discarded.
  */
 export function buildDevelopmentFacts(
   input: DevelopmentInput,
@@ -504,13 +511,28 @@ export function buildDevelopmentFacts(
   };
   const limits: string[] = [];
   if (!runs.length) {
-    limits.push('Keine abgeschlossenen Läufe mit gültiger Zeit und Distanz.');
+    limits.push(
+      tr(
+        'Keine abgeschlossenen Läufe mit gültiger Zeit und Distanz.',
+        'No completed runs with a valid time and distance.',
+      ),
+    );
   }
   if (!sessions.length) {
-    limits.push('Keine abgeschlossenen Krafttrainings mit bestätigten Werten.');
+    limits.push(
+      tr(
+        'Keine abgeschlossenen Krafttrainings mit bestätigten Werten.',
+        'No completed strength training with confirmed values.',
+      ),
+    );
   }
   if (!input.schedule) {
-    limits.push('Kein ausdrücklich gespeicherter Planabschnitt vorhanden.');
+    limits.push(
+      tr(
+        'Kein ausdrücklich gespeicherter Planabschnitt vorhanden.',
+        'No explicitly saved plan section.',
+      ),
+    );
   }
   return {
     version: DEVELOPMENT_VERSION,
@@ -525,7 +547,7 @@ export function buildDevelopmentFacts(
   };
 }
 
-/** Namen für Aufrufer aus UI und Tests, ohne eine zweite Berechnung einzuführen. */
+/** Names for callers in the UI and tests, without introducing a second calculation. */
 export const developmentFacts = buildDevelopmentFacts;
 export const calculateDevelopmentFacts = buildDevelopmentFacts;
 

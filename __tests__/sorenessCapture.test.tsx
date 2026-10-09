@@ -29,7 +29,7 @@ const render = (onSave: jest.Mock) => {
 };
 
 describe('Muskelkater-Abfrage', () => {
-  it('speichert „Heute nichts“ als eigenständige Meldung', () => {
+  it('saves “Nothing today” as a separate report', () => {
     const onSave = jest.fn();
     const tree = render(onSave);
     ReactTestRenderer.act(() => {
@@ -44,7 +44,7 @@ describe('Muskelkater-Abfrage', () => {
     );
   });
 
-  it('überträgt eine Figurenauswahl unmittelbar nach Bestätigung', () => {
+  it('passes a body selection on immediately after confirmation', () => {
     const onSave = jest.fn();
     const tree = render(onSave);
     const regionLabel = regionSpeech('soreness', 'quad_l', null);

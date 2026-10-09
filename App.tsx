@@ -18,8 +18,8 @@ function App() {
     <SafeAreaProvider>
       <StatusBar barStyle="light-content" backgroundColor="#101210" />
       <View style={styles.root}>
-        {/* Den Einstieg zeichnet RunbackApp, weil nur sie weiß, ob der
-            Routenplaner eingeschaltet ist. */}
+        {/* RunbackApp renders the entry point because only it knows whether
+            the route planner is enabled. */}
         <RunbackApp onOpenRoutePlanner={() => setRoutePlannerOpen(true)} />
         {routePlannerOpen ? (
           <View style={styles.overlay}>

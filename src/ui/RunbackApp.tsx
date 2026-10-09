@@ -1,6 +1,7 @@
 import { ServerSettings } from './ServerSettings';
 import { ConnectionMark } from './components';
 import { serverMark, serverStateLabel, type ServerLinkStatus } from '../domain/serverLink';
+import { exerciseDisplayName, nativeDisplayNames } from '../domain/catalog';
 import React, {
   memo,
   useCallback,
@@ -24,13 +25,26 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  dateFormat,
+  fixed,
+  getLanguage,
+  isLanguage,
+  numberFormat,
+  parseDecimal,
+  percentSign,
+  setLanguage,
+  tr,
+  type Language,
+} from '../domain/i18n';
+import { deviceLanguage } from './deviceLanguage';
 import { FocusEditor } from './FocusEditor';
 import { focusLabel } from '../domain/focus';
 import { selectRecommendations } from '../domain/recommendationSelection';
 import { selectStrengthRecommendation } from '../domain/strengthRecommendation';
 import {
-  AREA_LABELS,
   activeExperimentFor,
+  areaLabel,
   isRunRecommendation,
   isStrengthRecommendation,
   recommendationArea,
@@ -63,6 +77,7 @@ import {
   addCalendarDays,
   localDateKey,
   normalizeSchedule,
+  scheduleTitle,
   startOfWeek,
   type ScheduledSession,
   type ScheduleState,
@@ -117,6 +132,7 @@ import {
   isSetCompleted,
   emptyStrengthState,
   finishSession,
+  displaySessionName,
   selectExercise,
   summarize,
   startSession,
@@ -193,6 +209,7 @@ import {
   type Run,
   type Settings,
 } from '../native';
+import { MusicLive, MusicSettings } from './MusicSettings';
 import { FeatureSettings } from './FeatureSettings';
 import { RoutePlannerScreen } from './RoutePlannerScreen';
 import { PHONE_PLACEMENTS, normalizePlacement } from '../domain/gait';
@@ -209,6 +226,7 @@ import {
   shouldPromptSoreness,
   visibleHomeSections,
   visibleTabs,
+  tabLabel,
   type FeatureSettings as Features,
 } from '../domain/features';
 import {
@@ -261,7 +279,10 @@ import {
 
 const purposes = RUN_PURPOSES;
 const number = (value: number, digits = 1) =>
-  Number.isFinite(value) ? value.toFixed(digits).replace('.', ',') : '–';
+  Number.isFinite(value) ? fixed(value, digits) : '–';
+/** Plain number for input fields: decimal comma in German, point in English. */
+const plainNumber = (value: number) =>
+  numberFormat({ useGrouping: false, maximumFractionDigits: 20 }).format(value);
 const distance = (run: Run) => number(run.distanceMeters / 1000, 2);
 const duration = (seconds: number) => {
   const s = Math.max(0, Math.floor(seconds));
@@ -280,23 +301,26 @@ const speed = (run: Run) => {
   const kmh = speedKmh(run);
   return kmh === null ? '–' : number(kmh, 1);
 };
-/** Tempo je Sportart: Läufe in min/km, Radfahrten in km/h. */
+/** Pace per sport: runs in min/km, rides in km/h. */
 const tempoValue = (run: Run) => (usesPace(run.sport) ? pace(run) : speed(run));
 const tempoUnit = (run: Run) => (usesPace(run.sport) ? '/km' : 'km/h');
 const tempoLabel = (run: Run) =>
-  usesPace(run.sport) ? 'Ø min / km' : 'Ø km/h';
-const dateFormatter = new Intl.DateTimeFormat('de-DE', {
-  weekday: 'short',
-  day: 'numeric',
-  month: 'long',
-});
-const date = (timestamp: number) => dateFormatter.format(new Date(timestamp));
-/** Kürzer für Listenzeilen, die schon nach Wochen gruppiert sind. */
-const listDateFormatter = new Intl.DateTimeFormat('de-DE', {
-  weekday: 'short',
-  day: 'numeric',
-  month: 'short',
-});
+  usesPace(run.sport)
+    ? tr('Ø min / km', 'Avg pace')
+    : tr('Ø km/h', 'Avg km/h');
+const date = (timestamp: number) =>
+  dateFormat({
+    weekday: 'short',
+    day: 'numeric',
+    month: 'long',
+  }).format(new Date(timestamp));
+/** Shorter form for list rows that are already grouped by week. */
+const listDate = (timestamp: number) =>
+  dateFormat({
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  }).format(new Date(timestamp));
 const DAY = 24 * 3600 * 1000;
 const initial: AppState = {
   runs: [],
@@ -316,6 +340,7 @@ type Page =
   | 'templates'
   | 'muscle-map'
   | 'server'
+  | 'music'
   | 'settings'
   | 'devices'
   | 'data'
@@ -333,9 +358,9 @@ type Page =
   | 'features-detail'
   | 'all-functions'
   | 'goals';
-/** Wohin „‹ Zurück“ von einer Seite führt. Fehlt der Eintrag, zur Hauptseite. */
-/** Seiten, die man aus einer Krafteinheit, Übung oder Statistik heraus öffnet;
- *  „Zurück“ führt über `trail` dorthin, woher man kam. */
+/** Where "‹ Back" leads from a page. A missing entry goes to the main page. */
+/** Pages opened from a strength session, exercise, or statistics;
+ *  "Back" follows `trail` to where the user came from. */
 const DEPTH_PAGES: Page[] = ['session', 'exercise', 'record-sessions'];
 interface Trail {
   page: Page;
@@ -346,6 +371,7 @@ interface Trail {
 const PARENT_PAGE: Partial<Record<Page, Page>> = {
   devices: 'settings',
   server: 'settings',
+  music: 'features',
   'run-audio': 'settings',
   data: 'settings',
   models: 'settings',
@@ -360,41 +386,43 @@ const PARENT_PAGE: Partial<Record<Page, Page>> = {
   'vendor-import': 'data',
   imports: 'data',
 };
-type VerlaufView = 'units' | 'stats';
-/** So oft wird eine Änderung auf einem neueren Stand von Uhr oder Benachrichtigung wiederholt. */
+type HistoryView = 'units' | 'stats';
+/** How often a change is retried on a newer state from the watch or a notification. */
 const MAX_SAVE_RETRIES = 3;
 type StartKind = 'run' | 'strength';
 type TemplatesView = 'strength' | 'run';
-const VERLAUF_VIEWS: { value: VerlaufView; label: string }[] = [
-  { value: 'units', label: 'Einheiten' },
-  { value: 'stats', label: 'Statistik' },
+const historyViewOptions = (): { value: HistoryView; label: string }[] => [
+  { value: 'units', label: tr('Einheiten', 'Workouts') },
+  { value: 'stats', label: tr('Statistik', 'Statistics') },
 ];
-const START_KINDS: {
+const startKindOptions = (): {
   value: 'running' | 'cycling' | 'strength';
   label: string;
-}[] = [
-  { value: 'running', label: 'Laufen' },
-  { value: 'cycling', label: 'Radfahren' },
-  { value: 'strength', label: 'Krafttraining' },
+}[] => [
+  { value: 'running', label: tr('Laufen', 'Running') },
+  { value: 'cycling', label: tr('Radfahren', 'Cycling') },
+  { value: 'strength', label: tr('Krafttraining', 'Strength') },
 ];
-const WEEKDAY_SHORT = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+const weekdayShortLabels = (): string[] =>
+  getLanguage() === 'en'
+    ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    : ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
 /**
- * Eine erfasste Einheit ist ein Lauf oder ein Krafttraining. Beide stehen in
- * derselben Liste, weil sie dieselbe Frage beantworten: Was habe ich
- * trainiert? Zusammengerechnet werden sie nirgends — Kilometer und Sätze sind
- * keine gemeinsame Größe.
+ * A recorded unit is a run or a strength session. Both sit in the same list
+ * because they answer the same question: what did I train? They are never
+ * added together — kilometers and sets are not a shared unit.
  */
 type Unit =
   | { kind: 'run'; key: string; at: number; run: Run }
   | { kind: 'strength'; key: string; at: number; session: StrengthSession };
 type UnitFilter = 'all' | 'runs' | 'cycling' | 'strength';
 
-const UNIT_FILTERS: { value: UnitFilter; label: string }[] = [
-  { value: 'all', label: 'Alle' },
-  { value: 'runs', label: 'Laufen' },
-  { value: 'cycling', label: 'Radfahren' },
-  { value: 'strength', label: 'Krafttraining' },
+const unitFilterOptions = (): { value: UnitFilter; label: string }[] => [
+  { value: 'all', label: tr('Alle', 'All') },
+  { value: 'runs', label: tr('Laufen', 'Running') },
+  { value: 'cycling', label: tr('Radfahren', 'Cycling') },
+  { value: 'strength', label: tr('Krafttraining', 'Strength training') },
 ];
 const unitMatches = (unit: Unit, filter: UnitFilter) =>
   filter === 'all'
@@ -403,26 +431,26 @@ const unitMatches = (unit: Unit, filter: UnitFilter) =>
     ? unit.kind === 'strength'
     : unit.kind === 'run' &&
       (filter === 'runs' ? isRun(unit.run) : !isRun(unit.run));
-/** Ohne jede Angabe zur Laufart — „Einfach laufen“ ist eine Antwort, „Noch offen“ nicht. */
+/** No purpose at all — "Just run" is an answer, "Not set yet" is not. */
 const purposeMissing = (run: Run) => !run.purpose || run.purpose === 'unknown';
-/** Zählwort mit Zahl: „1 Lauf“, „3 Radfahrten“. */
+/** Count with number: "1 run", "3 rides". */
 const counted = (count: number, singular: string, plural: string) =>
   `${count} ${count === 1 ? singular : plural}`;
-const kilogramFormat = new Intl.NumberFormat('de-DE', {
-  maximumFractionDigits: 0,
-});
-/** Erfasste Dauer einer Krafteinheit. Ohne Endzeit bleibt sie 0. */
+/** Recorded duration of a strength session. Without an end time it stays 0. */
 const sessionSeconds = (session: StrengthSession) => {
   const end = session.endTime ?? session.startTime;
   return Math.max(0, Math.round((end - session.startTime) / 1000));
 };
 const unitKindLabel = (unit: Unit) =>
-  unit.kind === 'run' ? sportNoun(unit.run.sport) : 'Krafttraining';
+  unit.kind === 'run'
+    ? sportNoun(unit.run.sport)
+    : tr('Krafttraining', 'Strength training');
 const unitTitle = (unit: Unit) =>
   unit.kind === 'run'
     ? runTitle(unit.run)
-    : unit.session.name || 'Krafttraining';
-/** Kurzfassung für Listenzeilen außerhalb der Einheiten-Liste. */
+    : displaySessionName(unit.session.name) ||
+      tr('Krafttraining', 'Strength training');
+/** Short form for list rows outside the workouts list. */
 const unitSummary = (unit: Unit) => {
   if (unit.kind === 'run') {
     return `${date(unit.at)} · ${distance(unit.run)} km · ${tempoValue(
@@ -430,38 +458,40 @@ const unitSummary = (unit: Unit) => {
     )} ${tempoUnit(unit.run)}`;
   }
   const sets = summarize(unit.session).completedSets;
-  return `${date(unit.at)} · ${sets} ${sets === 1 ? 'Satz' : 'Sätze'}`;
+  return `${date(unit.at)} · ${sets} ${sets === 1 ? tr('Satz', 'set') : tr('Sätze', 'sets')}`;
 };
 
 /**
- * Die Einheiten-Liste ist nach Wochen gruppiert. Der Wochenkopf trägt die
- * Summe, damit man den Umfang sieht, ohne in die Statistik zu wechseln.
+ * The workouts list is grouped by week. The week header carries the total,
+ * so the volume is visible without switching to statistics.
  */
 type UnitListItem =
   | { type: 'unit'; key: string; unit: Unit }
   | { type: 'week'; key: string; label: string; summary: string };
-const clockFormat = new Intl.DateTimeFormat('de-DE', {
-  hour: '2-digit',
-  minute: '2-digit',
-});
-const shortDate = new Intl.DateTimeFormat('de-DE', {
-  day: 'numeric',
-  month: 'short',
-});
+const clockFormat = (timestamp: Date) =>
+  dateFormat({
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(timestamp);
+const shortDate = (timestamp: Date) =>
+  dateFormat({
+    day: 'numeric',
+    month: 'short',
+  }).format(timestamp);
 const weekLabel = (weekStart: string, today: string) => {
   const thisWeek = startOfWeek(today);
   if (weekStart === thisWeek) {
-    return 'Diese Woche';
+    return tr('Diese Woche', 'This week');
   }
   if (weekStart === startOfWeek(addCalendarDays(thisWeek, -7))) {
-    return 'Letzte Woche';
+    return tr('Letzte Woche', 'Last week');
   }
   const start = new Date(`${weekStart}T12:00:00`);
   const end = new Date(`${addCalendarDays(weekStart, 6)}T12:00:00`);
-  // Im selben Monat reicht der Monat einmal: „14.–20. Sept.“
+  // Within one month the month appears once: "14.–20. Sept." / "14–20 Sept"
   return start.getMonth() === end.getMonth()
-    ? `${start.getDate()}.–${shortDate.format(end)}`
-    : `${shortDate.format(start)} – ${shortDate.format(end)}`;
+    ? `${start.getDate()}${tr('.', '')}–${shortDate(end)}`
+    : `${shortDate(start)} – ${shortDate(end)}`;
 };
 const weekSummary = (units: Unit[]) => {
   const runs = units.filter(unit => unit.kind === 'run');
@@ -479,7 +509,9 @@ const weekSummary = (units: Unit[]) => {
         : sessionSeconds(unit.session)),
     0,
   );
-  const parts = [counted(units.length, 'Einheit', 'Einheiten')];
+  const parts = [
+    counted(units.length, tr('Einheit', 'workout'), tr('Einheiten', 'workouts')),
+  ];
   if (km > 0) {
     parts.push(`${number(km / 1000, 1)} km`);
   }
@@ -539,8 +571,8 @@ const UnitRow = memo(function UnitRow({
     unit.kind === 'run'
       ? 'km'
       : summary!.completedSets === 1
-      ? 'Satz'
-      : 'Sätze';
+      ? tr('Satz', 'set')
+      : tr('Sätze', 'sets');
   const note =
     unit.kind === 'run'
       ? hasNamedPurpose(unit.run.purpose) &&
@@ -554,9 +586,9 @@ const UnitRow = memo(function UnitRow({
           unit.run,
         )} ${tempoUnit(unit.run)}`
       : summary!.volumeKg > 0
-      ? `${duration(sessionSeconds(unit.session))} · ${kilogramFormat.format(
-          summary!.volumeKg,
-        )} kg`
+      ? `${duration(sessionSeconds(unit.session))} · ${numberFormat({
+          maximumFractionDigits: 0,
+        }).format(summary!.volumeKg)} kg`
       : duration(sessionSeconds(unit.session));
   return (
     <Pressable
@@ -566,7 +598,10 @@ const UnitRow = memo(function UnitRow({
       onLongPress={onLongPress}
       accessibilityHint={
         onLongPress
-          ? 'Halte gedrückt, um Läufe zum Export auszuwählen.'
+          ? tr(
+              'Halte gedrückt, um Läufe zum Export auszuwählen.',
+              'Press and hold to select runs for export.',
+            )
           : undefined
       }
       accessibilityLabel={`${kind}: ${title}, ${date(
@@ -578,9 +613,9 @@ const UnitRow = memo(function UnitRow({
       <View style={styles.runTop}>
         <Text style={styles.runTitle}>{title}</Text>
         <Text style={styles.muted}>
-          {/* Läufe sind der Normalfall; nur andere Arten nennen ihre Art. */}
+          {/* Runs are the usual case; only other kinds name their kind. */}
           {unit.kind === 'run' && isRun(unit.run) ? '' : `${kind} · `}
-          {listDateFormatter.format(new Date(unit.at))}
+          {listDate(unit.at)}
           {note}
         </Text>
       </View>
@@ -600,11 +635,22 @@ const UnitRow = memo(function UnitRow({
 export function RunbackApp({
   onOpenRoutePlanner,
 }: {
-  /** Öffnet den Routenplaner. Fehlt er, gibt es keinen Einstieg. */
+  /** Opens the route planner. Without it there is no entry point. */
   onOpenRoutePlanner?: () => void;
 } = {}) {
   const insets = useSafeAreaInsets();
   const [state, setState] = useState<AppState>(initial);
+  // Set before anything below builds text; children remount on a change
+  // through the key on the root view.
+  const language: Language = isLanguage(state.settings.language)
+    ? state.settings.language
+    : deviceLanguage();
+  setLanguage(language);
+  // The watch and notifications have no JS of their own: they get the names
+  // of this language whenever it is set or changes.
+  useEffect(() => {
+    void native.setDisplayNames(language, nativeDisplayNames(language).names).catch(() => {});
+  }, [language]);
   const [serverStatus, setServerStatus] = useState<ServerLinkStatus | null>(null);
   useEffect(() => {
     let alive = true;
@@ -625,7 +671,7 @@ export function RunbackApp({
     entryId: string;
     activityId: string;
   } | null>(null);
-  const [tab, setTab] = useState<Tab>('Heute');
+  const [tab, setTab] = useState<Tab>('today');
   const [page, setPage] = useState<Page>('main');
   const [featureDetail, setFeatureDetail] = useState<
     FeatureId | 'recording' | 'strength'
@@ -636,19 +682,19 @@ export function RunbackApp({
   );
   const [selectedSession, setSelectedSession] =
     useState<StrengthSession | null>(null);
-  // Krafttraining in die Tiefe: Übung, Bestwert und woher man kam. Eine
-  // Einheit oder Übung lässt sich aus der jeweils anderen öffnen; „Zurück“
-  // führt dorthin zurück statt zur Hauptseite.
+  // Strength training in depth: exercise, personal best, and where the user
+  // came from. A session or exercise can be opened from the other one; "Back"
+  // returns there instead of to the main page.
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
   const [selectedStrengthRecord, setSelectedStrengthRecord] =
     useState<StrengthRecord | null>(null);
   const [trail, setTrail] = useState<Trail[]>([]);
-  // Puls der Krafteinheiten von der Uhr: Kurzformen für die Statistik, die
-  // Reihe nur für die offene Einheit.
+  // Strength session heart rate from the watch: short forms for statistics,
+  // the series only for the open session.
   const [heartSummaries, setHeartSummaries] = useState<
     Record<string, StrengthHeartSummary>
   >({});
-  // Was die Uhr zur geöffneten Einheit übertragen hat, und live zur laufenden.
+  // What the watch has transferred for the open session, and live for the running one.
   const [sessionWatch, setSessionWatch] = useState<StrengthWatchInfo | null>(
     null,
   );
@@ -669,25 +715,25 @@ export function RunbackApp({
   const [setupOpen, setSetupOpen] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  // Heute: Sportart, Laufart, Vorlage und Ziel werden im Moment des Startens
-  // gewählt, nicht dauerhaft auf der Seite. Das Sheet merkt sich seine Art.
+  // Today: sport, run type, template, and goal are picked when starting, not
+  // kept on the page. The sheet remembers its kind.
   const [startSheet, setStartSheet] = useState<StartKind | null>(null);
   const [startTemplateId, setStartTemplateId] = useState<string | null>(null);
   const [coachArea, setCoachArea] = useState<'running' | 'strength'>('running');
-  // Laufart nachtragen: ein Lauf nach dem anderen; Übersprungenes bleibt offen.
+  // Add run types afterwards: one run at a time; skipped ones stay open.
   const [purposeSheet, setPurposeSheet] = useState(false);
   const [purposeSkipped, setPurposeSkipped] = useState<string[]>([]);
-  const [verlaufView, setVerlaufView] = useState<VerlaufView>('units');
+  const [historyView, setHistoryView] = useState<HistoryView>('units');
   const [templatesView, setTemplatesView] = useState<TemplatesView>('strength');
   const [templatesParent, setTemplatesParent] = useState<Page>('main');
   const [note, setNote] = useState('');
   const [importStatus, setImportStatus] = useState<any>(null);
-  // „Ende bearbeiten“: Sheet für den geöffneten Lauf oder die geöffnete Krafteinheit.
+  // "Edit end": sheet for the open run or the open strength session.
   const [endEdit, setEndEdit] = useState<{
     kind: 'run' | 'strength';
     id: string;
   } | null>(null);
-  // Zählt gespeicherte und gelöschte Importe, damit Vorschläge neu laden.
+  // Counts saved and deleted imports so suggestions reload.
   const [importRevision, setImportRevision] = useState(0);
   const [importBatches, setImportBatches] = useState<ImportBatch[] | null>(
     null,
@@ -726,16 +772,16 @@ export function RunbackApp({
     useState(false);
   const [sorenessOpen, setSorenessOpen] = useState(false);
   const [muscleMapMode, setMuscleMapMode] = useState<BodyMapMode>('freshness');
-  // Nach dem Beenden nur das Gefühl abfragen statt der ganzen Detailseite.
+  // After finishing, ask only for the feeling instead of the whole detail page.
   const [feelingOnly, setFeelingOnly] = useState(false);
-  // Detailseite: Darstellungsreihe für die Graphen, ein aktiver Moment für
-  // Karte, Graph und Kilometer, dazu der markierte Kilometer.
+  // Detail page: display series for the charts, an active moment for the map,
+  // chart, and kilometers, plus the marked kilometer.
   const [series, setSeries] = useState<RunSeries | null>(null);
   const [seriesIndex, setSeriesIndex] = useState<number | null>(null);
   const [splitIndex, setSplitIndex] = useState<number | null>(null);
-  // Ob die Krafthistorie geladen (oder als nicht verfügbar erkannt) ist.
+  // Whether the strength history has loaded (or was detected as unavailable).
   const [strengthHistorySettled, setStrengthHistorySettled] = useState(false);
-  // Trainingschat nur mit eingerichtetem OpenRouter-Zugang anbieten.
+  // Offer the training chat only with a configured OpenRouter connection.
   const [proseReady, setProseReady] = useState(false);
   const sorenessPromptShown = useRef(false);
   const strengthRef = useRef(strength);
@@ -767,9 +813,9 @@ export function RunbackApp({
     [settings.schedule, settings.trainingDays, settings.minutes],
   );
   const runs = state.runs;
-  // Nur Läufe tragen diese Tempoauswertung und Kilometer; Radfahrten stehen daneben.
+  // Only runs carry this pace analysis and kilometers; rides sit alongside them.
   const runningRuns = useMemo(() => runs.filter(isRun), [runs]);
-  // Zielnähe: Schätzung aus tatsächlichen Läufen, getrennt von jeder Empfehlung.
+  // Goal progress: estimate from actual runs, separate from any recommendation.
   const racePrediction = useMemo(
     () =>
       predictRace({
@@ -781,6 +827,8 @@ export function RunbackApp({
         runs: runningRuns,
         now,
       }),
+    // `tr` reads the module-level language, so the text recomputes via this dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       settings.goal,
       settings.goalDistanceKm,
@@ -789,6 +837,7 @@ export function RunbackApp({
       schedule.goal,
       runningRuns,
       now,
+      language,
     ],
   );
   const statisticsView = useMemo(
@@ -799,7 +848,7 @@ export function RunbackApp({
   const isRecording = Boolean(recording);
   const showOnboarding =
     loaded && !isRecording && (setupOpen || !settings.onboardedAt);
-  // Je Bereich höchstens eine offene Empfehlung; beide teilen sich die Liste.
+  // At most one open recommendation per area; both share the list.
   const experiment = activeExperimentFor(settings.experiments, 'running');
   const strengthExperiment = activeExperimentFor(
     settings.experiments,
@@ -811,13 +860,15 @@ export function RunbackApp({
         run,
         analysis: analyzeRun(run, experiment, runningRuns),
       })),
-    [runningRuns, experiment, runRecs],
+    // `tr` reads the module-level language, so the text recomputes via this dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [runningRuns, experiment, runRecs, language],
   );
   const finishedSessions = useMemo(
     () => strengthSessions.filter(session => session.status === 'finished'),
     [strengthSessions],
   );
-  // Läufe und Krafteinheiten in einer Zeitachse, neueste zuerst.
+  // Runs and strength sessions on one timeline, newest first.
   const units = useMemo<Unit[]>(
     () =>
       [
@@ -840,8 +891,8 @@ export function RunbackApp({
       ].sort((a, b) => b.at - a.at || a.key.localeCompare(b.key)),
     [runs, finishedSessions],
   );
-  // Ein Filter ohne passende Einheiten (z. B. nach dem Löschen der letzten
-  // Radfahrt) ist ausgeblendet und darf die Liste nicht leer halten.
+  // A filter with no matching units (e.g. after deleting the last ride) is
+  // hidden and must not leave the list empty.
   const effectiveUnitFilter: UnitFilter =
     unitFilter !== 'all' && !units.some(unit => unitMatches(unit, unitFilter))
       ? 'all'
@@ -853,7 +904,9 @@ export function RunbackApp({
   const todayKey = localDateKey(now);
   const unitListItems = useMemo(
     () => groupUnitsByWeek(visibleUnits, todayKey),
-    [visibleUnits, todayKey],
+    // `tr` reads the module-level language, so the text recomputes via this dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [visibleUnits, todayKey, language],
   );
   const selection = useMemo(
     () =>
@@ -868,6 +921,8 @@ export function RunbackApp({
         today: localDateKey(now),
         now,
       }),
+    // `tr` reads the module-level language, so the text recomputes via this dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       runningRuns,
       runRecs,
@@ -880,6 +935,7 @@ export function RunbackApp({
       settings.goalTargetDate,
       schedule.goal?.targetDate,
       now,
+      language,
     ],
   );
   const candidate = experiment || !runRecs ? undefined : selection.selected;
@@ -900,6 +956,8 @@ export function RunbackApp({
         today: localDateKey(now),
         now,
       }),
+    // `tr` reads the module-level language, so the text recomputes via this dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       finishedSessions,
       strengthRecs,
@@ -911,6 +969,7 @@ export function RunbackApp({
       settings.strengthFocus,
       settings.strengthGoalTargetDate,
       now,
+      language,
     ],
   );
   const strengthCandidate =
@@ -922,7 +981,7 @@ export function RunbackApp({
       ? strengthSelection.selected
       : undefined;
   const purpose = settings.purpose || 'free';
-  // Eine abgewählte Sportart fällt auf die erste erlaubte zurück.
+  // A deselected sport falls back to the first allowed one.
   const chosenSport = normalizeSport(settings.sport);
   const sport = sports.includes(chosenSport)
     ? chosenSport
@@ -991,14 +1050,19 @@ export function RunbackApp({
       setError(
         e instanceof Error
           ? e.message
-          : 'Die Aktion konnte nicht abgeschlossen werden. Bitte erneut versuchen.',
+          : tr(
+              'Die Aktion konnte nicht abgeschlossen werden. Bitte erneut versuchen.',
+              'The action could not be completed. Try again.',
+            ),
       );
     } finally {
       stateGeneration.current += 1;
       busyRef.current = false;
       setBusy(false);
     }
-  }, []);
+  // `tr` reads the module-level language, so the text recomputes via this dependency.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [language]);
   const persist = useCallback(async (patch: Partial<Settings>) => {
     const updated = { ...stateRef.current.settings, ...patch };
     settingsRevision.current += 1;
@@ -1018,17 +1082,25 @@ export function RunbackApp({
 
   const openGoogleMaps = useCallback(async (points: RouteCoordinate[]) => {
     const url = googleMapsDirectionsUrl(points);
-    if (!url) throw new Error('Diese Route kann nicht geöffnet werden.');
+    if (!url)
+      throw new Error(
+        tr(
+          'Diese Route kann nicht geöffnet werden.',
+          'This route cannot be opened.',
+        ),
+      );
     await Linking.openURL(url);
-  }, []);
+  // `tr` reads the module-level language, so the text recomputes via this dependency.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [language]);
 
   const openCoMaps = useCallback(async (points: RouteCoordinate[]) => {
     await native.openRouteFile(points, 'comaps');
   }, []);
-  // Drei Dateien zum Weitergeben (z. B. an ein Sprachmodell): der Bericht
-  // für Menschen, die Analyse als JSON und die 5-s-Zeitreihe als CSV. Die
-  // Zeitreihe schreibt Kotlin direkt in den Export-Cache; fehlt sie oder der
-  // Zeitverlauf, fehlt nur dieser Teil — der Rest wird trotzdem geteilt.
+  // Three files to pass on (e.g. to a language model): the report for people,
+  // the analysis as JSON, and the 5-second time series as CSV. Kotlin writes
+  // the time series straight into the export cache; if it or the timeline is
+  // missing, only that part is missing — the rest is still shared.
   const prepareRunExport = async (
     run: Run,
     analysis: RunAnalysis | null,
@@ -1063,13 +1135,21 @@ export function RunbackApp({
       const ids = [...new Set(await getIds())];
       if (!ids.length)
         throw new Error(
-          'Wähle mindestens einen Lauf im Zeitraum oder in der Liste.',
+          tr(
+            'Wähle mindestens einen Lauf im Zeitraum oder in der Liste.',
+            'Choose at least one run in the period or in the list.',
+          ),
         );
       const current = stateRef.current;
       const archive = await native.beginRunArchive();
       try {
         for (const [index, id] of ids.entries()) {
-          setExportProgress(`${index + 1} von ${ids.length} Läufen`);
+          setExportProgress(
+            tr(
+              `${index + 1} von ${ids.length} Läufen`,
+              `${index + 1} of ${ids.length} ${ids.length === 1 ? 'run' : 'runs'}`,
+            ),
+          );
           const run = await native.run(id);
           const analysis = analyzeRun(
             run,
@@ -1139,19 +1219,29 @@ export function RunbackApp({
           files.push({ fileName: written.fileName, mimeType: 'text/csv' });
         }
       } catch {
-        // Ohne Zeitreihe (Import, Altdaten) bleiben Bericht und Analyse.
+        // Without a time series (import, old data) the report and analysis remain.
       }
-      await native.shareFiles(files, `${sportWords(run.sport).noun} teilen`);
+      const noun = sportWords(run.sport).noun;
+      await native.shareFiles(
+        files,
+        tr(`${noun} teilen`, `Share ${noun.toLowerCase()}`),
+      );
     });
   };
-  // Alle in Runback aufgezeichneten Krafteinheiten als ein ZIP, ohne Importe.
-  // Je Einheit ein Aufruf; Kotlin hängt an die Dateien an und packt erst am
-  // Ende. Das README steht vorn, sein Inhalt kommt zuletzt (mit den Zählern).
-  // Die Bewegungsdaten der Uhr legt Kotlin beim Packen dazu; sie bleiben nativ.
+  // All strength sessions recorded in Runback as one ZIP, without imports.
+  // One call per session; Kotlin appends to the files and only packs at the
+  // end. The README comes first, its content last (with the counts).
+  // Kotlin adds the watch motion data when packing; it stays native.
   const shareStrength = () => {
     void action(async () => {
       const ids = await native.recordedStrengthSessionIds();
-      if (!ids.length) throw new Error('Zeichne zuerst eine Krafteinheit auf.');
+      if (!ids.length)
+        throw new Error(
+          tr(
+            'Zeichne zuerst eine Krafteinheit auf.',
+            'Record a strength session first.',
+          ),
+        );
       const files = STRENGTH_EXPORT_FILES;
       const headers = strengthExportHeaders();
       const settings = stateRef.current.settings;
@@ -1179,7 +1269,12 @@ export function RunbackApp({
           [files.jsonl]: '',
         });
         for (const [index, id] of ids.entries()) {
-          setExportProgress(`${index + 1} von ${ids.length} Einheiten`);
+          setExportProgress(
+            tr(
+              `${index + 1} von ${ids.length} Einheiten`,
+              `${index + 1} of ${ids.length} ${ids.length === 1 ? 'session' : 'sessions'}`,
+            ),
+          );
           const session = await native.strengthSession(id);
           if (!isRecordedStrengthSession(session)) continue;
           const heart = await native.strengthHeart(id).catch(() => undefined);
@@ -1198,13 +1293,20 @@ export function RunbackApp({
           summary.lastStart = session.startTime;
         }
         if (!summary.sessions)
-          throw new Error('Zeichne zuerst eine Krafteinheit auf.');
+          throw new Error(
+            tr(
+              'Zeichne zuerst eine Krafteinheit auf.',
+              'Record a strength session first.',
+            ),
+          );
         await native.appendExportArchive(archive, {
           [files.readme]: strengthExportReadme(summary),
         });
-        await native.shareExportArchive(archive, 'Krafttraining teilen', {
-          includeMotion: true,
-        });
+        await native.shareExportArchive(
+          archive,
+          tr('Krafttraining teilen', 'Share strength training'),
+          { includeMotion: true },
+        );
       } finally {
         setExportProgress('');
         await native.discardExportArchive(archive).catch(() => {});
@@ -1217,8 +1319,8 @@ export function RunbackApp({
       .catch(e => setError(String(e.message)))
       .finally(() => setLoading(false));
   }, [refresh]);
-  // Krafttraining wird getrennt geladen. Fehlt die native Unterstützung, bleibt
-  // der Zustand leer und der Rest der App unberührt (Grundregel 7).
+  // Strength training loads separately. Without native support the state stays
+  // empty and the rest of the app is untouched (ground rule 7).
   useEffect(() => {
     void native
       .strength()
@@ -1246,8 +1348,8 @@ export function RunbackApp({
       })
       .catch(() => {});
   }, []);
-  // Der Puls kommt von der Uhr erst nach dem Training an; deshalb bei jedem
-  // Wechsel des Tabs und nach neuen Einheiten nachfragen. Ohne Uhr bleibt es leer.
+  // Heart rate reaches the app from the watch only after training; so ask again
+  // on every tab change and after new sessions. Without a watch it stays empty.
   useEffect(() => {
     if (!showStrength) return;
     let cancelled = false;
@@ -1275,8 +1377,8 @@ export function RunbackApp({
           if (!cancelled) setSessionHeart(next);
         })
         .catch(() => {});
-    // Wartet die Einheit noch auf die Uhr, schaut die Seite nach, bis die
-    // Daten da sind, und holt dann den Puls.
+    // If the session is still waiting for the watch, the page checks until the
+    // data is there, then fetches the heart rate.
     const loadWatch = async (waited: boolean) => {
       const next = await native
         .strengthWatch?.(selectedSessionId)
@@ -1305,8 +1407,8 @@ export function RunbackApp({
   useEffect(() => {
     loadProseReady();
   }, [loadProseReady]);
-  // Die Abfrage erscheint höchstens einmal je Sitzung, und nur wenn die
-  // Einstellung es will (`shouldPromptSoreness`).
+  // The prompt appears at most once per session, and only if the setting asks
+  // for it (`shouldPromptSoreness`).
   useEffect(() => {
     if (
       !loaded ||
@@ -1343,7 +1445,7 @@ export function RunbackApp({
     showOnboarding,
     workoutOpen,
   ]);
-  // Während des Trainings: was die Uhr gerade misst, alle paar Sekunden.
+  // During training: what the watch is measuring right now, every few seconds.
   const activeSessionId = strength.active?.id;
   useEffect(() => {
     setActiveWatch(null);
@@ -1364,7 +1466,7 @@ export function RunbackApp({
       clearInterval(timer);
     };
   }, [activeSessionId, workoutOpen]);
-  // Sekundentakt nur, solange eine Pause läuft und der Timer sichtbar ist.
+  // Second tick only while a rest is running and the timer is visible.
   useEffect(() => {
     if (
       strength.active?.restStartedAt === undefined ||
@@ -1375,14 +1477,14 @@ export function RunbackApp({
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [strength.active?.restStartedAt, features.strength.restTimer]);
-  // Verschwindet der aktuelle Tab (Plan abgeschaltet), geht es zu Heute.
+  // If the current tab disappears (plan switched off), go to Today.
   useEffect(() => {
     if (
-      tab !== 'Heute' &&
-      tab !== 'Verlauf' &&
+      tab !== 'today' &&
+      tab !== 'history' &&
       !availableTabs(features).includes(tab)
     ) {
-      setTab('Heute');
+      setTab('today');
     }
   }, [features, tab]);
   useEffect(() => {
@@ -1441,8 +1543,8 @@ export function RunbackApp({
           leaveDepthRef.current();
           return true;
         }
-        if (tab !== 'Heute') {
-          setTab('Heute');
+        if (tab !== 'today') {
+          setTab('today');
           return true;
         }
         return false;
@@ -1503,7 +1605,10 @@ export function RunbackApp({
           setImportBatchesError(
             e instanceof Error
               ? e.message
-              : 'Importe konnten nicht geladen werden.',
+              : tr(
+                  'Importe konnten nicht geladen werden.',
+                  'Imports could not be loaded.',
+                ),
           );
         }
       });
@@ -1521,11 +1626,11 @@ export function RunbackApp({
     },
     [action],
   );
-  // Die Reihe kommt getrennt vom Lauf, weil sie größer ist und nur die
-  // Detailseite sie braucht. Fehlt sie (Import ohne Spur, alter Build), gibt
-  // es keinen Verlauf — keine Ersatzdaten.
+  // The series comes separately from the run, because it is larger and only
+  // the detail page needs it. If it is missing (import without a trace, old
+  // build), there is no history — no substitute data.
   const selectedId = selected?.id;
-  // Ein neu gesetztes Ende ändert die Reihe; deshalb auch daran neu laden.
+  // A newly set end changes the series, so reload on that too.
   const selectedEnd = selected?.endTime;
   useEffect(() => {
     setSeries(null);
@@ -1567,8 +1672,8 @@ export function RunbackApp({
     }
     setSelectedExercise(null);
     setSelectedStrengthRecord(null);
-    // Bestehende Nutzer sehen bis zum ersten Besuch einen Hinweis auf Heute;
-    // der erste Besuch schreibt die Standardwerte und beendet ihn.
+    // Existing users see a hint about Today until their first visit; the first
+    // visit writes the default values and ends it.
     if (next === 'features' && !settings.features) {
       save({ features });
     }
@@ -1580,8 +1685,8 @@ export function RunbackApp({
       setPreviewRunTarget(null);
     if (next === 'goal') {
       setGoalInput(schedule.goal?.name || settings.goal || '');
-      // Ohne Beginn kein Planstand und kein Aufbau: heute vorschlagen, der
-      // Nutzer sieht und ändert es im Feld.
+      // Without a start there is no plan state and no build-up: suggest today;
+      // the user sees it and changes it in the field.
       setGoalStartInput(
         dateToInput(schedule.goal?.startDate || localDateKey(now)),
       );
@@ -1591,11 +1696,11 @@ export function RunbackApp({
       setGoalPhaseInput(schedule.goal?.phase || '');
       const distanceKm = settings.goalDistanceKm ?? schedule.goal?.distanceKm;
       setGoalDistanceInput(
-        distanceKm === undefined ? '' : String(distanceKm).replace('.', ','),
+        distanceKm === undefined ? '' : plainNumber(distanceKm),
       );
       const targetSeconds =
         settings.goalTargetSeconds ?? schedule.goal?.targetSeconds;
-      // Immer h:mm:ss, damit „59:30“ beim Speichern nicht als Stunden gilt.
+      // Always h:mm:ss, so "59:30" is not read as hours when saved.
       setGoalTimeInput(
         targetSeconds === undefined
           ? ''
@@ -1623,10 +1728,10 @@ export function RunbackApp({
   const openCoach = (area: 'running' | 'strength') => {
     setCoachArea(area);
     setCriteriaOpen(false);
-    switchTab('Coach');
+    switchTab('coach');
   };
-  // Eine Ebene zurück: aus der Tiefe des Krafttrainings dorthin, woher man
-  // kam, sonst zur festen Elternseite.
+  // One level back: from strength training depth to where the user came from,
+  // otherwise to the fixed parent page.
   const leavePage = () => {
     const last = DEPTH_PAGES.includes(page)
       ? trail[trail.length - 1]
@@ -1712,9 +1817,15 @@ export function RunbackApp({
     const apply = () => {
       const patch: Partial<Settings> = { features: next };
       if (pausing.length) {
+        // The reason is stored in the experiment history, so it stays German.
         patch.experiments = settings.experiments?.map(item =>
           pausing.includes(item.id)
-            ? transitionExperiment(item, 'paused', at, 'Funktion abgeschaltet')
+            ? transitionExperiment(
+                item,
+                'paused',
+                at,
+                tr('Funktion abgeschaltet', 'Feature turned off'),
+              )
             : item,
         );
       }
@@ -1722,27 +1833,37 @@ export function RunbackApp({
     };
     const warnings = [
       features.areas.strength && !next.areas.strength && strength.active
-        ? 'Ein Krafttraining läuft gerade; es bleibt gespeichert.'
+        ? tr(
+            'Ein Krafttraining läuft gerade; es bleibt gespeichert.',
+            'A strength session is running; it stays saved.',
+          )
         : '',
       pausing.length
-        ? 'Die laufende Empfehlung wird pausiert, nicht abgebrochen.'
+        ? tr(
+            'Die laufende Empfehlung wird pausiert, nicht abgebrochen.',
+            'The running recommendation is paused, not cancelled.',
+          )
         : '',
     ].filter(Boolean);
     if (!warnings.length) {
       apply();
       return;
     }
-    Alert.alert('Trotzdem ausblenden?', warnings.join(' '), [
-      { text: 'Zurück', style: 'cancel' },
-      { text: 'Ausblenden', onPress: apply },
-    ]);
+    Alert.alert(
+      tr('Trotzdem ausblenden?', 'Hide anyway?'),
+      warnings.join(' '),
+      [
+        { text: tr('Zurück', 'Back'), style: 'cancel' },
+        { text: tr('Ausblenden', 'Hide'), onPress: apply },
+      ],
+    );
   };
 
-  // ── Krafttraining ────────────────────────────────────────────────────────
-  // Jede Änderung schreibt die laufende Einheit sofort weg, damit ein Absturz
-  // oder ein leerer Akku keine bestätigten Sätze verliert (T-4).
-  // Uhr und Benachrichtigung können dazwischen gespeichert haben. Dann lehnt
-  // das Handy ab, und dieselbe Änderung wird auf dessen Stand wiederholt.
+  // ── Strength training ────────────────────────────────────────────────────
+  // Every change saves the running session right away, so a crash or an empty
+  // battery does not lose confirmed sets (T-4).
+  // The watch or a notification may have saved in between. Then the phone
+  // rejects, and the same change is retried on its state.
   const persistSession = useCallback(
     (
       change: (session: StrengthSession) => StrengthSession,
@@ -1755,7 +1876,7 @@ export function RunbackApp({
       void native
         .saveStrengthSession(next)
         .then(result => {
-          // Inzwischen beendet oder eine andere Einheit: nichts wiederbeleben.
+          // Already finished or a different session by now: do not revive anything.
           if (!result.conflict || result.active?.id !== base.id) return;
           const current = result.active;
           if (attempt < MAX_SAVE_RETRIES) {
@@ -1778,7 +1899,7 @@ export function RunbackApp({
     },
     [persistSession],
   );
-  /** Pausenknöpfe gelten der Pause, die beim Tippen lief — nicht einer neueren von der Uhr. */
+  /** Rest buttons apply to the rest that was running when tapped — not a newer one from the watch. */
   const changeRest = useCallback(
     (change: (session: StrengthSession) => StrengthSession) => {
       const restStartedAt = strengthRef.current.active?.restStartedAt;
@@ -1795,13 +1916,13 @@ export function RunbackApp({
     );
     setRecentSessions(loaded.filter(Boolean) as StrengthSession[]);
   }, []);
-  // Uhr und Benachrichtigung ändern die laufende Einheit nativ; der Stand
-  // kommt als Ereignis und ersetzt den eigenen, damit nichts überschrieben wird.
+  // The watch and a notification change the running session natively; the new
+  // state arrives as an event and replaces ours, so nothing is overwritten.
   useEffect(
     () =>
       native.onStrengthChanged?.(next => {
         const current = strengthRef.current.active;
-        // Von der Uhr gestartet: Die App übernimmt die neue Einheit.
+        // Started on the watch: the app takes over the new session.
         if (next && !current && next.status === 'active') {
           strengthRef.current = { ...strengthRef.current, active: next };
           setStrength(value => ({ ...value, active: next }));
@@ -1826,10 +1947,10 @@ export function RunbackApp({
     void action(async () => {
       const created = startSession(template, Date.now());
       const session = reviseSession(created, created);
-      // Erst gespeichert, dann bedienbar: Eine Änderung davor hätte keinen
-      // gespeicherten Stand, auf dem sie aufbaut, und ginge verloren.
+      // Saved first, then usable: a change before that would have no saved state
+      // to build on and would be lost.
       const saved = await native.saveStrengthSession(session);
-      // Die Uhr hat gerade eine Einheit gestartet: Die läuft weiter, nicht eine zweite.
+      // The watch just started a session: that one keeps running, not a second.
       const active = saved.conflict && saved.active ? saved.active : session;
       strengthRef.current = { ...strengthRef.current, active };
       setStrength(current => ({ ...current, active }));
@@ -1849,12 +1970,15 @@ export function RunbackApp({
       let next = await native.finishStrengthSession(
         reviseSession(base, finishSession(base, endTime)),
       );
-      // Abgehakt auf der Uhr, während hier „Beenden“ lief: deren Stand beenden.
+      // Ticked off on the watch while "Finish" ran here: finish the watch's state.
       for (let attempt = 0; next.conflict; attempt++) {
         if (!next.active || next.active.id !== base.id) break;
         if (attempt >= MAX_SAVE_RETRIES) {
           throw new Error(
-            'Das Training hat sich gerade geändert. Beende es erneut.',
+            tr(
+              'Das Training hat sich gerade geändert. Beende es erneut.',
+              'The session changed just now. Finish it again.',
+            ),
           );
         }
         base = next.active;
@@ -1871,11 +1995,11 @@ export function RunbackApp({
         setStrengthHistoryAvailable(false);
       }
       setWorkoutOpen(false);
-      setMessage('Training gespeichert.');
+      setMessage(tr('Training gespeichert.', 'Session saved.'));
     });
   };
-  // Pläne bleiben Nutzerartefakte: geschrieben wird nur, was der Nutzer hier
-  // ausdrücklich bestätigt hat (T-6).
+  // Plans stay user artifacts: only what the user explicitly confirmed here is
+  // written (T-6).
   const persistTemplates = (next: WorkoutTemplate[]) => {
     setStrength(current => ({ ...current, templates: next }));
     void native.saveStrengthTemplates(next).catch(e => setError(e.message));
@@ -1910,8 +2034,8 @@ export function RunbackApp({
     : features.strength.templateOfDay
     ? templateForDay(strength.templates, new Date(now).getDay())
     : null;
-  // Eine Aufzeichnung braucht die Standortfreigabe, sonst nichts: keine
-  // Planung, keine Vorlage. Sportart und Laufart sind Beschriftung, nicht Vorgabe.
+  // A recording needs only location permission, nothing else: no plan, no
+  // template. Sport and run type are labels, not targets.
   const beginRecording = async (
     nextPurpose: RunPurpose,
     nextSport: Sport,
@@ -1921,7 +2045,10 @@ export function RunbackApp({
     );
     if (!permissions.locationPermission) {
       throw new Error(
-        'Für die Streckenaufzeichnung fehlt die genaue Standortfreigabe. Du kannst sie in den Android-App-Einstellungen ändern.',
+        tr(
+          'Für die Streckenaufzeichnung fehlt die genaue Standortfreigabe. Du kannst sie in den Android-App-Einstellungen ändern.',
+          'Route recording needs precise location access. You can change it in the Android app settings.',
+        ),
       );
     }
     const started = await nativeCall<{ recording?: Run }>(
@@ -1942,7 +2069,10 @@ export function RunbackApp({
       : (await refresh()).recording;
     if (!active) {
       throw new Error(
-        'Die Aufzeichnung konnte noch nicht geladen werden. Prüfe die Startseite.',
+        tr(
+          'Die Aufzeichnung konnte noch nicht geladen werden. Prüfe die Startseite.',
+          'The recording could not be loaded yet. Check the start page.',
+        ),
       );
     }
     stateRef.current = { ...stateRef.current, recording: active };
@@ -1954,11 +2084,11 @@ export function RunbackApp({
       if (!stateRef.current.recording) {
         await beginRecording(purpose, sport);
       }
-      switchTab('Heute');
+      switchTab('today');
     });
   };
-  // Das Start-Sheet öffnet mit der Art, die man auf Heute angetippt hat; die
-  // Kraftvorlage von heute ist vorausgewählt, sonst die erste vorhandene.
+  // The start sheet opens with the kind tapped on Today; today's strength
+  // template is preselected, otherwise the first existing one.
   const openStartSheet = (kind: StartKind) => {
     setNow(Date.now());
     if (kind === 'strength') {
@@ -1972,7 +2102,12 @@ export function RunbackApp({
   // so their editable draft remains open for retry.
   const planningAction = async (fn: () => Promise<void>) => {
     if (busyRef.current) {
-      throw new Error('Eine Aktion läuft noch. Bitte gleich erneut versuchen.');
+      throw new Error(
+        tr(
+          'Eine Aktion läuft noch. Bitte gleich erneut versuchen.',
+          'An action is still running. Try again in a moment.',
+        ),
+      );
     }
     stateGeneration.current += 1;
     busyRef.current = true;
@@ -2017,13 +2152,15 @@ export function RunbackApp({
           });
           pendingScheduleLink.current = null;
         } catch {
-          const message =
-            'Die Zuordnung konnte noch nicht gespeichert werden. Öffne Planung und tippe die Einheit erneut an.';
+          const message = tr(
+            'Die Zuordnung konnte noch nicht gespeichert werden. Öffne Planung und tippe die Einheit erneut an.',
+            'The link could not be saved yet. Open Plan and tap the session again.',
+          );
           setError(message);
           throw new Error(message);
         }
         if (entry.kind === 'run') {
-          switchTab('Heute');
+          switchTab('today');
         } else {
           setWorkoutOpen(true);
           setNow(Date.now());
@@ -2039,12 +2176,15 @@ export function RunbackApp({
         entry.date !== localDateKey()
       ) {
         throw new Error(
-          'Diese Einheit ist nicht für heute geplant. Verschiebe sie zuerst auf heute.',
+          tr(
+            'Diese Einheit ist nicht für heute geplant. Verschiebe sie zuerst auf heute.',
+            'This session is not planned for today. Move it to today first.',
+          ),
         );
       }
       if (entry.activityId) {
         if (stateRef.current.recording?.id === entry.activityId) {
-          switchTab('Heute');
+          switchTab('today');
           return;
         }
         if (strengthRef.current.active?.id === entry.activityId) {
@@ -2052,18 +2192,26 @@ export function RunbackApp({
           return;
         }
         throw new Error(
-          'Diese Einheit wurde bereits gestartet. Die Aufzeichnung findest du im Verlauf.',
+          tr(
+            'Diese Einheit wurde bereits gestartet. Die Aufzeichnung findest du im Verlauf.',
+            'This session was already started. Find the recording in History.',
+          ),
         );
       }
       if (stateRef.current.recording || strengthRef.current.active) {
-        throw new Error('Beende zuerst dein laufendes Training.');
+        throw new Error(
+          tr(
+            'Beende zuerst dein laufendes Training.',
+            'Finish your running session first.',
+          ),
+        );
       }
       let activityId: string;
       if (entry.kind === 'run') {
         const active = await beginRecording(entry.purpose || 'free', 'running');
         activityId = active.id;
         pendingScheduleLink.current = { entryId: entry.id, activityId };
-        switchTab('Heute');
+        switchTab('today');
       } else {
         const template = entry.templateId
           ? strengthRef.current.templates.find(
@@ -2072,7 +2220,10 @@ export function RunbackApp({
           : null;
         if (entry.templateId && !template) {
           throw new Error(
-            'Die Kraftvorlage fehlt. Wähle in der geplanten Einheit eine vorhandene Vorlage.',
+            tr(
+              'Die Kraftvorlage fehlt. Wähle in der geplanten Einheit eine vorhandene Vorlage.',
+              'The strength template is missing. Choose an existing template for the planned session.',
+            ),
           );
         }
         const created = startSession(template ?? null, Date.now(), entry.title);
@@ -2097,8 +2248,10 @@ export function RunbackApp({
         });
         pendingScheduleLink.current = null;
       } catch {
-        const message =
-          'Das Training läuft. Die Zuordnung konnte noch nicht gespeichert werden. Öffne Planung und tippe die Einheit erneut an.';
+        const message = tr(
+          'Das Training läuft. Die Zuordnung konnte noch nicht gespeichert werden. Öffne Planung und tippe die Einheit erneut an.',
+          'The session is running. The link could not be saved yet. Open Plan and tap the session again.',
+        );
         setError(message);
         throw new Error(message);
       }
@@ -2106,12 +2259,15 @@ export function RunbackApp({
   const stop = () => {
     const stopWords = sportWords(recording?.sport);
     Alert.alert(
-      `${stopWords.noun} beenden?`,
-      `Deine bisherige Aufzeichnung wird gespeichert. Du kannst danach noch dein ${stopWords.feelingLabel} ergänzen.`,
+      tr(`${stopWords.noun} beenden?`, `End ${stopWords.noun.toLowerCase()}?`),
+      tr(
+        `Deine bisherige Aufzeichnung wird gespeichert. Du kannst danach noch dein ${stopWords.feelingLabel} ergänzen.`,
+        `Your recording so far is saved. You can add your ${stopWords.feelingLabel.toLowerCase()} afterwards.`,
+      ),
       [
         { text: stopWords.continueLabel, style: 'cancel' },
         {
-          text: 'Beenden & speichern',
+          text: tr('Beenden & speichern', 'End & save'),
           onPress: () => {
             void action(async () => {
               const id = recording?.id;
@@ -2119,7 +2275,10 @@ export function RunbackApp({
               const next = await refresh();
               if (features.recording.afterRun === 'home') {
                 setMessage(
-                  'Aufzeichnung gespeichert. Dein Gefühl kannst du im Verlauf nachtragen.',
+                  tr(
+                    'Aufzeichnung gespeichert. Dein Gefühl kannst du im Verlauf nachtragen.',
+                    'Recording saved. You can add your feeling later in History.',
+                  ),
                 );
                 return;
               }
@@ -2171,7 +2330,8 @@ export function RunbackApp({
         target,
         status,
         Date.now(),
-        'Vom Nutzer geändert',
+        // Stored in the experiment history in the language of the moment.
+        tr('Vom Nutzer geändert', 'Changed by you'),
       );
       await persist({
         experiments: settings.experiments?.map(e =>
@@ -2192,7 +2352,7 @@ export function RunbackApp({
           .catch(() => {});
       }, 700);
       try {
-        // Liest nur; gespeichert wird erst nach der Wahl im Sheet „Import prüfen“.
+        // Only reads; saving happens after the choice in the "Review import" sheet.
         const result = await nativeCall<any>('importFiles');
         setImportStatus(result.cancelled ? null : result);
       } finally {
@@ -2201,7 +2361,7 @@ export function RunbackApp({
     });
   };
   const afterImportChange = async () => {
-    // Vorlagen sind eigene Dokumente und ändern sich durch Importe nicht.
+    // Templates are their own documents and do not change through imports.
     setImportRevision(value => value + 1);
     await refresh();
     setStrengthSessions(await native.strengthSessions(500));
@@ -2242,7 +2402,7 @@ export function RunbackApp({
       setSelected(null);
       setSelectedSession(null);
       await afterImportChange();
-      setMessage('Import gelöscht.');
+      setMessage(tr('Import gelöscht.', 'Import deleted.'));
     });
   };
   const runImport = () => beginImport(false);
@@ -2252,34 +2412,37 @@ export function RunbackApp({
       .then(setImportStatus)
       .catch(e => setError(e.message));
   };
-  // Nur Zähler, die etwas sagen: „Importiert“ immer, der Rest ab 1.
+  // Only counters that say something: "Imported" always, the rest from 1.
   const importSummary =
     importStatus && importStatus.state !== 'review'
       ? [
-          `Importiert: ${importStatus.imported ?? 0}`,
+          tr(
+            `Importiert: ${importStatus.imported ?? 0}`,
+            `Imported: ${importStatus.imported ?? 0}`,
+          ),
           ...(
             [
-              ['Doppelt', importStatus.duplicates],
-              ['Keine Läufe', importStatus.nonRunning],
-              ['Übersprungen', importStatus.skipped],
-              ['Fehlgeschlagen', importStatus.failed],
-              ['Kontextwerte', importStatus.wellness],
-              ['Krafteinheiten', importStatus.strength],
-              ['Nicht gewählt', importStatus.excluded],
+              [tr('Doppelt', 'Duplicates'), importStatus.duplicates],
+              [tr('Keine Läufe', 'No runs'), importStatus.nonRunning],
+              [tr('Übersprungen', 'Skipped'), importStatus.skipped],
+              [tr('Fehlgeschlagen', 'Failed'), importStatus.failed],
+              [tr('Kontextwerte', 'Context values'), importStatus.wellness],
+              [tr('Krafteinheiten', 'Strength sessions'), importStatus.strength],
+              [tr('Nicht gewählt', 'Not selected'), importStatus.excluded],
             ] as [string, number | undefined][]
           )
             .filter(([, count]) => (count ?? 0) > 0)
             .map(([label, count]) => `${label}: ${count}`),
         ].join(' · ')
       : '';
-  // Die Laufauswertung gilt nur für Läufe. Bei anderen Sportarten erscheint
-  // sie gar nicht statt mit falschen Zahlen (Spec T-1).
+  // The run analysis applies only to runs. For other sports it does not appear
+  // at all instead of showing wrong numbers (Spec T-1).
   const snapshot =
     selected && isRun(selected)
       ? analyzeRun(selected, experiment, runningRuns)
       : null;
-  // Vergleich mit den letzten Läufen färbt die Kacheln oben; er gilt wie die
-  // Auswertung nur für Läufe.
+  // The comparison with recent runs colors the tiles above; like the analysis,
+  // it applies only to runs.
   const comparison =
     selected && isRun(selected)
       ? recentComparison(selected, runningRuns, snapshot?.pacing)
@@ -2317,11 +2480,19 @@ export function RunbackApp({
     setState(current => ({ ...current, capabilities }));
     if (!capabilities.microphonePermission) {
       throw new Error(
-        'Für die Spracheingabe fehlt die Mikrofonfreigabe. Tippen funktioniert unverändert.',
+        tr(
+          'Für die Spracheingabe fehlt die Mikrofonfreigabe. Tippen funktioniert unverändert.',
+          'Voice input needs microphone access. Typing works as before.',
+        ),
       );
     }
     if (!capabilities.speechRecognition) {
-      throw new Error('Auf diesem Gerät ist keine Spracherkennung verfügbar.');
+      throw new Error(
+        tr(
+          'Auf diesem Gerät ist keine Spracherkennung verfügbar.',
+          'Speech recognition is not available on this device.',
+        ),
+      );
     }
     return native.transcribeSoreness();
   };
@@ -2330,14 +2501,14 @@ export function RunbackApp({
       const next = await native.saveSorenessReport(report);
       setSorenessReports(next);
       setSorenessOpen(false);
-      setMessage('Muskelkatermeldung gespeichert.');
+      setMessage(tr('Muskelkatermeldung gespeichert.', 'Soreness report saved.'));
     });
   };
 
-  // Startseite: eine Frage — was mache ich jetzt? Die Antwort ist eine Karte
-  // mit einem Button. Darunter nur, was heute zählt: die laufende Empfehlung,
-  // ein Körper-Check, die letzten zwei Einheiten. Fokus, Ziel, Vorlagen und
-  // Karte haben ihren Ort in Coach, Plan und Verlauf.
+  // Start page: one question — what do I do now? The answer is a card with one
+  // button. Below it only what counts today: the running recommendation, a
+  // body check, the last two sessions. Focus, goal, templates, and the map have
+  // their place in Coach, Plan, and History.
   const startPlannedRun = () => {
     if (todaysScheduledRun) {
       void startScheduled(todaysScheduledRun).catch(e => setError(e.message));
@@ -2355,7 +2526,7 @@ export function RunbackApp({
   const targetRow = (nextPurpose: RunPurpose) =>
     features.recording.targets ? (
       <Row
-        title="Laufen nach"
+        title={tr('Laufen nach', 'Run by')}
         subtitle={runTargetLabel(targetForPurpose(runTarget, nextPurpose))}
         onPress={() => {
           setStartSheet(null);
@@ -2365,14 +2536,14 @@ export function RunbackApp({
     ) : null;
   const shortVerdict = (verdict: string | undefined) =>
     verdict === 'improved'
-      ? 'hat geholfen'
+      ? tr('hat geholfen', 'helped')
       : verdict === 'worsened'
-      ? 'eher nicht geholfen'
+      ? tr('eher nicht geholfen', 'rather did not help')
       : verdict === 'no_relevant_effect'
-      ? 'kein Unterschied'
+      ? tr('kein Unterschied', 'no difference')
       : verdict === 'not_implemented'
-      ? 'noch nicht ausprobiert'
-      : 'noch nicht klar';
+      ? tr('noch nicht ausprobiert', 'not tried yet')
+      : tr('noch nicht klar', 'not clear yet');
   const runEvaluation =
     experiment && runRecs
       ? evaluateExperiment(experiment, runningRuns, settings.adherence)
@@ -2386,7 +2557,7 @@ export function RunbackApp({
           settings.adherence,
         )
       : null;
-  /** Kompakte Karte je Bereich: Zustand, Fortschritt, ein Tipp führt zum Coach. */
+  /** Compact card per area: state, progress; one tap leads to Coach. */
   const recommendationCard = (area: 'running' | 'strength') => {
     if (!recommendationsSuggested(features, area)) {
       return null;
@@ -2394,7 +2565,8 @@ export function RunbackApp({
     const active = area === 'running' ? experiment : strengthExperiment;
     const evaluation = area === 'running' ? runEvaluation : strengthEvaluation;
     const proposal = area === 'running' ? candidate : strengthCandidate;
-    const areaWord = area === 'running' ? 'Läufen' : 'Einheiten';
+    const areaWord =
+      area === 'running' ? tr('Läufen', 'runs') : tr('Einheiten', 'sessions');
     if (active && evaluation) {
       const minimum = active.recommendation.criteria.minimumObservations;
       const done = evaluation.eligibleRunIds.length;
@@ -2402,7 +2574,10 @@ export function RunbackApp({
         <Pressable
           key={area}
           accessibilityRole="button"
-          accessibilityLabel={`Empfehlung ${AREA_LABELS[area]}: ${active.recommendation.action}`}
+          accessibilityLabel={tr(
+            `Empfehlung ${areaLabel(area)}: ${active.recommendation.action}`,
+            `Recommendation ${areaLabel(area)}: ${active.recommendation.action}`,
+          )}
           onPress={() => openCoach(area)}
           style={({ pressed }) => [
             styles.recommendationCard,
@@ -2417,16 +2592,25 @@ export function RunbackApp({
           </View>
           <View style={styles.recommendationMeta}>
             <Badge muted={active.status === 'paused'}>
-              {active.status === 'paused' ? 'Pausiert' : 'Aktiv'}
+              {active.status === 'paused'
+                ? tr('Pausiert', 'Paused')
+                : tr('Aktiv', 'Active')}
             </Badge>
             <Text style={styles.muted}>
-              {AREA_LABELS[area]} · {done} von {minimum} {areaWord} ·{' '}
-              {shortVerdict(evaluation.verdict)}
+              {areaLabel(area)} ·{' '}
+              {tr(
+                `${done} von ${minimum} ${areaWord}`,
+                `${done} of ${minimum} ${areaWord}`,
+              )}{' '}
+              · {shortVerdict(evaluation.verdict)}
             </Text>
           </View>
           <Progress
             value={minimum ? done / minimum : 0}
-            label={`${done} von ${minimum} geeigneten ${areaWord}`}
+            label={tr(
+              `${done} von ${minimum} geeigneten ${areaWord}`,
+              `${done} of ${minimum} suitable ${areaWord}`,
+            )}
           />
         </Pressable>
       );
@@ -2436,7 +2620,10 @@ export function RunbackApp({
         <Pressable
           key={area}
           accessibilityRole="button"
-          accessibilityLabel={`Vorschlag ${AREA_LABELS[area]}: ${proposal.action}`}
+          accessibilityLabel={tr(
+            `Vorschlag ${areaLabel(area)}: ${proposal.action}`,
+            `Suggestion ${areaLabel(area)}: ${proposal.action}`,
+          )}
           onPress={() => openCoach(area)}
           style={({ pressed }) => [
             styles.recommendationCard,
@@ -2448,9 +2635,13 @@ export function RunbackApp({
             <Text style={styles.arrow}>›</Text>
           </View>
           <View style={styles.recommendationMeta}>
-            <Badge>Vorschlag</Badge>
+            <Badge>{tr('Vorschlag', 'Suggestion')}</Badge>
             <Text style={styles.muted}>
-              {AREA_LABELS[area]} · Prüfe, ob er zu dir passt.
+              {areaLabel(area)} ·{' '}
+              {tr(
+                'Prüfe, ob er zu dir passt.',
+                'Check whether it fits you.',
+              )}
             </Text>
           </View>
         </Pressable>
@@ -2461,8 +2652,8 @@ export function RunbackApp({
   const reportedToday = sorenessReports.some(
     report => localDateKey(report.at) === todayKey,
   );
-  // Wochenleiste: sieben Tage, ein Punkt je Tag — grün für eine erfasste
-  // Einheit, grau für eine geplante. Ein Tipp öffnet den Plan.
+  // Week strip: seven days, one dot per day — green for a recorded session,
+  // gray for a planned one. One tap opens Plan.
   const weekStrip = () => {
     const monday = startOfWeek(todayKey);
     const doneDays = new Set(units.map(unit => localDateKey(unit.at)));
@@ -2474,11 +2665,14 @@ export function RunbackApp({
     return (
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Diese Woche im Plan ansehen"
-        onPress={() => switchTab('Plan')}
+        accessibilityLabel={tr(
+          'Diese Woche im Plan ansehen',
+          'View this week in Plan',
+        )}
+        onPress={() => switchTab('plan')}
         style={({ pressed }) => [styles.weekStrip, pressed && styles.pressed]}
       >
-        {WEEKDAY_SHORT.map((label, index) => {
+        {weekdayShortLabels().map((label, index) => {
           const key = addCalendarDays(monday, index);
           const dayNumber = Number(key.slice(-2));
           const isToday = key === todayKey;
@@ -2528,11 +2722,20 @@ export function RunbackApp({
       );
       return (
         <Card style={styles.hero}>
-          <Text style={styles.heroLabel}>Training läuft</Text>
-          <Text style={styles.heroTitle}>{strength.active.name}</Text>
-          <Copy muted>Krafttraining · seit {minutes} Minuten</Copy>
+          <Text style={styles.heroLabel}>
+            {tr('Training läuft', 'Session running')}
+          </Text>
+          <Text style={styles.heroTitle}>
+            {displaySessionName(strength.active.name)}
+          </Text>
+          <Copy muted>
+            {tr(
+              `Krafttraining · seit ${minutes} Minuten`,
+              `Strength training · ${minutes} ${minutes === 1 ? 'minute' : 'minutes'} so far`,
+            )}
+          </Copy>
           <Button
-            title="Training fortsetzen"
+            title={tr('Training fortsetzen', 'Continue session')}
             onPress={() => {
               setNow(Date.now());
               setWorkoutOpen(true);
@@ -2541,35 +2744,48 @@ export function RunbackApp({
         </Card>
       );
     }
-    // Ohne Bereich Laufen startet „etwas anderes“ direkt beim Krafttraining.
+    // Without the running area, "something else" starts directly at strength training.
     const otherKind: StartKind = sports.length ? 'run' : 'strength';
     if (todaysScheduledRun && showRunning) {
       const plannedPurpose = todaysScheduledRun.purpose || 'free';
       return (
         <Card style={styles.hero}>
-          <Text style={styles.heroLabel}>Heute geplant</Text>
-          <Text style={styles.heroTitle}>{todaysScheduledRun.title}</Text>
+          <Text style={styles.heroLabel}>
+            {tr('Heute geplant', 'Planned for today')}
+          </Text>
+          <Text style={styles.heroTitle}>
+            {scheduleTitle(todaysScheduledRun)}
+          </Text>
           <Copy muted>
-            Lauf · {todaysScheduledRun.minutes} Min ·{' '}
-            {purposeLabel(plannedPurpose)}
+            {tr(
+              `Lauf · ${todaysScheduledRun.minutes} Min`,
+              `Run · ${todaysScheduledRun.minutes} min`,
+            )}{' '}
+            · {purposeLabel(plannedPurpose)}
           </Copy>
           {targetRow(plannedPurpose)}
           <Button
-            title="Lauf starten"
+            title={tr('Lauf starten', 'Start run')}
             onPress={startPlannedRun}
             disabled={busy}
           />
           {todaysScheduledStrength && showStrength ? (
             <Row
-              title={todaysScheduledStrength.title}
-              subtitle={`Krafttraining · ${todaysScheduledStrength.minutes} Min · ebenfalls heute`}
+              title={scheduleTitle(todaysScheduledStrength)}
+              subtitle={tr(
+                `Krafttraining · ${todaysScheduledStrength.minutes} Min · ebenfalls heute`,
+                `Strength training · ${todaysScheduledStrength.minutes} min · also today`,
+              )}
               onPress={startPlannedStrength}
             />
           ) : null}
           <Button
             secondary
             small
-            title="Stattdessen etwas anderes starten"
+            title={tr(
+              'Stattdessen etwas anderes starten',
+              'Start something else instead',
+            )}
             onPress={() => openStartSheet(otherKind)}
             disabled={busy}
           />
@@ -2577,32 +2793,46 @@ export function RunbackApp({
       );
     }
     if (showStrength && (todaysScheduledStrength || todaysTemplate)) {
-      const title = todaysScheduledStrength?.title ?? todaysTemplate!.name;
+      const title = todaysScheduledStrength
+        ? scheduleTitle(todaysScheduledStrength)
+        : todaysTemplate!.name;
       const exerciseCount = todaysTemplate?.exercises.length ?? 0;
       return (
         <Card style={styles.hero}>
           <Text style={styles.heroLabel}>
-            {todaysScheduledStrength ? 'Heute geplant' : 'Heute vorgesehen'}
+            {todaysScheduledStrength
+              ? tr('Heute geplant', 'Planned for today')
+              : tr('Heute vorgesehen', 'Set for today')}
           </Text>
           <Text style={styles.heroTitle}>{title}</Text>
           <Copy muted>
-            Krafttraining
+            {tr('Krafttraining', 'Strength training')}
             {todaysScheduledStrength
-              ? ` · ${todaysScheduledStrength.minutes} Min`
+              ? tr(
+                  ` · ${todaysScheduledStrength.minutes} Min`,
+                  ` · ${todaysScheduledStrength.minutes} min`,
+                )
               : ''}
             {exerciseCount
-              ? ` · ${counted(exerciseCount, 'Übung', 'Übungen')}`
+              ? ` · ${counted(
+                  exerciseCount,
+                  tr('Übung', 'exercise'),
+                  tr('Übungen', 'exercises'),
+                )}`
               : ''}
           </Copy>
           <Button
-            title="Training starten"
+            title={tr('Training starten', 'Start session')}
             onPress={startPlannedStrength}
             disabled={busy}
           />
           <Button
             secondary
             small
-            title="Stattdessen etwas anderes starten"
+            title={tr(
+              'Stattdessen etwas anderes starten',
+              'Start something else instead',
+            )}
             onPress={() => openStartSheet(otherKind)}
             disabled={busy}
           />
@@ -2613,18 +2843,23 @@ export function RunbackApp({
       const first = linkedUnit(todaysLinked[0].activityId!);
       return (
         <Card style={styles.hero}>
-          <Text style={styles.heroLabel}>Heute erledigt ✓</Text>
+          <Text style={styles.heroLabel}>
+            {tr('Heute erledigt ✓', 'Done today ✓')}
+          </Text>
           <Text style={styles.heroTitle}>
-            {first ? unitTitle(first) : todaysLinked[0].title}
+            {first ? unitTitle(first) : scheduleTitle(todaysLinked[0])}
           </Text>
           <Copy muted>
             {first
               ? `${unitKindLabel(first)} · ${unitSummary(first)}`
-              : 'Gestartet, noch nicht abgeschlossen.'}
+              : tr(
+                  'Gestartet, noch nicht abgeschlossen.',
+                  'Started, not finished yet.',
+                )}
           </Copy>
           <Button
             secondary
-            title="Noch eine Einheit starten"
+            title={tr('Noch eine Einheit starten', 'Start another workout')}
             onPress={() => openStartSheet(otherKind)}
             disabled={busy}
           />
@@ -2633,17 +2868,25 @@ export function RunbackApp({
     }
     return (
       <Card style={styles.hero}>
-        <Text style={styles.heroTitle}>Heute frei</Text>
+        <Text style={styles.heroTitle}>{tr('Heute frei', 'Free today')}</Text>
         {nextPlanned ? (
           <Copy muted>
-            {`Als Nächstes: ${nextPlanned.title} · ${date(
-              new Date(`${nextPlanned.date}T12:00:00`).getTime(),
-            )}`}
+            {tr(
+              `Als Nächstes: ${nextPlanned.title} · ${date(
+                new Date(`${nextPlanned.date}T12:00:00`).getTime(),
+              )}`,
+              `Up next: ${nextPlanned.title} · ${date(
+                new Date(`${nextPlanned.date}T12:00:00`).getTime(),
+              )}`,
+            )}
           </Copy>
         ) : null}
         {sports.length ? (
           <Button
-            title={`${words.noun} starten`}
+            title={tr(
+              `${words.noun} starten`,
+              `Start ${words.noun.toLowerCase()}`,
+            )}
             onPress={() => openStartSheet('run')}
             disabled={busy}
           />
@@ -2651,7 +2894,7 @@ export function RunbackApp({
         {showStrength ? (
           <Button
             secondary={sports.length > 0}
-            title="Krafttraining starten"
+            title={tr('Krafttraining starten', 'Start strength training')}
             onPress={() => openStartSheet('strength')}
             disabled={busy}
           />
@@ -2659,8 +2902,8 @@ export function RunbackApp({
       </Card>
     );
   };
-  // Auf Heute steht die Empfehlung für die Einheit, die gerade ansteht — nie
-  // beide untereinander (Spec „Zwei Bereiche“). Fehlt sie, die des anderen.
+  // Today shows the recommendation for the session that is up next — never both
+  // stacked (Spec "Two areas"). If it is missing, the other area's is shown.
   const heroArea: 'running' | 'strength' =
     strength.active ||
     (!todaysScheduledRun && (todaysScheduledStrength || todaysTemplate))
@@ -2668,13 +2911,19 @@ export function RunbackApp({
       : 'running';
   const renderHome = () => (
     <>
-      <Title>Heute</Title>
+      <Title>{tr('Heute', 'Today')}</Title>
       {homeSections.includes('week') ? weekStrip() : null}
       {renderHero()}
       {!settings.features && settings.onboardedAt ? (
         <Row
-          title="Neu: Wähle, was Runback zeigt"
-          subtitle="Bereiche, Muskelkater, Plan und mehr abwählen"
+          title={tr(
+            'Neu: Wähle, was Runback zeigt',
+            'New: choose what Runback shows',
+          )}
+          subtitle={tr(
+            'Bereiche, Muskelkater, Plan und mehr abwählen',
+            'Deselect areas, soreness, Plan, and more',
+          )}
           onPress={() => openPage('features')}
         />
       ) : null}
@@ -2695,17 +2944,20 @@ export function RunbackApp({
       sorenessStorageAvailable &&
       !reportedToday ? (
         <Row
-          title="Wie fühlst du dich heute?"
+          title={tr('Wie fühlst du dich heute?', 'How do you feel today?')}
           subtitle={
             latestSoreness
-              ? `Muskelkater melden · zuletzt ${date(latestSoreness.at)}`
-              : 'Muskelkater melden'
+              ? tr(
+                  `Muskelkater melden · zuletzt ${date(latestSoreness.at)}`,
+                  `Report soreness · last ${date(latestSoreness.at)}`,
+                )
+              : tr('Muskelkater melden', 'Report soreness')
           }
           onPress={openSorenessCapture}
         />
       ) : null}
       {!homeSections.includes('recent') ? null : units.length ? (
-        <Section title="Zuletzt">
+        <Section title={tr('Zuletzt', 'Recent')}>
           {units.slice(0, 2).map(unit => (
             <Row
               key={unit.key}
@@ -2716,26 +2968,33 @@ export function RunbackApp({
           ))}
           {units.length > 2 ? (
             <Row
-              title="Alle Einheiten"
-              subtitle={counted(units.length, 'Einheit', 'Einheiten')}
-              onPress={() => switchTab('Verlauf')}
+              title={tr('Alle Einheiten', 'All workouts')}
+              subtitle={counted(
+                units.length,
+                tr('Einheit', 'workout'),
+                tr('Einheiten', 'workouts'),
+              )}
+              onPress={() => switchTab('history')}
             />
           ) : null}
         </Section>
       ) : (
         <EmptyState
-          title="Noch keine Einheit"
-          copy="Dein erster Lauf und dein erstes Krafttraining erscheinen hier. Vorhandene Historie importierst du in den Einstellungen unter „Deine Daten“."
+          title={tr('Noch keine Einheit', 'No workouts yet')}
+          copy={tr(
+            'Dein erster Lauf und dein erstes Krafttraining erscheinen hier. Vorhandene Historie importierst du in den Einstellungen unter „Deine Daten“.',
+            'Your first run and first strength session appear here. Import existing history in Settings under “Your data”.',
+          )}
         />
       )}
     </>
   );
 
-  // Start-Sheet: alles, was eine Aufzeichnung beschreibt, an einem Ort — mit
-  // der letzten Wahl als Vorgabe. Im Normalfall: ein Tipp, dann „Los“.
+  // Start sheet: everything that describes a recording, in one place — with the
+  // last choice as the default. Normally: one tap, then "Go".
   const startKindValue: 'running' | 'cycling' | 'strength' =
     startSheet === 'strength' ? 'strength' : sport;
-  const startKinds = START_KINDS.filter(kind =>
+  const startKinds = startKindOptions().filter(kind =>
     kind.value === 'strength' ? showStrength : sports.includes(kind.value),
   );
   const selectedTemplate = features.templates.enabled
@@ -2761,12 +3020,12 @@ export function RunbackApp({
   const renderStartSheet = () => (
     <Sheet
       visible={Boolean(startSheet)}
-      title="Was startest du?"
+      title={tr('Was startest du?', 'What are you starting?')}
       onClose={() => setStartSheet(null)}
     >
       {startKinds.length > 1 ? (
         <Segmented
-          label="Art der Einheit"
+          label={tr('Art der Einheit', 'Type of workout')}
           options={startKinds}
           value={startKindValue}
           onChange={value => {
@@ -2785,10 +3044,14 @@ export function RunbackApp({
             <Row
               key={item.id}
               title={item.name}
-              subtitle={`${counted(item.exercises.length, 'Übung', 'Übungen')}${
+              subtitle={`${counted(
+                item.exercises.length,
+                tr('Übung', 'exercise'),
+                tr('Übungen', 'exercises'),
+              )}${
                 todaysScheduledStrength?.templateId === item.id ||
                 (!todaysScheduledStrength && todaysTemplate?.id === item.id)
-                  ? ' · heute vorgesehen'
+                  ? tr(' · heute vorgesehen', ' · set for today')
                   : ''
               }`}
               onPress={() => setStartTemplateId(item.id)}
@@ -2800,8 +3063,11 @@ export function RunbackApp({
             />
           ))}
           <Row
-            title="Frei trainieren"
-            subtitle="Übungen während der Einheit wählen"
+            title={tr('Frei trainieren', 'Train freely')}
+            subtitle={tr(
+              'Übungen während der Einheit wählen',
+              'Choose exercises during the session',
+            )}
             onPress={() => setStartTemplateId(null)}
             trailing={
               <Text style={styles.greenText}>
@@ -2811,7 +3077,7 @@ export function RunbackApp({
           />
           {features.templates.enabled ? (
             <Row
-              title="Vorlagen verwalten"
+              title={tr('Vorlagen verwalten', 'Manage templates')}
               onPress={() => {
                 setStartSheet(null);
                 setTemplatesView('strength');
@@ -2823,15 +3089,15 @@ export function RunbackApp({
       ) : (
         <>
           {features.templates.enabled && settings.presets?.length ? (
-            <Field label="Vorlage">
+            <Field label={tr('Vorlage', 'Template')}>
               <ChipGroup
-                label="Laufvorlage"
+                label={tr('Laufvorlage', 'Run template')}
                 options={[
                   ...settings.presets.map(p => ({
                     value: p.id,
                     label: p.name,
                   })),
-                  { value: '', label: 'Ohne' },
+                  { value: '', label: tr('Ohne', 'None') },
                 ]}
                 value={
                   settings.presets.find(
@@ -2854,9 +3120,9 @@ export function RunbackApp({
               />
             </Field>
           ) : null}
-          <Field label="Wie willst du laufen?">
+          <Field label={tr('Wie willst du laufen?', 'How do you want to run?')}>
             <ChipGroup
-              label="Laufart dieser Aufzeichnung"
+              label={tr('Laufart dieser Aufzeichnung', 'Run type for this recording')}
               options={purposes.map(p => ({
                 value: p.value,
                 label: p.label,
@@ -2874,9 +3140,9 @@ export function RunbackApp({
           </Field>
           {sport === 'running' ? targetRow(purpose) : null}
           {sport === 'running' ? (
-            // Der Trageort ändert sich selten: zu, mit der letzten Wahl als Wert.
+            // The carry position rarely changes: collapsed, with the last choice as value.
             <Disclosure
-              title="Handy"
+              title={tr('Handy', 'Phone position')}
               subtitle={
                 PHONE_PLACEMENTS.find(
                   item =>
@@ -2885,7 +3151,10 @@ export function RunbackApp({
               }
             >
               <ChipGroup
-                label="Wo das Handy beim Laufen steckt"
+                label={tr(
+                  'Wo das Handy beim Laufen steckt',
+                  'Where the phone is carried while running',
+                )}
                 options={PHONE_PLACEMENTS}
                 value={normalizePlacement(settings.gaitPlacement)}
                 onChange={value => save({ gaitPlacement: value })}
@@ -2898,8 +3167,8 @@ export function RunbackApp({
       <Button
         title={
           startSheet === 'strength'
-            ? 'Training starten'
-            : 'Aufzeichnung starten'
+            ? tr('Training starten', 'Start session')
+            : tr('Aufzeichnung starten', 'Start recording')
         }
         onPress={startFromSheet}
         disabled={busy}
@@ -2907,9 +3176,9 @@ export function RunbackApp({
     </Sheet>
   );
 
-  // Laufart nachtragen: ein Lauf je Schritt, neueste zuerst. Weiter geht es erst,
-  // wenn die Wahl gespeichert ist; Übersprungenes bleibt offen und wird am
-  // Ende genannt.
+  // Add run types afterwards: one run per step, newest first. Moving on happens
+  // only once the choice is saved; skipped ones stay open and are named at the
+  // end.
   const purposeOpen = runningRuns.filter(purposeMissing);
   const purposeQueue = purposeOpen.filter(
     run => !purposeSkipped.includes(run.id),
@@ -2918,22 +3187,24 @@ export function RunbackApp({
   const renderPurposeSheet = () => (
     <Sheet
       visible={purposeSheet}
-      title="Laufart nachtragen"
+      title={tr('Laufart nachtragen', 'Add run type')}
       onClose={() => setPurposeSheet(false)}
     >
       {error ? (
-        <Notice title="Nicht gespeichert" onDismiss={() => setError('')}>
+        <Notice
+          title={tr('Nicht gespeichert', 'Not saved')}
+          onDismiss={() => setError('')}
+        >
           {error}
         </Notice>
       ) : null}
       {purposeRun ? (
         <>
           <Copy muted>
-            {`Noch ${counted(
-              purposeQueue.length,
-              'Lauf',
-              'Läufe',
-            )} ohne Laufart`}
+            {tr(
+              `Noch ${counted(purposeQueue.length, 'Lauf', 'Läufe')} ohne Laufart`,
+              `Still ${counted(purposeQueue.length, 'run', 'runs')} without a run type`,
+            )}
           </Copy>
           <Row
             title={runTitle(purposeRun)}
@@ -2942,7 +3213,10 @@ export function RunbackApp({
             )} km · ${tempoValue(purposeRun)} ${tempoUnit(purposeRun)}`}
           />
           <ChipGroup
-            label={`Laufart von ${runTitle(purposeRun)}`}
+            label={tr(
+              `Laufart von ${runTitle(purposeRun)}`,
+              `Run type for ${runTitle(purposeRun)}`,
+            )}
             options={purposes.map(p => ({ value: p.value, label: p.label }))}
             value={selectablePurpose(purposeRun.purpose)}
             disabled={busy}
@@ -2960,7 +3234,7 @@ export function RunbackApp({
           <Button
             secondary
             small
-            title="Überspringen"
+            title={tr('Überspringen', 'Skip')}
             disabled={busy}
             onPress={() =>
               setPurposeSkipped(current => [...current, purposeRun.id])
@@ -2971,21 +3245,34 @@ export function RunbackApp({
         <>
           <Copy>
             {purposeOpen.length
-              ? `Durchgesehen. ${counted(
-                  purposeOpen.length,
-                  'Lauf bleibt',
-                  'Läufe bleiben',
-                )} ohne Laufart.`
-              : 'Jeder Lauf hat jetzt eine Laufart.'}
+              ? tr(
+                  `Durchgesehen. ${counted(
+                    purposeOpen.length,
+                    'Lauf bleibt',
+                    'Läufe bleiben',
+                  )} ohne Laufart.`,
+                  `Reviewed. ${counted(
+                    purposeOpen.length,
+                    'run stays',
+                    'runs stay',
+                  )} without a run type.`,
+                )
+              : tr(
+                  'Jeder Lauf hat jetzt eine Laufart.',
+                  'Every run now has a run type.',
+                )}
           </Copy>
-          <Button title="Fertig" onPress={() => setPurposeSheet(false)} />
+          <Button
+            title={tr('Fertig', 'Done')}
+            onPress={() => setPurposeSheet(false)}
+          />
         </>
       )}
     </Sheet>
   );
 
-  // Plus und Minus ändern nur das Ziel dieses Laufs; die gespeicherte Vorgabe
-  // für den nächsten Lauf bleibt, wie der Nutzer sie im Coach gewählt hat.
+  // Plus and minus change only the target of this run; the saved default for
+  // the next run stays as the user chose it in Coach.
   const changeTargetPace = (direction: 1 | -1) => {
     void action(async () => {
       const target = stateRef.current.recording?.target;
@@ -3013,16 +3300,29 @@ export function RunbackApp({
         <View style={styles.recordingHeader}>
           <Text style={styles.title}>
             {recording.status === 'recording'
-              ? `${recordingWords.noun} läuft`
+              ? tr(
+                  `${recordingWords.noun} läuft`,
+                  `${recordingWords.noun} in progress`,
+                )
               : recording.status === 'paused'
-              ? `${recordingWords.noun} pausiert`
-              : `${recordingWords.noun} unterbrochen`}
+              ? tr(
+                  `${recordingWords.noun} pausiert`,
+                  `${recordingWords.noun} paused`,
+                )
+              : tr(
+                  `${recordingWords.noun} unterbrochen`,
+                  `${recordingWords.noun} interrupted`,
+                )}
           </Text>
           <Copy muted>{purposeLabel(recording.purpose)}</Copy>
         </View>
         <View style={styles.bigMetric}>
           {primary === 'distance' ? (
-            <Stat large value={distance(recording)} label="Kilometer" />
+            <Stat
+              large
+              value={distance(recording)}
+              label={tr('Kilometer', 'Kilometers')}
+            />
           ) : primary === 'heartRate' ? (
             <Stat
               large
@@ -3031,7 +3331,7 @@ export function RunbackApp({
                   ? String(Math.round(recording.avgHeartRate))
                   : '–'
               }
-              label="Ø bpm"
+              label={tr('Ø bpm', 'Avg bpm')}
             />
           ) : (
             <Stat
@@ -3050,7 +3350,10 @@ export function RunbackApp({
               />
             ) : null}
             {metrics.includes('distance') && primary !== 'distance' ? (
-              <Stat value={distance(recording)} label="Kilometer" />
+              <Stat
+                value={distance(recording)}
+                label={tr('Kilometer', 'Kilometers')}
+              />
             ) : null}
             {metrics.includes('pace') ? (
               <Stat
@@ -3062,12 +3365,12 @@ export function RunbackApp({
         ) : null}
         {metrics.includes('heartRate') && primary !== 'heartRate' ? (
           <Row
-            title="Herzfrequenz"
+            title={tr('Herzfrequenz', 'Heart rate')}
             trailing={
               <Copy>
                 {recording.avgHeartRate
                   ? `${Math.round(recording.avgHeartRate)} bpm`
-                  : 'Keine Daten'}
+                  : tr('Keine Daten', 'No data')}
               </Copy>
             }
           />
@@ -3076,13 +3379,19 @@ export function RunbackApp({
         recording.target &&
         recording.target.kind !== 'none' ? (
           <Row
-            title="Laufen nach"
+            title={tr('Laufen nach', 'Run by')}
             subtitle={runTargetLabel(recording.target)}
             trailing={
               recording.target.kind === 'pace' ? (
                 <Stepper
-                  decreaseLabel={`Zieltempo ${PACE_STEP_SECONDS} Sekunden schneller`}
-                  increaseLabel={`Zieltempo ${PACE_STEP_SECONDS} Sekunden langsamer`}
+                  decreaseLabel={tr(
+                    `Zieltempo ${PACE_STEP_SECONDS} Sekunden schneller`,
+                    `Target pace ${PACE_STEP_SECONDS} seconds faster`,
+                  )}
+                  increaseLabel={tr(
+                    `Zieltempo ${PACE_STEP_SECONDS} Sekunden langsamer`,
+                    `Target pace ${PACE_STEP_SECONDS} seconds slower`,
+                  )}
                   canDecrease={
                     stepTargetPace(recording.target.secondsPerKm, -1) !== null
                   }
@@ -3098,27 +3407,45 @@ export function RunbackApp({
           />
         ) : null}
         <WearRecordingRow run={recording} />
+        {features.music.enabled &&
+        isRun(recording) &&
+        recording.source === 'phone' ? (
+          <MusicLive
+            runId={recording.id}
+            paused={recording.status === 'paused'}
+            onSettings={() => openPage('music')}
+          />
+        ) : null}
         {recording.distanceMeters > 0 ? null : (
           <Copy muted>
-            Noch keine Strecke gemessen. Geh für GPS nach draußen.
+            {tr(
+              'Noch keine Strecke gemessen. Geh für GPS nach draußen.',
+              'No distance measured yet. Go outside for GPS.',
+            )}
           </Copy>
         )}
         {recording.status === 'interrupted' ? (
           <Copy>
-            Die Aufzeichnung wurde unterbrochen. Die Lücke bleibt in deinen
-            Daten erkennbar.
+            {tr(
+              'Die Aufzeichnung wurde unterbrochen. Die Lücke bleibt in deinen Daten erkennbar.',
+              'The recording was interrupted. The gap stays visible in your data.',
+            )}
           </Copy>
         ) : null}
         {experiment?.status === 'active' &&
         runRecsSuggested &&
         isRun(recording) ? (
-          <Section title="Für diesen Lauf">
+          <Section title={tr('Für diesen Lauf', 'For this run')}>
             <Copy>{experiment.recommendation.action}</Copy>
           </Section>
         ) : null}
         <View style={styles.recordingActions}>
           <Button
-            title={recording.status === 'recording' ? 'Pause' : 'Fortsetzen'}
+            title={
+              recording.status === 'recording'
+                ? tr('Pause', 'Pause')
+                : tr('Fortsetzen', 'Resume')
+            }
             disabled={busy}
             onPress={() => {
               void action(async () => {
@@ -3131,7 +3458,10 @@ export function RunbackApp({
           />
           <Button
             secondary
-            title={`${recordingWords.noun} beenden`}
+            title={tr(
+              `${recordingWords.noun} beenden`,
+              `End ${recordingWords.noun.toLowerCase()}`,
+            )}
             onPress={stop}
             disabled={busy}
           />
@@ -3140,39 +3470,64 @@ export function RunbackApp({
     );
   };
 
-  // Prüfkriterien bleiben nachvollziehbar, stehen aber hinter einem Schalter:
-  // Auf der Seite steht die Handlung, nicht das Verfahren.
+  // Test criteria stay traceable, but sit behind a switch: the page shows the
+  // action, not the method.
   const renderCriteria = (recommendation: Recommendation, accepted = false) => (
     <>
-      <Copy>Woran erkennen wir, dass es geholfen hat?</Copy>
+      <Copy>
+        {tr(
+          'Woran erkennen wir, dass es geholfen hat?',
+          'How will we know it helped?',
+        )}
+      </Copy>
       <Copy muted>{recommendation.goal}</Copy>
       <Copy muted>
         {accepted
-          ? 'Vor dem Start festgelegt. Ein Fokuswechsel ändert diese Regeln nicht.'
-          : 'Bei der Annahme werden diese Regeln festgeschrieben.'}
+          ? tr(
+              'Vor dem Start festgelegt. Ein Fokuswechsel ändert diese Regeln nicht.',
+              'Set before the start. A focus change does not alter these rules.',
+            )
+          : tr(
+              'Bei der Annahme werden diese Regeln festgeschrieben.',
+              'Accepting locks in these rules.',
+            )}
       </Copy>
       <Copy muted>
-        Ab {recommendation.criteria.minimumObservations} geeigneten Läufen über
-        mindestens {recommendation.criteria.minimumDays} Tage · Vorzeichentest:
-        häufiger als zufällig mindestens{' '}
+        {tr('Ab', 'From')} {recommendation.criteria.minimumObservations}{' '}
+        {tr('geeigneten Läufen über', 'suitable runs over')}{' '}
+        {recommendation.criteria.minimumDays}{' '}
+        {tr(
+          'Tage · Vorzeichentest: häufiger als zufällig mindestens',
+          'days · sign test: more often than chance, at least',
+        )}{' '}
         {recommendation.criteria.minimumRelevantChangePercentPoints}{' '}
-        Prozentpunkte weniger Tempoabfall als der Median der Vergleichsläufe (
-        {number(recommendation.criteria.baselineFadePercent, 1)} %)
+        {tr(
+          'Prozentpunkte weniger Tempoabfall als der Median der Vergleichsläufe (',
+          'percentage points less pace fade than the median of the comparison runs (',
+        )}
+        {number(recommendation.criteria.baselineFadePercent, 1)}{percentSign()})
       </Copy>
       {recommendation.criteria.exclusions.map((text, i) => (
         <Copy muted key={i}>
           {text}
         </Copy>
       ))}
-      <Row title="Modellversion" subtitle={recommendation.model_version} />
+      <Row
+        title={tr('Modellversion', 'Model version')}
+        subtitle={recommendation.model_version}
+      />
       <Copy muted>
-        Wenn nach {recommendation.criteria.maxDays} Tagen noch zu wenig
-        vergleichbare Läufe vorliegen, entscheide neu, wie du weitertrainieren
-        möchtest.
+        {tr(
+          `Wenn nach ${recommendation.criteria.maxDays} Tagen noch zu wenig vergleichbare Läufe vorliegen, entscheide neu, wie du weitertrainieren möchtest.`,
+          `If there are still too few comparable runs after ${recommendation.criteria.maxDays} days, decide again how you want to keep training.`,
+        )}
       </Copy>
-      <Section title="Vergleichsläufe">
+      <Section title={tr('Vergleichsläufe', 'Comparison runs')}>
         <Copy muted>
-          Die Basis ist der Median dieser Läufe, nicht ein einzelner Ausreißer.
+          {tr(
+            'Die Basis ist der Median dieser Läufe, nicht ein einzelner Ausreißer.',
+            'The baseline is the median of these runs, not a single outlier.',
+          )}
         </Copy>
         {recommendation.criteria.baselineRunIds.map(id => {
           const run = runningRuns.find(item => item.id === id);
@@ -3180,33 +3535,46 @@ export function RunbackApp({
             <Row
               key={id}
               title={
-                run ? runTitle(run) : 'Vergleichslauf nicht mehr vorhanden'
+                run
+                  ? runTitle(run)
+                  : tr(
+                      'Vergleichslauf nicht mehr vorhanden',
+                      'Comparison run no longer exists',
+                    )
               }
               subtitle={run ? date(run.startTime) : undefined}
             />
           );
         })}
       </Section>
-      <Section title="So priorisiert Runback">
+      <Section title={tr('So priorisiert Runback', 'How Runback prioritizes')}>
         {recommendation.priority ? (
           <Row
             title={recommendation.priority.focusLabel}
-            subtitle={`${recommendation.priority.version} · redaktionelles Gewicht ${recommendation.priority.weight}`}
+            subtitle={tr(
+              `${recommendation.priority.version} · redaktionelles Gewicht ${recommendation.priority.weight}`,
+              `${recommendation.priority.version} · editorial weight ${recommendation.priority.weight}`,
+            )}
           />
         ) : (
           <Copy muted>
-            Für diese ältere Empfehlung wurde keine Fokus-Priorisierung
-            gespeichert.
+            {tr(
+              'Für diese ältere Empfehlung wurde keine Fokus-Priorisierung gespeichert.',
+              'No focus prioritization was saved for this older recommendation.',
+            )}
           </Copy>
         )}
         <Copy muted>
-          Die Auswahlregeln sind redaktionell festgelegt. Sie lernen keine
-          Vorlieben aus deinen Läufen.
+          {tr(
+            'Die Auswahlregeln sind redaktionell festgelegt. Sie lernen keine Vorlieben aus deinen Läufen.',
+            'The selection rules are set by the editors. They do not learn preferences from your runs.',
+          )}
         </Copy>
         <Copy muted>
-          Derzeit ist nur der ruhigere Start als überprüfbare Empfehlung
-          verfügbar. Pulsverlauf und Schrittfrequenz liefern noch keine eigenen
-          Empfehlungen.
+          {tr(
+            'Derzeit ist nur der ruhigere Start als überprüfbare Empfehlung verfügbar. Pulsverlauf und Schrittfrequenz liefern noch keine eigenen Empfehlungen.',
+            'Currently only the easier start is available as a testable recommendation. Heart rate trace and stride rate do not yet produce their own recommendations.',
+          )}
         </Copy>
       </Section>
     </>
@@ -3214,16 +3582,17 @@ export function RunbackApp({
 
   const storedRunTitle = (id: string) => {
     const run = runningRuns.find(item => item.id === id);
-    return run ? runTitle(run) : 'Lauf nicht mehr vorhanden';
+    return run ? runTitle(run) : tr('Lauf nicht mehr vorhanden', 'Run no longer exists');
   };
-  // Gleicher Grund, gleiche Zeile: 28 Läufe ohne Laufart sind ein Befund.
+  // Same reason, same line: 28 runs without a run type is one finding.
   const groupedAlternatives = () => {
     const groups = new Map<
       string,
       { key: string; title: string; reason: string; runIds: string[] }
     >();
     selection.alternatives.forEach(item => {
-      const title = item.recommendation?.title || 'Starteinteilung';
+      const title =
+        item.recommendation?.title || tr('Starteinteilung', 'Pacing plan');
       const key = `${title}\u0000${item.reason}`;
       const group = groups.get(key) ?? {
         key,
@@ -3239,7 +3608,9 @@ export function RunbackApp({
   const renderAlternatives = () => (
     <Section
       title={
-        experiment ? 'Auswahl für danach' : 'Andere geprüfte Möglichkeiten'
+        experiment
+          ? tr('Auswahl für danach', 'Up next')
+          : tr('Andere geprüfte Möglichkeiten', 'Other options checked')
       }
     >
       {selection.alternatives.length ? (
@@ -3249,46 +3620,72 @@ export function RunbackApp({
             title={`${group.title} · ${
               group.runIds.length === 1
                 ? storedRunTitle(group.runIds[0])
-                : counted(group.runIds.length, 'Lauf', 'Läufe')
+                : counted(
+                    group.runIds.length,
+                    tr('Lauf', 'run'),
+                    tr('Läufe', 'runs'),
+                  )
             }`}
             subtitle={group.reason}
           />
         ))
       ) : (
         <Copy muted>
-          Keine weitere Möglichkeit aus den vorhandenen Daten geprüft.
+          {tr(
+            'Keine weitere Möglichkeit aus den vorhandenen Daten geprüft.',
+            'No further option was checked against the existing data.',
+          )}
         </Copy>
       )}
     </Section>
   );
-  // Krafttraining hat seine eigene Empfehlungsseite: gleiche drei Fragen,
-  // gleiche Zustände, aber an Einheiten und Sätzen geprüft statt an Läufen.
+  // Strength training has its own recommendation page: the same three questions,
+  // the same states, but checked on sessions and sets instead of runs.
   const sessionTitle = (id: string) => {
     const session = strengthSessions.find(item => item.id === id);
     return session
-      ? `${session.name} · ${date(session.startTime)}`
-      : 'Einheit nicht mehr vorhanden';
+      ? `${displaySessionName(session.name)} · ${date(session.startTime)}`
+      : tr('Einheit nicht mehr vorhanden', 'Session no longer exists');
   };
   const renderStrengthCriteria = (
     recommendation: StrengthRecommendation,
     accepted = false,
   ) => (
     <>
-      <Copy>Woran erkennen wir, dass es geholfen hat?</Copy>
+      <Copy>
+        {tr(
+          'Woran erkennen wir, dass es geholfen hat?',
+          'How will we know it helped?',
+        )}
+      </Copy>
       <Copy muted>{recommendation.goal}</Copy>
       <Copy muted>
         {accepted
-          ? 'Vor dem Start festgelegt. Ein Fokuswechsel ändert diese Regeln nicht.'
-          : 'Bei der Annahme werden diese Regeln festgeschrieben.'}
+          ? tr(
+              'Vor dem Start festgelegt. Ein Fokuswechsel ändert diese Regeln nicht.',
+              'Set before the start. A focus change does not alter these rules.',
+            )
+          : tr(
+              'Bei der Annahme werden diese Regeln festgeschrieben.',
+              'Accepting locks in these rules.',
+            )}
       </Copy>
       <Copy muted>
-        Ab {recommendation.criteria.minimumObservations} passenden Einheiten ·
-        Zielbereich {number(recommendation.criteria.targetMinKg, 1)}–
+        {tr('Ab', 'From')} {recommendation.criteria.minimumObservations}{' '}
+        {tr('passenden Einheiten', 'suitable sessions')} ·{' '}
+        {tr('Zielbereich', 'Target range')}{' '}
+        {number(recommendation.criteria.targetMinKg, 1)}–
         {number(recommendation.criteria.targetMaxKg, 1)} kg ×{' '}
-        {recommendation.criteria.targetReps} · Vorzeichentest: häufiger als
-        zufällig mindestens{' '}
-        {recommendation.criteria.minimumRelevantChangePercent} % über dem Median
-        der Vergleichseinheiten
+        {recommendation.criteria.targetReps} ·{' '}
+        {tr(
+          'Vorzeichentest: häufiger als zufällig mindestens',
+          'sign test: more often than chance, at least',
+        )}{' '}
+        {recommendation.criteria.minimumRelevantChangePercent}{percentSign()}{' '}
+        {tr(
+          'über dem Median der Vergleichseinheiten',
+          'above the median of the comparison sessions',
+        )}
       </Copy>
       {recommendation.criteria.exclusions.map((text, i) => (
         <Copy muted key={i}>
@@ -3300,27 +3697,36 @@ export function RunbackApp({
           {text}
         </Copy>
       ))}
-      <Row title="Modellversion" subtitle={recommendation.model_version} />
+      <Row
+        title={tr('Modellversion', 'Model version')}
+        subtitle={recommendation.model_version}
+      />
       <Copy muted>
-        Wenn nach {recommendation.criteria.maxDays} Tagen noch zu wenig passende
-        Einheiten vorliegen, entscheide neu.
+        {tr(
+          `Wenn nach ${recommendation.criteria.maxDays} Tagen noch zu wenig passende Einheiten vorliegen, entscheide neu.`,
+          `If there are still too few suitable sessions after ${recommendation.criteria.maxDays} days, decide again.`,
+        )}
       </Copy>
-      <Section title="Vergleichseinheiten">
+      <Section title={tr('Vergleichseinheiten', 'Comparison sessions')}>
         {recommendation.criteria.baselineSessionIds.map(id => (
           <Row key={id} title={sessionTitle(id)} />
         ))}
       </Section>
-      <Section title="So priorisiert Runback">
+      <Section title={tr('So priorisiert Runback', 'How Runback prioritizes')}>
         {recommendation.priority ? (
           <Row
             title={recommendation.priority.focusLabel}
-            subtitle={`${recommendation.priority.version} · redaktionelles Gewicht ${recommendation.priority.weight}`}
+            subtitle={tr(
+              `${recommendation.priority.version} · redaktionelles Gewicht ${recommendation.priority.weight}`,
+              `${recommendation.priority.version} · editorial weight ${recommendation.priority.weight}`,
+            )}
           />
         ) : null}
         <Copy muted>
-          Die Auswahlregeln sind redaktionell festgelegt. Sie lernen keine
-          Vorlieben aus deinen Einheiten. Derzeit ist nur die Last einer Übung
-          als überprüfbare Empfehlung verfügbar.
+          {tr(
+            'Die Auswahlregeln sind redaktionell festgelegt. Sie lernen keine Vorlieben aus deinen Einheiten. Derzeit ist nur die Last einer Übung als überprüfbare Empfehlung verfügbar.',
+            'The selection rules are set by the editors. They do not learn preferences from your sessions. Currently only the load of one exercise is available as a testable recommendation.',
+          )}
         </Copy>
       </Section>
     </>
@@ -3329,29 +3735,32 @@ export function RunbackApp({
     <Section
       title={
         strengthExperiment
-          ? 'Auswahl für danach'
-          : 'Andere geprüfte Möglichkeiten'
+          ? tr('Auswahl für danach', 'Up next')
+          : tr('Andere geprüfte Möglichkeiten', 'Other options checked')
       }
     >
       {strengthSelection.alternatives.length ? (
         strengthSelection.alternatives.map(item => (
           <Row
             key={item.exerciseId}
-            title={item.exerciseName}
+            title={exerciseDisplayName(item.exerciseId, item.exerciseName)}
             subtitle={item.reason}
           />
         ))
       ) : (
         <Copy muted>
-          Keine weitere Möglichkeit aus den vorhandenen Einheiten geprüft.
+          {tr(
+            'Keine weitere Möglichkeit aus den vorhandenen Einheiten geprüft.',
+            'No further option was checked against the existing sessions.',
+          )}
         </Copy>
       )}
     </Section>
   );
-  // Coach: die eine Empfehlung je Bereich als Zustandskarte — Etikett,
-  // Fortschritt, zwei Fragen. Details und Verwaltung sind eingeklappt, damit
-  // die Empfehlung selbst die größte Fläche bleibt. Darunter die Grundlage
-  // (Fokus, Ziel) und die Wege, Fragen zu stellen.
+  // Coach: the one recommendation per area as a state card — label, progress,
+  // two questions. Details and management are collapsed so the recommendation
+  // itself stays the largest area. Below it the basis (focus, goal) and the ways
+  // to ask questions.
   const manageButtons = (target: Experiment) => (
     <>
       <Button
@@ -3360,8 +3769,8 @@ export function RunbackApp({
         disabled={busy}
         title={
           target.status === 'paused'
-            ? 'Empfehlung fortsetzen'
-            : 'Empfehlung pausieren'
+            ? tr('Empfehlung fortsetzen', 'Resume recommendation')
+            : tr('Empfehlung pausieren', 'Pause recommendation')
         }
         onPress={() =>
           changeExperiment(
@@ -3373,23 +3782,26 @@ export function RunbackApp({
       <Button
         secondary
         small
-        title="Empfehlung abschließen"
+        title={tr('Empfehlung abschließen', 'Complete recommendation')}
         disabled={busy}
         onPress={() => changeExperiment('completed', target)}
       />
       <Button
         danger
         small
-        title="Empfehlung abbrechen"
+        title={tr('Empfehlung abbrechen', 'Cancel recommendation')}
         disabled={busy}
         onPress={() =>
           Alert.alert(
-            'Empfehlung abbrechen?',
-            'Die bisherige Prüfung bleibt gespeichert.',
+            tr('Empfehlung abbrechen?', 'Cancel recommendation?'),
+            tr(
+              'Die bisherige Prüfung bleibt gespeichert.',
+              'The test so far stays saved.',
+            ),
             [
-              { text: 'Zurück', style: 'cancel' },
+              { text: tr('Zurück', 'Back'), style: 'cancel' },
               {
-                text: 'Abbrechen',
+                text: tr('Abbrechen', 'Cancel'),
                 onPress: () => changeExperiment('aborted', target),
               },
             ],
@@ -3412,23 +3824,34 @@ export function RunbackApp({
     return (
       <Card style={styles.coachCard}>
         <View style={styles.recommendationMeta}>
-          <Text style={styles.heroLabel}>Deine Empfehlung</Text>
+          <Text style={styles.heroLabel}>
+            {tr('Deine Empfehlung', 'Your recommendation')}
+          </Text>
           <Badge muted={target.status === 'paused'}>
             {target.status === 'paused'
-              ? 'Pausiert'
-              : `Aktiv seit ${date(target.acceptedAt)}`}
+              ? tr('Pausiert', 'Paused')
+              : tr(
+                  `Aktiv seit ${date(target.acceptedAt)}`,
+                  `Active since ${date(target.acceptedAt)}`,
+                )}
           </Badge>
         </View>
         <Text style={styles.cardTitle}>{target.recommendation.action}</Text>
         <Progress
           value={minimum ? done / minimum : 0}
-          label={`${done} von ${minimum} geeigneten ${unitWord}`}
+          label={tr(
+            `${done} von ${minimum} geeigneten ${unitWord}`,
+            `${done} of ${minimum} suitable ${unitWord}`,
+          )}
         />
         <Copy muted>
-          {done} von {minimum} geeigneten {unitWord} · Ergebnis{' '}
-          {shortVerdict(evaluation.verdict)}
+          {tr(
+            `${done} von ${minimum} geeigneten ${unitWord}`,
+            `${done} of ${minimum} suitable ${unitWord}`,
+          )}{' '}
+          · {tr('Ergebnis', 'Result')} {shortVerdict(evaluation.verdict)}
         </Copy>
-        <Row title="Ausprobiert?" subtitle={triedText} />
+        <Row title={tr('Ausprobiert?', 'Tried it?')} subtitle={triedText} />
         <Row title={resultTitle} subtitle={resultText} />
         <Copy muted>{causeText}</Copy>
       </Card>
@@ -3440,13 +3863,15 @@ export function RunbackApp({
   ) => (
     <Card style={styles.coachCard}>
       <View style={styles.recommendationMeta}>
-        <Text style={styles.heroLabel}>Neuer Vorschlag</Text>
-        <Badge>Vorschlag</Badge>
+        <Text style={styles.heroLabel}>
+          {tr('Neuer Vorschlag', 'New suggestion')}
+        </Text>
+        <Badge>{tr('Vorschlag', 'Suggestion')}</Badge>
       </View>
       <Text style={styles.cardTitle}>{proposal.action}</Text>
       <Copy muted>{proposal.reason}</Copy>
       <Button
-        title="Empfehlung annehmen"
+        title={tr('Empfehlung annehmen', 'Accept recommendation')}
         onPress={() => accept(proposal)}
         disabled={busy}
       />
@@ -3455,7 +3880,7 @@ export function RunbackApp({
           <Button
             secondary
             small
-            title="Später entscheiden"
+            title={tr('Später entscheiden', 'Decide later')}
             disabled={busy}
             onPress={onPostpone}
           />
@@ -3464,7 +3889,7 @@ export function RunbackApp({
           <Button
             secondary
             small
-            title="Vorschlag ablehnen"
+            title={tr('Vorschlag ablehnen', 'Decline')}
             disabled={busy}
             onPress={() =>
               save({
@@ -3488,14 +3913,26 @@ export function RunbackApp({
       settings.postponedUntil && settings.postponedUntil > now,
     );
     const missing = postponed
-      ? 'Du hast den Vorschlag auf morgen verschoben.'
+      ? tr(
+          'Du hast den Vorschlag auf morgen verschoben.',
+          'You postponed the suggestion to tomorrow.',
+        )
       : maintaining
       ? analyses[0].analysis.focus
       : !runningRuns.length
-      ? 'Dafür fehlt noch ein aufgezeichneter Lauf.'
+      ? tr(
+          'Dafür fehlt noch ein aufgezeichneter Lauf.',
+          'A recorded run is still needed for this.',
+        )
       : needsPurpose
-      ? `Bei ${counted(withoutPurpose, 'Lauf', 'Läufen')} fehlt die Laufart.`
-      : 'Vorschläge entstehen aus ruhigen und langen Runden mit mindestens vier gleichmäßigen Abschnitten ab 500 m.';
+      ? tr(
+          `Bei ${counted(withoutPurpose, 'Lauf', 'Läufen')} fehlt die Laufart.`,
+          `The run type is missing for ${counted(withoutPurpose, 'run', 'runs')}.`,
+        )
+      : tr(
+          'Vorschläge entstehen aus ruhigen und langen Runden mit mindestens vier gleichmäßigen Abschnitten ab 500 m.',
+          'Suggestions come from easy and long runs with at least four even splits of 500 m or more.',
+        );
     const past = (settings.experiments || []).filter(
       (e): e is Experiment<Recommendation> =>
         (e.status === 'completed' || e.status === 'aborted') &&
@@ -3511,30 +3948,51 @@ export function RunbackApp({
                   experiment,
                   evaluation,
                   evaluation.adherence.some(item => item.value === 'yes')
-                    ? 'Ja, in passenden Läufen.'
+                    ? tr('Ja, in passenden Läufen.', 'Yes, in suitable runs.')
                     : evaluation.verdict === 'not_implemented'
-                    ? 'Du hast es bisher nicht probiert.'
-                    : 'Noch nicht klar.',
-                  'Gleichmäßiger gelaufen?',
+                    ? tr(
+                        'Du hast es bisher nicht probiert.',
+                        'You have not tried it yet.',
+                      )
+                    : tr('Noch nicht klar.', 'Not clear yet.'),
+                  tr('Gleichmäßiger gelaufen?', 'Ran more evenly?'),
                   evaluation.verdict === 'improved'
-                    ? 'Ja, häufiger als zufällig. Über Tempo oder Fitness sagt das nichts.'
+                    ? tr(
+                        'Ja, häufiger als zufällig. Über Tempo oder Fitness sagt das nichts.',
+                        'Yes, more often than chance. This says nothing about pace or fitness.',
+                      )
                     : evaluation.verdict === 'worsened'
-                    ? 'Nein, du hast zum Ende häufiger mehr Tempo verloren.'
+                    ? tr(
+                        'Nein, du hast zum Ende häufiger mehr Tempo verloren.',
+                        'No, more often you lost more pace toward the end.',
+                      )
                     : evaluation.verdict === 'no_relevant_effect'
-                    ? 'Kein spürbarer Unterschied.'
-                    : 'Noch nicht klar.',
-                  'Ob es an der Empfehlung lag, bleibt offen. Wetter und Tagesform können mitwirken.',
-                  'Läufen',
+                    ? tr(
+                        'Kein spürbarer Unterschied.',
+                        'No noticeable difference.',
+                      )
+                    : tr('Noch nicht klar.', 'Not clear yet.'),
+                  tr(
+                    'Ob es an der Empfehlung lag, bleibt offen. Wetter und Tagesform können mitwirken.',
+                    'Whether the recommendation was the cause stays open. Weather and form on the day can play a part.',
+                  ),
+                  tr('Läufen', 'runs'),
                 )}
                 {queued ? (
                   <Row
-                    title="Danach vorgesehen"
-                    subtitle={`${queued.action} · Vorschau, wird nach Abschluss geprüft`}
+                    title={tr('Danach vorgesehen', 'Up next')}
+                    subtitle={tr(
+                      `${queued.action} · Vorschau, wird nach Abschluss geprüft`,
+                      `${queued.action} · Preview, checked after completion`,
+                    )}
                   />
                 ) : null}
                 <Disclosure
-                  title="Details"
-                  subtitle="Prüfregeln, Vergleichsläufe, ausgeschlossene Läufe"
+                  title={tr('Details', 'Details')}
+                  subtitle={tr(
+                    'Prüfregeln, Vergleichsläufe, ausgeschlossene Läufe',
+                    'Test rules, comparison runs, excluded runs',
+                  )}
                   open={criteriaOpen}
                   onToggle={setCriteriaOpen}
                 >
@@ -3548,7 +4006,7 @@ export function RunbackApp({
                     />
                   ))}
                   {queued ? (
-                    <Section title="Grundlage der Vorschau">
+                    <Section title={tr('Grundlage der Vorschau', 'Basis of the preview')}>
                       <Copy muted>{queued.reason}</Copy>
                       {renderCriteria(queued)}
                     </Section>
@@ -3556,8 +4014,11 @@ export function RunbackApp({
                   {renderAlternatives()}
                 </Disclosure>
                 <Disclosure
-                  title="Empfehlung verwalten"
-                  subtitle="Pausieren, abschließen, abbrechen"
+                  title={tr('Empfehlung verwalten', 'Manage recommendation')}
+                  subtitle={tr(
+                    'Pausieren, abschließen, abbrechen',
+                    'Pause, complete, cancel',
+                  )}
                 >
                   {manageButtons(experiment)}
                 </Disclosure>
@@ -3568,8 +4029,11 @@ export function RunbackApp({
                   save({ postponedUntil: Date.now() + DAY }),
                 )}
                 <Disclosure
-                  title="Details"
-                  subtitle="Woran wir erkennen, ob es hilft"
+                  title={tr('Details', 'Details')}
+                  subtitle={tr(
+                    'Woran wir erkennen, ob es hilft',
+                    'How we tell whether it helps',
+                  )}
                   open={criteriaOpen}
                   onToggle={setCriteriaOpen}
                 >
@@ -3582,41 +4046,50 @@ export function RunbackApp({
                 <EmptyState
                   title={
                     postponed
-                      ? 'Entscheide morgen in Ruhe.'
+                      ? tr('Entscheide morgen in Ruhe.', 'Decide calmly tomorrow.')
                       : maintaining
-                      ? 'Behalte deine Einteilung bei.'
-                      : 'Noch keine Empfehlung'
+                      ? tr(
+                          'Behalte deine Einteilung bei.',
+                          'Keep your plan as it is.',
+                        )
+                      : tr('Noch keine Empfehlung', 'No recommendation yet')
                   }
                   copy={missing}
                   action={
                     postponed
                       ? {
-                          title: 'Vorschlag jetzt ansehen',
+                          title: tr(
+                            'Vorschlag jetzt ansehen',
+                            'See the suggestion now',
+                          ),
                           onPress: () => save({ postponedUntil: 0 }),
                         }
                       : runningRuns.length
                       ? needsPurpose
                         ? {
-                            title: 'Laufart nachtragen',
+                            title: tr('Laufart nachtragen', 'Add run type'),
                             onPress: () => {
                               setPurposeSkipped([]);
                               setPurposeSheet(true);
                             },
                           }
                         : {
-                            title: 'Einheiten ansehen',
-                            onPress: () => switchTab('Verlauf'),
+                            title: tr('Einheiten ansehen', 'View workouts'),
+                            onPress: () => switchTab('history'),
                           }
                       : {
-                          title: 'Ersten Lauf starten',
-                          onPress: () => switchTab('Heute'),
+                          title: tr('Ersten Lauf starten', 'Start first run'),
+                          onPress: () => switchTab('today'),
                         }
                   }
                 />
                 {selection.alternatives.length ? (
                   <Disclosure
-                    title="Details"
-                    subtitle="Andere geprüfte Möglichkeiten"
+                    title={tr('Details', 'Details')}
+                    subtitle={tr(
+                      'Andere geprüfte Möglichkeiten',
+                      'Other options checked',
+                    )}
                     open={criteriaOpen}
                     onToggle={setCriteriaOpen}
                   >
@@ -3627,20 +4100,30 @@ export function RunbackApp({
             )}
           </>
         ) : (
-          <Copy muted>Empfehlungen für diesen Bereich sind aus.</Copy>
+          <Copy muted>
+            {tr(
+              'Empfehlungen für diesen Bereich sind aus.',
+              'Recommendations for this area are off.',
+            )}
+          </Copy>
         )}
         {features.goals.enabled ? (
-          <Section title="Grundlage">
-            <Row title="Ziele & Fokus" onPress={() => openPage('goals')} />
+          <Section title={tr('Grundlage', 'Basis')}>
+            <Row
+              title={tr('Ziele & Fokus', 'Goals & focus')}
+              onPress={() => openPage('goals')}
+            />
           </Section>
         ) : null}
         {runRecs && past.length ? (
-          <Section title="Frühere Empfehlungen">
+          <Section title={tr('Frühere Empfehlungen', 'Earlier recommendations')}>
             {past.map(e => (
               <Card key={e.id}>
                 <Copy>{e.recommendation.action}</Copy>
                 <Copy muted>{`${
-                  e.status === 'completed' ? 'Abgeschlossen' : 'Abgebrochen'
+                  e.status === 'completed'
+                    ? tr('Abgeschlossen', 'Completed')
+                    : tr('Abgebrochen', 'Cancelled')
                 } · ${
                   evaluateExperiment(e, runningRuns, settings.adherence).summary
                 }`}</Copy>
@@ -3649,8 +4132,11 @@ export function RunbackApp({
                   small
                   title={
                     pastRecommendationOpen === e.id
-                      ? 'Gespeicherte Details ausblenden'
-                      : 'Gespeicherte Details ansehen'
+                      ? tr(
+                          'Gespeicherte Details ausblenden',
+                          'Hide saved details',
+                        )
+                      : tr('Gespeicherte Details ansehen', 'View saved details')
                   }
                   onPress={() =>
                     setPastRecommendationOpen(
@@ -3688,30 +4174,51 @@ export function RunbackApp({
                   strengthExperiment,
                   evaluation,
                   evaluation.adherence.some(item => item.value === 'yes')
-                    ? 'Ja, in passenden Einheiten.'
+                    ? tr('Ja, in passenden Einheiten.', 'Yes, in suitable sessions.')
                     : evaluation.verdict === 'not_implemented'
-                    ? 'Du hast es bisher nicht probiert.'
-                    : 'Noch nicht klar.',
-                  'Besser geworden?',
+                    ? tr(
+                        'Du hast es bisher nicht probiert.',
+                        'You have not tried it yet.',
+                      )
+                    : tr('Noch nicht klar.', 'Not clear yet.'),
+                  tr('Besser geworden?', 'Got better?'),
                   evaluation.verdict === 'improved'
-                    ? 'Dein bestes Arbeitsgewicht lag häufiger als zufällig darüber.'
+                    ? tr(
+                        'Dein bestes Arbeitsgewicht lag häufiger als zufällig darüber.',
+                        'Your best working weight was above that more often than chance.',
+                      )
                     : evaluation.verdict === 'worsened'
-                    ? 'Dein bestes Arbeitsgewicht lag häufiger als zufällig darunter.'
+                    ? tr(
+                        'Dein bestes Arbeitsgewicht lag häufiger als zufällig darunter.',
+                        'Your best working weight was below that more often than chance.',
+                      )
                     : evaluation.verdict === 'no_relevant_effect'
-                    ? 'Kein spürbarer Unterschied.'
-                    : 'Noch nicht klar.',
-                  'Ob es an der Empfehlung lag, bleibt offen. Schlaf, Muskelkater und Tagesform können mitwirken.',
-                  'Einheiten',
+                    ? tr(
+                        'Kein spürbarer Unterschied.',
+                        'No noticeable difference.',
+                      )
+                    : tr('Noch nicht klar.', 'Not clear yet.'),
+                  tr(
+                    'Ob es an der Empfehlung lag, bleibt offen. Schlaf, Muskelkater und Tagesform können mitwirken.',
+                    'Whether the recommendation was the cause stays open. Sleep, soreness, and form on the day can play a part.',
+                  ),
+                  tr('Einheiten', 'sessions'),
                 )}
                 {strengthQueued ? (
                   <Row
-                    title="Danach vorgesehen"
-                    subtitle={`${strengthQueued.action} · Vorschau, wird nach Abschluss geprüft`}
+                    title={tr('Danach vorgesehen', 'Up next')}
+                    subtitle={tr(
+                      `${strengthQueued.action} · Vorschau, wird nach Abschluss geprüft`,
+                      `${strengthQueued.action} · Preview, checked after completion`,
+                    )}
                   />
                 ) : null}
                 <Disclosure
-                  title="Details"
-                  subtitle="Prüfregeln, Vergleichseinheiten, ausgeschlossene Einheiten"
+                  title={tr('Details', 'Details')}
+                  subtitle={tr(
+                    'Prüfregeln, Vergleichseinheiten, ausgeschlossene Einheiten',
+                    'Test rules, comparison sessions, excluded sessions',
+                  )}
                   open={criteriaOpen}
                   onToggle={setCriteriaOpen}
                 >
@@ -3728,15 +4235,18 @@ export function RunbackApp({
                     />
                   ))}
                   {strengthQueued ? (
-                    <Section title="Grundlage der Vorschau">
+                    <Section title={tr('Grundlage der Vorschau', 'Basis of the preview')}>
                       <Copy muted>{strengthQueued.reason}</Copy>
                     </Section>
                   ) : null}
                   {renderStrengthAlternatives()}
                 </Disclosure>
                 <Disclosure
-                  title="Empfehlung verwalten"
-                  subtitle="Pausieren, abschließen, abbrechen"
+                  title={tr('Empfehlung verwalten', 'Manage recommendation')}
+                  subtitle={tr(
+                    'Pausieren, abschließen, abbrechen',
+                    'Pause, complete, cancel',
+                  )}
                 >
                   {manageButtons(strengthExperiment)}
                 </Disclosure>
@@ -3747,8 +4257,11 @@ export function RunbackApp({
                   save({ strengthPostponedUntil: Date.now() + DAY }),
                 )}
                 <Disclosure
-                  title="Details"
-                  subtitle="Woran wir erkennen, ob es hilft"
+                  title={tr('Details', 'Details')}
+                  subtitle={tr(
+                    'Woran wir erkennen, ob es hilft',
+                    'How we tell whether it helps',
+                  )}
                   open={criteriaOpen}
                   onToggle={setCriteriaOpen}
                 >
@@ -3761,35 +4274,47 @@ export function RunbackApp({
                 <EmptyState
                   title={
                     postponed
-                      ? 'Entscheide morgen in Ruhe.'
-                      : 'Noch keine Empfehlung'
+                      ? tr('Entscheide morgen in Ruhe.', 'Decide calmly tomorrow.')
+                      : tr('Noch keine Empfehlung', 'No recommendation yet')
                   }
                   copy={
                     postponed
-                      ? 'Du hast den Vorschlag auf morgen verschoben.'
-                      : 'Dafür braucht eine Übung mindestens drei Einheiten mit Arbeitssätzen.'
+                      ? tr(
+                          'Du hast den Vorschlag auf morgen verschoben.',
+                          'You postponed the suggestion to tomorrow.',
+                        )
+                      : tr(
+                          'Dafür braucht eine Übung mindestens drei Einheiten mit Arbeitssätzen.',
+                          'An exercise needs at least three sessions with working sets for this.',
+                        )
                   }
                   action={
                     postponed
                       ? {
-                          title: 'Vorschlag jetzt ansehen',
+                          title: tr(
+                            'Vorschlag jetzt ansehen',
+                            'See the suggestion now',
+                          ),
                           onPress: () => save({ strengthPostponedUntil: 0 }),
                         }
                       : finishedSessions.length
                       ? {
-                          title: 'Einheiten ansehen',
-                          onPress: () => switchTab('Verlauf'),
+                          title: tr('Einheiten ansehen', 'View workouts'),
+                          onPress: () => switchTab('history'),
                         }
                       : {
-                          title: 'Erstes Training starten',
-                          onPress: () => switchTab('Heute'),
+                          title: tr('Erstes Training starten', 'Start first session'),
+                          onPress: () => switchTab('today'),
                         }
                   }
                 />
                 {strengthSelection.alternatives.length ? (
                   <Disclosure
-                    title="Details"
-                    subtitle="Andere geprüfte Möglichkeiten"
+                    title={tr('Details', 'Details')}
+                    subtitle={tr(
+                      'Andere geprüfte Möglichkeiten',
+                      'Other options checked',
+                    )}
                     open={criteriaOpen}
                     onToggle={setCriteriaOpen}
                   >
@@ -3800,20 +4325,30 @@ export function RunbackApp({
             )}
           </>
         ) : (
-          <Copy muted>Empfehlungen für diesen Bereich sind aus.</Copy>
+          <Copy muted>
+            {tr(
+              'Empfehlungen für diesen Bereich sind aus.',
+              'Recommendations for this area are off.',
+            )}
+          </Copy>
         )}
         {features.goals.enabled ? (
-          <Section title="Grundlage">
-            <Row title="Ziele & Fokus" onPress={() => openPage('goals')} />
+          <Section title={tr('Grundlage', 'Basis')}>
+            <Row
+              title={tr('Ziele & Fokus', 'Goals & focus')}
+              onPress={() => openPage('goals')}
+            />
           </Section>
         ) : null}
         {strengthRecs && past.length ? (
-          <Section title="Frühere Empfehlungen">
+          <Section title={tr('Frühere Empfehlungen', 'Earlier recommendations')}>
             {past.map(e => (
               <Card key={e.id}>
                 <Copy>{e.recommendation.action}</Copy>
                 <Copy muted>{`${
-                  e.status === 'completed' ? 'Abgeschlossen' : 'Abgebrochen'
+                  e.status === 'completed'
+                    ? tr('Abgeschlossen', 'Completed')
+                    : tr('Abgebrochen', 'Cancelled')
                 } · ${
                   evaluateAnyExperiment(
                     e,
@@ -3827,8 +4362,8 @@ export function RunbackApp({
                   small
                   title={
                     pastRecommendationOpen === e.id
-                      ? 'Gespeicherte Details ausblenden'
-                      : 'Gespeicherte Details ansehen'
+                      ? tr('Gespeicherte Details ausblenden', 'Hide saved details')
+                      : tr('Gespeicherte Details ansehen', 'View saved details')
                   }
                   onPress={() =>
                     setPastRecommendationOpen(
@@ -3848,13 +4383,13 @@ export function RunbackApp({
   };
   const renderGoals = () => (
     <>
-      <Title>Ziele & Fokus</Title>
+      <Title>{tr('Ziele & Fokus', 'Goals & focus')}</Title>
       {showRunning && showStrength ? (
         <Segmented
-          label="Bereich"
+          label={tr('Bereich', 'Area')}
           options={[
-            { value: 'running', label: AREA_LABELS.running },
-            { value: 'strength', label: AREA_LABELS.strength },
+            { value: 'running', label: areaLabel('running') },
+            { value: 'strength', label: areaLabel('strength') },
           ]}
           value={coachArea}
           onChange={setCoachArea}
@@ -3862,27 +4397,37 @@ export function RunbackApp({
       ) : null}
       {showRunning && (coachArea === 'running' || !showStrength) ? (
         <>
-          <Section title="Laufen">
+          <Section title={tr('Laufen', 'Running')}>
             <Row
-              title="Fokus"
+              title={tr('Fokus', 'Focus')}
               subtitle={focusLabel(settings.trainingFocus)}
               onPress={() => openPage('focus-running')}
             />
             <Row
-              title="Ziel"
+              title={tr('Ziel', 'Goal')}
               subtitle={
                 racePrediction.status === 'estimated' &&
                 racePrediction.predictedSeconds !== undefined
-                  ? `${racePrediction.goal} · etwa ${formatGoalTime(
-                      racePrediction.predictedSeconds,
-                    )} geschätzt`
-                  : settings.goal || schedule.goal?.name || 'Kein Ziel gesetzt'
+                  ? tr(
+                      `${racePrediction.goal} · etwa ${formatGoalTime(
+                        racePrediction.predictedSeconds,
+                      )} geschätzt`,
+                      `${racePrediction.goal} · about ${formatGoalTime(
+                        racePrediction.predictedSeconds,
+                      )} estimated`,
+                    )
+                  : settings.goal ||
+                    schedule.goal?.name ||
+                    tr('Kein Ziel gesetzt', 'No goal set')
               }
               onPress={() => openPage('goal')}
             />
             <Row
-              title="Zielzeiten"
-              subtitle="Geschätzte Zeiten von 1 km bis Marathon"
+              title={tr('Zielzeiten', 'Goal times')}
+              subtitle={tr(
+                'Geschätzte Zeiten von 1 km bis Marathon',
+                'Estimated times from 1 km to marathon',
+              )}
               onPress={() => openPage('distance-times')}
             />
           </Section>
@@ -3890,15 +4435,17 @@ export function RunbackApp({
       ) : null}
       {showStrength && (coachArea === 'strength' || !showRunning) ? (
         <>
-          <Section title="Krafttraining">
+          <Section title={tr('Krafttraining', 'Strength training')}>
             <Row
-              title="Fokus"
+              title={tr('Fokus', 'Focus')}
               subtitle={focusLabel(settings.strengthFocus)}
               onPress={() => openPage('focus-strength')}
             />
             <Row
-              title="Ziel"
-              subtitle={settings.strengthGoal || 'Kein Ziel gesetzt'}
+              title={tr('Ziel', 'Goal')}
+              subtitle={
+                settings.strengthGoal || tr('Kein Ziel gesetzt', 'No goal set')
+              }
               onPress={() => openPage('focus-strength')}
             />
           </Section>
@@ -3908,7 +4455,8 @@ export function RunbackApp({
   );
   const openFunction = (id: FeatureId) => {
     if (!featureEnabled(features, id)) return;
-    if (id === 'goals') openPage('goals');
+    if (id === 'music') openPage('music');
+    else if (id === 'goals') openPage('goals');
     else {
       const entry = FEATURE_CATALOG.find(item => item.id === id);
       if (entry?.tab) {
@@ -3920,8 +4468,8 @@ export function RunbackApp({
   };
   const renderFunctions = () => (
     <>
-      <Title>Alle Funktionen</Title>
-      <Section title="Aktiv">
+      <Title>{tr('Alle Funktionen', 'All features')}</Title>
+      <Section title={tr('Aktiv', 'Active')}>
         {FEATURE_CATALOG.filter(entry =>
           featureEnabled(features, entry.id),
         ).map(entry => (
@@ -3930,26 +4478,31 @@ export function RunbackApp({
             title={entry.title}
             subtitle={
               entry.tab && tabs.includes(entry.tab)
-                ? 'In der Leiste'
+                ? tr('In der Leiste', 'In the tab bar')
                 : entry.description
             }
             onPress={() => openFunction(entry.id)}
           />
         ))}
         {!FEATURE_CATALOG.some(entry => featureEnabled(features, entry.id)) ? (
-          <Copy muted>Keine optionale Funktion eingeschaltet.</Copy>
+          <Copy muted>
+            {tr(
+              'Keine optionale Funktion eingeschaltet.',
+              'No optional feature is turned on.',
+            )}
+          </Copy>
         ) : null}
       </Section>
-      <Section title="Anpassen">
+      <Section title={tr('Anpassen', 'Customize')}>
         <Row
-          title="Funktionen bearbeiten"
+          title={tr('Funktionen bearbeiten', 'Edit features')}
           onPress={() => openPage('features')}
         />
       </Section>
     </>
   );
-  // Krafttraining zeigt seinen Coach erst, wenn es genutzt wird — und gar
-  // nicht, wenn der Bereich abgewählt ist. Ohne Laufen steht er allein.
+  // Strength training shows its coach only once it is used — and
+  // not at all if the area is deselected. Without running, it stands alone.
   const showStrengthArea =
     showStrength &&
     (!showRunning ||
@@ -3961,10 +4514,10 @@ export function RunbackApp({
       <Title>Coach</Title>
       {showStrengthArea && showRunning ? (
         <Segmented
-          label="Bereich"
+          label={tr('Bereich', 'Area')}
           options={[
-            { value: 'running', label: AREA_LABELS.running },
-            { value: 'strength', label: AREA_LABELS.strength },
+            { value: 'running', label: areaLabel('running') },
+            { value: 'strength', label: areaLabel('strength') },
           ]}
           value={coachArea}
           onChange={area => {
@@ -3976,17 +4529,23 @@ export function RunbackApp({
       {(coachArea === 'strength' || !showRunning) && showStrengthArea
         ? renderStrengthCoach()
         : renderRunningCoach()}
-      <Section title="Fragen">
+      <Section title={tr('Fragen', 'Questions')}>
         {proseReady ? (
           <Row
-            title="Trainingschat"
-            subtitle="Fragen zu deinen Einheiten stellen"
+            title={tr('Trainingschat', 'Training chat')}
+            subtitle={tr(
+              'Fragen zu deinen Einheiten stellen',
+              'Ask questions about your sessions',
+            )}
             onPress={() => openPage('chat')}
           />
         ) : null}
         <Row
-          title="Wie Runback rechnet"
-          subtitle="Grundlagen, Grenzen und gesperrte Modelle"
+          title={tr('Wie Runback rechnet', 'How Runback calculates')}
+          subtitle={tr(
+            'Grundlagen, Grenzen und gesperrte Modelle',
+            'Basics, limits, and locked models',
+          )}
           onPress={() => openPage('models')}
         />
       </Section>
@@ -3999,14 +4558,17 @@ export function RunbackApp({
         {label}
         {selected?.rpe?.[field]
           ? ` · ${selected.rpe[field]} / 10`
-          : ' · Nicht angegeben'}
+          : tr(' · Nicht angegeben', ' · Not given')}
       </Text>
       <View style={styles.rpeGrid}>
         {Array.from({ length: 10 }, (_, i) => i + 1).map(value => (
           <Pressable
             key={value}
             accessibilityRole="button"
-            accessibilityLabel={`${label}: ${value} von 10`}
+            accessibilityLabel={tr(
+              `${label}: ${value} von 10`,
+              `${label}: ${value} of 10`,
+            )}
             accessibilityState={{
               selected: selected?.rpe?.[field] === value,
               disabled: busy,
@@ -4038,16 +4600,17 @@ export function RunbackApp({
         ))}
       </View>
       <View style={styles.runTop}>
-        <Text style={styles.smallMuted}>1 · sehr leicht</Text>
-        <Text style={styles.smallMuted}>10 · maximal</Text>
+        <Text style={styles.smallMuted}>
+          {tr('1 · sehr leicht', '1 · very easy')}
+        </Text>
+        <Text style={styles.smallMuted}>{tr('10 · maximal', '10 · maximum')}</Text>
       </View>
     </View>
   );
 
-  // Detail einer Aufzeichnung: erst sehen (Karte, Zahlen), dann bewerten
-  // (nächster Schritt, Gefühl), dann die Abschnitte. Rohdaten, Modell,
-  // Sport-/Laufart ändern und Löschen liegen eingeklappt darunter. Die
-  // Laufauswertung erscheint nur bei Läufen (Spec T-1).
+  // Detail of a recording: first look (map, numbers), then rate it (next step,
+  // feeling), then the splits. Raw data, model, sport/run type changes, and
+  // delete sit collapsed below. The run analysis appears only for runs (Spec T-1).
   const renderDetail = () => {
     if (!selected) {
       return null;
@@ -4068,7 +4631,7 @@ export function RunbackApp({
           )
           .map(row => ({ latitude: row.latitude!, longitude: row.longitude! }))
       : undefined;
-    // Kilometerpunkte auf der Karte: Zeile zur Endzeit des Abschnitts.
+    // Kilometer points on the map: the row at the split's end time.
     const kmMarkers = series
       ? splits
           .filter(split => /^\d+$/.test(split.label))
@@ -4089,19 +4652,26 @@ export function RunbackApp({
       : undefined;
     const rpeSummary = selected.rpe
       ? [
-          selected.rpe.legs ? `Beine ${selected.rpe.legs}` : null,
-          selected.rpe.breathing ? `Atmung ${selected.rpe.breathing}` : null,
+          selected.rpe.legs
+            ? tr(`Beine ${selected.rpe.legs}`, `Legs ${selected.rpe.legs}`)
+            : null,
+          selected.rpe.breathing
+            ? tr(
+                `Atmung ${selected.rpe.breathing}`,
+                `Breathing ${selected.rpe.breathing}`,
+              )
+            : null,
         ]
           .filter(Boolean)
           .join(' · ')
       : '';
-    // Jede Wahl hier ist ausdrücklich; danach fragt die Seite nicht mehr nach.
-    // Eine eigene Wahl löscht die Spur eines früher bestätigten Vorschlags;
-    // das Ereignisprotokoll im Speicher behält sie.
+    // Every choice here is explicit; the page does not ask again afterwards.
+    // An own choice erases the trace of an earlier confirmed suggestion; the
+    // event log in memory keeps it.
     const purposeChips = (
-      <Field label="Laufart">
+      <Field label={tr('Laufart', 'Run type')}>
         <ChipGroup
-          label="Laufart dieser Aufzeichnung"
+          label={tr('Laufart dieser Aufzeichnung', 'Run type for this recording')}
           options={purposes.map(p => ({ value: p.value, label: p.label }))}
           value={selectablePurpose(selected.purpose)}
           onChange={value =>
@@ -4115,8 +4685,8 @@ export function RunbackApp({
         />
       </Field>
     );
-    // „Noch offen“ fragt immer. „Einfach laufen“ ohne ausdrückliche Wahl (die
-    // Vorgabe beim Start) fragt nur, wenn es einen Vorschlag gibt.
+    // "Not set yet" always asks. "Just run" without an explicit choice (the
+    // default at start) asks only if there is a suggestion.
     const unconfirmedFree =
       isRun(selected) &&
       selected.purpose === 'free' &&
@@ -4137,12 +4707,13 @@ export function RunbackApp({
         {purposeHint ? (
           <>
             <Copy>
-              Sah aus wie: {purposeLabel(purposeHint.purpose)} —{' '}
+              {tr('Sah aus wie:', 'Looked like:')}{' '}
+              {purposeLabel(purposeHint.purpose)} —{' '}
               {purposeHintReason(purposeHint)}.
             </Copy>
             <Button
               secondary
-              title="Stimmt"
+              title={tr('Stimmt', "That's right")}
               onPress={() =>
                 updateFeedback({
                   purpose: purposeHint.purpose,
@@ -4154,13 +4725,18 @@ export function RunbackApp({
             />
           </>
         ) : null}
-        <Copy muted>Danach vergleichen wir den Lauf mit ähnlichen Läufen.</Copy>
+        <Copy muted>
+          {tr(
+            'Danach vergleichen wir den Lauf mit ähnlichen Läufen.',
+            'Then we compare the run with similar runs.',
+          )}
+        </Copy>
         {purposeChips}
       </>
     );
     const finishedAt = selected.startTime + selected.durationSeconds * 1000;
-    // Das Gefühl klappt nur bei frischen Einheiten auf; bei alten oder
-    // importierten wäre das große Raster nur Fläche.
+    // The feeling section opens only for fresh sessions; for old or imported ones
+    // the large grid would be just empty space.
     const askFeeling = Date.now() - finishedAt < 2 * DAY;
     const distanceTarget =
       isRun(selected) && selected.distanceMeters > 0
@@ -4171,7 +4747,8 @@ export function RunbackApp({
         <>
           <Title>{runTitle(selected)}</Title>
           <Copy muted>
-            {selectedWords.noun} · {date(selected.startTime)} · gespeichert
+            {selectedWords.noun} · {date(selected.startTime)} ·{' '}
+            {tr('gespeichert', 'saved')}
           </Copy>
           <View style={styles.metrics}>
             <Stat value={distance(selected)} label="km" />
@@ -4182,14 +4759,18 @@ export function RunbackApp({
             <Stat value={tempoValue(selected)} label={tempoLabel(selected)} />
           </View>
           <Section title={selectedWords.feelingLabel}>
-            {renderRpe('legs', 'Beine')}
-            {renderRpe('breathing', 'Atmung')}
+            {renderRpe('legs', tr('Beine', 'Legs'))}
+            {renderRpe('breathing', tr('Atmung', 'Breathing'))}
           </Section>
-          <Button title="Fertig" onPress={leaveDetail} disabled={busy} />
+          <Button
+            title={tr('Fertig', 'Done')}
+            onPress={leaveDetail}
+            disabled={busy}
+          />
           <Button
             secondary
             small
-            title="Alle Details ansehen"
+            title={tr('Alle Details ansehen', 'View all details')}
             onPress={() => setFeelingOnly(false)}
           />
         </>
@@ -4248,34 +4829,42 @@ export function RunbackApp({
           {selected.avgHeartRate ? (
             <Stat
               value={`${Math.round(selected.avgHeartRate)}`}
-              label="Ø bpm"
+              label={tr('Ø bpm', 'Avg bpm')}
               {...toneFor(comparison, 'heartRate')}
             />
           ) : null}
         </View>
         {snapshot?.quality.issues.length ? (
-          // Ein Vorbehalt bleibt auf der Hauptfläche; die Einzelheiten stehen
-          // unter „Daten & Herkunft“.
+          // One caveat stays on the main surface; the details are under
+          // "Data & origin".
           <Copy muted>
-            {`${snapshot.quality.issues[0].suspected ? 'Vermutet: ' : ''}${
-              snapshot.quality.issues[0].message
-            }${
+            {`${
+              snapshot.quality.issues[0].suspected
+                ? tr('Vermutet: ', 'Suspected: ')
+                : ''
+            }${snapshot.quality.issues[0].message}${
               snapshot.quality.issues.length > 1
-                ? ` · ${
-                    snapshot.quality.issues.length - 1
-                  } weitere unter „Daten & Herkunft“`
+                ? tr(
+                    ` · ${snapshot.quality.issues.length - 1} weitere unter „Daten & Herkunft“`,
+                    ` · ${snapshot.quality.issues.length - 1} more under “Data & origin”`,
+                  )
                 : ''
             }`}
           </Copy>
         ) : null}
         {askPurpose ? (
-          <Section title="Wie war der Lauf gemeint?">{purposePrompt}</Section>
+          <Section title={tr('Wie war der Lauf gemeint?', 'What was the run meant to be?')}>
+            {purposePrompt}
+          </Section>
         ) : null}
         {selected.avgCadence && usesPace(selected.sport) && !series ? (
-          <Copy muted>Ø {Math.round(selected.avgCadence)} Schritte / min</Copy>
+          <Copy muted>
+            {tr('Ø', 'Avg')} {Math.round(selected.avgCadence)}{' '}
+            {tr('Schritte / min', 'steps / min')}
+          </Copy>
         ) : null}
         {series ? (
-          <Section title="Verlauf">
+          <Section title={tr('Verlauf', 'Trace')}>
             <RunSeriesPanel
               run={selected}
               series={series}
@@ -4286,7 +4875,7 @@ export function RunbackApp({
           </Section>
         ) : null}
         {splits.length ? (
-          <Section title="Kilometer">
+          <Section title={tr('Kilometer', 'Kilometers')}>
             <KilometerTable
               splits={splits}
               selected={splitIndex}
@@ -4313,13 +4902,24 @@ export function RunbackApp({
         ) : null}
         {features.goals.enabled && distanceTarget ? (
           <Row
-            title="Zielzeit für den nächsten Lauf"
+            title={tr(
+              'Zielzeit für den nächsten Lauf',
+              'Goal time for the next run',
+            )}
             subtitle={
               distanceTarget.estimatedSeconds === undefined
-                ? 'Zu wenig vergleichbare Läufe'
-                : `Gleiche Strecke · Schätzung ${formatGoalTime(
-                    distanceTarget.estimatedSeconds,
-                  )}`
+                ? tr(
+                    'Zu wenig vergleichbare Läufe',
+                    'Too few comparable runs',
+                  )
+                : tr(
+                    `Gleiche Strecke · Schätzung ${formatGoalTime(
+                      distanceTarget.estimatedSeconds,
+                    )}`,
+                    `Same distance · estimate ${formatGoalTime(
+                      distanceTarget.estimatedSeconds,
+                    )}`,
+                  )
             }
             onPress={() => {
               setSelected(null);
@@ -4327,16 +4927,16 @@ export function RunbackApp({
             }}
           />
         ) : null}
-        {/* Fehlt nur die Laufart, ist die Rückfrage oben schon der nächste Schritt. */}
+        {/* If only the run type is missing, the question above is already the next step. */}
         {snapshot &&
         runRecs &&
         !(askPurpose && !snapshot.recommendation && !experiment) ? (
           <Card style={styles.nextStepCard}>
-            <Text style={styles.heroLabel}>Nächster Schritt</Text>
+            <Text style={styles.heroLabel}>{tr('Nächster Schritt', 'Next step')}</Text>
             <Copy>{snapshot.nextAction}</Copy>
             {snapshot.recommendation && !experiment && runRecs ? (
               <Button
-                title="Empfehlung ansehen"
+                title={tr('Empfehlung ansehen', 'View recommendation')}
                 onPress={() => {
                   setSelected(null);
                   openCoach('running');
@@ -4347,13 +4947,18 @@ export function RunbackApp({
             runRecs &&
             selected.startTime > experiment.acceptedAt ? (
               <>
-                <Copy muted>Hast du die Empfehlung ausprobiert?</Copy>
+                <Copy muted>
+                  {tr(
+                    'Hast du die Empfehlung ausprobiert?',
+                    'Did you try the recommendation?',
+                  )}
+                </Copy>
                 <View style={styles.choiceRow}>
                   {(
                     [
-                      { value: 'yes', label: 'Ja' },
-                      { value: 'no', label: 'Nein' },
-                      { value: 'unknown', label: 'Unklar' },
+                      { value: 'yes', label: tr('Ja', 'Yes') },
+                      { value: 'no', label: tr('Nein', 'No') },
+                      { value: 'unknown', label: tr('Unklar', 'Unclear') },
                     ] as const
                   ).map(option => (
                     <View key={option.value} style={styles.flex}>
@@ -4383,16 +4988,19 @@ export function RunbackApp({
           title={selectedWords.feelingLabel}
           subtitle={
             rpeSummary
-              ? `${rpeSummary}${selected.note ? ' · Notiz' : ''}`
-              : 'Noch nicht eingetragen'
+              ? `${rpeSummary}${selected.note ? tr(' · Notiz', ' · Note') : ''}`
+              : tr('Noch nicht eingetragen', 'Not entered yet')
           }
           defaultOpen={!rpeSummary && askFeeling}
         >
-          {renderRpe('legs', 'Beine')}
-          {renderRpe('breathing', 'Atmung')}
-          <Text style={styles.fieldLabel}>Notiz</Text>
+          {renderRpe('legs', tr('Beine', 'Legs'))}
+          {renderRpe('breathing', tr('Atmung', 'Breathing'))}
+          <Text style={styles.fieldLabel}>{tr('Notiz', 'Note')}</Text>
           <TextInput
-            accessibilityLabel="Notiz zu dieser Aufzeichnung"
+            accessibilityLabel={tr(
+              'Notiz zu dieser Aufzeichnung',
+              'Note on this recording',
+            )}
             multiline
             value={note}
             onChangeText={setNote}
@@ -4401,7 +5009,10 @@ export function RunbackApp({
                 updateFeedback({ note });
               }
             }}
-            placeholder="Was möchtest du festhalten?"
+            placeholder={tr(
+              'Was möchtest du festhalten?',
+              'What do you want to note?',
+            )}
             placeholderTextColor={color.muted}
             style={[styles.input, styles.note]}
             selectionColor={color.green}
@@ -4410,7 +5021,7 @@ export function RunbackApp({
             <Button
               secondary
               small
-              title="Notiz speichern"
+              title={tr('Notiz speichern', 'Save note')}
               onPress={() => updateFeedback({ note })}
               disabled={busy}
             />
@@ -4418,22 +5029,28 @@ export function RunbackApp({
         </Disclosure>
         <View style={styles.sectionGap}>
           <Disclosure
-            title="Teilen & exportieren"
+            title={tr('Teilen & exportieren', 'Share & export')}
             subtitle={
               selected.route && selected.route.length >= 2
-                ? 'Bericht, GPX, Route in Karten-App'
+                ? tr(
+                    'Bericht, GPX, Route in Karten-App',
+                    'Report, GPX, route in maps app',
+                  )
                 : 'Bericht, GPX'
             }
           >
             <Button
               secondary
-              title={`${selectedWords.noun} als Bericht teilen`}
+              title={tr(
+                `${selectedWords.noun} als Bericht teilen`,
+                `Share ${selectedWords.noun.toLowerCase()} as report`,
+              )}
               onPress={() => shareRun(selected, snapshot)}
               disabled={busy}
             />
             <Button
               secondary
-              title="Als GPX exportieren"
+              title={tr('Als GPX exportieren', 'Export as GPX')}
               onPress={() => {
                 void action(async () => {
                   await nativeCall('exportRun', selected.id, 'gpx');
@@ -4455,55 +5072,81 @@ export function RunbackApp({
             ) : null}
           </Disclosure>
           <Disclosure
-            title="Daten & Herkunft"
+            title={tr('Daten & Herkunft', 'Data & origin')}
             subtitle={
               snapshot?.quality.issues.length
-                ? `${counted(
-                    snapshot.quality.issues.length,
-                    'Auffälligkeit',
-                    'Auffälligkeiten',
-                  )} · Quelle, Modell, Wetter`
-                : 'Quelle, Samples, Modellversion, Wetter'
+                ? tr(
+                    `${counted(
+                      snapshot.quality.issues.length,
+                      'Auffälligkeit',
+                      'Auffälligkeiten',
+                    )} · Quelle, Modell, Wetter`,
+                    `${counted(
+                      snapshot.quality.issues.length,
+                      'finding',
+                      'findings',
+                    )} · source, model, weather`,
+                  )
+                : tr(
+                    'Quelle, Samples, Modellversion, Wetter',
+                    'Source, samples, model version, weather',
+                  )
             }
             open={moreDetails}
             onToggle={setMoreDetails}
           >
             {snapshot?.quality.issues.map((issue, i) => (
               <Copy muted key={i}>
-                {issue.suspected ? 'Vermutet: ' : ''}
+                {issue.suspected ? tr('Vermutet: ', 'Suspected: ') : ''}
                 {issue.message}
               </Copy>
             ))}
-            <Row title="Quelle" subtitle={selected.source} />
+            <Row title={tr('Quelle', 'Source')} subtitle={selected.source} />
             <Row
-              title="Originalsamples"
-              subtitle={`${selected.samples || 0} gespeichert`}
+              title={tr('Originalsamples', 'Original samples')}
+              subtitle={tr(
+                `${selected.samples || 0} gespeichert`,
+                `${selected.samples || 0} saved`,
+              )}
             />
             {snapshot ? (
-              <Row title="Modell" subtitle={snapshot.model_version} />
+              <Row
+                title={tr('Modell', 'Model')}
+                subtitle={snapshot.model_version}
+              />
             ) : null}
             {selected.purposeHint ? (
               <Row
-                title="Laufart"
-                subtitle={`Vorschlag bestätigt · ${
+                title={tr('Laufart', 'Run type')}
+                subtitle={`${tr('Vorschlag bestätigt', 'Suggestion confirmed')} · ${
                   selected.purposeHint.model_version
                 }${
                   selected.purposeHint.maxHeartRate
-                    ? ` · Maxpuls ${selected.purposeHint.maxHeartRate.value} (${
-                        selected.purposeHint.maxHeartRate.source === 'setting'
-                          ? 'eingestellt'
-                          : 'geschätzt'
-                      })`
+                    ? tr(
+                        ` · Maxpuls ${selected.purposeHint.maxHeartRate.value} (${
+                          selected.purposeHint.maxHeartRate.source === 'setting'
+                            ? 'eingestellt'
+                            : 'geschätzt'
+                        })`,
+                        ` · max heart rate ${selected.purposeHint.maxHeartRate.value} (${
+                          selected.purposeHint.maxHeartRate.source === 'setting'
+                            ? 'set'
+                            : 'estimated'
+                        })`,
+                      )
                     : ''
                 }`}
               />
             ) : null}
             {snapshot ? (
-              <Section title="Modellierte Anforderung">
+              <Section title={tr('Modellierte Anforderung', 'Modeled effort')}>
                 <Copy>
                   {snapshot.effort.speedIndex === undefined
-                    ? 'Nicht bestimmbar'
-                    : `${number(snapshot.effort.speedIndex, 0)} · Tempoindex`}
+                    ? tr('Nicht bestimmbar', 'Not determinable')
+                    : tr(
+                        `${number(snapshot.effort.speedIndex, 0)} · Tempoindex`,
+                        `${number(snapshot.effort.speedIndex, 0)} · pace index`,
+                      )}
                 </Copy>
                 <Copy muted>{snapshot.effort.uncertainty}</Copy>
                 {Object.entries(snapshot.effort.factors).map(([key, value]) => (
@@ -4512,10 +5155,10 @@ export function RunbackApp({
                     title={
                       (
                         {
-                          tempo: 'Tempo',
-                          slope: 'Steigung',
-                          wind: 'Wind',
-                          heat: 'Wärme',
+                          tempo: tr('Tempo', 'Pace'),
+                          slope: tr('Steigung', 'Gradient'),
+                          wind: tr('Wind', 'Wind'),
+                          heat: tr('Wärme', 'Heat'),
                         } as Record<string, string>
                       )[key] || key
                     }
@@ -4531,26 +5174,37 @@ export function RunbackApp({
             />
           </Disclosure>
           <Disclosure
-            title="Bearbeiten & verwalten"
-            subtitle="Ende, Sportart und Laufart ändern, löschen"
+            title={tr('Bearbeiten & verwalten', 'Edit & manage')}
+            subtitle={tr(
+              'Ende, Sportart und Laufart ändern, löschen',
+              'Change end, sport, and run type, delete',
+            )}
           >
             {(selected as any).rawSampleCount > 0 ||
             (selected as any).originalEndTime ? (
               <Row
-                title="Ende bearbeiten"
+                title={tr('Ende bearbeiten', 'Edit end')}
                 subtitle={
                   (selected as any).originalEndTime
-                    ? `Von dir gesetzt · ursprünglich ${clockFormat.format(
-                        new Date((selected as any).originalEndTime),
-                      )}`
-                    : 'Vergessen zu beenden? Wähle im Verlauf, wann Schluss war.'
+                    ? tr(
+                        `Von dir gesetzt · ursprünglich ${clockFormat(
+                          new Date((selected as any).originalEndTime),
+                        )}`,
+                        `Set by you · originally ${clockFormat(
+                          new Date((selected as any).originalEndTime),
+                        )}`,
+                      )
+                    : tr(
+                        'Vergessen zu beenden? Wähle im Verlauf, wann Schluss war.',
+                        'Forgot to end it? Pick on the chart when it ended.',
+                      )
                 }
                 onPress={() => setEndEdit({ kind: 'run', id: selected.id })}
               />
             ) : null}
-            <Field label="Sportart">
+            <Field label={tr('Sportart', 'Sport')}>
               <ChipGroup
-                label="Sportart dieser Aufzeichnung"
+                label={tr('Sportart dieser Aufzeichnung', 'Sport for this recording')}
                 options={SPORTS.filter(
                   option =>
                     sports.includes(option.value) ||
@@ -4564,15 +5218,18 @@ export function RunbackApp({
             {askPurpose ? null : purposeChips}
             <Button
               danger
-              title="Aufzeichnung löschen"
+              title={tr('Aufzeichnung löschen', 'Delete recording')}
               onPress={() =>
                 Alert.alert(
-                  'Diese Aufzeichnung löschen?',
-                  'Originaldaten und Feedback dieser Aufzeichnung werden dauerhaft entfernt. Die vorher festgelegten Regeln bleiben gespeichert.',
+                  tr('Diese Aufzeichnung löschen?', 'Delete this recording?'),
+                  tr(
+                    'Originaldaten und Feedback dieser Aufzeichnung werden dauerhaft entfernt. Die vorher festgelegten Regeln bleiben gespeichert.',
+                    'Original data and feedback for this recording are removed permanently. The rules set beforehand stay saved.',
+                  ),
                   [
-                    { text: 'Behalten', style: 'cancel' },
+                    { text: tr('Behalten', 'Keep'), style: 'cancel' },
                     {
-                      text: 'Löschen',
+                      text: tr('Löschen', 'Delete'),
                       style: 'destructive',
                       onPress: () => {
                         void action(async () => {
@@ -4592,33 +5249,56 @@ export function RunbackApp({
     );
   };
 
-  // Vorlagen behalten ihren Ort im Plan; die Einstellungen öffnen dieselbe Verwaltung.
-  // Einstellungen sind eine kurze Liste; jede Zeile nennt, was dahinter liegt.
+  // Templates keep their place in Plan; Settings opens the same management.
+  // Settings is a short list; each row names what lies behind it.
   const renderSettings = () => (
     <>
-      <Title>Einstellungen</Title>
+      <Title>{tr('Einstellungen', 'Settings')}</Title>
+      <Section title={tr('Sprache', 'Language')}>
+        <Segmented<Language>
+          label={tr('Sprache', 'Language')}
+          options={[
+            { value: 'de', label: 'Deutsch' },
+            { value: 'en', label: 'English' },
+          ]}
+          value={language}
+          onChange={next => save({ language: next })}
+        />
+      </Section>
       <View>
         <Row
-          title="Funktionen"
-          subtitle="Was Runback zeigt und wann es fragt"
+          title={tr('Funktionen', 'Features')}
+          subtitle={tr(
+            'Was Runback zeigt und wann es fragt',
+            'What Runback shows and when it asks',
+          )}
           onPress={() => openPage('features')}
         />
         <Row
-          title="Alle Funktionen"
-          subtitle="Auch Funktionen ohne eigenen Tab öffnen"
+          title={tr('Alle Funktionen', 'All features')}
+          subtitle={tr(
+            'Auch Funktionen ohne eigenen Tab öffnen',
+            'Also open features without their own tab',
+          )}
           onPress={() => openPage('all-functions')}
         />
         {showRunning ? (
           <Row
-            title="Stimme & Vibration"
-            subtitle="Ansagen während des Laufs"
+            title={tr('Stimme & Vibration', 'Voice & vibration')}
+            subtitle={tr(
+              'Ansagen während des Laufs',
+              'Announcements during a run',
+            )}
             onPress={() => openPage('run-audio')}
           />
         ) : null}
         {features.templates.enabled ? (
           <Row
-            title="Vorlagen verwalten"
-            subtitle="Verwalte deine Kraft- und Laufvorlagen"
+            title={tr('Vorlagen verwalten', 'Manage templates')}
+            subtitle={tr(
+              'Verwalte deine Kraft- und Laufvorlagen',
+              'Manage your strength and run templates',
+            )}
             onPress={() => {
               setTemplatesView(showStrength ? 'strength' : 'run');
               openPage('templates');
@@ -4626,84 +5306,116 @@ export function RunbackApp({
           />
         ) : null}
         <Row
-          title="Geräte & Verbindungen"
-          subtitle="Uhr, Sensoren, Health Connect, Wetter"
+          title={tr('Geräte & Verbindungen', 'Devices & connections')}
+          subtitle={tr(
+            'Uhr, Sensoren, Health Connect, Wetter',
+            'Watch, sensors, Health Connect, weather',
+          )}
           onPress={() => openPage('devices')}
         />
         <Row
-          title="Eigener Server"
-          subtitle={serverStatus ? serverStateLabel(serverStatus) : 'Status wird geladen'}
+          title={tr('Eigener Server', 'Own server')}
+          subtitle={
+            serverStatus
+              ? serverStateLabel(serverStatus)
+              : tr('Status wird geladen', 'Loading status')
+          }
           trailing={<ConnectionMark mark={serverMark(serverStatus)} />}
           onPress={() => openPage('server')}
         />
         <Row
-          title="Deine Daten"
-          subtitle={`${counted(
-            runs.length,
-            'Aufzeichnung',
-            'Aufzeichnungen',
-          )} · Import, Backup, Löschen`}
+          title={tr('Deine Daten', 'Your data')}
+          subtitle={tr(
+            `${counted(runs.length, 'Aufzeichnung', 'Aufzeichnungen')} · Import, Backup, Löschen`,
+            `${counted(runs.length, 'recording', 'recordings')} · import, backup, delete`,
+          )}
           onPress={() => openPage('data')}
         />
         <Row
-          title="KI-Formulierung & Trainingschat"
-          subtitle="Optional, mit eigenem OpenRouter-Schlüssel"
+          title={tr(
+            'KI-Formulierung & Trainingschat',
+            'AI wording & training chat',
+          )}
+          subtitle={tr(
+            'Optional, mit eigenem OpenRouter-Schlüssel',
+            'Optional, with your own OpenRouter key',
+          )}
           onPress={() => openPage('models')}
         />
         <Row
-          title="Einrichtung erneut öffnen"
-          subtitle="Ziel festlegen und Historie importieren"
+          title={tr('Einrichtung erneut öffnen', 'Open setup again')}
+          subtitle={tr(
+            'Ziel festlegen und Historie importieren',
+            'Set a goal and import history',
+          )}
           onPress={() => setSetupOpen(true)}
         />
       </View>
     </>
   );
 
-  // Ziel fürs Laufen: Name, Zeitraum, Phase. Zeitbudget und Lauftage gehören
-  // zum Rhythmus im Plan, nicht hierher.
+  // Running goal: name, period, phase. Time budget and training days belong to
+  // the rhythm in Plan, not here.
   const renderGoal = () => (
     <>
-      <Title>Dein Ziel</Title>
+      <Title>{tr('Dein Ziel', 'Your goal')}</Title>
       {racePrediction.status !== 'no_goal' ? (
         <GoalProgress prediction={racePrediction} />
       ) : null}
-      <Section title="Was möchtest du erreichen?">
+      <Section title={tr('Was möchtest du erreichen?', 'What do you want to achieve?')}>
         <TextInput
-          accessibilityLabel="Dein Ziel"
+          accessibilityLabel={tr('Dein Ziel', 'Your goal')}
           value={goalInput}
           onChangeText={setGoalInput}
-          placeholder="Zum Beispiel: Halbmarathon im April"
+          placeholder={tr(
+            'Zum Beispiel: Halbmarathon im April',
+            'For example: half marathon in April',
+          )}
           placeholderTextColor={color.muted}
           style={styles.input}
           selectionColor={color.green}
         />
       </Section>
-      <Section title="Wettkampf">
+      <Section title={tr('Wettkampf', 'Race')}>
         <Field
-          label="Strecke in km (optional)"
+          label={tr('Strecke in km (optional)', 'Distance in km (optional)')}
           hint={
             goalDistanceInput.trim()
               ? undefined
               : parseGoalDistanceKm(goalInput) !== undefined
-              ? `Aus dem Ziel gelesen: ${String(
-                  Math.round(parseGoalDistanceKm(goalInput)! * 10) / 10,
-                ).replace('.', ',')} km`
-              : 'Zum Beispiel 21,1 — oder „Halbmarathon“ im Ziel'
+              ? tr(
+                  `Aus dem Ziel gelesen: ${numberFormat({
+                    useGrouping: false,
+                    maximumFractionDigits: 1,
+                  }).format(
+                    Math.round(parseGoalDistanceKm(goalInput)! * 10) / 10,
+                  )} km`,
+                  `Read from the goal: ${numberFormat({
+                    useGrouping: false,
+                    maximumFractionDigits: 1,
+                  }).format(
+                    Math.round(parseGoalDistanceKm(goalInput)! * 10) / 10,
+                  )} km`,
+                )
+              : tr(
+                  'Zum Beispiel 21,1 — oder „Halbmarathon“ im Ziel',
+                  'For example 21.1 — or “half marathon” in the goal',
+                )
           }
         >
           <TextInput
-            accessibilityLabel="Zielstrecke"
+            accessibilityLabel={tr('Zielstrecke', 'Goal distance')}
             value={goalDistanceInput}
             onChangeText={setGoalDistanceInput}
-            placeholder="21,1"
+            placeholder={tr('21,1', '21.1')}
             placeholderTextColor={color.muted}
             keyboardType="decimal-pad"
             style={styles.input}
           />
         </Field>
-        <Field label="Zielzeit (optional, h:mm:ss)">
+        <Field label={tr('Zielzeit (optional, h:mm:ss)', 'Goal time (optional, h:mm:ss)')}>
           <TextInput
-            accessibilityLabel="Zielzeit"
+            accessibilityLabel={tr('Zielzeit', 'Goal time')}
             value={goalTimeInput}
             onChangeText={setGoalTimeInput}
             placeholder="1:59:00"
@@ -4712,33 +5424,36 @@ export function RunbackApp({
           />
         </Field>
       </Section>
-      <Section title="Zeitraum">
-        <Field label="Beginn (optional)">
+      <Section title={tr('Zeitraum', 'Period')}>
+        <Field label={tr('Beginn (optional)', 'Start (optional)')}>
           <TextInput
-            accessibilityLabel="Planbeginn"
+            accessibilityLabel={tr('Planbeginn', 'Plan start')}
             value={goalStartInput}
             onChangeText={setGoalStartInput}
-            placeholder="TT.MM.JJJJ"
+            placeholder={tr('TT.MM.JJJJ', 'DD.MM.YYYY')}
             placeholderTextColor={color.muted}
             style={styles.input}
           />
         </Field>
-        <Field label="Zieldatum (optional)">
+        <Field label={tr('Zieldatum (optional)', 'Goal date (optional)')}>
           <TextInput
-            accessibilityLabel="Zieldatum"
+            accessibilityLabel={tr('Zieldatum', 'Goal date')}
             value={goalTargetInput}
             onChangeText={setGoalTargetInput}
-            placeholder="TT.MM.JJJJ"
+            placeholder={tr('TT.MM.JJJJ', 'DD.MM.YYYY')}
             placeholderTextColor={color.muted}
             style={styles.input}
           />
         </Field>
-        <Field label="Trainingsphase (optional)">
+        <Field label={tr('Trainingsphase (optional)', 'Training phase (optional)')}>
           <TextInput
-            accessibilityLabel="Trainingsphase"
+            accessibilityLabel={tr('Trainingsphase', 'Training phase')}
             value={goalPhaseInput}
             onChangeText={setGoalPhaseInput}
-            placeholder="Zum Beispiel: Wettkampfvorbereitung"
+            placeholder={tr(
+              'Zum Beispiel: Wettkampfvorbereitung',
+              'For example: race preparation',
+            )}
             placeholderTextColor={color.muted}
             style={styles.input}
           />
@@ -4746,37 +5461,53 @@ export function RunbackApp({
       </Section>
       <View style={[styles.sectionGap, styles.buttonStack]}>
         <Button
-          title="Ziel speichern"
+          title={tr('Ziel speichern', 'Save goal')}
           onPress={() => {
             void action(async () => {
               const startDate = inputToDate(goalStartInput);
               const targetDate = inputToDate(goalTargetInput);
               if (startDate === null || targetDate === null) {
                 throw new Error(
-                  'Bitte ein gültiges Datum als TT.MM.JJJJ eingeben.',
+                  tr(
+                    'Bitte ein gültiges Datum als TT.MM.JJJJ eingeben.',
+                    'Enter a valid date as DD.MM.YYYY.',
+                  ),
                 );
               }
               if (targetDate && startDate && targetDate < startDate) {
                 throw new Error(
-                  'Trage einen Planbeginn ein, der spätestens am Zieldatum liegt.',
+                  tr(
+                    'Trage einen Planbeginn ein, der spätestens am Zieldatum liegt.',
+                    'Enter a plan start that is no later than the goal date.',
+                  ),
                 );
               }
               if (
                 (startDate || targetDate || goalPhaseInput.trim()) &&
                 !goalInput.trim()
               ) {
-                throw new Error('Trage zuerst dein Ziel ein.');
+                throw new Error(
+                  tr('Trage zuerst dein Ziel ein.', 'Enter your goal first.'),
+                );
               }
               if (goalPhaseInput.trim() && !startDate) {
                 throw new Error(
-                  'Trage für deinen Schwerpunkt auch den Planbeginn ein.',
+                  tr(
+                    'Trage für deinen Schwerpunkt auch den Planbeginn ein.',
+                    'Also enter a plan start for your focus.',
+                  ),
                 );
               }
               let distanceKm: number | undefined;
               if (goalDistanceInput.trim()) {
-                distanceKm = Number(goalDistanceInput.trim().replace(',', '.'));
+                distanceKm = parseDecimal(goalDistanceInput);
                 if (!Number.isFinite(distanceKm) || distanceKm <= 0) {
-                  throw new Error('Trage die Strecke als Zahl in km ein.');
+                  throw new Error(
+                    tr(
+                      'Trage die Strecke als Zahl in km ein.',
+                      'Enter the distance as a number in km.',
+                    ),
+                  );
                 }
               }
               let targetSeconds: number | undefined;
@@ -4786,7 +5517,12 @@ export function RunbackApp({
                   distanceKm ?? parseGoalDistanceKm(goalInput),
                 );
                 if (targetSeconds === undefined) {
-                  throw new Error('Trage die Zielzeit als h:mm:ss ein.');
+                  throw new Error(
+                    tr(
+                      'Trage die Zielzeit als h:mm:ss ein.',
+                      'Enter the goal time as h:mm:ss.',
+                    ),
+                  );
                 }
               }
               await persist({
@@ -4810,7 +5546,7 @@ export function RunbackApp({
                 },
               });
               setPage('main');
-              setMessage('Ziel gespeichert.');
+              setMessage(tr('Ziel gespeichert.', 'Goal saved.'));
             });
           }}
         />
@@ -4818,7 +5554,7 @@ export function RunbackApp({
           <Button
             secondary
             small
-            title="Ziel entfernen"
+            title={tr('Ziel entfernen', 'Remove goal')}
             disabled={busy}
             onPress={() => {
               void action(async () => {
@@ -4835,7 +5571,12 @@ export function RunbackApp({
                 setGoalPhaseInput('');
                 setGoalDistanceInput('');
                 setGoalTimeInput('');
-                setMessage('Ziel entfernt. Dein Fokus bleibt bestehen.');
+                setMessage(
+                  tr(
+                    'Ziel entfernt. Dein Fokus bleibt bestehen.',
+                    'Goal removed. Your focus stays.',
+                  ),
+                );
               });
             }}
           />
@@ -4852,19 +5593,22 @@ export function RunbackApp({
       refresh={refresh}
     />
   );
-  // Importieren ist die Hauptsache; Export, Backup und Löschen sind
-  // Nebenwege und bleiben eingeklappt.
+  // Importing is the main thing; export, backup, and delete are side paths and
+  // stay collapsed.
   const renderData = () => (
     <>
-      <Title>Deine Daten</Title>
-      <Section title="Importieren">
+      <Title>{tr('Deine Daten', 'Your data')}</Title>
+      <Section title={tr('Importieren', 'Import')}>
         <Button
-          title="Dateien importieren"
+          title={tr('Dateien importieren', 'Import files')}
           onPress={runImport}
           disabled={busy}
         />
         <Copy muted>
-          FIT, GPX, TCX oder ZIP. Doppelte Läufe werden erkannt.
+          {tr(
+            'FIT, GPX, TCX oder ZIP. Doppelte Läufe werden erkannt.',
+            'FIT, GPX, TCX, or ZIP. Duplicate runs are detected.',
+          )}
         </Copy>
         {importStatus && importStatus.state !== 'review' ? (
           <>
@@ -4872,7 +5616,7 @@ export function RunbackApp({
             {importStatus.state === 'running' ? (
               <Button
                 secondary
-                title="Import abbrechen"
+                title={tr('Import abbrechen', 'Cancel import')}
                 onPress={() => {
                   nativeCall<any>('cancelImport')
                     .then(setImportStatus)
@@ -4892,35 +5636,44 @@ export function RunbackApp({
           </>
         ) : null}
         <Row
-          title="Aus anderen Apps"
-          subtitle="Fitbit, Strava, Garmin, Apple Health, Samsung und weitere"
+          title={tr('Aus anderen Apps', 'From other apps')}
+          subtitle={tr(
+            'Fitbit, Strava, Garmin, Apple Health, Samsung und weitere',
+            'Fitbit, Strava, Garmin, Apple Health, Samsung, and more',
+          )}
           onPress={() => openPage('vendor-import')}
         />
         <Row
-          title="Deine Importe"
-          subtitle="Frühere Importe ansehen oder löschen"
+          title={tr('Deine Importe', 'Your imports')}
+          subtitle={tr(
+            'Frühere Importe ansehen oder löschen',
+            'View or delete earlier imports',
+          )}
           onPress={() => openPage('imports')}
         />
       </Section>
       <View style={styles.sectionGap}>
         <Disclosure
-          title="Laufberichte exportieren"
-          subtitle="Zeitraum als ZIP teilen"
+          title={tr('Laufberichte exportieren', 'Export run reports')}
+          subtitle={tr('Zeitraum als ZIP teilen', 'Share a period as ZIP')}
         >
-          <Field label="Von">
+          <Field label={tr('Von', 'From')}>
             <Input
-              label="Von (TT.MM.JJJJ)"
-              placeholder="TT.MM.JJJJ"
+              label={tr('Von (TT.MM.JJJJ)', 'From (DD.MM.YYYY)')}
+              placeholder={tr('TT.MM.JJJJ', 'DD.MM.YYYY')}
               value={exportFrom}
               onChangeText={setExportFrom}
               editable={!busy}
               keyboardType="numbers-and-punctuation"
             />
           </Field>
-          <Field label="Bis" hint="Beide Tage zählen mit.">
+          <Field
+            label={tr('Bis', 'To')}
+            hint={tr('Beide Tage zählen mit.', 'Both days are included.')}
+          >
             <Input
-              label="Bis (TT.MM.JJJJ)"
-              placeholder="TT.MM.JJJJ"
+              label={tr('Bis (TT.MM.JJJJ)', 'To (DD.MM.YYYY)')}
+              placeholder={tr('TT.MM.JJJJ', 'DD.MM.YYYY')}
               value={exportTo}
               onChangeText={setExportTo}
               editable={!busy}
@@ -4929,7 +5682,7 @@ export function RunbackApp({
           </Field>
           <Button
             secondary
-            title="Läufe als ZIP exportieren"
+            title={tr('Läufe als ZIP exportieren', 'Export runs as ZIP')}
             disabled={busy || !exportFrom || !exportTo}
             onPress={() =>
               shareRuns(async () => {
@@ -4940,56 +5693,71 @@ export function RunbackApp({
           />
         </Disclosure>
         <Disclosure
-          title="Krafttraining exportieren"
-          subtitle="Alle aufgezeichneten Einheiten als ZIP teilen"
+          title={tr('Krafttraining exportieren', 'Export strength training')}
+          subtitle={tr(
+            'Alle aufgezeichneten Einheiten als ZIP teilen',
+            'Share all recorded sessions as ZIP',
+          )}
         >
           <Copy muted>
-            Sätze, Puls, Trainingslog und Bewegungsdaten der Uhr für Tabellen
-            oder ein Sprachmodell. Importe fehlen.
+            {tr(
+              'Sätze, Puls, Trainingslog und Bewegungsdaten der Uhr für Tabellen oder ein Sprachmodell. Importe fehlen.',
+              'Sets, heart rate, training log, and watch motion data for spreadsheets or a language model. Imports are not included.',
+            )}
           </Copy>
           <Button
             secondary
-            title="Krafttraining als ZIP exportieren"
+            title={tr(
+              'Krafttraining als ZIP exportieren',
+              'Export strength training as ZIP',
+            )}
             disabled={busy}
             onPress={shareStrength}
           />
         </Disclosure>
         <Disclosure
           title="Backup"
-          subtitle="Alle Originaldaten und Einstellungen sichern"
+          subtitle={tr(
+            'Alle Originaldaten und Einstellungen sichern',
+            'Back up all original data and settings',
+          )}
         >
           <Button
             secondary
-            title="Backup exportieren"
+            title={tr('Backup exportieren', 'Export backup')}
             disabled={busy}
             onPress={() => {
               void action(async () => {
                 const result = await nativeCall<any>('exportBackup');
                 if (!result.cancelled) {
-                  setMessage('Backup exportiert.');
+                  setMessage(tr('Backup exportiert.', 'Backup exported.'));
                 }
               });
             }}
           />
           <Button
             secondary
-            title="Backup wiederherstellen"
+            title={tr('Backup wiederherstellen', 'Restore backup')}
             disabled={busy}
             onPress={() =>
               Alert.alert(
-                'Backup wiederherstellen?',
-                'Wähle ein Runback-Backup. Bereits vorhandene Läufe bleiben erhalten und werden nicht doppelt angelegt.',
+                tr('Backup wiederherstellen?', 'Restore backup?'),
+                tr(
+                  'Wähle ein Runback-Backup. Bereits vorhandene Läufe bleiben erhalten und werden nicht doppelt angelegt.',
+                  'Choose a Runback backup. Runs that already exist stay and are not added twice.',
+                ),
                 [
-                  { text: 'Zurück', style: 'cancel' },
+                  { text: tr('Zurück', 'Back'), style: 'cancel' },
                   {
-                    text: 'Backup wählen',
+                    text: tr('Backup wählen', 'Choose backup'),
                     onPress: () => {
                       void action(async () => {
                         const result = await nativeCall<any>('restoreBackup');
                         if (!result.cancelled) {
                           await Promise.all([reloadTrainingState(), refresh()]);
                           setMessage(
-                            result.message || 'Backup wiederhergestellt.',
+                            result.message ||
+                              tr('Backup wiederhergestellt.', 'Backup restored.'),
                           );
                         }
                       });
@@ -5000,25 +5768,33 @@ export function RunbackApp({
             }
           />
         </Disclosure>
-        <Disclosure title="Daten löschen" subtitle="Alles auf diesem Telefon">
+        <Disclosure
+          title={tr('Daten löschen', 'Delete data')}
+          subtitle={tr('Alles auf diesem Telefon', 'Everything on this phone')}
+        >
           <Button
             danger
-            title="Alle lokalen Daten löschen"
+            title={tr('Alle lokalen Daten löschen', 'Delete all local data')}
             onPress={() =>
               Alert.alert(
-                'Alle lokalen Daten löschen?',
-                'Alle Läufe, Originaldaten, Notizen und Einstellungen auf diesem Telefon werden dauerhaft gelöscht. Exportiere vorher ein Backup, wenn du sie behalten möchtest.',
+                tr('Alle lokalen Daten löschen?', 'Delete all local data?'),
+                tr(
+                  'Alle Läufe, Originaldaten, Notizen und Einstellungen auf diesem Telefon werden dauerhaft gelöscht. Exportiere vorher ein Backup, wenn du sie behalten möchtest.',
+                  'All runs, original data, notes, and settings on this phone are deleted permanently. Export a backup first if you want to keep them.',
+                ),
                 [
-                  { text: 'Behalten', style: 'cancel' },
+                  { text: tr('Behalten', 'Keep'), style: 'cancel' },
                   {
-                    text: 'Alles löschen',
+                    text: tr('Alles löschen', 'Delete everything'),
                     style: 'destructive',
                     onPress: () => {
                       void action(async () => {
                         await nativeCall('clearAllData');
                         await Promise.all([reloadTrainingState(), refresh()]);
                         setPage('main');
-                        setMessage('Lokale Daten gelöscht.');
+                        setMessage(
+                          tr('Lokale Daten gelöscht.', 'Local data deleted.'),
+                        );
                       });
                     },
                   },
@@ -5046,7 +5822,9 @@ export function RunbackApp({
       importStatus?.state === 'review'
         ? readImportPreview(importStatus.preview)
         : null,
-    [importStatus?.state, importStatus?.preview],
+    // `tr` reads the module-level language, so the text recomputes via this dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [importStatus?.state, importStatus?.preview, language],
   );
   const renderEndEdit = () =>
     endEdit?.kind === 'strength' && selectedSession?.id === endEdit.id ? (
@@ -5081,7 +5859,7 @@ export function RunbackApp({
   const renderImportReview = () => (
     <Sheet
       visible={importPreview !== null}
-      title="Import prüfen"
+      title={tr('Import prüfen', 'Review import')}
       onClose={discardImport}
     >
       {importPreview ? (
@@ -5126,28 +5904,34 @@ export function RunbackApp({
     />
   );
 
-  // Vorlagen an einem Ort: Kraftvorlagen (Übungsfolgen) und Laufvorlagen
-  // (Laufart und Zeit für den Start). Beide erscheinen im Start-Sheet.
+  // Templates in one place: strength templates (exercise sequences) and run
+  // templates (run type and time for the start). Both appear in the start sheet.
   const renderPresets = () => (
     <>
       <Copy muted>
-        Eine Laufvorlage setzt Laufart und Zeit beim Start. Die aktuelle Wahl
-        speicherst du hier als neue Vorlage.
+        {tr(
+          'Eine Laufvorlage setzt Laufart und Zeit beim Start. Die aktuelle Wahl speicherst du hier als neue Vorlage.',
+          'A run template sets the run type and time at the start. Save the current choice here as a new template.',
+        )}
       </Copy>
-      <Section title="Aktuelle Einstellung speichern">
+      <Section title={tr('Aktuelle Einstellung speichern', 'Save current setting')}>
         <Copy>
-          {purposeLabel(purpose)} · {settings.minutes || 30} Minuten
+          {purposeLabel(purpose)} · {settings.minutes || 30}{' '}
+          {tr('Minuten', 'minutes')}
         </Copy>
         <TextInput
-          accessibilityLabel="Name der Laufvorlage"
+          accessibilityLabel={tr('Name der Laufvorlage', 'Run template name')}
           value={presetName}
           onChangeText={setPresetName}
-          placeholder="Zum Beispiel: Feierabendrunde"
+          placeholder={tr(
+            'Zum Beispiel: Feierabendrunde',
+            'For example: after-work loop',
+          )}
           placeholderTextColor={color.muted}
           style={styles.input}
         />
         <Button
-          title="Vorlage speichern"
+          title={tr('Vorlage speichern', 'Save template')}
           disabled={!presetName.trim() || busy}
           onPress={() => {
             const preset: Preset = {
@@ -5164,13 +5948,16 @@ export function RunbackApp({
           }}
         />
       </Section>
-      <Section title="Deine Vorlagen">
+      <Section title={tr('Deine Vorlagen', 'Your templates')}>
         {features.templates.enabled && settings.presets?.length ? (
           settings.presets.map(p => (
             <View key={p.id}>
               <Row
                 title={p.name}
-                subtitle={`${purposeLabel(p.purpose)} · ${p.minutes} Minuten`}
+                subtitle={tr(
+                  `${purposeLabel(p.purpose)} · ${p.minutes} Minuten`,
+                  `${purposeLabel(p.purpose)} · ${p.minutes} minutes`,
+                )}
                 onPress={() => {
                   void action(async () => {
                     await persist({
@@ -5178,7 +5965,7 @@ export function RunbackApp({
                       minutes: p.minutes,
                       cues: p.cues,
                     });
-                    switchTab('Heute');
+                    switchTab('today');
                     openStartSheet('run');
                   });
                 }}
@@ -5192,12 +5979,16 @@ export function RunbackApp({
                   })
                 }
               >
-                <Text style={styles.muted}>Vorlage entfernen</Text>
+                <Text style={styles.muted}>
+                  {tr('Vorlage entfernen', 'Remove template')}
+                </Text>
               </Pressable>
             </View>
           ))
         ) : (
-          <Copy muted>Noch keine Vorlage gespeichert.</Copy>
+          <Copy muted>
+            {tr('Noch keine Vorlage gespeichert.', 'No template saved yet.')}
+          </Copy>
         )}
       </Section>
     </>
@@ -5205,12 +5996,12 @@ export function RunbackApp({
 
   const renderTemplates = () => (
     <>
-      <Title>Vorlagen</Title>
+      <Title>{tr('Vorlagen', 'Templates')}</Title>
       <Segmented
-        label="Art der Vorlage"
+        label={tr('Art der Vorlage', 'Type of template')}
         options={[
-          { value: 'strength', label: 'Kraftvorlagen' },
-          { value: 'run', label: 'Laufvorlagen' },
+          { value: 'strength', label: tr('Kraftvorlagen', 'Strength templates') },
+          { value: 'run', label: tr('Laufvorlagen', 'Run templates') },
         ]}
         value={templatesView}
         onChange={setTemplatesView}
@@ -5268,8 +6059,8 @@ export function RunbackApp({
     </>
   );
 
-  // Detail einer Krafteinheit. Gezeigt wird, was bestätigt wurde — Planwerte
-  // erscheinen hier nicht als Ist-Werte (T-6).
+  // Detail of a strength session. Shows what was confirmed — planned values do
+  // not appear here as actual values (T-6).
   const renderSession = () =>
     selectedSession ? (
       <StrengthSessionDetail
@@ -5286,19 +6077,19 @@ export function RunbackApp({
       />
     ) : null;
 
-  // Muskelkarte: zuerst, was du selbst gemeldet hast; die gerechnete
-  // Frische bleibt daneben, solange sie gesperrt ist, als „unbekannt“.
-  // Begriffe und Vorbehalte stehen unter „Was die Karte zeigt“.
+  // Muscle map: first what you reported yourself; the calculated freshness
+  // stays beside it, as "unknown", while it is locked. Terms and caveats are
+  // under "What the map shows".
   const renderMuscleMap = () => {
     const latestReport = latestSoreness;
     return (
       <>
-        <Text style={styles.title}>Muskelkarte</Text>
+        <Text style={styles.title}>{tr('Muskelkarte', 'Muscle map')}</Text>
         <Segmented
-          label="Was die Karte zeigt"
+          label={tr('Was die Karte zeigt', 'What the map shows')}
           options={[
-            { value: 'soreness', label: 'Gemeldeter Muskelkater' },
-            { value: 'freshness', label: 'Frische' },
+            { value: 'soreness', label: tr('Gemeldeter Muskelkater', 'Reported soreness') },
+            { value: 'freshness', label: tr('Frische', 'Freshness') },
           ]}
           value={muscleMapMode}
           onChange={setMuscleMapMode}
@@ -5312,33 +6103,57 @@ export function RunbackApp({
         />
         <Copy muted>
           {muscleMapMode === 'freshness'
-            ? 'Noch nicht freigeschaltet — alle Regionen bleiben unbekannt.'
+            ? tr(
+                'Noch nicht freigeschaltet — alle Regionen bleiben unbekannt.',
+                'Not unlocked yet — all regions stay unknown.',
+              )
             : latestReport
-            ? `Letzte Meldung: ${date(latestReport.at)} · ${
-                latestReport.nothingToday
-                  ? 'heute nichts'
-                  : counted(latestReport.entries.length, 'Region', 'Regionen')
-              }`
-            : 'Noch keine Meldung gespeichert.'}
+            ? tr(
+                `Letzte Meldung: ${date(latestReport.at)} · ${
+                  latestReport.nothingToday
+                    ? 'heute nichts'
+                    : counted(latestReport.entries.length, 'Region', 'Regionen')
+                }`,
+                `Last report: ${date(latestReport.at)} · ${
+                  latestReport.nothingToday
+                    ? 'nothing today'
+                    : counted(latestReport.entries.length, 'region', 'regions')
+                }`,
+              )
+            : tr(
+                'Noch keine Meldung gespeichert.',
+                'No report saved yet.',
+              )}
         </Copy>
-        <Button title="Muskelkater melden" onPress={openSorenessCapture} />
+        <Button
+          title={tr('Muskelkater melden', 'Report soreness')}
+          onPress={openSorenessCapture}
+        />
         <View style={styles.sectionGap}>
           <Disclosure
-            title="Was die Karte zeigt"
-            subtitle="Frische, Muskelkater und Grenzen"
+            title={tr('Was die Karte zeigt', 'What the map shows')}
+            subtitle={tr(
+              'Frische, Muskelkater und Grenzen',
+              'Freshness, soreness, and limits',
+            )}
           >
             <Copy muted>
-              Muskelkater ist deine eigene Angabe je Region von 0 bis 10 — keine
-              Messung und keine Diagnose.
+              {tr(
+                'Muskelkater ist deine eigene Angabe je Region von 0 bis 10 — keine Messung und keine Diagnose.',
+                'Soreness is your own rating per region from 0 to 10 — not a measurement and not a diagnosis.',
+              )}
             </Copy>
             <Copy muted>
-              Frische ist eine gerechnete Größe je Region. 100 bedeutet: keine
-              nachwirkende Belastung im Sinne des Modells — nicht gesund, stark
-              oder bereit.
+              {tr(
+                'Frische ist eine gerechnete Größe je Region. 100 bedeutet: keine nachwirkende Belastung im Sinne des Modells — nicht gesund, stark oder bereit.',
+                'Freshness is a calculated value per region. 100 means: no lingering load in the model’s sense — not healthy, strong, or ready.',
+              )}
             </Copy>
             <Copy muted>
-              Für persönliche Frischewerte fehlt noch eine abgeschlossene
-              Modellprüfung. Fehlende oder unsichere Grundlage bleibt unbekannt.
+              {tr(
+                'Für persönliche Frischewerte fehlt noch eine abgeschlossene Modellprüfung. Fehlende oder unsichere Grundlage bleibt unbekannt.',
+                'Personal freshness values still lack a completed model check. Missing or uncertain basis stays unknown.',
+              )}
             </Copy>
           </Disclosure>
         </View>
@@ -5346,45 +6161,59 @@ export function RunbackApp({
     );
   };
 
-  const LOCKED_MODELS = [
+  const lockedModels = [
     'Critical Speed & Fitness',
     'Race Simulator & Pacemaker',
-    'Persönliche Umweltparameter',
-    'Fuel-Plan & Szenarien',
+    tr('Persönliche Umweltparameter', 'Personal environment parameters'),
+    tr('Fuel-Plan & Szenarien', 'Fuel plan & scenarios'),
   ];
   const renderModels = () => (
     <>
-      <Title>Wie Runback rechnet</Title>
-      <Section title="Lokal aus deinen Daten">
+      <Title>{tr('Wie Runback rechnet', 'How Runback calculates')}</Title>
+      <Section title={tr('Lokal aus deinen Daten', 'Local, from your data')}>
         <Copy>
-          Basiswerte, Datenqualität und Laufart rechnet Runback auf diesem
-          Gerät. Messung, Gefühl und Schätzung bleiben getrennt.
+          {tr(
+            'Basiswerte, Datenqualität und Laufart rechnet Runback auf diesem Gerät. Messung, Gefühl und Schätzung bleiben getrennt.',
+            'Runback calculates base values, data quality, and run type on this device. Measurement, feeling, and estimate stay separate.',
+          )}
         </Copy>
         <Copy muted>
-          Der Tempoindex beschreibt die äußere Anforderung eines Laufs — keine
-          Messung von Fitness, Ermüdung oder Gesundheit.
+          {tr(
+            'Der Tempoindex beschreibt die äußere Anforderung eines Laufs — keine Messung von Fitness, Ermüdung oder Gesundheit.',
+            'The pace index describes the external demand of a run — not a measure of fitness, fatigue, or health.',
+          )}
         </Copy>
         <Disclosure
-          title="Gesperrte Modelle"
-          subtitle={`${LOCKED_MODELS.length} Modelle · noch nicht freigegeben`}
+          title={tr('Gesperrte Modelle', 'Locked models')}
+          subtitle={tr(
+            `${lockedModels.length} Modelle · noch nicht freigegeben`,
+            `${lockedModels.length} models · not released yet`,
+          )}
         >
-          {LOCKED_MODELS.map(title => (
+          {lockedModels.map(title => (
             <Row key={title} title={title} />
           ))}
           <Copy muted>
-            Für persönliche Empfehlungen fehlen geeignete Daten und eine
-            unabhängige Modellprüfung.
+            {tr(
+              'Für persönliche Empfehlungen fehlen geeignete Daten und eine unabhängige Modellprüfung.',
+              'Personal recommendations lack suitable data and an independent model check.',
+            )}
           </Copy>
         </Disclosure>
       </Section>
-      <Section title="Erklärungen ohne Cloud">
+      <Section title={tr('Erklärungen ohne Cloud', 'Explanations without cloud')}>
         <Copy muted>
-          Die lokalen Regeln entscheiden. Ein Sprachmodell ist optional und
-          formuliert nur.
+          {tr(
+            'Die lokalen Regeln entscheiden. Ein Sprachmodell ist optional und formuliert nur.',
+            'The local rules decide. A language model is optional and only phrases.',
+          )}
         </Copy>
       </Section>
       <ProseSettings />
-      <Button title="Trainingschat öffnen" onPress={() => openPage('chat')} />
+      <Button
+        title={tr('Trainingschat öffnen', 'Open training chat')}
+        onPress={() => openPage('chat')}
+      />
     </>
   );
 
@@ -5407,8 +6236,11 @@ export function RunbackApp({
     <>
       <Title>{selectedStrengthRecord.label}</Title>
       <Copy muted>{selectedStrengthRecord.detail}</Copy>
-      <Stat value={selectedStrengthRecord.value} label="Bestwert" />
-      <Section title="Einheiten">
+      <Stat
+        value={selectedStrengthRecord.value}
+        label={tr('Bestwert', 'Personal best')}
+      />
+      <Section title={tr('Einheiten', 'Workouts')}>
         {finishedSessions
           .filter(session =>
             selectedStrengthRecord.sessionIds.includes(session.id),
@@ -5417,7 +6249,10 @@ export function RunbackApp({
           .map(session => (
             <Row
               key={session.id}
-              title={session.name || 'Krafttraining'}
+              title={
+                displaySessionName(session.name) ||
+                tr('Krafttraining', 'Strength training')
+              }
               subtitle={unitSummary({
                 kind: 'strength',
                 key: session.id,
@@ -5434,8 +6269,11 @@ export function RunbackApp({
     <>
       <Title>{selectedRecord.label}</Title>
       <Copy muted>{selectedRecord.detail}</Copy>
-      <Stat value={selectedRecord.value} label="Distanz" />
-      <Section title="Läufe">
+      <Stat
+        value={selectedRecord.value}
+        label={tr('Distanz', 'Distance')}
+      />
+      <Section title={tr('Läufe', 'Runs')}>
         {recordRuns.map(run => (
           <Row
             key={run.id}
@@ -5452,9 +6290,15 @@ export function RunbackApp({
         ))}
         {!recordRuns.length ? (
           <EmptyState
-            title="Keine Läufe mehr vorhanden"
-            copy="Öffne die Statistik erneut."
-            action={{ title: 'Zur Statistik', onPress: leaveDetail }}
+            title={tr('Keine Läufe mehr vorhanden', 'No runs left')}
+            copy={tr(
+              'Öffne die Statistik erneut.',
+              'Open statistics again.',
+            )}
+            action={{
+              title: tr('Zur Statistik', 'To statistics'),
+              onPress: leaveDetail,
+            }}
           />
         ) : null}
       </Section>
@@ -5476,8 +6320,8 @@ export function RunbackApp({
       }}
       onChoose={(km, seconds) => {
         openPage('goal');
-        setGoalInput(`${String(km).replace('.', ',')} km`);
-        setGoalDistanceInput(String(km).replace('.', ','));
+        setGoalInput(`${plainNumber(km)} km`);
+        setGoalDistanceInput(plainNumber(km));
         setGoalTimeInput(formatGoalTime(seconds).replace(/ (min|h)$/, ''));
       }}
     />
@@ -5560,9 +6404,17 @@ export function RunbackApp({
       onOpenNavigation={() => openPage('features-navigation')}
       onOpenMain={() => openPage('features')}
       onOpenDetails={screen => {
-        setFeatureDetail(screen);
-        openPage('features-detail');
+        if (screen === 'music') openPage('music');
+        else {
+          setFeatureDetail(screen);
+          openPage('features-detail');
+        }
       }}
+    />
+  ) : page === 'music' ? (
+    <MusicSettings
+      enabled={features.music.enabled}
+      onToggle={enabled => changeFeatures({ ...features, music: { enabled } })}
     />
   ) : page === 'server' ? (
     <ServerSettings key={serverStatus?.url ?? "off"} status={serverStatus} onStatus={setServerStatus} />
@@ -5580,13 +6432,13 @@ export function RunbackApp({
     renderMuscleMap()
   ) : page === 'models' ? (
     renderModels()
-  ) : tab === 'Heute' ? (
+  ) : tab === 'today' ? (
     recording ? (
       renderRecording()
     ) : (
       renderHome()
     )
-  ) : tab === 'Plan' ? (
+  ) : tab === 'plan' ? (
     <PlanningScreen
       state={schedule}
       onSave={saveSchedule}
@@ -5615,38 +6467,44 @@ export function RunbackApp({
       showMonth={features.planning.month}
       showStrength={showStrength}
     />
-  ) : tab === 'Vorlagen' ? (
+  ) : tab === 'templates' ? (
     renderTemplates()
-  ) : tab === 'Muskelkater' ? (
+  ) : tab === 'soreness' ? (
     <>
-      <Title>Muskelkater</Title>
+      <Title>{tr('Muskelkater', 'Soreness')}</Title>
       <Button
-        title="Muskelkater melden"
+        title={tr('Muskelkater melden', 'Report soreness')}
         onPress={() => setSorenessOpen(true)}
         disabled={busy || !sorenessStorageAvailable}
       />
       {features.soreness.map ? (
-        <Section title="Gemeldet">
-          <Row title="Muskelkarte" onPress={() => openPage('muscle-map')} />
+        <Section title={tr('Gemeldet', 'Reported')}>
+          <Row
+            title={tr('Muskelkarte', 'Muscle map')}
+            onPress={() => openPage('muscle-map')}
+          />
         </Section>
       ) : null}
       {!sorenessStorageAvailable ? (
         <Notice>
-          Muskelkater kann mit dieser App-Version nicht gespeichert werden.
+          {tr(
+            'Muskelkater kann mit dieser App-Version nicht gespeichert werden.',
+            'Soreness cannot be saved with this app version.',
+          )}
         </Notice>
       ) : null}
     </>
-  ) : tab === 'Routen' ? null : tab === 'Verlauf' || tab === 'Statistik' ? (
+  ) : tab === 'routes' ? null : tab === 'history' || tab === 'statistics' ? (
     <>
-      <Title>{tab === 'Statistik' ? 'Statistik' : 'Verlauf'}</Title>
-      {tab === 'Verlauf' && features.statistics.enabled ? (
+      <Title>{tabLabel(tab)}</Title>
+      {tab === 'history' && features.statistics.enabled ? (
         <Segmented
-          label="Ansicht"
-          options={VERLAUF_VIEWS}
-          value={verlaufView}
+          label={tr('Ansicht', 'View')}
+          options={historyViewOptions()}
+          value={historyView}
           onChange={next => {
             setExportSelection(null);
-            setVerlaufView(next);
+            setHistoryView(next);
           }}
         />
       ) : null}
@@ -5674,10 +6532,13 @@ export function RunbackApp({
         showStrength={showStrength}
       />
       {features.soreness.enabled && features.soreness.map ? (
-        <Section title="Körper">
+        <Section title={tr('Körper', 'Body')}>
           <Row
-            title="Muskelkarte"
-            subtitle="Gemeldeter Muskelkater und gerechnete Frische je Region"
+            title={tr('Muskelkarte', 'Muscle map')}
+            subtitle={tr(
+              'Gemeldeter Muskelkater und gerechnete Frische je Region',
+              'Reported soreness and calculated freshness per region',
+            )}
             onPress={() => openPage('muscle-map')}
           />
         </Section>
@@ -5697,12 +6558,15 @@ export function RunbackApp({
         <View style={styles.header}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Muskelkatermeldung schließen"
+            accessibilityLabel={tr(
+              'Muskelkatermeldung schließen',
+              'Close soreness report',
+            )}
             onPress={() => setSorenessOpen(false)}
             style={styles.back}
           >
             <Text style={styles.backText}>‹</Text>
-            <Text style={styles.backLabel}>Zurück</Text>
+            <Text style={styles.backLabel}>{tr('Zurück', 'Back')}</Text>
           </Pressable>
           {busy ? <ActivityIndicator color={color.green} /> : null}
         </View>
@@ -5726,7 +6590,10 @@ export function RunbackApp({
           voiceHint={
             features.soreness.voice &&
             state.capabilities.speechRecognition === false
-              ? 'Auf diesem Gerät ist keine Spracherkennung verfügbar. Tippen funktioniert unverändert.'
+              ? tr(
+                  'Auf diesem Gerät ist keine Spracherkennung verfügbar. Tippen funktioniert unverändert.',
+                  'Speech recognition is not available on this device. Typing works as before.',
+                )
               : undefined
           }
         />
@@ -5753,7 +6620,7 @@ export function RunbackApp({
           onSave={template => {
             persistTemplates(upsertTemplate(strength.templates, template));
             setPlanDraft(null);
-            setMessage('Plan gespeichert.');
+            setMessage(tr('Plan gespeichert.', 'Plan saved.'));
           }}
           template={planDraft}
         />
@@ -5803,7 +6670,7 @@ export function RunbackApp({
           onResumeRest={() => changeRest(s => resumeRest(s, Date.now()))}
           onSkipRest={() => changeRest(clearRest)}
           onCompleteSet={(index, setId, values) => {
-            // Was beim Tippen galt, entscheidet (confirmSet).
+            // What held when the set was tapped decides (confirmSet).
             const tapped = strengthRef.current.active?.exercises[
               index
             ]?.sets.find(set => set.id === setId);
@@ -5867,7 +6734,7 @@ export function RunbackApp({
           }}
           onDone={() => {
             setSetupOpen(false);
-            setTab('Heute');
+            setTab('today');
             setPage('main');
           }}
         />
@@ -5878,16 +6745,18 @@ export function RunbackApp({
   const isUnits =
     !selected &&
     page === 'main' &&
-    tab === 'Verlauf' &&
-    (verlaufView === 'units' || !features.statistics.enabled);
+    tab === 'history' &&
+    (historyView === 'units' || !features.statistics.enabled);
   const runCount = units.filter(unit => unitMatches(unit, 'runs')).length;
   const cyclingCount = units.filter(unit =>
     unitMatches(unit, 'cycling'),
   ).length;
   const sessionCount = units.length - runCount - cyclingCount;
-  // Gefiltert wird nur, was es gibt — auch bei abgewähltem Bereich, damit
-  // Historie nicht verschwindet. Mit nur einer Art braucht es keinen Filter.
-  const presentFilters = UNIT_FILTERS.filter(
+  // Only filters that have something behind them are shown, even when an area
+  // is switched off, so history does not disappear. With only one kind there is
+  // no filter.
+  const unitFilterChoices = unitFilterOptions();
+  const presentFilters = unitFilterChoices.filter(
     item =>
       (item.value === 'runs' && runCount > 0) ||
       (item.value === 'cycling' && cyclingCount > 0) ||
@@ -5895,19 +6764,23 @@ export function RunbackApp({
   );
   const unitFilters =
     presentFilters.length > 1
-      ? [UNIT_FILTERS[0], ...presentFilters]
-      : [UNIT_FILTERS[0]];
+      ? [unitFilterChoices[0], ...presentFilters]
+      : [unitFilterChoices[0]];
   const activeUnitFilter = unitFilters.some(
     item => item.value === effectiveUnitFilter,
   )
     ? effectiveUnitFilter
     : 'all';
-  const runCountLabel = counted(runCount, 'Lauf', 'Läufe');
-  const cyclingCountLabel = counted(cyclingCount, 'Radfahrt', 'Radfahrten');
+  const runCountLabel = counted(runCount, tr('Lauf', 'run'), tr('Läufe', 'runs'));
+  const cyclingCountLabel = counted(
+    cyclingCount,
+    tr('Radfahrt', 'ride'),
+    tr('Radfahrten', 'rides'),
+  );
   const sessionCountLabel = counted(
     sessionCount,
-    'Krafteinheit',
-    'Krafteinheiten',
+    tr('Krafteinheit', 'strength session'),
+    tr('Krafteinheiten', 'strength sessions'),
   );
   const unitCountLabel =
     activeUnitFilter === 'runs'
@@ -5926,59 +6799,71 @@ export function RunbackApp({
   const unitEmptyState =
     activeUnitFilter === 'strength' ? (
       <EmptyState
-        title="Noch keine Krafteinheit"
-        copy="Jede bestätigte Einheit erscheint hier, mit Sätzen und Volumen."
+        title={tr('Noch keine Krafteinheit', 'No strength session yet')}
+        copy={tr(
+          'Jede bestätigte Einheit erscheint hier, mit Sätzen und Volumen.',
+          'Every confirmed session appears here, with sets and volume.',
+        )}
         action={{
-          title: 'Krafttraining starten',
-          onPress: () => switchTab('Heute'),
+          title: tr('Krafttraining starten', 'Start strength training'),
+          onPress: () => switchTab('today'),
         }}
       />
     ) : activeUnitFilter === 'cycling' ? (
       <EmptyState
-        title="Noch keine Radfahrt"
-        copy="Radfahrten stehen hier mit Strecke und Geschwindigkeit, getrennt von deinen Laufkilometern."
+        title={tr('Noch keine Radfahrt', 'No ride yet')}
+        copy={tr(
+          'Radfahrten stehen hier mit Strecke und Geschwindigkeit, getrennt von deinen Laufkilometern.',
+          'Rides appear here with distance and speed, separate from your running kilometers.',
+        )}
         action={{
-          title: 'Radfahrt starten',
+          title: tr('Radfahrt starten', 'Start ride'),
           onPress: () => {
             save({ sport: 'cycling' });
-            switchTab('Heute');
+            switchTab('today');
             openStartSheet('run');
           },
         }}
       />
     ) : activeUnitFilter === 'runs' ? (
       <EmptyState
-        title="Noch kein Lauf"
-        copy="Nach deinem ersten Lauf stehen hier Strecke, Laufgefühl und der nächste Schritt."
+        title={tr('Noch kein Lauf', 'No run yet')}
+        copy={tr(
+          'Nach deinem ersten Lauf stehen hier Strecke, Laufgefühl und der nächste Schritt.',
+          'After your first run, distance, run feel, and the next step appear here.',
+        )}
         action={{
-          title: 'Ersten Lauf starten',
-          onPress: () => switchTab('Heute'),
+          title: tr('Ersten Lauf starten', 'Start first run'),
+          onPress: () => switchTab('today'),
         }}
       />
     ) : (
       <EmptyState
-        title="Hier beginnt deine Historie"
-        copy="Läufe, Radfahrten und Krafteinheiten stehen ab dem ersten Mal gemeinsam in dieser Liste."
+        title={tr('Hier beginnt deine Historie', 'Your history starts here')}
+        copy={tr(
+          'Läufe, Radfahrten und Krafteinheiten stehen ab dem ersten Mal gemeinsam in dieser Liste.',
+          'Runs, rides, and strength sessions appear together in this list from the first one on.',
+        )}
         action={{
-          title: 'Aufzeichnung starten',
-          onPress: () => switchTab('Heute'),
+          title: tr('Aufzeichnung starten', 'Start recording'),
+          onPress: () => switchTab('today'),
         }}
       />
     );
-  // Der Chat braucht die volle Höhe: Verlauf scrollt, die Eingabe bleibt unten.
+  // The chat needs the full height: history scrolls, the input stays at the bottom.
   const isChat = !selected && page === 'chat';
   return (
-    <View style={[styles.app, { paddingTop: insets.top }]}>
+    <View key={language} style={[styles.app, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         {selected || page !== 'main' ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Zurück"
+            accessibilityLabel={tr('Zurück', 'Back')}
             onPress={leaveDetail}
             style={styles.back}
           >
             <Text style={styles.backText}>‹</Text>
-            <Text style={styles.backLabel}>Zurück</Text>
+            <Text style={styles.backLabel}>{tr('Zurück', 'Back')}</Text>
           </Pressable>
         ) : (
           <Text style={styles.brand}>
@@ -5988,23 +6873,32 @@ export function RunbackApp({
         {busy ? (
           <ActivityIndicator color={color.green} />
         ) : recording ? (
-          <Text style={styles.headerInfo}>Aufzeichnung aktiv</Text>
+          <Text style={styles.headerInfo}>
+            {tr('Aufzeichnung aktiv', 'Recording active')}
+          </Text>
         ) : !selected && page === 'main' ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={serverStatus && serverMark(serverStatus) ? `Einstellungen · Server ${serverStateLabel(serverStatus)}` : 'Einstellungen'}
+            accessibilityLabel={
+              serverStatus && serverMark(serverStatus)
+                ? tr(
+                    `Einstellungen · Server ${serverStateLabel(serverStatus)}`,
+                    `Settings · server ${serverStateLabel(serverStatus)}`,
+                  )
+                : tr('Einstellungen', 'Settings')
+            }
             onPress={() => openPage('settings')}
             style={({ pressed }) => [styles.settingsButton, pressed && styles.pressed]}
           >
             <ConnectionMark mark={serverMark(serverStatus)} />
-            <Icon name="Einstellungen" />
+            <Icon name="settings" />
           </Pressable>
         ) : null}
       </View>
       {error ? (
         <View style={styles.noticeSlot}>
           <Notice
-            title="Aktion nicht abgeschlossen"
+            title={tr('Aktion nicht abgeschlossen', 'Action not completed')}
             onDismiss={() => setError('')}
           >
             {error}
@@ -6024,12 +6918,12 @@ export function RunbackApp({
       {loading ? (
         <View style={styles.loading}>
           <ActivityIndicator color={color.green} />
-          <Copy muted>Einheiten werden geladen …</Copy>
+          <Copy muted>{tr('Einheiten werden geladen …', 'Loading workouts …')}</Copy>
         </View>
       ) : isChat ? (
         <TrainingChat onSettings={() => openPage('models')} />
-      ) : !selected && page === 'main' && tab === 'Routen' ? (
-        <RoutePlannerScreen embedded onClose={() => switchTab('Heute')} />
+      ) : !selected && page === 'main' && tab === 'routes' ? (
+        <RoutePlannerScreen embedded onClose={() => switchTab('today')} />
       ) : isUnits ? (
         <FlatList
           data={unitListItems}
@@ -6076,21 +6970,21 @@ export function RunbackApp({
           contentContainerStyle={styles.listContent}
           ListHeaderComponent={
             <View style={styles.historyHeader}>
-              <Title>Verlauf</Title>
+              <Title>{tr('Verlauf', 'History')}</Title>
               {features.statistics.enabled ? (
                 <Segmented
-                  label="Ansicht"
-                  options={VERLAUF_VIEWS}
-                  value={verlaufView}
+                  label={tr('Ansicht', 'View')}
+                  options={historyViewOptions()}
+                  value={historyView}
                   onChange={next => {
                     setExportSelection(null);
-                    setVerlaufView(next);
+                    setHistoryView(next);
                   }}
                 />
               ) : null}
               {unitFilters.length > 1 ? (
                 <ChipGroup
-                  label="Einheiten filtern"
+                  label={tr('Einheiten filtern', 'Filter workouts')}
                   options={unitFilters}
                   value={activeUnitFilter}
                   onChange={setUnitFilter}
@@ -6099,17 +6993,21 @@ export function RunbackApp({
               {exportSelection !== null ? (
                 <Card>
                   <Copy>
-                    {counted(exportSelection.length, 'Lauf', 'Läufe')}{' '}
-                    ausgewählt
+                    {counted(
+                      exportSelection.length,
+                      tr('Lauf', 'run'),
+                      tr('Läufe', 'runs'),
+                    )}{' '}
+                    {tr('ausgewählt', 'selected')}
                   </Copy>
                   <Button
-                    title="Auswahl als ZIP exportieren"
+                    title={tr('Auswahl als ZIP exportieren', 'Export selection as ZIP')}
                     disabled={busy || !exportSelection.length}
                     onPress={() => shareRuns(async () => exportSelection)}
                   />
                   <Button
                     secondary
-                    title="Auswahl beenden"
+                    title={tr('Auswahl beenden', 'End selection')}
                     disabled={busy}
                     onPress={() => setExportSelection(null)}
                   />
@@ -6120,8 +7018,14 @@ export function RunbackApp({
                   {runCount ? (
                     <Pressable
                       accessibilityRole="button"
-                      accessibilityLabel="Läufe zum Export auswählen"
-                      accessibilityHint="Auch per langem Druck auf einen Lauf."
+                      accessibilityLabel={tr(
+                        'Läufe zum Export auswählen',
+                        'Select runs to export',
+                      )}
+                      accessibilityHint={tr(
+                        'Auch per langem Druck auf einen Lauf.',
+                        'Also by pressing and holding a run.',
+                      )}
                       disabled={busy}
                       onPress={() => setExportSelection([])}
                       style={({ pressed }) => [
@@ -6129,7 +7033,9 @@ export function RunbackApp({
                         pressed && styles.pressed,
                       ]}
                     >
-                      <Text style={styles.greenText}>Auswählen</Text>
+                      <Text style={styles.greenText}>
+                        {tr('Auswählen', 'Select')}
+                      </Text>
                     </Pressable>
                   ) : null}
                 </View>
@@ -6140,8 +7046,10 @@ export function RunbackApp({
           ListFooterComponent={
             strengthSessions.length >= 500 ? (
               <Copy muted>
-                Krafteinheiten: höchstens die 500 neuesten. Ältere bleiben im
-                Backup erhalten.
+                {tr(
+                  'Krafteinheiten: höchstens die 500 neuesten. Ältere bleiben im Backup erhalten.',
+                  'Strength sessions: at most the 500 newest. Older ones stay in the backup.',
+                )}
               </Copy>
             ) : null
           }
@@ -6150,8 +7058,8 @@ export function RunbackApp({
           windowSize={7}
           refreshing={busy}
           onRefresh={() => {
-            // Die Liste zeigt beides, also lädt sie auch beides nach. Fehlt die
-            // native Kraftunterstützung, bleibt der Rest unberührt.
+            // The list shows both, so it reloads both. Without native strength
+            // support, the rest stays untouched.
             void action(async () => {
               await refresh();
               await native
@@ -6178,7 +7086,7 @@ export function RunbackApp({
             key={name}
             accessibilityRole="tab"
             accessibilityState={{ selected: tab === name }}
-            accessibilityLabel={name}
+            accessibilityLabel={tabLabel(name)}
             onPress={() => switchTab(name)}
             style={[styles.tab, tab === name && styles.tabActive]}
           >
@@ -6186,7 +7094,7 @@ export function RunbackApp({
             <Text
               style={[styles.tabText, tab === name && styles.tabTextActive]}
             >
-              {name}
+              {tabLabel(name)}
             </Text>
           </Pressable>
         ))}
@@ -6385,8 +7293,8 @@ const styles = StyleSheet.create({
     ...type.value,
     fontVariant: ['tabular-nums'],
   },
-  // Ohne eigene Zeilenhöhe: Android übernähme sie für die ganze Zeile und
-  // schnitte die Unterlänge des Kommas im großen Wert ab („7.99“).
+  // No line height of its own: Android would take it for the whole row and cut
+  // off the descender of the decimal point in the large value ("7.99").
   runUnit: {
     color: color.muted,
     fontSize: type.label.fontSize,

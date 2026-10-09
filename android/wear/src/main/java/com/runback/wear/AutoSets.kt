@@ -12,6 +12,7 @@ import android.os.SystemClock
 import android.os.VibrationAttributes
 import android.os.VibrationEffect
 import android.os.Vibrator
+import com.runback.core.Lang
 import com.runback.core.RepProfiles
 import com.runback.core.SetDetectionLog
 import com.runback.core.SetDetector
@@ -21,41 +22,41 @@ import org.json.JSONObject
 import java.util.UUID
 
 /**
- * Satzerkennung auf der Uhr während einer Krafteinheit mit Bewegungen.
+ * Set detection on the watch during a strength session with motion.
  *
- * Läuft auf dem Arbeitsthread von MotionCaptureService: bekommt jeden
- * Messwert, hält einen SetDetector für die Übung, die am Handy gerade dran
- * ist, und meldet einen erkannten Satz zur Bestätigung. Erst die
- * Entscheidung des Nutzers (oder, wenn er es eingeschaltet hat, die
- * automatische Übernahme nach `AUTO_CONFIRM_MS` ohne Eingabe) hakt den Satz am Handy ab — mit der
- * bestätigten Zahl; danach startet das Handy die Pause wie gewohnt.
+ * Runs on the worker thread of MotionCaptureService: it gets every sample,
+ * holds a SetDetector for the exercise the phone is on right now, and reports
+ * a detected set for confirmation. Only the user's decision (or, if they turned
+ * it on, the automatic acceptance after `AUTO_CONFIRM_MS` without input) ticks
+ * the set off on the phone — with the confirmed count; then the phone starts
+ * the rest as usual.
  *
- * Erkennung, Entscheidung und jeder ohne Erkennung abgehakte Satz landen als
- * Ereignis in der Rohdatei (SetDetectionLog).
+ * Detection, decision, and every set ticked off without detection land as an
+ * event in the raw file (SetDetectionLog).
  */
 class AutoSets(
     private val context: Context,
     private val sessionId: String,
     private val hasGyro: Boolean,
-    /** Ohne Eingabe nach kurzer Zeit übernehmen; nur, wenn der Nutzer das eingeschaltet hat. */
+    /** Accept without input after a short time; only if the user turned that on. */
     private val autoConfirm: Boolean,
-    /** Schreibt ein Ereignis in die Rohdatei; nur auf dem Arbeitsthread. */
+    /** Writes an event to the raw file; only on the worker thread. */
     private val log: (Long, JSONObject) -> Unit,
-    /** Führt etwas später auf dem Arbeitsthread aus. */
+    /** Runs something later on the worker thread. */
     private val later: (Long, () -> Unit) -> Unit,
 ) {
-    /** Satz, den die Uhr gerade erwartet: aus dem Stand des Handys. */
+    /** Set the watch expects right now: from the phone's state. */
     private var target: SetDetectionLog.Target? = null
     private var completedInExercise = -1
-    /** Puffert ab Aufzeichnungsbeginn und über Übungswechsel hinweg; Vorlauf für die Analyse. */
+    /** Buffers from the start of recording and across exercise changes; lead-in for the analysis. */
     private val buffer = SetDetector(RepProfiles.BUFFER_ONLY, hasGyro).also { it.pause() }
-    /** Nur bei einer unterstützten Übung mit offenem Satz meldet der Detektor etwas. */
+    /** Only a supported exercise with an open set makes the detector report anything. */
     private var detector: SetDetector? = null
     private var profile: RepProfiles.Profile? = null
-    /** Sätze, die die Uhr selbst abgehakt hat; ihr Verschwinden ist kein Abhaken von Hand. */
+    /** Sets the watch has ticked off itself; their disappearance is not a manual tick. */
     private val sentSets = ArrayDeque<String>()
 
-    /** Stand vom Handy prüfen (sekündlich): passende Übung, offener Satz, kein Zeitsatz. */
+    /** Check the phone's state (every second): matching exercise, open set, no timed set. */
     fun follow(mirror: JSONObject?) {
         val state = mirror?.takeIf { it.optString("sessionId") == sessionId }
         val exercise = state?.optJSONObject("exercise")
@@ -67,7 +68,7 @@ class AutoSets(
         val completed = exercise?.optInt("completed", -1) ?: -1
         val previous = target
         val asked = review?.target?.setId
-        // Am Handy abgehakt, übersprungen oder Übung gewechselt, während die Uhr noch fragt: Die Frage ist erledigt.
+        // Ticked off on the phone, skipped, or exercise changed while the watch is still asking: the question is settled.
         review?.let { open ->
             if (open.status != Status.SENDING && next?.setId != open.target.setId) {
                 log(SystemClock.elapsedRealtimeNanos(), SetDetectionLog.superseded(open.id, open.target, open.detected, open.adjustments))
@@ -75,7 +76,7 @@ class AutoSets(
             }
         }
         if (previous != null && next?.setId != previous.setId) {
-            // Der Satz ist weg, ohne dass die Uhr ihn gemeldet hat: von Hand abgehakt (oder Übung gewechselt).
+            // The set is gone without the watch reporting it: ticked off by hand (or exercise changed).
             val sameExercise = next == null || next.exerciseIndex == previous.exerciseIndex
             val ours = asked == previous.setId || previous.setId in sentSets
             if (!ours && sameExercise && completed > completedInExercise && completedInExercise >= 0) {
@@ -84,12 +85,13 @@ class AutoSets(
             }
         }
         val nextProfile = next?.takeIf { set?.optBoolean("timed") != true }?.let { RepProfiles.forExercise(it.exerciseId) }
+        // The rest timer is only a hint: keep counting before it ends; timer changes reset nothing.
         if (nextProfile == null) {
             if (detector != null) buffer.pause()
             detector = null; profile = null
         } else if (detector == null || nextProfile != profile || previous?.exerciseId != next.exerciseId ||
             previous.setId != next.setId) {
-            // Neues Ziel: Was davor lief, gehört nicht zu diesem Satz.
+            // New target: what ran before doesn't belong to this set.
             buffer.retarget(nextProfile)
             detector = buffer; profile = nextProfile
         }
@@ -121,7 +123,7 @@ class AutoSets(
         listener?.invoke()
     }
 
-    /** Nach jedem Messwert günstig: nur bei geändertem Zustand ein Hinweis an die Anzeige. */
+    /** Cheap after every sample: only notifies the display when the state changed. */
     fun tick() = publishLive()
 
     private fun found(set: SetDetector.DetectedSet) {
@@ -147,7 +149,7 @@ class AutoSets(
         }
     }
 
-    /** −1 / +1: wartet danach länger auf ein ausdrückliches Bestätigen. */
+    /** −1 / +1: then waits longer for an explicit confirmation. */
     fun adjust(delta: Int) {
         val current = review?.takeIf { it.status != Status.SENDING } ?: return
         val reps = (current.reps + delta).coerceIn(0, WearProtocol.MAX_REPS)
@@ -159,7 +161,7 @@ class AutoSets(
 
     fun confirm() { review?.let { decide(it.reps, byUser = true) } }
 
-    /** Kein Satz: nichts wird abgehakt, die Erkennung bleibt als verworfen im Protokoll. */
+    /** No set: nothing is ticked off; the detection stays in the log as rejected. */
     fun reject() {
         val current = review?.takeIf { it.status != Status.SENDING } ?: return
         logDecision(current, null, byUser = true)
@@ -167,9 +169,9 @@ class AutoSets(
     }
 
     /**
-     * Schreibt die Entscheidung, wenn sie sich von der zuletzt geschriebenen
-     * unterscheidet — etwa wenn nach einem gescheiterten Senden noch korrigiert
-     * wird. Beim Lesen gilt die letzte (SetDetectionLog.entries).
+     * Writes the decision if it differs from the last one written — e.g. when
+     * correcting after a failed send. On reading, the last one counts
+     * (SetDetectionLog.entries).
      */
     private fun logDecision(current: Review, reps: Int?, byUser: Boolean) {
         val decision = Decision(reps, byUser)
@@ -221,11 +223,11 @@ class AutoSets(
         else @Suppress("DEPRECATION") vibrator.vibrate(effect, AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build())
     }
 
-    /** Ist die App nicht offen, bringt die Benachrichtigung die Bestätigung nach vorn. */
+    /** If the app isn't open, the notification brings the confirmation to the front. */
     private fun notifyReview() {
         val current = review ?: return
         val manager = context.getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(NotificationChannel(CHANNEL, "Erkannte Sätze", NotificationManager.IMPORTANCE_HIGH).apply {
+        manager.createNotificationChannel(NotificationChannel(CHANNEL, Lang.tr("Erkannte Sätze", "Detected sets"), NotificationManager.IMPORTANCE_HIGH).apply {
             setSound(null, null)
             enableVibration(false)
             setShowBadge(false)
@@ -239,14 +241,14 @@ class AutoSets(
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val notification = Notification.Builder(context, CHANNEL)
             .setSmallIcon(R.drawable.ic_runback)
-            .setContentTitle("Satz erkannt")
+            .setContentTitle(Lang.tr("Satz erkannt", "Set detected"))
             .setContentText("${repsLabel(current)} · ${current.target.exerciseName}")
             .setCategory(Notification.CATEGORY_WORKOUT)
             .setContentIntent(open)
             .setFullScreenIntent(open, true)
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)
-            .addAction(Notification.Action.Builder(null, "Bestätigen", confirm).build())
+            .addAction(Notification.Action.Builder(null, Lang.tr("Bestätigen", "Confirm"), confirm).build())
             .build()
         manager.notify(NOTIFICATION_ID, notification)
     }
@@ -265,34 +267,37 @@ class AutoSets(
         val reps: Int,
         val adjustments: Int,
         val touched: Boolean,
-        /** `elapsedRealtime`, ab dem die Uhr ohne Eingabe übernimmt; `null`: sie wartet auf den Nutzer. */
+        /** `elapsedRealtime` from which the watch accepts without input; `null`: it waits for the user. */
         val decideAt: Long?,
         val status: Status,
-        /** Zuletzt in die Rohdatei geschriebene Entscheidung; dieselbe wird nicht doppelt geschrieben. */
+        /** Last decision written to the raw file; the same one is not written twice. */
         val logged: Decision? = null,
     )
 
     data class Decision(val reps: Int?, val byUser: Boolean)
 
-    /** Für die Anzeige: Übung, Zustand des Detektors, bisher gezählt. */
+    /** For display: exercise, detector state, counted so far. */
     data class Live(val exercise: String, val state: SetDetector.State, val reps: Int)
 
     companion object {
-        /** Ohne Eingabe übernimmt die Uhr die erkannte Zahl nach dieser Zeit. */
+        /** Without input the watch accepts the detected count after this time. */
         const val AUTO_CONFIRM_MS = 12_000L
-        /** Nach −/+ wartet sie länger; dann gilt die eingestellte Zahl. */
+        /** After −/+ it waits longer; then the set count applies. */
         const val AFTER_TOUCH_MS = 30_000L
         private const val CHANNEL = "runback_sets"
         private const val NOTIFICATION_ID = 4312
 
-        /** Offene Bestätigung, für die Uhr-App. */
+        /** Open confirmation, for the watch app. */
         @Volatile var review: Review? = null
             private set
         @Volatile var live: Live? = null
             private set
         @Volatile var listener: (() -> Unit)? = null
 
-        /** „8 Wdh.“ oder bei wenig Sicherheit „~8 Wdh.“; korrigiert immer ohne Tilde. */
-        fun repsLabel(review: Review) = (if (review.uncertain && !review.touched) "~" else "") + "${review.reps} Wdh."
+        /** Count only, e.g. "8" or "~8" when unsure; a correction always drops the tilde. */
+        fun repsNumber(review: Review) = (if (review.uncertain && !review.touched) "~" else "") + "${review.reps}"
+
+        /** "8 Wdh." or "8 reps", with a tilde when unsure. */
+        fun repsLabel(review: Review) = repsNumber(review) + " " + Lang.tr("Wdh.", "reps")
     }
 }

@@ -1,19 +1,18 @@
 package com.runback.core
 
 /**
- * Begrenzter Zeitverlauf einer Aufzeichnung für Export und Darstellung.
+ * Bounded time series of a recording for export and display.
  *
- * Fasst die Rohsamples in gleich lange Zeitfenster seit dem Start zusammen
- * (Uhrzeit, Pausen eingeschlossen). Je Fenster: zurückgelegte Strecke nach
- * derselben Regel wie die Distanzableitung, Sekunden mit gültigen
- * GPS-Schritten, Mittel von Puls, Kadenz, Höhe und GPS-Genauigkeit. Fenster
- * ohne einen einzigen Messwert fehlen, statt mit Nullen aufzufüllen — außer
- * `keepEmpty` verlangt ein lückenloses Raster (Phasenerkennung, CSV). Die
- * Fensterlänge wächst mit der Dauer, damit die Zeilenzahl begrenzt bleibt,
- * sofern kein festes Raster vorgegeben ist.
+ * Condenses the raw samples into equal-length time windows since the start
+ * (clock time, pauses included). Per window: distance covered by the same rule
+ * as the distance derivation, seconds with valid GPS steps, and averages of heart
+ * rate, cadence, altitude and GPS accuracy. Windows without a single measurement
+ * are dropped instead of filled with zeros, unless `keepEmpty` requires a gapless
+ * grid (phase detection, CSV). The window length grows with the duration so the
+ * row count stays bounded, unless a fixed grid is given.
  *
- * `gpsCoveredSeconds` ist keine Bewegungszeit: Stillstand mit gutem Empfang
- * zählt hier voll. Bewegung entscheidet RunPhases.
+ * `gpsCoveredSeconds` is not moving time: standing still with good reception
+ * counts here in full. Movement is decided by RunPhases.
  */
 object RunTimeline {
     const val VERSION = "runback-timeline-2"
@@ -31,12 +30,12 @@ object RunTimeline {
         val avgCadence: Double?,
         val altitudeM: Double?,
         val avgAccuracyM: Double? = null,
-        /** Fenster ohne einen einzigen Messwert (nur bei `keepEmpty`). */
+        /** Window without a single measurement (only with `keepEmpty`). */
         val empty: Boolean = false,
     )
     data class Result(val stepSeconds: Int, val rows: List<Row>)
 
-    /** Kleinste Fensterlänge, mit der die Zeilenzahl unter `maxRows` bleibt. */
+    /** Smallest window length that keeps the row count under `maxRows`. */
     fun stepSeconds(durationSeconds: Double, maxRows: Int): Int {
         val duration = durationSeconds.coerceAtLeast(0.0)
         return STEP_CHOICES_SECONDS.firstOrNull { duration / it <= maxRows } ?: STEP_CHOICES_SECONDS.last()
@@ -76,11 +75,8 @@ object RunTimeline {
             return ((time - startTime) / stepMs).toInt().coerceIn(0, bucketCount - 1)
         }
 
-        // Dieselbe Distanzregel wie RunStore.derive: Schritt akzeptiert, Anker
-        // gegen den Rauschboden, Pausen und Unterbrechungen trennen.
-        var distance = 0.0
+        val accumulator = RunMath.DistanceAccumulator()
         var previous: GpsPoint? = null
-        var anchor: GpsPoint? = null
         for (point in gps) {
             val bucket = bucketOf(point.time)
             if (bucket != null) {
@@ -89,28 +85,13 @@ object RunTimeline {
                 if (point.accuracyM.isFinite() && point.accuracyM > 0) { accuracySum[bucket] += point.accuracyM; accuracyCount[bucket]++ }
             }
             val before = previous
-            if (before != null) {
-                val crossing = cuts.any { it > before.time && it <= point.time }
-                val accepted = if (crossing) null else RunMath.acceptedDistance(
-                    before.latitude, before.longitude, before.time, before.accuracyM,
-                    point.latitude, point.longitude, point.time, point.accuracyM,
-                )
-                if (accepted == null) {
-                    anchor = null
-                } else {
-                    val base = anchor ?: before
-                    val stepMeters = RunMath.anchoredDistance(
-                        base.latitude, base.longitude, base.accuracyM,
-                        point.latitude, point.longitude, point.accuracyM,
-                    )
-                    if (stepMeters != null) { distance += stepMeters; anchor = point } else if (anchor == null) anchor = base
-                    if (bucket != null) {
-                        moving[bucket] += (point.time - before.time) / 1000.0
-                        if (stepMeters != null) stepDistance[bucket] += stepMeters
-                    }
-                }
+            val crossing = before?.let { cuts.any { cut -> cut > it.time && cut <= point.time } } ?: false
+            val stepMeters = accumulator.add(point.time, point.latitude, point.longitude, point.accuracyM, resetBefore = crossing)
+            if (before != null && stepMeters != null && bucket != null) {
+                moving[bucket] += (point.time - before.time) / 1000.0
+                stepDistance[bucket] += stepMeters
             }
-            if (bucket != null) distanceAtEnd[bucket] = distance
+            if (bucket != null) distanceAtEnd[bucket] = accumulator.distanceMeters
             previous = point
         }
         for (reading in heartRate) {
@@ -127,7 +108,7 @@ object RunTimeline {
         val rows = ArrayList<Row>()
         var carried = 0.0
         for (bucket in 0 until bucketCount) {
-            // Ohne GPS im Fenster gilt die Strecke vom letzten Fenster weiter.
+            // Without GPS in the window, the distance from the last window carries over.
             if (hasGps[bucket]) carried = distanceAtEnd[bucket]
             if (!touched[bucket] && !keepEmpty) continue
             val elapsedEnd = minOf(((bucket + 1) * stepMs), end - startTime)

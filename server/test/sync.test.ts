@@ -16,8 +16,8 @@ import {
   tempStore,
 } from './helpers';
 
-describe('Kopplung', () => {
-  it('löst einen Code genau einmal ein und ersetzt das alte Telefon', () => {
+describe('Pairing', () => {
+  it('redeems a code exactly once and replaces the old phone', () => {
     const { store, dispose } = tempStore();
     try {
       const first = createPairingCode(store, NOW);
@@ -27,20 +27,20 @@ describe('Kopplung', () => {
       assert.equal(redeemPairingCode(store, first.code, 'Pixel', 1, NOW), null);
 
       const second = createPairingCode(store, NOW);
-      assert.ok(redeemPairingCode(store, second.code, 'Neues Telefon', 1, NOW));
+      assert.ok(redeemPairingCode(store, second.code, 'New phone', 1, NOW));
       const devices = store.db.prepare('SELECT name FROM devices').all() as {
         name: string;
       }[];
       assert.deepEqual(
         devices.map(d => d.name),
-        ['Neues Telefon'],
+        ['New phone'],
       );
     } finally {
       dispose();
     }
   });
 
-  it('verbraucht den Code nach fünf falschen Versuchen und nach zehn Minuten', () => {
+  it('uses up the code after five wrong attempts or ten minutes', () => {
     const { store, dispose } = tempStore();
     try {
       const { code } = createPairingCode(store, NOW);
@@ -60,7 +60,7 @@ describe('Kopplung', () => {
   });
 });
 
-describe('Abgleich', () => {
+describe('Sync', () => {
   const { store, dispose } = tempStore();
   let app: Awaited<ReturnType<typeof startApp>>;
   let token = '';
@@ -73,7 +73,7 @@ describe('Abgleich', () => {
     dispose();
   });
 
-  it('übernimmt beim ersten Mal alles und danach nur Änderungen', async () => {
+  it('takes everything the first time and only changes after that', async () => {
     const first = await syncAll(app.base, token);
     assert.equal(first.need.length, objects().length);
     assert.deepEqual(first.commit.body.missing, []);
@@ -91,7 +91,7 @@ describe('Abgleich', () => {
     assert.ok(data.lastCompleteAt);
   });
 
-  it('schreibt flache Tabellen mit NULL statt erfundener Werte', async () => {
+  it('writes flat tables with NULL instead of invented values', async () => {
     await syncAll(app.base, token);
     const run = store.db
       .prepare("SELECT * FROM v1_runs WHERE id = 'r1'")
@@ -121,7 +121,7 @@ describe('Abgleich', () => {
         rir: 2,
       },
     );
-    // Nicht abgehakt: Ist-Werte bleiben leer, nicht 0.
+    // Not ticked off: actual values stay empty, not 0.
     assert.deepEqual(
       { ...sets[4] },
       {
@@ -151,7 +151,7 @@ describe('Abgleich', () => {
     );
   });
 
-  it('löscht, was das Telefon nicht mehr hat, und lädt Geändertes neu', async () => {
+  it('deletes what the phone no longer has and reloads what changed', async () => {
     await syncAll(app.base, token);
     const changed = objects()
       .filter(entry => entry.key !== 'run/r2')
@@ -180,7 +180,7 @@ describe('Abgleich', () => {
     );
   });
 
-  it('meldet fehlende Objekte und markiert den Abgleich als unvollständig', async () => {
+  it('reports missing objects and marks the sync as incomplete', async () => {
     await syncAll(app.base, token);
     const before = loadDataset(store).lastCompleteAt;
     const list = [...objects(), { key: 'run/r9', body: bridgeRun('r9', NOW) }];
@@ -192,7 +192,7 @@ describe('Abgleich', () => {
     assert.equal(loadDataset(store).lastCompleteAt, before);
   });
 
-  it('lehnt unbekannte Schlüssel, falsche Hashes und andere Protokolle ab', async () => {
+  it('rejects unknown keys, wrong hashes and other protocols', async () => {
     const bad = await post(app.base, '/api/v1/sync/plan', token, {
       protocol: SERVER_SYNC_PROTOCOL,
       manifest: { 'raw/x': 'a'.repeat(64) },
@@ -215,7 +215,7 @@ describe('Abgleich', () => {
     assert.equal(version.status, 409);
   });
 
-  it('zeigt bis zum vollständigen Commit unverändert den letzten Stand', async () => {
+  it('keeps showing the last state until the commit is complete', async () => {
     await syncAll(app.base, token);
     const changed = objects().map(entry =>
       entry.key === 'run/r1'
@@ -252,15 +252,15 @@ describe('Abgleich', () => {
     );
   });
 
-  it('nimmt nur das Telefon-Token an', async () => {
-    const response = await post(app.base, '/api/v1/sync/plan', 'rbr_falsch', {
+  it('accepts only the phone token', async () => {
+    const response = await post(app.base, '/api/v1/sync/plan', 'rbr_wrong', {
       protocol: SERVER_SYNC_PROTOCOL,
       manifest: {},
     });
     assert.equal(response.status, 401);
   });
 
-  it('trennt das Telefon und löscht auf Wunsch die Kopie', async () => {
+  it('disconnects the phone and deletes the copy on request', async () => {
     await syncAll(app.base, token);
     const response = await fetch(`${app.base}/api/v1/device?copy=delete`, {
       method: 'DELETE',

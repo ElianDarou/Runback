@@ -10,6 +10,7 @@ import { Row, Stat } from '../src/ui/components';
 import { DAY, strengthSession } from './fixtures/strengthSessions';
 import { importedStrengthSession } from '../src/domain/strengthImports';
 import { parseStrongCsvPreview } from '../src/domain/vendorImports';
+import { setLanguage } from '../src/domain/i18n';
 
 const NOW = Date.now();
 
@@ -69,8 +70,8 @@ const create = (element: React.ReactElement) => {
   return tree;
 };
 
-describe('Statistik · Bereich', () => {
-  it('zeigt eine reine Importhistorie und öffnet ihre Einheit ohne native Aufzeichnung', () => {
+describe('Statistics · Area', () => {
+  it('shows a pure import history and opens its session without native recording', () => {
     const workout = parseStrongCsvPreview(
       `Date;Workout Name;Exercise Name;Set Order;Weight (kg);Reps\n${NOW - DAY};Push;Bench Press (Barbell);1;80;8`,
     ).workouts[0];
@@ -96,7 +97,7 @@ describe('Statistik · Bereich', () => {
     expect(development.root.findAllByType(Stat).find(node => node.props.label === 'kg bewegt')?.props.value).toBe('–');
   });
 
-  it('wählt den Bereich oben, wenn beide Daten haben', () => {
+  it('selects the area at the top when both have data', () => {
     const onViewChange = jest.fn();
     const tree = create(
       <Statistics
@@ -116,7 +117,7 @@ describe('Statistik · Bereich', () => {
     });
   });
 
-  it('zeigt im Krafttraining Einheiten, Übungen und Muskeln', () => {
+  it('shows sessions, exercises and muscles in strength training', () => {
     const onOpenExercise = jest.fn();
     const tree = create(
       <Statistics
@@ -138,7 +139,7 @@ describe('Statistik · Bereich', () => {
     expect(onOpenExercise).toHaveBeenCalledWith('barbell_bench_press');
   });
 
-  it('zeigt ohne Laufbereich nur das Krafttraining, ohne Bereichswahl', () => {
+  it('shows only strength training without the running area and without an area choice', () => {
     const tree = create(
       <Statistics runs={[run]} sessions={sessions} showRunning={false} />,
     );
@@ -146,7 +147,7 @@ describe('Statistik · Bereich', () => {
     expect(texts(tree)).toContain('"Übungen"');
   });
 
-  it('bietet Puls im Verlauf nur an, wenn die Uhr gemessen hat', () => {
+  it('offers heart rate in the history only when the watch has measured', () => {
     const view = { ...defaultStatisticsView, area: 'strength' as const };
     const without = create(
       <Statistics runs={[run]} sessions={sessions} view={view} />,
@@ -177,7 +178,7 @@ describe('Statistik · Bereich', () => {
   });
 });
 
-describe('Detail einer Krafteinheit', () => {
+describe('Strength session detail', () => {
   const current = benchSession('now', 0, 90);
   const values = Array.from({ length: 144 }, (_, index) =>
     index % 24 < 6 ? 140 : 105,
@@ -196,7 +197,7 @@ describe('Detail einer Krafteinheit', () => {
     values,
   };
 
-  it('vergleicht mit früheren Einheiten derselben Vorlage und öffnet Übungen', () => {
+  it('compares with earlier sessions of the same template and opens exercises', () => {
     const onOpenExercise = jest.fn();
     const tree = create(
       <StrengthSessionDetail
@@ -211,7 +212,7 @@ describe('Detail einer Krafteinheit', () => {
       'Prozent gegenüber dem Median deiner letzten 4 Einheiten',
     );
     expect(all).toContain('90 kg × 8 · 90 kg × 8 · 90 kg × 8');
-    // Kein Puls ohne Uhr — auch kein leerer Abschnitt.
+    // No heart rate without a watch — not even an empty section.
     expect(all).not.toContain('"Puls"');
     const row = tree.root
       .findAllByType(Row)
@@ -220,7 +221,7 @@ describe('Detail einer Krafteinheit', () => {
     expect(onOpenExercise).toHaveBeenCalledWith('barbell_bench_press');
   });
 
-  it('zeigt den Puls der Uhr mit Satzende und Erholung', () => {
+  it('shows the watch heart rate with set end and recovery', () => {
     const tree = create(
       <StrengthSessionDetail
         session={current}
@@ -236,8 +237,8 @@ describe('Detail einer Krafteinheit', () => {
   });
 });
 
-describe('Übungsverlauf', () => {
-  it('zeigt Richtung, Bestwerte und öffnet Einheiten', () => {
+describe('Exercise history', () => {
+  it('shows direction and personal bests and opens sessions', () => {
     const onOpenSession = jest.fn();
     const tree = create(
       <ExerciseDetail
@@ -248,7 +249,7 @@ describe('Übungsverlauf', () => {
     );
     const all = texts(tree);
     expect(all).toContain('"Bankdrücken"');
-    // Vier Trainingstage tragen noch keine Richtung.
+    // Four training days do not yet show a direction.
     expect(all).toContain('"Noch nicht klar"');
     expect(all).toContain('Schwerstes Gewicht');
     const newest = tree.root
@@ -258,7 +259,7 @@ describe('Übungsverlauf', () => {
     expect(onOpenSession).toHaveBeenCalledWith('s4');
   });
 
-  it('bleibt ohne abgehakten Satz leer statt Nullen zu zeigen', () => {
+  it('stays empty without a ticked set instead of showing zeros', () => {
     const tree = create(
       <ExerciseDetail exerciseId="unknown" sessions={sessions} />,
     );
@@ -306,5 +307,23 @@ describe('watch data on a finished session', () => {
 
   it('stays quiet without a watch', () => {
     expect(detail(null)).not.toContain('Uhr');
+  });
+});
+
+describe('Session names on display', () => {
+  afterEach(() => setLanguage('de'));
+
+  it('shows a stored default session name in the active language', () => {
+    setLanguage('en');
+    const session = strengthSession(
+      'session-default-name',
+      NOW - DAY,
+      [['barbell_bench_press', 'Bankdrücken', [{ weightKg: 80, reps: 8, at: 2 }]]],
+      { name: 'Krafttraining' },
+    );
+    const tree = create(<StrengthSessionDetail session={session} history={[session]} heartSummaries={{}} />);
+    expect(texts(tree)).toContain('"Strength training"');
+    expect(texts(tree)).not.toContain('"Krafttraining"');
+    expect(session.name).toBe('Krafttraining');
   });
 });

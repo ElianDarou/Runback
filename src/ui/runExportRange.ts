@@ -1,8 +1,17 @@
-/** Lokale Kalendertage; die exklusive Obergrenze folgt auch Sommerzeitwechseln. */
+import { tr } from '../domain/i18n';
+
+/** Local calendar days; the exclusive upper bound also holds across daylight-saving changes. */
 export function runExportRange(from: string, to: string) {
   const parse = (input: string) => {
     const match = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(input.trim());
-    if (!match) throw new Error('Gib beide Daten als TT.MM.JJJJ ein.');
+    if (!match) {
+      throw new Error(
+        tr(
+          'Gib beide Daten als TT.MM.JJJJ ein.',
+          'Enter both dates as DD.MM.YYYY.',
+        ),
+      );
+    }
     const [, day, month, year] = match.map(Number);
     const date = new Date(year, month - 1, day);
     if (
@@ -10,13 +19,20 @@ export function runExportRange(from: string, to: string) {
       date.getMonth() !== month - 1 ||
       date.getDate() !== day
     ) {
-      throw new Error('Gib ein gültiges Datum ein.');
+      throw new Error(tr('Gib ein gültiges Datum ein.', 'Enter a valid date.'));
     }
     return date;
   };
   const start = parse(from);
   const end = parse(to);
-  if (start > end) throw new Error('Wähle das Ende am oder nach dem Beginn.');
+  if (start > end) {
+    throw new Error(
+      tr(
+        'Wähle das Ende am oder nach dem Beginn.',
+        'Pick an end date on or after the start.',
+      ),
+    );
+  }
   end.setDate(end.getDate() + 1);
   return { from: start.getTime(), until: end.getTime() };
 }

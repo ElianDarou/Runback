@@ -7,19 +7,23 @@ import type {
 import type { RunSeries, SeriesRow } from './runSeries';
 import { formatPace } from './runSeries';
 import { segmentIsFlat } from './analysis';
+import { fixed, percentSign, tr } from './i18n';
 
 /**
- * Tiefere Einblicke in einen einzelnen Lauf für die Detailseite. Alles hier
- * ist Ableitung aus Aggregaten (Zeitbudget, Phasen, Abschnitte) und der
- * Darstellungsreihe — keine Rohsamples, keine Empfehlung, keine Bewertung
- * der Fitness. Wo ein Modell rechnet (Steigung, Wind, Wärme, Zonen), steht
- * es in der Ausgabe als Schätzung, und ohne Grundlage gibt es `undefined`
- * statt einer erfundenen Zahl (Grundregel 5 und 7).
+ * Deeper insights into a single run for the detail page. Everything here is
+ * derived from aggregates (time budget, phases, segments) and the display
+ * series — no raw samples, no recommendation, no fitness rating. Where a model
+ * computes (grade, wind, heat, zones), the output marks it as an estimate, and
+ * without a basis there is `undefined` instead of an invented number (ground
+ * rules 5 and 7).
+ *
+ * Verdict strings such as `'unclear'` or `'efficient'` are stable keys that
+ * the UI compares against. Show them through the `…Label()` functions.
  */
 export const INSIGHTS_VERSION = 'runback-insights-1';
 
 const DAY = 24 * 60 * 60 * 1000;
-/** Vergleichsfenster für „deine letzten Läufe“ und die Puls-Tempo-Kurve. */
+/** Comparison window for "your recent runs" and the heart rate–pace curve. */
 export const RECENT_WINDOW_DAYS = 120;
 export const RECENT_MAX_RUNS = 8;
 export const RECENT_MIN_RUNS = 3;
@@ -40,7 +44,7 @@ const percent = (value: number, reference: number): number =>
   (value / reference - 1) * 100;
 const isRunning = (run: RunSummary) => (run.sport ?? 'running') === 'running';
 
-/** Bewegungszeit, sonst Aufzeichnungszeit; undefined ohne belastbare Zeit. */
+/** Moving time, otherwise recorded time; undefined without reliable time. */
 export function movingSeconds(run: RunSummary): number | undefined {
   const seconds = run.time?.movingSeconds ?? run.durationSeconds;
   return finite(seconds) && seconds > 0 ? seconds : undefined;
@@ -53,7 +57,7 @@ function paceSecondsPerKm(run: RunSummary): number | undefined {
 }
 
 // ---------------------------------------------------------------------------
-// Bewegung: Zeitbudget, längster Abschnitt, Wechsel, Puls je Zustand
+// Movement: time budget, longest stretch, changes, heart rate per state
 // ---------------------------------------------------------------------------
 
 export interface TimeBudgetShares {
@@ -61,10 +65,10 @@ export interface TimeBudgetShares {
   walkingSeconds: number;
   stoppedSeconds: number;
   pausedSeconds: number;
-  /** Basis des Balkens: Laufen + Gehen + Stehen (ohne Pausen, ohne Unbekannt). */
+  /** Base of the bar: running + walking + standing (no pauses, no unknown). */
   totalSeconds: number;
 }
-/** Drei Anteile für den Balken. Ohne Zeitbudget (Altdaten, Importe) undefined. */
+/** Three shares for the bar. Undefined without a time budget (old data, imports). */
 export function timeBudgetShares(
   run: RunSummary,
 ): TimeBudgetShares | undefined {
@@ -102,7 +106,7 @@ export function movementInsight(run: RunSummary): MovementInsight | undefined {
 }
 
 // ---------------------------------------------------------------------------
-// Puls: Erholung in Gehpausen und nach dem Ende
+// Heart rate: recovery during walk breaks and after the end
 // ---------------------------------------------------------------------------
 
 function heartRateAt(
@@ -121,17 +125,17 @@ function heartRateAt(
 }
 
 export interface WalkRecovery {
-  /** Gehpausen ab 60 s nach einem Laufabschnitt, mit Puls an beiden Enden. */
+  /** Walk breaks from 60 s after a run stretch, with heart rate at both ends. */
   pauses: number;
-  /** Median des Pulsabfalls in der ersten Minute je Pause (bpm). */
+  /** Median heart rate drop in the first minute per break (bpm). */
   dropFirstMinute: number;
-  /** Tiefster Pulswert innerhalb der gewerteten Pausen. */
+  /** Lowest heart rate within the scored breaks. */
   lowestHeartRate?: number;
 }
 /**
- * Wie schnell sich der Puls beim Gehen beruhigt. Gewertet werden nur
- * Gehphasen von mindestens 60 s direkt nach einer Laufphase; der Abfall ist
- * Puls am Pausenbeginn minus Puls 60 s später.
+ * How fast the heart rate settles while walking. Only walk phases of at least
+ * 60 s directly after a run phase count; the drop is the heart rate at the
+ * start of the break minus the heart rate 60 s later.
  */
 export function walkRecovery(
   run: RunSummary,
@@ -178,13 +182,14 @@ export function walkRecovery(
 }
 
 export interface EndRecovery {
-  /** Pulsabfall in der ersten Minute nach dem letzten Laufabschnitt (bpm). */
+  /** Heart rate drop in the first minute after the last run stretch (bpm). */
   dropFirstMinute: number;
   heartRateAtEnd: number;
 }
 /**
- * Erholung nach dem Ende: Puls am Ende der letzten Laufphase minus Puls 60 s
- * später. Braucht mindestens 60 s Aufzeichnung danach mit Pulswerten.
+ * Recovery after the end: heart rate at the end of the last run phase minus the
+ * heart rate 60 s later. Needs at least 60 s of recording afterwards with heart
+ * rate values.
  */
 export function endRecovery(
   run: RunSummary,
@@ -214,24 +219,25 @@ export function endRecovery(
 }
 
 // ---------------------------------------------------------------------------
-// Pacing: Split, Gleichmäßigkeit, schnellster/langsamster km, Drift, GAP
+// Pacing: split, evenness, fastest/slowest km, drift, GAP
 // ---------------------------------------------------------------------------
 
 export type SplitKind = 'negative' | 'positive' | 'even';
-export type Evenness = 'sehr gleichmäßig' | 'gleichmäßig' | 'wechselhaft';
+/** Stable keys; show them through `evennessLabel()`. */
+export type Evenness = 'veryEven' | 'even' | 'uneven';
 export interface PacingVerdict {
   split: SplitKind;
   fadePercent: number;
   coefficientOfVariation: number;
   evenness: Evenness;
-  /** Index im Abschnittsarray des Laufs, nicht in der km-Tabelle. */
+  /** Index in the run's segment array, not in the km table. */
   fastestSegmentIndex?: number;
   slowestSegmentIndex?: number;
   fastestSecondsPerKm?: number;
   slowestSecondsPerKm?: number;
   sentence: string;
 }
-/** Nur volle, bewegte Abschnitte ohne größere GPS-Lücke zählen als Kilometer. */
+/** Only full, moving segments without a major GPS gap count as kilometers. */
 function ratedSegments(run: RunSummary) {
   return (run.segments ?? [])
     .map((s, index) => ({ s, index }))
@@ -246,6 +252,15 @@ function ratedSegments(run: RunSummary) {
 const segmentPace = (s: SegmentAggregate) =>
   ((s.movingSeconds ?? s.durationSeconds) / s.distanceMeters) * 1000;
 
+/** Label for the evenness of a pace profile. */
+export function evennessLabel(evenness: Evenness): string {
+  return {
+    veryEven: tr('sehr gleichmäßig', 'very even'),
+    even: tr('gleichmäßig', 'even'),
+    uneven: tr('wechselhaft', 'uneven'),
+  }[evenness];
+}
+
 export function pacingVerdict(
   pacing: PacingAnalysis | undefined,
   run: RunSummary,
@@ -259,7 +274,7 @@ export function pacingVerdict(
       : 'even';
   const cv = pacing.coefficientOfVariation;
   const evenness: Evenness =
-    cv < 0.04 ? 'sehr gleichmäßig' : cv < 0.08 ? 'gleichmäßig' : 'wechselhaft';
+    cv < 0.04 ? 'veryEven' : cv < 0.08 ? 'even' : 'uneven';
   const rated = ratedSegments(run);
   let fastest: { index: number; pace: number } | undefined;
   let slowest: { index: number; pace: number } | undefined;
@@ -271,10 +286,19 @@ export function pacingVerdict(
   const change = Math.abs(Math.round(pacing.fadePercent));
   const sentence =
     split === 'negative'
-      ? `Zweite Hälfte ${change} % schneller als die erste — ein Negativ-Split.`
+      ? tr(
+          `Zweite Hälfte ${change} % schneller als die erste — ein Negativ-Split.`,
+          `Second half ${change}% faster than the first — a negative split.`,
+        )
       : split === 'positive'
-      ? `Zweite Hälfte ${change} % langsamer als die erste.`
-      : 'Beide Hälften gleich schnell.';
+      ? tr(
+          `Zweite Hälfte ${change} % langsamer als die erste.`,
+          `Second half ${change}% slower than the first.`,
+        )
+      : tr(
+          'Beide Hälften gleich schnell.',
+          'Both halves at the same pace.',
+        );
   return {
     split,
     fadePercent: pacing.fadePercent,
@@ -289,15 +313,24 @@ export function pacingVerdict(
 }
 
 export interface HeartRateDrift {
-  /** Puls je Geschwindigkeit, zweite Hälfte gegenüber der ersten, in %. */
+  /** Heart rate per speed, second half compared with the first, in %. */
   percent: number;
-  verdict: 'aerob solide' | 'leichte Drift' | 'deutliche Drift';
+  /** Stable key; show it through `driftVerdictLabel()`. */
+  verdict: 'solidAerobic' | 'slightDrift' | 'clearDrift';
   segmentCount: number;
 }
+/** Label for a heart rate drift verdict. */
+export function driftVerdictLabel(verdict: HeartRateDrift['verdict']): string {
+  return {
+    solidAerobic: tr('aerob solide', 'aerobically solid'),
+    slightDrift: tr('leichte Drift', 'slight drift'),
+    clearDrift: tr('deutliche Drift', 'clear drift'),
+  }[verdict];
+}
 /**
- * Puls-Drift (aerobe Entkopplung): Verhältnis Puls / Geschwindigkeit in der
- * zweiten Hälfte gegenüber der ersten. Der erste Kilometer bleibt als
- * Einlaufen draußen, wenn danach noch vier Kilometer bleiben.
+ * Heart rate drift (aerobic decoupling): ratio of heart rate to speed in the
+ * second half compared with the first. The first kilometer is kept out as a
+ * warm-up if four kilometers remain after it.
  */
 export function heartRateDrift(run: RunSummary): HeartRateDrift | undefined {
   let rated = ratedSegments(run).filter(({ s }) => finite(s.avgHeartRate));
@@ -324,16 +357,12 @@ export function heartRateDrift(run: RunSummary): HeartRateDrift | undefined {
   return {
     percent: drift,
     verdict:
-      drift < 5
-        ? 'aerob solide'
-        : drift < 10
-        ? 'leichte Drift'
-        : 'deutliche Drift',
+      drift < 5 ? 'solidAerobic' : drift < 10 ? 'slightDrift' : 'clearDrift',
     segmentCount: rated.length,
   };
 }
 
-/** Meter je Herzschlag in Bewegung — vergleichbar über Läufe hinweg. */
+/** Meters per heartbeat while moving — comparable across runs. */
 export function metersPerBeat(run: RunSummary): number | undefined {
   const seconds = movingSeconds(run);
   if (
@@ -347,8 +376,8 @@ export function metersPerBeat(run: RunSummary): number | undefined {
 }
 
 /**
- * Energiekosten des Laufens je Steigung nach Minetti et al. 2002 (J/kg/m),
- * `grade` als Anteil (0,05 = 5 %). Gültig etwa bis ±30 %.
+ * Energy cost of running per gradient after Minetti et al. 2002 (J/kg/m),
+ * `grade` as a fraction (0.05 = 5 %). Valid up to about ±30 %.
  */
 export function minettiCost(grade: number): number {
   const i = Math.max(-0.3, Math.min(0.3, grade));
@@ -364,14 +393,14 @@ export function minettiCost(grade: number): number {
 export interface GradeAdjustedPace {
   realSecondsPerKm: number;
   adjustedSecondsPerKm: number;
-  /** Flach-Äquivalent je Abschnittsindex; nur Abschnitte mit Steigung. */
+  /** Flat equivalent per segment index; only segments with a grade. */
   perSegment: Record<number, number>;
   coveredMeters: number;
 }
 /**
- * Höhenkorrigiertes Tempo: welches Tempo derselbe Aufwand in der Ebene
- * ergeben hätte. Schätzung mit Nettosteigung je Abschnitt; Abschnitte ohne
- * Steigungswert bleiben unkorrigiert und zählen nicht als abgedeckt.
+ * Grade-adjusted pace: which pace the same effort would have produced on the
+ * flat. An estimate with the net grade per segment; segments without a grade
+ * value stay uncorrected and do not count as covered.
  */
 export function gradeAdjustedPace(
   run: RunSummary,
@@ -394,8 +423,8 @@ export function gradeAdjustedPace(
     (sum, s) => sum + s.distanceMeters,
     0,
   );
-  // Ohne Steigung auf mindestens der Hälfte der Strecke ist die Zahl kein
-  // Tempo des Laufs, sondern nur eines Ausschnitts.
+  // Without a grade on at least half the distance, the number is not the pace
+  // of the run but only the pace of a section.
   if (total > 0 && meters / total < 0.5) return undefined;
   return {
     realSecondsPerKm: (realSeconds / meters) * 1000,
@@ -406,19 +435,19 @@ export function gradeAdjustedPace(
 }
 
 // ---------------------------------------------------------------------------
-// Pulszonen mit Maxpuls aus Einstellung oder Schätzung
+// Heart rate zones with max heart rate from setting or estimate
 // ---------------------------------------------------------------------------
 
 export interface MaxHeartRate {
   value: number;
   source: 'setting' | 'estimate';
-  /** Läufe, aus denen geschätzt wurde (nur bei `estimate`). */
+  /** Runs the estimate was based on (only for `estimate`). */
   runs?: number;
 }
 /**
- * Maxpuls: eingestellt gewinnt. Sonst der höchste Wert aus den höchsten
- * Pulswerten der letzten Läufe, ohne den größten Einzelwert (Ausreißer eines
- * Gurts). Unter drei Läufen mit Puls gibt es keine Schätzung.
+ * Max heart rate: the setting wins. Otherwise the highest value from the peak
+ * heart rates of recent runs, without the single largest value (an outlier from
+ * a strap). With fewer than three runs with heart rate there is no estimate.
  */
 export function maxHeartRate(
   setting: number | undefined,
@@ -451,14 +480,24 @@ export interface HeartRateZones {
   zones: HeartRateZone[];
   coveredSeconds: number;
 }
-const ZONES: { zone: 1 | 2 | 3 | 4 | 5; label: string; from: number }[] = [
-  { zone: 1, label: 'sehr locker', from: 0 },
-  { zone: 2, label: 'locker', from: 60 },
-  { zone: 3, label: 'moderat', from: 70 },
-  { zone: 4, label: 'hart', from: 80 },
-  { zone: 5, label: 'maximal', from: 90 },
+const ZONES: { zone: 1 | 2 | 3 | 4 | 5; from: number }[] = [
+  { zone: 1, from: 0 },
+  { zone: 2, from: 60 },
+  { zone: 3, from: 70 },
+  { zone: 4, from: 80 },
+  { zone: 5, from: 90 },
 ];
-/** Zeit in fünf Zonen als Anteil vom Maxpuls, aus der Darstellungsreihe. */
+/** Label of a heart rate zone. */
+export function heartRateZoneLabel(zone: HeartRateZone['zone']): string {
+  return {
+    1: tr('sehr locker', 'very easy'),
+    2: tr('locker', 'easy'),
+    3: tr('moderat', 'moderate'),
+    4: tr('hart', 'hard'),
+    5: tr('maximal', 'maximum'),
+  }[zone];
+}
+/** Time in five zones as a share of max heart rate, from the display series. */
 export function heartRateZones(
   series: RunSeries | null,
   max: MaxHeartRate | undefined,
@@ -482,7 +521,7 @@ export function heartRateZones(
     coveredSeconds: covered,
     zones: ZONES.map((zone, i) => ({
       zone: zone.zone,
-      label: zone.label,
+      label: heartRateZoneLabel(zone.zone),
       fromPercent: zone.from,
       seconds: seconds[i],
       share: seconds[i] / covered,
@@ -491,7 +530,7 @@ export function heartRateZones(
 }
 
 // ---------------------------------------------------------------------------
-// Ermüdungsmuster: Tempo, Puls, Kadenz, Schrittlänge – erstes vs. letztes Drittel
+// Fatigue pattern: pace, heart rate, cadence, stride length – first vs. last third
 // ---------------------------------------------------------------------------
 
 export interface FatiguePattern {
@@ -499,13 +538,14 @@ export interface FatiguePattern {
   heartRateChangePercent?: number;
   cadenceChangePercent?: number;
   strideChangePercent?: number;
-  verdict: 'muskulär' | 'kreislauf' | 'bewusst' | 'stabil' | 'unklar';
+  /** Stable keys; the sentence is the display text. */
+  verdict: 'muscular' | 'circulation' | 'deliberate' | 'stable' | 'unclear';
   sentence: string;
 }
 /**
- * Erstes gegen letztes Drittel der bewegten Strecke. Kadenz und Schrittlänge
- * sinken bei müden Beinen, während der Puls bleibt; steigt der Puls bei
- * gleichem Tempo, war es eher Kreislauf oder Wärme.
+ * First against last third of the moving distance. Cadence and stride length
+ * drop when the legs tire while the heart rate stays; if the heart rate rises
+ * at the same pace, it was more likely circulation or heat.
  */
 export function fatiguePattern(
   run: RunSummary,
@@ -535,33 +575,51 @@ export function fatiguePattern(
   const hr = change(row => row.heartRate);
   const cadence = change(row => row.cadence);
   const strideChange = change(stride);
-  let verdict: FatiguePattern['verdict'] = 'unklar';
-  let sentence = 'Zu wenig Werte für ein Ermüdungsmuster.';
+  let verdict: FatiguePattern['verdict'] = 'unclear';
+  let sentence = tr(
+    'Zu wenig Werte für ein Ermüdungsmuster.',
+    'Too few values for a fatigue pattern.',
+  );
   const legsTired =
     (cadence !== undefined && cadence <= -3) ||
     (strideChange !== undefined && strideChange <= -4);
   if (pace !== undefined && hr !== undefined) {
     if (legsTired && hr <= 3) {
-      verdict = 'muskulär';
-      sentence =
-        'Zum Ende sinken Kadenz oder Schrittlänge, der Puls bleibt — eher die Beine als der Kreislauf.';
+      verdict = 'muscular';
+      sentence = tr(
+        'Zum Ende sinken Kadenz oder Schrittlänge, der Puls bleibt — eher die Beine als der Kreislauf.',
+        'Toward the end cadence or stride length drops while the heart rate holds — more the legs than circulation.',
+      );
     } else if (hr >= 5 && Math.abs(pace) <= 3) {
-      verdict = 'kreislauf';
-      sentence =
-        'Gleiches Tempo, aber der Puls steigt zum Ende — eher Kreislauf oder Wärme als die Beine.';
+      verdict = 'circulation';
+      sentence = tr(
+        'Gleiches Tempo, aber der Puls steigt zum Ende — eher Kreislauf oder Wärme als die Beine.',
+        'Same pace, but the heart rate rises toward the end — more circulation or heat than legs.',
+      );
     } else if (pace >= 5 && hr <= -2) {
-      verdict = 'bewusst';
-      sentence =
-        'Zum Ende langsamer und der Puls fällt — du hast bewusst rausgenommen.';
+      verdict = 'deliberate';
+      sentence = tr(
+        'Zum Ende langsamer und der Puls fällt — du hast bewusst rausgenommen.',
+        'Slower toward the end and the heart rate falls — you eased off on purpose.',
+      );
     } else if (Math.abs(pace) < 3 && hr < 5 && !legsTired) {
-      verdict = 'stabil';
-      sentence = 'Tempo, Puls und Schritt bleiben bis zum Ende stabil.';
+      verdict = 'stable';
+      sentence = tr(
+        'Tempo, Puls und Schritt bleiben bis zum Ende stabil.',
+        'Pace, heart rate and stride stay steady to the end.',
+      );
     } else {
-      sentence = 'Kein eindeutiges Ermüdungsmuster.';
+      sentence = tr(
+        'Kein eindeutiges Ermüdungsmuster.',
+        'No clear fatigue pattern.',
+      );
     }
   } else if (pace !== undefined && legsTired) {
-    verdict = 'muskulär';
-    sentence = 'Zum Ende sinken Kadenz oder Schrittlänge — eher die Beine.';
+    verdict = 'muscular';
+    sentence = tr(
+      'Zum Ende sinken Kadenz oder Schrittlänge — eher die Beine.',
+      'Toward the end cadence or stride length drops — more the legs.',
+    );
   }
   return {
     paceChangePercent: pace,
@@ -574,14 +632,14 @@ export function fatiguePattern(
 }
 
 // ---------------------------------------------------------------------------
-// Bedingungen: Wetter, Gegenwind-Abschnitte, Wind- und Wärmekosten
+// Conditions: weather, headwind segments, wind and heat costs
 // ---------------------------------------------------------------------------
 
 export interface WeatherInsight {
   temperatureC?: number;
   windMps?: number;
   windFromDeg?: number;
-  /** Kilometer mit spürbarem Gegenwind (≥ 1,5 m/s im Mittel), als Labels. */
+  /** Kilometers with noticeable headwind (≥ 1.5 m/s on average), as labels. */
   headwindKilometers: number[];
   tailwindKilometers: number[];
 }
@@ -618,9 +676,9 @@ export function weatherInsight(
   };
 }
 
-/** Luftwiderstand je Meter und kg bei 1,2 kg/m³, CdA 0,45 m², 70 kg. */
+/** Air drag per meter and kg at 1.2 kg/m³, CdA 0.45 m², 70 kg. */
 const AIR_COST = (0.5 * 1.2 * 0.45) / 70;
-/** Geschwindigkeit in ruhender Luft bei gleicher Leistung wie `speed` gegen `headwind`. */
+/** Speed in still air at the same power as `speed` against `headwind`. */
 function stillAirSpeed(speed: number, headwind: number): number {
   const power =
     (minettiCost(0) + AIR_COST * Math.max(speed + headwind, 0) ** 2) * speed;
@@ -635,14 +693,14 @@ function stillAirSpeed(speed: number, headwind: number): number {
   return (low + high) / 2;
 }
 export interface EnvironmentCost {
-  /** Sekunden je km, die der Wind gekostet (positiv) oder gebracht hat. */
+  /** Seconds per km that the wind cost (positive) or gave (negative). */
   windSecondsPerKm?: number;
-  /** Anteil der bewegten Strecke mit Windwert. */
+  /** Share of the moving distance with a wind value. */
   windCoverage?: number;
-  /** Sekunden je km über der Wärmeschwelle von 15 °C (0,3 % je Grad). */
+  /** Seconds per km above the 15 °C heat threshold (0.3 % per degree). */
   heatSecondsPerKm?: number;
 }
-/** Grobe Schätzung, was Wind und Wärme am Tempo geändert haben. */
+/** Rough estimate of how wind and heat changed the pace. */
 export function environmentCost(
   run: RunSummary,
   series: RunSeries | null,
@@ -679,7 +737,7 @@ export function environmentCost(
 }
 
 // ---------------------------------------------------------------------------
-// Vergleich mit dir selbst: letzte Läufe, gleiche Strecke, Puls-Tempo-Kurve
+// Comparison with yourself: recent runs, same route, heart rate–pace curve
 // ---------------------------------------------------------------------------
 
 export type Rating = 'better' | 'same' | 'slightly_worse' | 'worse';
@@ -694,21 +752,21 @@ export interface MetricComparison {
   metric: ComparedMetric;
   value: number;
   reference: number;
-  /** Abweichung in Prozent, Vorzeichen wie gemessen (Tempo: + = langsamer). */
+  /** Deviation in percent, sign as measured (pace: + = slower). */
   deltaPercent: number;
   rating: Rating;
 }
 export interface RecentComparison {
-  /** Anzahl der herangezogenen Läufe. */
+  /** Number of runs used. */
   count: number;
-  /** Ob alle Vergleichsläufe denselben Zweck hatten. */
+  /** Whether all comparison runs had the same purpose. */
   samePurpose: boolean;
   metrics: MetricComparison[];
 }
 /**
- * Richtung und Schwellen je Kennzahl. `better` heißt: über die Schwelle
- * hinaus in die gute Richtung; `slightly_worse` bis zur doppelten Schwelle
- * in die schlechte, darüber `worse`.
+ * Direction and thresholds per metric. `better` means past the threshold in the
+ * good direction; `slightly_worse` up to double the threshold in the bad one,
+ * beyond that `worse`.
  */
 const METRIC_RULES: Record<
   ComparedMetric,
@@ -734,9 +792,9 @@ export function rateDelta(
 }
 
 /**
- * Deine letzten Läufe: gleiche Sportart, davor, innerhalb von 120 Tagen,
- * höchstens acht. Gibt es drei mit demselben Zweck, zählen nur die; sonst
- * alle. Ein Vergleich braucht mindestens drei.
+ * Your recent runs: same sport, earlier, within 120 days, at most eight. If
+ * there are three with the same purpose, only those count; otherwise all of
+ * them. A comparison needs at least three.
  */
 export function recentRuns(
   run: RunSummary,
@@ -808,8 +866,8 @@ export function recentComparison(
     const reference = median(references);
     if (value === undefined || reference === undefined) return;
     if (references.length < RECENT_MIN_RUNS) return;
-    // Drift ist selbst ein Prozentwert; hier zählt der Unterschied in Punkten,
-    // gemessen an einer festen Spanne von 10 Punkten.
+    // Drift is a percentage itself; here the difference counts in points,
+    // measured against a fixed span of 10 points.
     const deltaPercent =
       metric === 'drift'
         ? ((value - reference) / 10) * 100
@@ -827,7 +885,7 @@ export function recentComparison(
   if (pacing) {
     const references = recent
       .map(other => {
-        // Fade der Vergleichsläufe aus deren Abschnitten, ohne Analyseobjekt.
+        // Fade of the comparison runs from their segments, without an analysis object.
         const rated = ratedSegments(other);
         if (rated.length < 4) return undefined;
         const half = Math.floor(rated.length / 2);
@@ -862,15 +920,15 @@ export function recentComparison(
 }
 
 export interface SameRouteComparison {
-  /** Wievielter Lauf auf dieser Strecke, diesen eingeschlossen. */
+  /** Which run on this route this is, counting this one. */
   ordinal: number;
   lastSeconds: number;
   currentSeconds: number;
   bestSeconds: number;
-  /** Positiv = langsamer als zuletzt. */
+  /** Positive = slower than last time. */
   deltaToLastSeconds: number;
 }
-/** Gleiche Strecke laut `context.routeId`; Zeit ist die Bewegungszeit. */
+/** Same route per `context.routeId`; the time is the moving time. */
 export function sameRouteComparison(
   run: RunSummary,
   history: RunSummary[],
@@ -907,13 +965,14 @@ export interface CurvePoint {
   heartRate: number;
 }
 export interface HeartRatePaceCurve {
-  /** Punkte dieses Laufs: flache, bewegte Kilometer. */
+  /** Points of this run: flat, moving kilometers. */
   points: CurvePoint[];
-  /** Regressionsgerade aus den letzten Läufen; fehlt bei zu wenig Spannweite. */
+  /** Regression line from recent runs; missing when the spread is too small. */
   line?: { slope: number; intercept: number; runs: number; points: number };
-  /** Mittlere Abweichung dieses Laufs von der Geraden in bpm. */
+  /** Mean deviation of this run from the line in bpm. */
   residualBpm?: number;
-  verdict?: 'effizienter' | 'wie sonst' | 'höher';
+  /** Stable keys; show them through the UI's own labels. */
+  verdict?: 'efficient' | 'usual' | 'higher';
 }
 function curvePoints(run: RunSummary): CurvePoint[] {
   return ratedSegments(run)
@@ -925,9 +984,9 @@ function curvePoints(run: RunSummary): CurvePoint[] {
     .filter(p => p.speedMps > 1 && p.speedMps < 8);
 }
 /**
- * Puls über Tempo: die Kilometer dieses Laufs gegen eine Gerade aus den
- * flachen Kilometern deiner letzten Läufe. Ein Lauf unter der Geraden war
- * bei gleichem Tempo pulsärmer als üblich.
+ * Heart rate over pace: the kilometers of this run against a line from the flat
+ * kilometers of your recent runs. A run below the line had a lower heart rate
+ * than usual at the same pace.
  */
 export function heartRatePaceCurve(
   run: RunSummary,
@@ -964,36 +1023,38 @@ export function heartRatePaceCurve(
     };
     result.residualBpm = residual;
     result.verdict =
-      residual <= -3 ? 'effizienter' : residual >= 3 ? 'höher' : 'wie sonst';
+      residual <= -3 ? 'efficient' : residual >= 3 ? 'higher' : 'usual';
   }
   return result;
 }
 
 // ---------------------------------------------------------------------------
-// Formatierung für Sätze, die mehrere Flächen teilen
+// Formatting for sentences that several surfaces share
 // ---------------------------------------------------------------------------
 
-/** Unter einer Minute als „−12 s“, darüber als „+1:05“. */
+/** Under a minute as "−12 s", above as "+1:05". */
 export function formatSignedSeconds(seconds: number): string {
   const rounded = Math.round(seconds);
   const sign = rounded > 0 ? '+' : rounded < 0 ? '−' : '±';
   const abs = Math.abs(rounded);
   return abs < 60 ? `${sign}${abs} s` : `${sign}${formatPace(abs)}`;
 }
-export function formatSignedPercent(value: number, digits = 0): string {
+/** Signed number without a unit; the unit is added by the caller. */
+export function formatSignedNumber(value: number, digits = 0): string {
   const rounded = Number(value.toFixed(digits));
   const sign = rounded > 0 ? '+' : rounded < 0 ? '−' : '±';
-  return `${sign}${Math.abs(rounded).toFixed(digits).replace('.', ',')} %`;
+  return `${sign}${fixed(Math.abs(rounded), digits)}`;
 }
-/** Wie eine Phase im Satz heißt; hält Glossar und UI zusammen. */
+export function formatSignedPercent(value: number, digits = 0): string {
+  return `${formatSignedNumber(value, digits)}${percentSign()}`;
+}
+/** How a phase reads in a sentence; keeps the glossary and the UI together. */
 export function phaseWord(state: MovementPhase['state']): string {
-  return (
-    {
-      RUN: 'gelaufen',
-      WALK: 'gegangen',
-      STOPPED: 'gestanden',
-      PAUSED: 'pausiert',
-      UNKNOWN: 'unbekannt',
-    } as const
-  )[state];
+  return {
+    RUN: tr('gelaufen', 'running'),
+    WALK: tr('gegangen', 'walking'),
+    STOPPED: tr('gestanden', 'standing'),
+    PAUSED: tr('pausiert', 'paused'),
+    UNKNOWN: tr('unbekannt', 'unknown'),
+  }[state];
 }

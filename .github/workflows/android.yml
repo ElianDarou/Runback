@@ -11,17 +11,19 @@ permissions:
   actions: read
   pull-requests: read
 
-# Keep main builds in order; a later push must not interrupt a publication.
+# Superseded PR checks stop immediately; main publications stay uninterrupted.
 concurrency:
   group: android-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   prepare:
-    name: Find an identical verified PR build
+    name: Select checks and verified PR build
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
+      android: ${{ steps.changes.outputs.android }}
+      server: ${{ steps.changes.outputs.server }}
       reuse: ${{ steps.reuse.outputs.reuse }}
       artifact: ${{ steps.reuse.outputs.artifact }}
       version: ${{ steps.reuse.outputs.version }}
@@ -30,10 +32,19 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          # PR base and the entire push range must be available, not just HEAD^.
+          fetch-depth: 0
+      - name: Check CI selection and release safety
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
+      - name: Select checks for changed inputs
+        id: changes
+        run: python3 scripts/select-checks.py
       - name: Verify whether the merged contents were already checked
         id: reuse
+        if: steps.changes.outputs.android == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          CHECK_SERVER: ${{ steps.changes.outputs.server }}
         run: python3 scripts/reuse-pr-build.py
       - name: Keep verified PR APKs for publication
         if: steps.reuse.outputs.reuse == 'true'
@@ -48,7 +59,10 @@ jobs:
   server:
     name: Check self-hosted server and Docker image
     needs: prepare
-    if: always() && !cancelled() && (needs.prepare.result != 'success' || needs.prepare.outputs.reuse != 'true')
+    if: >-
+      always() && !cancelled() &&
+      (needs.prepare.result != 'success' ||
+       (needs.prepare.outputs.server == 'true' && needs.prepare.outputs.reuse != 'true'))
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -72,7 +86,10 @@ jobs:
   build:
     name: Check and build phone + Wear OS
     needs: prepare
-    if: always() && !cancelled() && (needs.prepare.result != 'success' || needs.prepare.outputs.reuse != 'true')
+    if: >-
+      always() && !cancelled() &&
+      (needs.prepare.result != 'success' ||
+       (needs.prepare.outputs.android == 'true' && needs.prepare.outputs.reuse != 'true'))
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     outputs:
@@ -91,6 +108,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Restore Gradle dependencies and build cache
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-provider: basic
+          cache-read-only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
       - name: Assign a unique test version
         id: version
         env:
@@ -108,8 +130,6 @@ jobs:
         env:
           TZ: Europe/Berlin
         run: npm test -- --runInBand
-      - name: CI reuse safety tests
-        run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - name: Install Android build tools
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
         with:
@@ -126,11 +146,11 @@ jobs:
           VERSION_CODE: ${{ github.run_number }}
           VERSION_NAME: ${{ steps.version.outputs.version }}
         run: |
-          bash ./gradlew --no-daemon --max-workers=2 \
+          bash ./gradlew --no-daemon --build-cache --max-workers=2 \
             '-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -XX:+HeapDumpOnOutOfMemoryError' \
             -PversionCode="$VERSION_CODE" -PversionName="$VERSION_NAME" \
             -PreactNativeArchitectures=armeabi-v7a,arm64-v8a,x86_64 \
-            :core:testDebugUnitTest :app:testDebugUnitTest :app:lintRelease :wear:lintRelease \
+            :core:testDebugUnitTest :app:testDebugUnitTest :wear:testDebugUnitTest :app:lintRelease :wear:lintRelease \
             :app:assembleRelease :wear:assembleRelease
       - name: Verify and package APKs
         env:
@@ -153,6 +173,7 @@ jobs:
           path: |
             android/core/build/reports/tests/
             android/app/build/reports/tests/
+            android/wear/build/reports/tests/
             android/app/build/reports/lint-results-release.*
             android/wear/build/reports/lint-results-release.*
           if-no-files-found: ignore
@@ -161,12 +182,16 @@ jobs:
   release:
     name: Publish downloadable test release
     needs: [prepare, server, build]
-    # Skipped build jobs are expected only after prepare verifies the PR artifacts.
+    # A server-only/site/docs push never publishes APKs. A skipped server check
+    # is allowed only after selection proves that the server is unaffected.
     if: >-
       always() && !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' &&
-      ((needs.prepare.result == 'success' && needs.prepare.outputs.reuse == 'true' &&
+      needs.prepare.result == 'success' && needs.prepare.outputs.android == 'true' &&
+      ((needs.prepare.outputs.reuse == 'true' &&
         needs.build.result == 'skipped' && needs.server.result == 'skipped') ||
-       (needs.build.result == 'success' && needs.server.result == 'success'))
+       (needs.build.result == 'success' &&
+        (needs.server.result == 'success' ||
+         (needs.prepare.outputs.server == 'false' && needs.server.result == 'skipped'))))
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

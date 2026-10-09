@@ -61,8 +61,8 @@ const texts = (tree: TestRenderer.ReactTestRenderer) =>
         : String(node.props.children ?? ''),
     );
 
-describe('Verlauf eines Laufs', () => {
-  it('zeigt Gesamtwerte, Reiter nur für vorhandene Metriken und wählt beim Wischen einen Moment', async () => {
+describe('Run history', () => {
+  it('shows totals, tabs only for existing metrics, and picks a moment when swiping', async () => {
     const onSelect = jest.fn();
     let tree!: TestRenderer.ReactTestRenderer;
     await act(async () => {
@@ -93,11 +93,11 @@ describe('Verlauf eines Laufs', () => {
     await act(async () => {
       chart.props.onResponderGrant({ nativeEvent: { locationX: 340 - 40 } });
     });
-    // Ganz rechts mit Relief (40 px Rand) ist das Ende der Strecke.
+    // At the far right with relief (40 px margin) is the end of the route.
     expect(onSelect).toHaveBeenCalledWith(119);
   });
 
-  it('liest am aktiven Moment ab und markiert GPS-Lücken statt zu interpolieren', async () => {
+  it('reads at the active moment and marks GPS gaps instead of interpolating', async () => {
     let tree!: TestRenderer.ReactTestRenderer;
     await act(async () => {
       tree = TestRenderer.create(
@@ -113,7 +113,7 @@ describe('Verlauf eines Laufs', () => {
     const all = texts(tree).join('|');
     expect(all).toContain('km 0,52');
     expect(all).toContain('2:35');
-    // Tempo fehlt bei Zeile 30 (GPS-Lücke): Strich statt Zahl, kein Punkt auf der Linie.
+    // Pace missing at row 30 (GPS gap): dash instead of number, no dot on the line.
     const pathData = tree.root
       .findAllByType(Path)
       .map(node => String(node.props.d));
@@ -121,7 +121,7 @@ describe('Verlauf eines Laufs', () => {
     expect(tree.root.findAllByType(Circle)).toHaveLength(0);
   });
 
-  it('listet Kilometer als Balken und meldet Auswahl und Abwahl', async () => {
+  it('lists kilometers as bars and reports selection and deselection', async () => {
     const onSelect = jest.fn();
     const splits = kilometerSplits(run.segments);
     let tree!: TestRenderer.ReactTestRenderer;
@@ -130,7 +130,7 @@ describe('Verlauf eines Laufs', () => {
         <KilometerTable splits={splits} selected={1} onSelect={onSelect} />,
       );
     });
-    // Nur die Pressables selbst, nicht die Host-Views, die ihre Props erben.
+    // Only the pressables themselves, not the host views that inherit their props.
     const rows = tree.root.findAll(
       node =>
         typeof node.props.onPress === 'function' &&
@@ -153,14 +153,14 @@ describe('Verlauf eines Laufs', () => {
   });
 });
 
-describe('Karte mit aktivem Moment', () => {
+describe('Card with active moment', () => {
   const points = series.rows.map(row => ({
     latitude: row.latitude!,
     longitude: row.longitude!,
     time: row.elapsedSeconds * 1000,
   }));
 
-  it('zeigt Kilometer, Markierung und den aktiven Punkt und meldet Antippen', async () => {
+  it('shows kilometers, marker and the active point and reports taps', async () => {
     const onPick = jest.fn();
     let tree!: TestRenderer.ReactTestRenderer;
     await act(async () => {

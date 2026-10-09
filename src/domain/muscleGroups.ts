@@ -1,17 +1,17 @@
 import { catalogExercise, resolveCatalogExercise } from './catalog';
 import type { RegionBase } from './regions';
 import { isSetCompleted, type LoggedSet, type StrengthSession } from './strength';
+import { tr } from './i18n';
 
 /**
- * Grobe Muskelgruppen für die Kraftstatistik: „Wie viele Sätze bekommt meine
- * Brust je Woche?“. Feiner als das braucht die Frage nicht, und feiner tragen
- * es die Katalogwerte auch nicht.
+ * Coarse muscle groups for the strength statistics: "How many sets does my
+ * chest get per week?" The question does not need finer groups, and the
+ * catalog values would not carry finer ones either.
  *
- * Eine Übung zählt einen Arbeitssatz voll für jede ihrer Hauptgruppen.
- * Hauptgruppe ist jede Gruppe, auf die laut Katalog-Anteilen mindestens 25 %
- * entfallen; Übungen aus der freien Datenbank tragen keine Anteile, dort
- * zählen ihre Hauptmuskeln. Ohne beides bleibt der Satz „ohne Zuordnung“ —
- * geraten wird nicht.
+ * An exercise counts a working set in full for each of its primary groups.
+ * A primary group is any group that gets at least 25% of the catalog shares;
+ * exercises from the free database carry no shares, so their primary muscles
+ * count instead. Without either, the set stays "unassigned" — nothing is guessed.
  */
 export const MUSCLE_GROUPS_VERSION = 'muscle-groups-v2';
 export const PRIMARY_SHARE = 0.25;
@@ -30,20 +30,20 @@ export type MuscleGroup =
   | 'adductors'
   | 'calves';
 
-/** Reihenfolge von oben nach unten, wie man den Körper liest. */
-export const MUSCLE_GROUPS: { group: MuscleGroup; label: string }[] = [
-  { group: 'chest', label: 'Brust' },
-  { group: 'back', label: 'Rücken' },
-  { group: 'shoulders', label: 'Schultern' },
-  { group: 'biceps', label: 'Bizeps' },
-  { group: 'triceps', label: 'Trizeps' },
-  { group: 'forearms', label: 'Unterarme' },
-  { group: 'core', label: 'Bauch' },
-  { group: 'glutes', label: 'Gesäß' },
-  { group: 'quads', label: 'Oberschenkel vorn' },
-  { group: 'hamstrings', label: 'Oberschenkel hinten' },
-  { group: 'adductors', label: 'Oberschenkel innen' },
-  { group: 'calves', label: 'Waden' },
+/** Order from top to bottom, the way one reads the body. */
+export const MUSCLE_GROUPS: { group: MuscleGroup; label: string; en: string }[] = [
+  { group: 'chest', label: 'Brust', en: 'Chest' },
+  { group: 'back', label: 'Rücken', en: 'Back' },
+  { group: 'shoulders', label: 'Schultern', en: 'Shoulders' },
+  { group: 'biceps', label: 'Bizeps', en: 'Biceps' },
+  { group: 'triceps', label: 'Trizeps', en: 'Triceps' },
+  { group: 'forearms', label: 'Unterarme', en: 'Forearms' },
+  { group: 'core', label: 'Bauch', en: 'Core' },
+  { group: 'glutes', label: 'Gesäß', en: 'Glutes' },
+  { group: 'quads', label: 'Oberschenkel vorn', en: 'Quads' },
+  { group: 'hamstrings', label: 'Oberschenkel hinten', en: 'Hamstrings' },
+  { group: 'adductors', label: 'Oberschenkel innen', en: 'Inner thighs' },
+  { group: 'calves', label: 'Waden', en: 'Calves' },
 ];
 
 const REGION_GROUP: Record<RegionBase, MuscleGroup> = {
@@ -74,32 +74,34 @@ const REGION_GROUP: Record<RegionBase, MuscleGroup> = {
   tibialis: 'calves',
 };
 
-/** Hauptmuskeln der freien Datenbank, wie `catalogData.ts` sie übersetzt. */
+/** Primary muscles of the free database, by the database keys `catalogData.ts` stores. */
 const DATABASE_GROUP: Record<string, MuscleGroup> = {
-  Bauch: 'core',
-  'Hüfte außen': 'glutes',
-  'Oberschenkel innen': 'adductors',
-  Bizeps: 'biceps',
-  Waden: 'calves',
-  Brust: 'chest',
-  Unterarme: 'forearms',
-  Gesäß: 'glutes',
-  'Oberschenkel hinten': 'hamstrings',
-  Latissimus: 'back',
-  'Unterer Rücken': 'back',
-  'Mittlerer Rücken': 'back',
-  Nacken: 'back',
-  'Oberschenkel vorn': 'quads',
-  Schultern: 'shoulders',
-  Trapez: 'back',
-  Trizeps: 'triceps',
+  abdominals: 'core',
+  abductors: 'glutes',
+  adductors: 'adductors',
+  biceps: 'biceps',
+  calves: 'calves',
+  chest: 'chest',
+  forearms: 'forearms',
+  glutes: 'glutes',
+  hamstrings: 'hamstrings',
+  lats: 'back',
+  'lower back': 'back',
+  'middle back': 'back',
+  neck: 'back',
+  quadriceps: 'quads',
+  shoulders: 'shoulders',
+  traps: 'back',
+  triceps: 'triceps',
 };
 
+/** Visible name of a muscle group in the active language. */
 export function muscleGroupLabel(group: MuscleGroup): string {
-  return MUSCLE_GROUPS.find(entry => entry.group === group)?.label ?? group;
+  const entry = MUSCLE_GROUPS.find(item => item.group === group);
+  return entry ? tr(entry.label, entry.en) : group;
 }
 
-/** Hauptgruppen einer Übung, oder `undefined`, wenn der Katalog sie nicht kennt. */
+/** Primary groups of an exercise, or `undefined` if the catalog does not know it. */
 export function exerciseGroups(
   exerciseId: string,
   name?: string,
@@ -138,7 +140,7 @@ function order(groups: MuscleGroup[]): MuscleGroup[] {
   );
 }
 
-/** Abgehakt, nicht übersprungen, kein Aufwärmsatz. */
+/** Ticked, not skipped, not a warm-up set. */
 export function isWorkingSet(set: LoggedSet): boolean {
   return (
     isSetCompleted(set) &&
@@ -155,9 +157,9 @@ export interface MuscleGroupSets {
 
 export interface MuscleDistribution {
   version: typeof MUSCLE_GROUPS_VERSION;
-  /** Absteigend nach Sätzen; Gruppen ohne Satz fehlen. */
+  /** Descending by sets; groups without a set are left out. */
   groups: MuscleGroupSets[];
-  /** Arbeitssätze von Übungen, die der Katalog nicht kennt. */
+  /** Working sets of exercises the catalog does not know. */
   unassignedSets: number;
   workingSets: number;
 }
@@ -193,7 +195,11 @@ export function muscleDistribution(
   return {
     version: MUSCLE_GROUPS_VERSION,
     groups: MUSCLE_GROUPS.filter(entry => counts.has(entry.group))
-      .map(entry => ({ ...entry, sets: counts.get(entry.group) ?? 0 }))
+      .map(entry => ({
+        group: entry.group,
+        label: muscleGroupLabel(entry.group),
+        sets: counts.get(entry.group) ?? 0,
+      }))
       .sort((a, b) => b.sets - a.sets),
     unassignedSets,
     workingSets,

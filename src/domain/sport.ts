@@ -1,53 +1,65 @@
 /**
- * Sportart einer Aufzeichnung.
+ * Sport of a recording.
  *
- * Eine Aufzeichnung ist zuerst einmal nur das: Zeit, Strecke, Sensoren. Die
- * Sportart sagt, wie sie zu lesen ist. Laufen ist die Voreinstellung — ältere
- * Datensätze ohne Feld bleiben Läufe und werden weder migriert noch anders
- * ausgewertet. Auswertungen, die nur für Läufe gelten (Tempo, Fokus,
- * Wochenkilometer), erscheinen bei anderen Sportarten gar nicht statt falsch.
+ * A recording is first of all just that: time, distance, sensors. The sport
+ * says how to read it. Running is the default — older records without the field
+ * stay runs and are neither migrated nor evaluated differently. Analyses that
+ * only apply to runs (pace, focus, weekly kilometers) do not appear for other
+ * sports instead of showing wrong numbers.
  */
+import { tr } from './i18n';
 import type { Sport } from './types';
 
 export interface SportOption {
   value: Sport;
-  label: string;
+  readonly label: string;
 }
 
+// Labels are getters so they follow the active language at read time.
 export const SPORTS: SportOption[] = [
-  { value: 'running', label: 'Laufen' },
-  { value: 'cycling', label: 'Radfahren' },
+  {
+    value: 'running',
+    get label() {
+      return tr('Laufen', 'Running');
+    },
+  },
+  {
+    value: 'cycling',
+    get label() {
+      return tr('Radfahren', 'Cycling');
+    },
+  },
 ];
 
 export const DEFAULT_SPORT: Sport = 'running';
 
-/** Unbekannte oder fehlende Werte gelten als Lauf. */
+/** Unknown or missing values count as a run. */
 export function normalizeSport(value: unknown): Sport {
   return SPORTS.some(option => option.value === value)
     ? (value as Sport)
     : DEFAULT_SPORT;
 }
 
-/** Nur Läufe tragen Tempo-, Fokus- und Kilometerauswertungen. */
+/** Only runs carry pace, focus and kilometer analyses. */
 export function isRun(record: { sport?: Sport }): boolean {
   return normalizeSport(record.sport) === 'running';
 }
 
-/** Wörter, die in der Oberfläche mit der Sportart wechseln. */
+/** Words that change with the sport in the UI. */
 export interface SportWords {
-  /** „Laufen“ — Auswahl und Filter. */
+  /** "Running" — choice and filter. */
   label: string;
-  /** „Lauf“ — eine einzelne Aufzeichnung. */
+  /** "Run" — a single recording. */
   noun: string;
-  /** „Läufe“ */
+  /** "Runs" */
   plural: string;
-  /** „Laufzeit“ */
+  /** "Duration" — time spent on the activity. */
   durationLabel: string;
-  /** „Laufgefühl“ */
+  /** "Run feel" — the perceived effort field. */
   feelingLabel: string;
-  /** „Weiterlaufen“ — Abbruch der Rückfrage zum Beenden. */
+  /** "Keep running" — cancels the prompt to end. */
   continueLabel: string;
-  /** Titel nach Tageszeit, Reihenfolge wie DAY_PARTS in runTitle.ts. */
+  /** Titles by time of day, same order as DAY_PARTS in runTitle.ts. */
   dayParts: {
     night: string;
     evening: string;
@@ -58,63 +70,64 @@ export interface SportWords {
   };
 }
 
-const WORDS: Record<Sport, SportWords> = {
+// A function, not a constant: the texts depend on the active language.
+const words = (): Record<Sport, SportWords> => ({
   running: {
-    label: 'Laufen',
-    noun: 'Lauf',
-    plural: 'Läufe',
-    durationLabel: 'Laufzeit',
-    feelingLabel: 'Laufgefühl',
-    continueLabel: 'Weiterlaufen',
+    label: tr('Laufen', 'Running'),
+    noun: tr('Lauf', 'Run'),
+    plural: tr('Läufe', 'Runs'),
+    durationLabel: tr('Laufzeit', 'Duration'),
+    feelingLabel: tr('Laufgefühl', 'Run feel'),
+    continueLabel: tr('Weiterlaufen', 'Keep running'),
     dayParts: {
-      night: 'Nachtlauf',
-      evening: 'Abendlauf',
-      afternoon: 'Nachmittagslauf',
-      noon: 'Mittagslauf',
-      forenoon: 'Vormittagslauf',
-      morning: 'Morgenlauf',
+      night: tr('Nachtlauf', 'Night run'),
+      evening: tr('Abendlauf', 'Evening run'),
+      afternoon: tr('Nachmittagslauf', 'Afternoon run'),
+      noon: tr('Mittagslauf', 'Midday run'),
+      forenoon: tr('Vormittagslauf', 'Late morning run'),
+      morning: tr('Morgenlauf', 'Morning run'),
     },
   },
   cycling: {
-    label: 'Radfahren',
-    noun: 'Radfahrt',
-    plural: 'Radfahrten',
-    durationLabel: 'Fahrzeit',
-    feelingLabel: 'Fahrgefühl',
-    continueLabel: 'Weiterfahren',
+    label: tr('Radfahren', 'Cycling'),
+    noun: tr('Radfahrt', 'Ride'),
+    plural: tr('Radfahrten', 'Rides'),
+    durationLabel: tr('Fahrzeit', 'Ride time'),
+    feelingLabel: tr('Fahrgefühl', 'Ride feel'),
+    continueLabel: tr('Weiterfahren', 'Keep riding'),
     dayParts: {
-      night: 'Nachtfahrt',
-      evening: 'Abendfahrt',
-      afternoon: 'Nachmittagsfahrt',
-      noon: 'Mittagsfahrt',
-      forenoon: 'Vormittagsfahrt',
-      morning: 'Morgenfahrt',
+      night: tr('Nachtfahrt', 'Night ride'),
+      evening: tr('Abendfahrt', 'Evening ride'),
+      afternoon: tr('Nachmittagsfahrt', 'Afternoon ride'),
+      noon: tr('Mittagsfahrt', 'Midday ride'),
+      forenoon: tr('Vormittagsfahrt', 'Late morning ride'),
+      morning: tr('Morgenfahrt', 'Morning ride'),
     },
   },
-};
+});
 
 export function sportWords(sport: Sport | undefined): SportWords {
-  return WORDS[normalizeSport(sport)];
+  return words()[normalizeSport(sport)];
 }
 
 export function sportLabel(sport: Sport | undefined): string {
   return sportWords(sport).label;
 }
 
-/** „Lauf“ bzw. „Radfahrt“ — die Bezeichnung einer einzelnen Aufzeichnung. */
+/** "Run" or "Ride" — the name of a single recording. */
 export function sportNoun(sport: Sport | undefined): string {
   return sportWords(sport).noun;
 }
 
 /**
- * Läufe werden in min/km gelesen, Radfahrten in km/h. Beides ist dieselbe
- * Messung, nur anders herum — deshalb entscheidet die Sportart, nicht die Zahl.
+ * Runs are read in min/km, rides in km/h. Both are the same measurement, just
+ * inverted — so the sport decides, not the number.
  */
 export function usesPace(sport: Sport | undefined): boolean {
   return normalizeSport(sport) === 'running';
 }
 
-/** Ø Geschwindigkeit in km/h; ohne belastbare Strecke oder Zeit `null`. */
+/** Average speed in km/h; `null` without a usable distance or time. */
 export function speedKmh(record: {
   distanceMeters: number;
   durationSeconds: number;
@@ -130,13 +143,13 @@ export function speedKmh(record: {
   return record.distanceMeters / 1000 / (record.durationSeconds / 3600);
 }
 
-/** Unter 60 s und unter 100 m: versehentlich gestartet, kein Training (Setzung). */
+/** Under 60 s and under 100 m: started by accident, not training (a setting). */
 export const ACCIDENTAL_MAX_SECONDS = 60;
 export const ACCIDENTAL_MAX_METERS = 100;
 /**
- * Fehlstart: Die Aufzeichnung bleibt gespeichert, zählt aber weder in
- * Historie, Umfang noch Belastung. Beide Grenzen müssen unterschritten sein —
- * ein kurzer Sprint über 100 m oder ein Stehen über eine Minute ist kein Fehlstart.
+ * False start: the recording stays saved but counts neither in history, volume
+ * nor load. Both limits must be undercut — a short sprint over 100 m or standing
+ * still for over a minute is not a false start.
  */
 export function isAccidentalRun(record: {
   durationSeconds: number;

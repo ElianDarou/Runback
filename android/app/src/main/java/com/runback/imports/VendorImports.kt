@@ -1,5 +1,6 @@
 package com.runback.imports
 
+import com.runback.core.Lang
 import com.runback.core.StrengthSet
 import com.runback.core.StrengthWorkout
 import com.runback.core.StrongDuration
@@ -67,12 +68,12 @@ object VendorImports {
         val details: String? = null,
     )
 
-    // ---- Laufaktivitaeten von Gehen, Radfahren & Co. trennen ----
+    // ---- Separate running activities from walking, cycling & co. ----
 
-    /** Woerter, die eine Laufaktivitaet belegen. Deutsche Komposita ("Waldlauf") als Teilwort. */
+    /** Words that mark a running activity. German compounds ("Waldlauf") match as a substring. */
     private val RUN_PARTS = listOf("lauf", "jog", "trail", "treadmill")
     private val RUN_WORDS = listOf("run", "running")
-    /** Woerter, die eine andere Sportart belegen. */
+    /** Words that mark another sport. */
     private val OTHER_PARTS = listOf(
         "walk", "hik", "wander", "spazier", "nordic", "cycl", "bike", "biking", "fahrrad",
         "radfahr", "radeln", "radtour", "rennrad",
@@ -87,9 +88,9 @@ object VendorImports {
         Regex("(^|[^a-z])" + Regex.escape(word) + "([^a-z]|$)").containsMatchIn(text)
 
     /**
-     * true = Lauf, false = andere Sportart, null = keine Aussage moeglich.
-     * Laufwoerter gewinnen, damit "Trail Running" oder "Laufband" nicht an
-     * einem Teilwort der Gegenliste scheitern.
+     * true = run, false = other sport, null = no statement possible.
+     * Running words win, so "Trail Running" or "Laufband" do not fail on a
+     * substring of the opposite list.
      */
     fun isRunningActivityType(raw: String?): Boolean? {
         val text = raw?.trim()?.lowercase(Locale.ROOT)?.replace('_', ' ') ?: return null
@@ -102,25 +103,25 @@ object VendorImports {
     }
 
     /**
-     * Plausibilitaetsfenster fuer Laufgeschwindigkeit. Darunter liegt Gehen,
-     * darueber Radfahren — beides verzerrt sonst jede Tempoauswertung.
+     * Plausibility window for running speed. Below it is walking, above it
+     * cycling; both would otherwise distort every pace analysis.
      */
     const val MIN_RUN_SPEED_MPS = 1.5
     const val MAX_RUN_SPEED_MPS = 6.5
 
     fun plausibleRunSpeed(distanceMeters: Double, durationSeconds: Double): Boolean {
         if (!distanceMeters.isFinite() || !durationSeconds.isFinite()) return true
-        // Ohne Distanz oder Dauer laesst sich kein Tempo bilden; die Auswertung
-        // markiert solche Laeufe ohnehin als nicht tempotauglich.
+        // Without distance or duration no pace can be formed; the analysis
+        // marks such runs as unfit for pace analysis anyway.
         if (distanceMeters <= 0 || durationSeconds <= 0) return true
         val speed = distanceMeters / durationSeconds
         return speed >= MIN_RUN_SPEED_MPS && speed <= MAX_RUN_SPEED_MPS
     }
 
     /**
-     * Importfilter: Eine bekannte Sportart entscheidet allein, sonst das
-     * Tempofenster. So landen Spaziergaenge und Radfahrten nicht in der
-     * Laufhistorie und verzerren weder Paces noch Statistik.
+     * Import filter: a known sport decides alone, otherwise the pace window.
+     * This keeps walks and bike rides out of the run history, so they distort
+     * neither paces nor statistics.
      */
     fun acceptAsRun(activityType: String?, distanceMeters: Double, durationSeconds: Double): Boolean =
         when (isRunningActivityType(activityType)) {
@@ -381,7 +382,7 @@ object VendorImports {
         }
     }
 
-    // ---- Strong CSV: Pausen sind Metadaten des vorherigen Satzes, keine Sätze. ----
+    // ---- Strong CSV: rests are metadata of the previous set, not sets. ----
 
     private fun strongCsvRecords(text: String): List<String> {
         val records = ArrayList<String>()
@@ -396,15 +397,15 @@ object VendorImports {
             } else if (!quoted && (c == '\n' || c == '\r')) {
                 val record = text.substring(start, i)
                 if (record.isNotBlank()) records.add(record)
-                require(records.size <= MAX_CSV_ROWS + 1) { "Zu viele Zeilen im Strong-Export" }
+                require(records.size <= MAX_CSV_ROWS + 1) { Lang.tr("Zu viele Zeilen im Strong-Export", "Too many rows in the Strong export") }
                 if (c == '\r' && i + 1 < text.length && text[i + 1] == '\n') i++
                 start = i + 1
             }
             i++
         }
-        require(!quoted) { "Nicht geschlossene Anführungszeichen im Strong-Export" }
+        require(!quoted) { Lang.tr("Nicht geschlossene Anführungszeichen im Strong-Export", "Unclosed quotation marks in the Strong export") }
         text.substring(start).takeIf { it.isNotBlank() }?.let(records::add)
-        require(records.size <= MAX_CSV_ROWS + 1) { "Zu viele Zeilen im Strong-Export" }
+        require(records.size <= MAX_CSV_ROWS + 1) { Lang.tr("Zu viele Zeilen im Strong-Export", "Too many rows in the Strong export") }
         return records
     }
 
@@ -413,7 +414,7 @@ object VendorImports {
         if (lines.isEmpty()) return StrongParseResult(emptyList(), emptyMap(), 0, 0)
         val delimiter = csvDelimiter(lines.first())
         val header = splitCsvLine(lines.first(), delimiter)
-        require(isStrongHeader(header)) { "Keine Strong-Kopfzeile (Date, Exercise Name, Set Order erwartet)" }
+        require(isStrongHeader(header)) { Lang.tr("Keine Strong-Kopfzeile (Date, Exercise Name, Set Order erwartet)", "Not a Strong header (Date, Exercise Name, Set Order expected)") }
         val idx = header.map { it.trim().lowercase(Locale.ROOT) }
         fun col(vararg names: String): Int = names.firstNotNullOfOrNull { name -> idx.indexOf(name).takeIf { it >= 0 } } ?: -1
         val cNumber = col("workout #")
@@ -442,6 +443,8 @@ object VendorImports {
             val time = if (get(cDate).matches(Regex("[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2}"))) local
                 else parseTimeFlexible(get(cDate))
             if (time == null || time <= 0) { skipped++; continue }
+            // The fallback name feeds the workout id, so it stays German in every language;
+            // the app shows the localized name when it displays the session.
             val key = Key(time, get(cWorkout).ifBlank { "Krafttraining" }.take(120), get(cNumber).take(120), parseTimeFlexible(get(cDate)) ?: time)
             val group = groups.getOrPut(key) { Group(ArrayList(), null, "") }
             if (cells.size != header.size) { group.incomplete = true; group.lastExercise = ""; skipped++; continue }
@@ -480,7 +483,7 @@ object VendorImports {
                 bounded(get(cRpe), 10.0), get(cNotes).take(500), kind = kind,
                 distanceUnit = if (distanceHeader.contains(Regex("\\((?:meters|m|km|miles)\\)"))) "m" else "unknown"))
             group.lastExercise = exercise
-            require(group.sets.size <= 2000) { "Zu viele Sätze in einer Strong-Einheit" }
+            require(group.sets.size <= 2000) { Lang.tr("Zu viele Sätze in einer Strong-Einheit", "Too many sets in one Strong workout") }
         }
         val workouts = ArrayList<StrengthWorkout>()
         val setsByWorkout = LinkedHashMap<String, List<StrengthSet>>()
@@ -488,7 +491,7 @@ object VendorImports {
         for ((key, group) in groups) {
             if (group.sets.isEmpty()) continue
             val collision = (sameTimeNames[key.identityTime to key.name] ?: 0) > 1
-            // Ohne Zeitzone bleibt die Kennung unabhängig vom aktuellen Gerätestandort stabil.
+            // Without a time zone, the ID stays stable regardless of the current device location.
             val identity = "${key.identityTime}:${key.name}" + if (collision) ":${key.number}" else ""
             val id = "strong:" + UUID.nameUUIDFromBytes(identity.toByteArray(Charsets.UTF_8)).toString()
             val extra = JSONObject().put("workoutNotes", group.note).put("sets", group.sets.size)
@@ -867,9 +870,9 @@ object VendorImports {
         }
     }
 
-    // ---- Pulsverlauf aus Importen: Minutenmittel als Wellness-Art "heart_sample" ----
+    // ---- Heart rate from imports: minute averages as wellness kind "heart_sample" ----
 
-    /** Fasst Pulswerte je Minute zusammen; mehr Auflösung braucht keine Einheit, die nicht von der Uhr kommt. */
+    /** Summarizes heart rate values per minute; higher resolution would need a source other than the watch. */
     class HeartMinutes(private val source: String, private val maxMinutes: Int = 600_000) {
         private val sums = java.util.TreeMap<Long, DoubleArray>()
         var rejected = 0; private set
@@ -892,8 +895,8 @@ object VendorImports {
         name.lowercase(Locale.ROOT).let { it.endsWith(".json") && it.contains("heart_rate.bpm") }
 
     /**
-     * Google-Fit-Takeout („All Data/…heart_rate.bpm….json“): `{"Data Points":[{"fitValue":[{"value":{"fpVal":72}}],
-     * "startTimeNanos":…}]}`. Liest Zeichen für Zeichen, damit Jahre an Pulswerten nicht als Ganzes im Speicher liegen.
+     * Google Fit Takeout file ("All Data/…heart_rate.bpm….json"): `{"Data Points":[{"fitValue":[{"value":{"fpVal":72}}],
+     * "startTimeNanos":…}]}`. Reads character by character so years of heart rate values never sit in memory as a whole.
      */
     fun parseGoogleFitHeart(reader: java.io.Reader, onPoint: (Long, Double) -> Unit) {
         class Frame(val obj: Boolean) {

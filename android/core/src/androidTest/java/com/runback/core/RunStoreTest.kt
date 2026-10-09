@@ -46,7 +46,7 @@ class RunStoreTest {
             RawSample(start + 1_000, "heartRate", JSONObject().put("bpm", 140.0)),
             RawSample(start + 9_000, "heartRate", JSONObject().put("bpm", 150.0)),
         ))
-        // Nach dem Start kein Checkpoint mehr: Gerät ging nach 9 s aus.
+        // No checkpoint after the start: the device switched off after 9 s.
         store.recoverOrphanedRuns(start + 60_000)
 
         val active = store.active()!!
@@ -59,8 +59,8 @@ class RunStoreTest {
         assertEquals(1, interrupted.size)
         assertEquals(start + 9_000, interrupted.single().getLong("at"))
 
-        // Eine zweite Meldung (Dienst vom System neu gestartet) verdoppelt nichts.
-        store.markInterrupted("noch einmal")
+        // A second report (service restarted by the system) doubles nothing.
+        store.markInterrupted("once more")
         assertEquals(1, store.detail("crash-run").getJSONArray("events").let { events ->
             (0 until events.length()).count { events.getJSONObject(it).getString("type") == "interrupted" }
         })
@@ -84,7 +84,7 @@ class RunStoreTest {
         val active = store.active()!!
         assertEquals("interrupted", active.getString("status"))
         assertEquals(resumedAt + 4_000, active.getLong("endTime"))
-        // Bisher plus die 4 s nach dem Weiter — nicht die 1,5 s Pause davor.
+        // So far plus the 4 s after resume — not the 1.5 s pause before it.
         assertEquals(paused + 4_000, active.getLong("elapsedMs"))
         assertTrue(active.getLong("endTime") > start)
     }
@@ -138,7 +138,7 @@ class RunStoreTest {
         val id = started.getString("id")
         store.finish()
 
-        // Ältere Datensätze ohne Feld bleiben Läufe.
+        // Older records without the field stay runs.
         val legacy = store.start("easy", "test")
         assertEquals("running", legacy.getString("sport"))
         store.finish()
@@ -147,6 +147,35 @@ class RunStoreTest {
         val corrected = store.detail(id)
         assertEquals("running", corrected.getString("sport"))
         assertEquals("running", corrected.getJSONObject("feedback").getString("sport"))
+    }
+
+    @Test
+    fun liveDistanceMatchesSavedDistanceWithGpsNoiseAndKilometerSplits() {
+        val run = store.start()
+        val id = run.getString("id")
+        val start = run.getLong("startTime")
+        // Stationary jitter, followed by slow movement across two kilometer splits.
+        val samples = (0..1100).map { index ->
+            val offset = if (index <= 100) (index % 2) * 0.00002 else (index - 100) * 0.00002
+            RawSample(start + index * 1000L, "gps", JSONObject().put("latitude", 52.0 + offset)
+                .put("longitude", 13.0).put("accuracyM", 5.0))
+        }
+        store.appendSamples(id, samples.take(101))
+        assertEquals(0.0, store.active()!!.getDouble("distanceMeters"), 0.0)
+        // Live refresh is throttled to five seconds.
+        Thread.sleep(5_100)
+        store.appendSamples(id, samples.drop(101))
+        val live = store.active()!!.getDouble("distanceMeters")
+        assertEquals(2221.7, live, 0.1)
+        assertEquals(live, store.finish()!!.getDouble("distanceMeters"), 0.001)
+        val detail = store.detail(id)
+        assertEquals(live, detail.getDouble("distanceMeters"), 0.001)
+        val segments = detail.getJSONArray("segments")
+        assertEquals(3, segments.length())
+        assertEquals(live, (0 until segments.length()).sumOf { segments.getJSONObject(it).getDouble("distanceMeters") }, 0.001)
+        val timeline = store.timeline(id).getJSONArray("rows")
+        assertEquals(live, timeline.getJSONObject(timeline.length() - 1).getDouble("distanceMeters"), 0.001)
+        assertEquals(samples.size, store.rawSamples(id).length())
     }
 
     @Test
@@ -480,7 +509,7 @@ class RunStoreTest {
         assertEquals(0, store.listRuns().length())
         assertEquals(0, store.wellnessSummary().length())
         assertNull(store.getDocument("import_batch_a"))
-        // Kein Grabstein: derselbe Lauf lässt sich erneut importieren.
+        // No tombstone: the same run can be imported again.
         assertEquals("imported", store.addSummaryRun(importedSummary(start), "strava:1", "c").getString("status"))
         assertNotEquals(run.getString("id"), "")
     }
@@ -491,7 +520,7 @@ class RunStoreTest {
         val old = StrengthWorkout("strong:old", 1_000, "Pull", 3_600.0, "strong")
         store.addStrengthWorkout(old, sets, StrengthImport.document(old, sets))
         store.putDocument("strength_templates", JSONObject().put("templates", JSONArray().put(JSONObject().put("id", "import-template:strong:pull"))))
-        // Ein späterer Import mit derselben Einheit teilt sie, ohne sie dem älteren Import wegzunehmen.
+        // A later import with the same session shares it, without taking it from the older import.
         store.addStrengthWorkout(old, sets, null, "new")
         store.saveImportBatch(JSONObject().put("id", "new").put("createdAt", 5L))
         val legacy = (0 until store.importBatches().length()).map { store.importBatches().getJSONObject(it) }
@@ -584,7 +613,7 @@ class RunStoreTest {
         assertEquals(181, store.rawSamples(id).length())
         assertEquals(1, store.listRuns().length())
         assertEquals(start + 30 * 60_000L, store.runEndInfo(id).getLong("originalEndTime"))
-        // Der Editor sieht den ganzen Verlauf, die Detailseite nur bis zum Ende.
+        // The editor sees the whole track, the detail page only up to the end.
         assertTrue(store.series(id, 300, untrimmed = true).getJSONArray("rows").length() >
             store.series(id, 300).getJSONArray("rows").length())
         try { store.setRunEnd(id, start + 31 * 60_000L); fail("after the original end") } catch (_: IllegalArgumentException) {}
@@ -605,7 +634,7 @@ class RunStoreTest {
         val window = store.strengthWindow("strong:late")!!
         assertNull(window.end)
         assertEquals(start + 15_305_000L, window.reportedEnd)
-        // Pulsverlauf aus einem anderen Import; ein Tagesmittel (mit Ende) zählt nicht.
+        // Heart rate track from another import; a daily average (with an end) does not count.
         store.addWellnessBatch((0 until 120).map { WellnessRow("h:$it", "heart_sample", start + it * 60_000L,
             value = 100.0 + it, unit = "bpm", source = "fitbit") } +
             WellnessRow("day", "heart_rate", start, start + 86_399_000L, 60.0, "bpm", "fitbit"), "hr")
@@ -617,7 +646,7 @@ class RunStoreTest {
         assertEquals(100.0, heart.getDouble("minBpm"), 0.0)
         assertEquals(174.0, heart.getDouble("maxBpm"), 0.0)
         try { store.setStrengthEnd("strong:late", start - 1); fail("before start") } catch (_: IllegalArgumentException) {}
-        // Löschen des Puls-Imports nimmt den Puls mit; die Korrektur hängt an der Einheit.
+        // Deleting the heart rate import takes the heart rate with it; the correction stays with the session.
         store.deleteImportBatch("hr")
         assertNull(store.importedHeart(start, start + 75 * 60_000L))
         store.deleteImportBatch("b")
@@ -641,7 +670,7 @@ class RunStoreTest {
         val samples = JSONArray()
         for (i in 0..360) samples.put(JSONObject().put("time", start + i * 10_000L).put("kind", "gps")
             .put("values", JSONObject().put("latitude", 52.0 + i * 0.00027).put("longitude", 13.0).put("accuracyM", 5.0)))
-        // 60 Minuten Start bis Ende, aber nur 45 Minuten Aufzeichnung und kein Pausenereignis (FIT-Import).
+        // 60 minutes from start to end, but only 45 minutes recorded and no pause event (FIT import).
         val id = store.addImportedRun(JSONObject().put("startTime", start).put("endTime", start + 3_600_000L)
             .put("durationSeconds", 2_700.0).put("importVersion", "vendor-import-v2"), samples, "fit-pauses").getString("id")
         assertTrue(store.runEndInfo(id).getString("blockedReason").contains("Pausen"))

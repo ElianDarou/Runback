@@ -1,27 +1,27 @@
 /**
- * Datumsfelder zeigen und nehmen das deutsche Format (TT.MM.JJJJ);
- * gespeichert wird weiter der Kalendertag als JJJJ-MM-TT.
+ * Date fields show and accept DD.MM.YYYY in both languages.
+ * The calendar day is still stored as YYYY-MM-DD.
  */
 
 const pad = (value: number) => String(value).padStart(2, '0');
 
-/** „2026-11-08“ → „08.11.2026“. Leer bleibt leer, Unlesbares bleibt stehen. */
+/** "2026-11-08" → "08.11.2026". Empty stays empty; unreadable input is kept as is. */
 export function dateToInput(iso: string | undefined | null): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec((iso ?? '').trim());
   return match ? `${match[3]}.${match[2]}.${match[1]}` : (iso ?? '').trim();
 }
 
 /**
- * „8.11.2026“ oder „08.11.2026“ → „2026-11-08“. Leer ergibt „“, ein
- * ungültiger Tag `null` — es wird nichts geraten.
+ * "8.11.2026" or "08.11.2026" → "2026-11-08". Empty gives "", an invalid day
+ * gives `null` — nothing is guessed.
  */
 export function inputToDate(input: string): string | null {
   const text = input.trim();
   if (!text) return '';
-  const german = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(text);
+  const dotted = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(text);
   const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
-  const [year, month, day] = german
-    ? [Number(german[3]), Number(german[2]), Number(german[1])]
+  const [year, month, day] = dotted
+    ? [Number(dotted[3]), Number(dotted[2]), Number(dotted[1])]
     : iso
     ? [Number(iso[1]), Number(iso[2]), Number(iso[3])]
     : [NaN, NaN, NaN];

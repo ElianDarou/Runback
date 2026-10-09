@@ -31,7 +31,6 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.speech.tts.TextToSpeech
 import android.util.Log
-import java.util.Locale
 import java.util.UUID
 import org.json.JSONObject
 
@@ -81,8 +80,8 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
         worker = Handler(workerThread.looper)
         activeService = this
         (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(
-            NotificationChannel(CHANNEL, "Laufaufzeichnung", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "GPS- und Sensoraufzeichnung während eines Laufs"
+            NotificationChannel(CHANNEL, Lang.tr("Laufaufzeichnung", "Run recording"), NotificationManager.IMPORTANCE_LOW).apply {
+                description = Lang.tr("GPS- und Sensoraufzeichnung während eines Laufs", "GPS and sensor recording during a run")
                 setShowBadge(false)
             }
         )
@@ -94,8 +93,8 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
     }
 
     /**
-     * Gerät fährt herunter (auch bei leerem Akku): letzte Messwerte schreiben
-     * und den Lauf an dieser Stelle unterbrechen, solange noch Zeit ist.
+     * Device shuts down (also when the battery is empty): write the last readings
+     * and interrupt the run at this point while there is still time.
      */
     private val shutdownReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -106,7 +105,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
                     if (activeId != null && store.active()?.optString("status") == "recording") {
                         recording = false
                         endListening()
-                        store.markInterrupted("Gerät wurde ausgeschaltet. Bisherige Daten sind gesichert.")
+                        store.markInterrupted(Lang.tr("Gerät wurde ausgeschaltet. Bisherige Daten sind gesichert.", "The device was switched off. Data so far is saved."))
                     }
                 } catch (error: Exception) {
                     Log.e(TAG, "Could not persist recording before shutdown", error)
@@ -129,7 +128,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
         syncPeers = intent?.getBooleanExtra("syncPeers", true) ?: true
         // Meet the foreground-service deadline before any disk or sensor work is queued.
         try {
-            val notification = notification("Aufzeichnung wird vorbereitet", false)
+            val notification = notification(Lang.tr("Aufzeichnung wird vorbereitet", "Preparing recording"), false)
             if (Build.VERSION.SDK_INT >= 29) {
                 var serviceTypes = 0
                 if (allowLocation && hasLocationPermission()) serviceTypes = serviceTypes or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
@@ -143,8 +142,9 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
         } catch (error: RuntimeException) {
             Log.e(TAG, "Foreground recording could not start", error)
             worker.post {
-                runCatching { store.markInterrupted("Aufzeichnung konnte nicht starten: Standortberechtigung prüfen.") }
-                broadcastWarning("foreground", "Aufzeichnung konnte nicht starten. Standortberechtigung prüfen.")
+                val message = Lang.tr("Aufzeichnung konnte nicht starten. Standortberechtigung prüfen.", "Recording could not start. Check the location permission.")
+                runCatching { store.markInterrupted(message) }
+                broadcastWarning("foreground", message)
                 stopSelf(startId)
             }
             return START_NOT_STICKY
@@ -152,7 +152,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
         worker.post {
             try {
                 if (intent == null) {
-                    store.markInterrupted("Aufzeichnung wurde vom System unterbrochen. Bitte bewusst fortsetzen.")
+                    store.markInterrupted(Lang.tr("Aufzeichnung wurde vom System unterbrochen. Bitte bewusst fortsetzen.", "The system interrupted the recording. Resume it on purpose."))
                     shutdown()
                     return@post
                 }
@@ -164,7 +164,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
                     val requestedRunId = intent.getStringExtra("runId")
                     if (!requestedRunId.isNullOrBlank() && requestedRunId != activeId &&
                         !(intent.action == FINISH && store.runStatus(requestedRunId) == "completed")) {
-                        Log.w(TAG, "Ignoriere Befehl für nicht aktiven Lauf: $requestedRunId")
+                        Log.w(TAG, "Ignoring command for inactive run: $requestedRunId")
                         shutdown()
                         return@post
                     }
@@ -230,6 +230,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
                     }
                     else -> shutdown()
                 }
+                publishMusicState()
             } catch (error: Exception) {
                 failRecording(error)
             }
@@ -246,22 +247,22 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
         renewWakeLock()
         activeId?.let { runId ->
             runCatching { BleSensors.get(this).startRecording(runId) }
-                .onFailure { warn("ble_unavailable", "Bluetooth-Sensoren konnten nicht starten: ${it.message.orEmpty()}") }
+                .onFailure { warn("ble_unavailable", Lang.tr("Bluetooth-Sensoren konnten nicht starten: ${it.message.orEmpty()}", "Bluetooth sensors could not start: ${it.message.orEmpty()}")) }
         }
-        // Laufstil braucht Beschleunigung und Drehung in hoher Rate; gespeichert
-        // werden weiterhin nur 10 Hz Beschleunigung und je 10 s ein Laufstil-Fenster.
+        // Gait needs acceleration and rotation at a high rate; only 10 Hz acceleration
+        // and one gait window every 10 s are still stored.
         gait = gaitRecorder()
         val periodUs = if (gait != null) (1_000_000 / gaitRateHz()).toInt() else 100_000
-        registerSensor(Sensor.TYPE_ACCELEROMETER, "Beschleunigungssensor", periodUs)
-        if (gait != null) registerSensor(Sensor.TYPE_GYROSCOPE, "Gyroskop", periodUs)
-        registerSensor(Sensor.TYPE_PRESSURE, "Barometer")
+        registerSensor(Sensor.TYPE_ACCELEROMETER, Lang.tr("Beschleunigungssensor", "Accelerometer"), periodUs)
+        if (gait != null) registerSensor(Sensor.TYPE_GYROSCOPE, Lang.tr("Gyroskop", "Gyroscope"), periodUs)
+        registerSensor(Sensor.TYPE_PRESSURE, Lang.tr("Barometer", "Barometer"))
         if (hasHeartPermission()) {
-            registerSensor(Sensor.TYPE_HEART_RATE, "Pulssensor")
+            registerSensor(Sensor.TYPE_HEART_RATE, Lang.tr("Pulssensor", "Heart rate sensor"))
         }
-        if (!allowLocation) warn("gps_background_permission", "Standort bleibt beim Fernstart aus. Die Aufzeichnung läuft mit den verfügbaren Uhr- oder Sensorsignalen.")
-        if (allowLocation && !hasLocationPermission()) warn("gps_permission", "Standortfreigabe fehlt. Die Aufzeichnung läuft ohne GPS-Punkte.")
+        if (!allowLocation) warn("gps_background_permission", Lang.tr("Standort bleibt beim Fernstart aus. Die Aufzeichnung läuft mit den verfügbaren Uhr- oder Sensorsignalen.", "Location stays off for the remote start. The recording runs with the watch or sensor signals available."))
+        if (allowLocation && !hasLocationPermission()) warn("gps_permission", Lang.tr("Standortfreigabe fehlt. Die Aufzeichnung läuft ohne GPS-Punkte.", "Location permission is missing. The recording runs without GPS points."))
         val providerCount = requestLocationProviders()
-        if (providerCount == 0) warn("gps_disabled", "Standort ist ausgeschaltet. Die Aufzeichnung läuft ohne GPS-Punkte.")
+        if (providerCount == 0) warn("gps_disabled", Lang.tr("Standort ist ausgeschaltet. Die Aufzeichnung läuft ohne GPS-Punkte.", "Location is turned off. The recording runs without GPS points."))
         worker.removeCallbacks(tick)
         worker.postDelayed(tick, FLUSH_INTERVAL_MS)
     }
@@ -279,13 +280,13 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
                     providerCount++
                 }
             } catch (error: RuntimeException) {
-                warn("location_$provider", "Standortquelle $provider nicht verfügbar: ${error.message.orEmpty()}")
+                warn("location_$provider", Lang.tr("Standortquelle $provider nicht verfügbar: ${error.message.orEmpty()}", "Location source $provider not available: ${error.message.orEmpty()}"))
             }
         }
         return providerCount
     }
 
-    /** Nur Läufe bekommen einen Laufstil; die Uhr sitzt immer am Handgelenk. */
+    /** Only runs get a running form; the watch is always on the wrist. */
     private fun gaitRecorder(): GaitRecorder? {
         val session = store.active() ?: return null
         if (session.optString("sport", "running") != "running") return null
@@ -294,7 +295,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
         return GaitRecorder(placement, gaitRateHz())
     }
 
-    /** Uhr 50 Hz schont den Akku und reicht für den Armschwung; Handy 100 Hz für den Rumpf. */
+    /** Watch at 50 Hz saves battery and is enough for the arm swing; phone at 100 Hz for the trunk. */
     private fun gaitRateHz(): Double = if (recordingSource == WearProtocol.WATCH_SOURCE) 50.0 else 100.0
 
     private fun storeGait(window: Gait.Window) {
@@ -312,15 +313,15 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
     private fun registerSensor(type: Int, label: String, periodUs: Int = 100_000) {
         val sensor = sensors.getDefaultSensor(type)
         if (sensor == null) {
-            if (type != Sensor.TYPE_HEART_RATE) warn("sensor_$type", "$label ist auf diesem Gerät nicht verfügbar.")
+            if (type != Sensor.TYPE_HEART_RATE) warn("sensor_$type", Lang.tr("$label ist auf diesem Gerät nicht verfügbar.", "$label is not available on this device."))
             return
         }
         try {
             if (!sensors.registerListener(this, sensor, periodUs, worker)) {
-                warn("sensor_$type", "$label konnte nicht gestartet werden.")
+                warn("sensor_$type", Lang.tr("$label konnte nicht gestartet werden.", "$label could not start."))
             }
         } catch (error: RuntimeException) {
-            warn("sensor_$type", "$label ist nicht verfügbar: ${error.message.orEmpty()}")
+            warn("sensor_$type", Lang.tr("$label ist nicht verfügbar: ${error.message.orEmpty()}", "$label is not available: ${error.message.orEmpty()}"))
         }
     }
 
@@ -338,6 +339,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
             if (!recording) return
             try {
                 flush()
+                publishMusicState()
                 val now = SystemClock.elapsedRealtime()
                 if (now - lastCheckpoint >= CHECKPOINT_INTERVAL_MS) {
                     activeId?.let { store.checkpoint(it) }
@@ -401,7 +403,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
             .put("accuracyM", location.accuracy.toDouble()).put("provider", location.provider ?: "unknown")
             .put("elapsedRealtimeNanos", location.elapsedRealtimeNanos)
         if (location.hasAltitude()) values.put("altitudeM", location.altitude)
-        // Ohne vertikale Genauigkeit ist GPS-Höhe nicht bewertbar (RunElevation).
+        // Without vertical accuracy, GPS altitude cannot be judged (RunElevation).
         if (location.hasVerticalAccuracy()) values.put("verticalAccuracyM", location.verticalAccuracyMeters.toDouble())
         if (location.hasSpeed()) values.put("speedMps", location.speed.toDouble())
         if (location.hasBearing()) values.put("bearingDeg", location.bearing.toDouble())
@@ -434,7 +436,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
     override fun onInit(status: Int) {
         routeSpeechReady = status == TextToSpeech.SUCCESS
         if (routeSpeechReady) {
-            routeSpeech?.language = Locale.GERMANY
+            routeSpeech?.language = Lang.locale()
         }
     }
 
@@ -471,7 +473,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
         targetGuidance = RunTargetGuidance.fromJson(session.optJSONObject("target"))
         targetGuidance?.reset(session.optLong("elapsedMs", 0L), resumed)
         latestGuidanceGpsAt = 0L
-        // Neuanfang nach Pause/Prozessverlust: kein erfundenes Tempo für den angebrochenen Kilometer.
+        // Fresh start after a pause or process loss: no invented pace for the partly run kilometer.
         runAnnouncements = if (session.optString("sport", "running") == "running")
             RunAnnouncements.fromJson(session.optJSONObject("target")?.optJSONObject("announcements")) else null
         runAnnouncements?.onProgress(session.optDouble("distanceMeters", 0.0), session.optDouble("elapsedMs", 0.0) / 1000,
@@ -605,7 +607,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
             val after = points.optJSONObject(index + 2) ?: continue
             val delta = bearingDelta(currentBearing, bearingDegrees(before, after))
             if (kotlin.math.abs(delta) >= 45.0 && distance >= 35.0) {
-                val direction = if (delta > 0) "rechts" else "links"
+                val direction = if (delta > 0) Lang.tr("rechts", "right") else Lang.tr("links", "left")
                 return RouteTurn(index, distance, direction)
             }
             val next = points.optJSONObject(index + 1) ?: continue
@@ -633,7 +635,10 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
         if (progress.distanceFromRoute > 80.0) {
             if (!offRouteAnnounced || now - lastOffRouteCueAt >= 60_000L) {
                 cues.add(
-                    "Du bist ungefähr ${formatDistanceSpeech(progress.distanceFromRoute)} neben der geplanten Route.",
+                    Lang.tr(
+                        "Du bist ungefähr ${formatDistanceSpeech(progress.distanceFromRoute)} neben der geplanten Route.",
+                        "You are about ${formatDistanceSpeech(progress.distanceFromRoute)} off the planned route.",
+                    ),
                 )
                 offRouteAnnounced = true
                 lastOffRouteCueAt = now
@@ -643,7 +648,10 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
         }
         val turn = nextTurnCue(progress)
         if (turn != null && turn.distanceMeters <= 120.0 && turn.index > lastAnnouncedTurnIndex) {
-            cues.add("In ungefähr ${formatDistanceSpeech(turn.distanceMeters)} ${turn.direction} abbiegen.")
+            cues.add(Lang.tr(
+                "In ungefähr ${formatDistanceSpeech(turn.distanceMeters)} ${turn.direction} abbiegen.",
+                "In about ${formatDistanceSpeech(turn.distanceMeters)} turn ${turn.direction}.",
+            ))
             lastAnnouncedTurnIndex = turn.index
         }
         if (cues.isNotEmpty()) speakRoute(cues.joinToString(" "))
@@ -652,7 +660,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
     private fun maybeSpeakRoute(progress: RouteProgress?) {
         if (!routeSpeechReady || routePlan == null) return
         val session = store.active() ?: return
-        // Explizite Zwischenstand-Einstellung gilt auch auf Routen; Navigation bleibt separat.
+        // An explicit progress-announcement setting also applies on routes; navigation stays separate.
         if (session.optJSONObject("target")?.has("announcements") == true) return
         val distance = session.optDouble("distanceM", 0.0)
         refreshRouteVoice(distance)
@@ -665,17 +673,27 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
         if (routeVoice.optBoolean("pace", true)) {
             val elapsedSeconds = session.optDouble("elapsedMs", 0.0) / 1_000.0
             val pace = if (distance >= 20.0 && elapsedSeconds > 0.0) elapsedSeconds / (distance / 1_000.0) else Double.NaN
-            parts.add(if (pace.isFinite()) "Dein Pace ist ${formatPaceSpeech(pace) } pro Kilometer." else "Dein Pace ist noch nicht verfügbar.")
+            parts.add(if (pace.isFinite()) {
+                Lang.tr("Dein Pace ist ${formatPaceSpeech(pace) } pro Kilometer.", "Your pace is ${formatPaceSpeech(pace) } per kilometer.")
+            } else Lang.tr("Dein Pace ist noch nicht verfügbar.", "Your pace is not available yet."))
         }
         if (routeVoice.optBoolean("distance", true)) {
-            parts.add("Du bist ${formatDistanceSpeech(distance)} gelaufen.")
+            parts.add(Lang.tr("Du bist ${formatDistanceSpeech(distance)} gelaufen.", "You have run ${formatDistanceSpeech(distance)}."))
         }
         if (routeVoice.optBoolean("navigation", true) && progress != null) {
-            parts.add("Noch ungefähr ${formatDistanceSpeech(progress.remainingMeters)} auf der geplanten Route.")
+            parts.add(Lang.tr(
+                "Noch ungefähr ${formatDistanceSpeech(progress.remainingMeters)} auf der geplanten Route.",
+                "About ${formatDistanceSpeech(progress.remainingMeters)} left on the planned route.",
+            ))
         }
         if (routeVoice.optBoolean("heartRate", false)) {
             val heartRate = session.optDouble("lastHeartRate", Double.NaN)
-            if (heartRate.isFinite()) parts.add("Dein Puls liegt bei ${heartRate.toInt()} Schlägen pro Minute.")
+            if (heartRate.isFinite()) {
+                parts.add(Lang.tr(
+                    "Dein Puls liegt bei ${heartRate.toInt()} Schlägen pro Minute.",
+                    "Your heart rate is ${heartRate.toInt()} beats per minute.",
+                ))
+            }
         }
         if (parts.isNotEmpty()) speakRoute(parts.joinToString(" "))
     }
@@ -705,11 +723,13 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
     }
 
     private fun formatDistanceSpeech(meters: Double): String =
-        if (!meters.isFinite()) "unbekannter Entfernung" else String.format(Locale.GERMANY, "%.1f Kilometer", meters / 1_000.0)
+        if (!meters.isFinite()) Lang.tr("unbekannter Entfernung", "unknown distance")
+        else String.format(Lang.locale(), Lang.tr("%.1f Kilometer", "%.1f kilometers"), meters / 1_000.0)
 
     private fun formatPaceSpeech(seconds: Double): String {
         val rounded = seconds.coerceAtLeast(0.0).toLong()
-        return "${rounded / 60}:${(rounded % 60).toString().padStart(2, '0')} Minuten"
+        val time = "${rounded / 60}:${(rounded % 60).toString().padStart(2, '0')}"
+        return Lang.tr("$time Minuten", "$time minutes")
     }
 
     private fun distanceMeters(firstLat: Double, firstLon: Double, secondLat: Double, secondLon: Double): Double {
@@ -731,7 +751,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
     private fun bearingDelta(first: Double, second: Double): Double = (second - first + 540.0) % 360.0 - 180.0
 
     override fun onProviderDisabled(provider: String) {
-        if (recording) warn("provider_disabled_$provider", "Standortquelle $provider wurde ausgeschaltet.")
+        if (recording) warn("provider_disabled_$provider", Lang.tr("Standortquelle $provider wurde ausgeschaltet.", "Location source $provider was turned off."))
     }
 
     override fun onProviderEnabled(provider: String) = Unit
@@ -753,7 +773,13 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
         if (nextSampleSequence == 0L) nextSampleSequence = System.currentTimeMillis().coerceAtLeast(1L)
         val sequence = nextSampleSequence++
         runCatching { sink.publish(runId, sequence, samples) }
-            .onFailure { Log.w(TAG, "Wear-Sensorpaket konnte nicht versendet werden", it) }
+            .onFailure { Log.w(TAG, "Could not send the wear sensor packet", it) }
+    }
+
+    /** Optional phone playback observes aggregates; failures never interrupt recording. */
+    private fun publishMusicState() {
+        val sink = musicSink ?: return
+        runCatching { sink(store.active()) }
     }
 
     private fun hasLocationPermission(): Boolean =
@@ -767,7 +793,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
     private fun publishControl(action: String, runId: String, commandId: String) {
         if (!syncPeers) return
         runCatching { controlSink?.publish(action, runId, commandId) }
-            .onFailure { Log.w(TAG, "Wear-Steuerung konnte nicht vorgemerkt werden", it) }
+            .onFailure { Log.w(TAG, "Could not queue the wear control command", it) }
     }
 
     private fun handleRemoteLocation(runId: String, sample: RawSample) {
@@ -822,7 +848,10 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
         Log.e(TAG, "Recording interrupted", error)
         recording = false
         endListening()
-        val message = "Aufzeichnung unterbrochen: ${error.message ?: "Speicher oder Berechtigungen prüfen"}"
+        val message = Lang.tr(
+            "Aufzeichnung unterbrochen: ${error.message ?: "Speicher oder Berechtigungen prüfen"}",
+            "Recording interrupted: ${error.message ?: "check storage or permissions"}",
+        )
         val interruptedId = activeId
         runCatching { store.markInterrupted(message) }
         interruptedId?.let { runCatching { store.clearRouteAssignment(it) } }
@@ -849,10 +878,15 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
             return
         }
         val paused = session.optString("status") != "recording"
-        val distance = String.format(java.util.Locale.GERMANY, "%.2f km", session.optDouble("distanceM", 0.0) / 1000.0)
+        val distance = String.format(Lang.locale(), "%.2f km", session.optDouble("distanceM", 0.0) / 1000.0)
         (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(
             NOTIFICATION_ID,
-            notification(if (paused) "Pausiert · $distance" else "${sportNoun(session.optString("sport"))} aktiv · $distance", paused, session.optLong("elapsedMs"))
+            notification(
+                if (paused) Lang.tr("Pausiert", "Paused") + " · $distance"
+                else Lang.tr("${sportNoun(session.optString("sport"))} aktiv", "${sportNoun(session.optString("sport"))} active") + " · $distance",
+                paused,
+                session.optLong("elapsedMs"),
+            )
         )
     }
 
@@ -872,9 +906,9 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
         ))
         if (!paused && elapsedMs > 0) builder.setWhen(System.currentTimeMillis() - elapsedMs).setUsesChronometer(true)
         builder.addAction(Notification.Action.Builder(
-            null, if (paused) "Fortsetzen" else "Pause", actionIntent(if (paused) RESUME else PAUSE, 1)
+            null, if (paused) Lang.tr("Fortsetzen", "Resume") else Lang.tr("Pause", "Pause"), actionIntent(if (paused) RESUME else PAUSE, 1)
         ).build())
-        builder.addAction(Notification.Action.Builder(null, "Beenden", actionIntent(FINISH, 2)).build())
+        builder.addAction(Notification.Action.Builder(null, Lang.tr("Beenden", "End"), actionIntent(FINISH, 2)).build())
         return builder.build()
     }
 
@@ -902,13 +936,14 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
                 flush()
                 if (recording) {
                     val interruptedId = activeId
-                    store.markInterrupted("Aufzeichnung wurde beendet. Gespeicherte Daten bleiben erhalten.")
+                    store.markInterrupted(Lang.tr("Aufzeichnung wurde beendet. Gespeicherte Daten bleiben erhalten.", "The recording was ended. Saved data is kept."))
                     interruptedId?.let { store.clearRouteAssignment(it) }
                 }
             } catch (error: Exception) {
                 Log.e(TAG, "Could not persist final recording checkpoint", error)
             } finally {
                 recording = false
+                publishMusicState()
                 endListening()
                 runCatching { BleSensors.get(this).stopAll() }
                 workerThread.quitSafely()
@@ -931,18 +966,20 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
         private const val WAKE_RENEW_INTERVAL_MS = 5 * 60_000L
         private const val WAKE_TIMEOUT_MS = 10 * 60_000L
 
-        /** Anzeigename je Sportart; unbekannte Werte gelten als Lauf (siehe src/domain/sport.ts). */
-        fun sportNoun(sport: String?): String = if (sport == "cycling") "Radfahrt" else "Lauf"
+        /** Display name per sport; unknown values count as a run (see src/domain/sport.ts). */
+        fun sportNoun(sport: String?): String =
+            if (sport == "cycling") Lang.tr("Radfahrt", "Ride") else Lang.tr("Lauf", "Run")
         @Volatile var sampleSink: RecordingSampleSink? = null
         @Volatile var controlSink: RecordingControlSink? = null
+        @Volatile var musicSink: ((JSONObject?) -> Unit)? = null
         @Volatile private var activeService: RecordingService? = null
         fun hasLiveService(): Boolean = activeService != null
-        /** Das neue Zieltempo gilt für die Hinweise ab sofort; gespeichert ist es bereits. */
+        /** The new target pace applies to the cues from now on; it is already saved. */
         fun changeTargetPace(runId: String, secondsPerKm: Double) {
             activeService?.worker?.post {
                 val service = activeService ?: return@post
                 if (service.activeId == runId) runCatching { service.targetGuidance?.changePace(secondsPerKm) }
-                    .onFailure { Log.w(TAG, "Zieltempo konnte nicht übernommen werden", it) }
+                    .onFailure { Log.w(TAG, "Could not apply the target pace", it) }
             }
         }
         fun acceptRemoteLocation(runId: String, sample: RawSample) {

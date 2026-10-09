@@ -1,23 +1,25 @@
+import { locale, tr } from './i18n';
+
 /**
- * Eigener Runback-Server: optional, gehört dem Nutzer, bekommt nur eine Kopie.
- * Daten fließen nur vom Telefon zum Server; der Server ändert nichts in der App.
+ * Your own Runback server: optional, belongs to the user, receives only a copy.
+ * Data flows only from the phone to the server; the server changes nothing in the app.
  *
- * Hier stehen die Regeln, die App, Kotlin und Server teilen: Protokollversion,
- * Datenumfang, Adressprüfung und wie der Verbindungsstand angezeigt wird.
+ * This file holds the rules that the app, Kotlin and the server share: protocol
+ * version, data scope, address check, and how the connection status is shown.
  */
 
-/** Steigt, wenn sich Objektschlüssel oder Inhalte inkompatibel ändern. */
+/** Goes up when object keys or contents change incompatibly. */
 export const SERVER_SYNC_PROTOCOL = 1;
 
-/** Was auf den Server darf. Rohsamples und Originaldateien bleiben immer auf dem Telefon. */
+/** What may go to the server. Raw samples and original files always stay on the phone. */
 export interface ServerScope {
   runs: boolean;
   strength: boolean;
-  /** Ziel, Fokus, Empfehlungen, Pläne und Vorlagen. */
+  /** Goal, focus, recommendations, plans and templates. */
   coach: boolean;
-  /** Strecken als Koordinaten. Ohne Freigabe verlässt keine Koordinate das Telefon. */
+  /** Routes as coordinates. Without approval, no coordinate leaves the phone. */
   gps: boolean;
-  /** Werte aus Health Connect und Importen (Schlaf, Ruhepuls, Gewicht …). */
+  /** Values from Health Connect and imports (sleep, resting HR, weight …). */
   health: boolean;
 }
 
@@ -29,32 +31,59 @@ export const DEFAULT_SERVER_SCOPE: ServerScope = {
   health: false,
 };
 
+/** One scope option; its texts are read in the active language on access. */
+function scopeOption(
+  key: keyof ServerScope,
+  label: { de: string; en: string },
+  detail: { de: string; en: string },
+) {
+  return {
+    key,
+    get label() {
+      return tr(label.de, label.en);
+    },
+    get detail() {
+      return tr(detail.de, detail.en);
+    },
+  };
+}
+
 export const SERVER_SCOPE_OPTIONS: {
   key: keyof ServerScope;
-  label: string;
-  detail: string;
+  readonly label: string;
+  readonly detail: string;
 }[] = [
-  {
-    key: 'runs',
-    label: 'Läufe',
-    detail: 'Zusammenfassung, Verlauf und Abschnitte',
-  },
-  {
-    key: 'strength',
-    label: 'Krafttraining',
-    detail: 'Einheiten, Sätze und Puls',
-  },
-  {
-    key: 'coach',
-    label: 'Coach',
-    detail: 'Ziel, Fokus, Empfehlungen und Pläne',
-  },
-  { key: 'gps', label: 'GPS-Strecken', detail: 'Wo du gelaufen bist' },
-  {
-    key: 'health',
-    label: 'Gesundheitswerte',
-    detail: 'Schlaf, Ruhepuls, Gewicht',
-  },
+  scopeOption(
+    'runs',
+    { de: 'Läufe', en: 'Runs' },
+    {
+      de: 'Zusammenfassung, Verlauf und Abschnitte',
+      en: 'Summary, history and segments',
+    },
+  ),
+  scopeOption(
+    'strength',
+    { de: 'Krafttraining', en: 'Strength training' },
+    { de: 'Einheiten, Sätze und Puls', en: 'Sessions, sets and heart rate' },
+  ),
+  scopeOption(
+    'coach',
+    { de: 'Coach', en: 'Coach' },
+    {
+      de: 'Ziel, Fokus, Empfehlungen und Pläne',
+      en: 'Goal, focus, recommendations and plans',
+    },
+  ),
+  scopeOption(
+    'gps',
+    { de: 'GPS-Strecken', en: 'GPS routes' },
+    { de: 'Wo du gelaufen bist', en: 'Where you ran' },
+  ),
+  scopeOption(
+    'health',
+    { de: 'Gesundheitswerte', en: 'Health values' },
+    { de: 'Schlaf, Ruhepuls, Gewicht', en: 'Sleep, resting HR, weight' },
+  ),
 ];
 
 export function readServerScope(raw: unknown): ServerScope {
@@ -80,15 +109,18 @@ export type ServerAddress =
   | { ok: false; reason: string };
 
 /**
- * Prüft die eingetippte Adresse. Ohne Schema gilt https, im Heimnetz http.
- * Unverschlüsselt ist nur im eigenen Netz erlaubt: Zuhause auf einem NAS ohne
- * Zertifikat soll es gehen, über das Internet nicht.
+ * Checks the typed address. Without a scheme, https applies; in the home
+ * network, http. Unencrypted is only allowed on your own network: at home on a
+ * NAS without a certificate it should work, over the internet it should not.
  */
 export function normalizeServerAddress(input: string): ServerAddress {
   const trimmed = input.trim().replace(/\/+$/, '');
   if (!trimmed)
-    return { ok: false, reason: 'Gib die Adresse deines Servers ein.' };
-  // React Native stellt keine vollständige WHATWG-URL bereit.
+    return {
+      ok: false,
+      reason: tr('Gib die Adresse deines Servers ein.', 'Enter the address of your server.'),
+    };
+  // React Native does not provide a complete WHATWG URL.
   const match =
     /^(?:(https?):\/\/)?(\[[0-9a-f:]+\]|[a-z0-9.-]+)(?::([0-9]{1,5}))?$/i.exec(
       trimmed,
@@ -96,18 +128,24 @@ export function normalizeServerAddress(input: string): ServerAddress {
   if (!match || trimmed.includes('..'))
     return {
       ok: false,
-      reason: 'Nutze eine Serveradresse ohne Pfad oder Zugangsdaten.',
+      reason: tr(
+        'Nutze eine Serveradresse ohne Pfad oder Zugangsdaten.',
+        'Use a server address without a path or login details.',
+      ),
     };
   const host = match[2].toLowerCase();
   const port = match[3] ? Number(match[3]) : null;
   if (port !== null && (port < 1 || port > 65535))
-    return { ok: false, reason: 'Der Port ist ungültig.' };
+    return { ok: false, reason: tr('Der Port ist ungültig.', 'The port is invalid.') };
   const local = isLocalHost(host);
   const encrypted = match[1] ? match[1].toLowerCase() === 'https' : !local;
   if (!encrypted && !local)
     return {
       ok: false,
-      reason: 'Nutze https für Adressen außerhalb deines Heimnetzes.',
+      reason: tr(
+        'Nutze https für Adressen außerhalb deines Heimnetzes.',
+        'Use https for addresses outside your home network.',
+      ),
     };
   return {
     ok: true,
@@ -119,8 +157,8 @@ export function normalizeServerAddress(input: string): ServerAddress {
 }
 
 /**
- * Adressen, die nur im eigenen Netz erreichbar sind: private IPv4-Bereiche,
- * Tailscale/CGNAT, link-local, IPv6 ULA und Namen wie `nas.local`.
+ * Addresses reachable only on your own network: private IPv4 ranges,
+ * Tailscale/CGNAT, link-local, IPv6 ULA and names such as `nas.local`.
  */
 export function isLocalHost(rawHost: string): boolean {
   const host = rawHost.replace(/^\[|\]$/g, '').toLowerCase();
@@ -152,19 +190,19 @@ export function isLocalHost(rawHost: string): boolean {
 }
 
 export type ServerLinkState =
-  /** Nicht eingerichtet. */
+  /** Not set up. */
   | 'off'
-  /** Letzter Abgleich vollständig. */
+  /** Last sync complete. */
   | 'ok'
-  /** Abgleich läuft gerade. */
+  /** Sync is running right now. */
   | 'syncing'
-  /** Während des Trainings nur Erreichbarkeit prüfen. */
+  /** During training, only check reachability. */
   | 'waiting'
-  /** Server nicht erreichbar, etwa unterwegs ohne Heimnetz. */
+  /** Server unreachable, e.g. away from the home network. */
   | 'offline'
-  /** Server kennt das Telefon nicht mehr; neu verbinden. */
+  /** Server no longer knows the phone; reconnect. */
   | 'rejected'
-  /** Server erreichbar, aber der Abgleich ging schief. */
+  /** Server reachable, but the sync failed. */
   | 'error';
 
 export interface ServerLinkStatus {
@@ -174,7 +212,7 @@ export interface ServerLinkStatus {
   scope: ServerScope;
   lastSuccessAt: number | null;
   lastAttemptAt: number | null;
-  /** Objekte, die beim letzten Versuch noch nicht auf dem Server lagen; `null` = unbekannt. */
+  /** Objects not yet on the server at the last attempt; `null` = unknown. */
   pending: number | null;
   serverVersion: string | null;
   message: string | null;
@@ -218,8 +256,8 @@ export function readServerLinkStatus(raw: any): ServerLinkStatus {
 }
 
 /**
- * Rot, wenn der Server gerade nicht erreichbar ist oder den Abgleich ablehnt.
- * Die App funktioniert dabei ganz normal weiter.
+ * Red when the server is unreachable right now or rejects the sync.
+ * The app keeps working normally in the meantime.
  */
 export function serverNeedsAttention(status: ServerLinkStatus): boolean {
   return (
@@ -229,7 +267,7 @@ export function serverNeedsAttention(status: ServerLinkStatus): boolean {
   );
 }
 
-/** Der Punkt neben dem Zahnrad; ohne eingerichteten Server gibt es keinen. */
+/** The dot next to the gear icon; without a configured server there is none. */
 export function serverMark(
   status: ServerLinkStatus | null,
 ): 'connected' | 'attention' | null {
@@ -240,59 +278,80 @@ export function serverMark(
 export function serverStateLabel(status: ServerLinkStatus): string {
   switch (status.state) {
     case 'off':
-      return 'Aus';
+      return tr('Aus', 'Off');
     case 'ok':
-      return 'Aktuell';
+      return tr('Aktuell', 'Up to date');
     case 'syncing':
-      return 'Wird übertragen';
+      return tr('Wird übertragen', 'Syncing');
     case 'waiting':
-      return 'Nach dem Training';
+      return tr('Nach dem Training', 'After training');
     case 'offline':
-      return 'Nicht erreichbar';
+      return tr('Nicht erreichbar', 'Unreachable');
     case 'rejected':
-      return 'Neu verbinden';
+      return tr('Neu verbinden', 'Reconnect');
     case 'error':
-      return 'Fehler';
+      return tr('Fehler', 'Error');
   }
 }
 
-/** Ein Satz unter dem Status; sagt, was passiert und ob der Nutzer etwas tun muss. */
+/** One sentence under the status; says what happens and whether the user must act. */
 export function serverStateSentence(status: ServerLinkStatus): string {
   switch (status.state) {
     case 'off':
-      return 'Runback speichert alles nur auf diesem Telefon.';
+      return tr(
+        'Runback speichert alles nur auf diesem Telefon.',
+        'Runback keeps everything on this phone only.',
+      );
     case 'ok':
-      return 'Dein Server hat denselben Stand wie dieses Telefon.';
+      return tr(
+        'Dein Server hat denselben Stand wie dieses Telefon.',
+        'Your server has the same data as this phone.',
+      );
     case 'syncing':
-      return 'Runback überträgt gerade deine Änderungen.';
+      return tr(
+        'Runback überträgt gerade deine Änderungen.',
+        'Runback is sending your changes right now.',
+      );
     case 'waiting':
-      return 'Runback überträgt nach dem laufenden Training.';
+      return tr(
+        'Runback überträgt nach dem laufenden Training.',
+        'Runback sends after the current training.',
+      );
     case 'offline':
-      return 'Runback überträgt, sobald dein Server wieder erreichbar ist.';
+      return tr(
+        'Runback überträgt, sobald dein Server wieder erreichbar ist.',
+        'Runback sends as soon as your server is reachable again.',
+      );
     case 'rejected':
-      return 'Dein Server kennt dieses Telefon nicht mehr. Verbinde es neu.';
+      return tr(
+        'Dein Server kennt dieses Telefon nicht mehr. Verbinde es neu.',
+        'Your server no longer knows this phone. Reconnect it.',
+      );
     case 'error':
       return (
         status.message ||
-        'Der letzte Abgleich ist fehlgeschlagen. Runback versucht es wieder.'
+        tr(
+          'Der letzte Abgleich ist fehlgeschlagen. Runback versucht es wieder.',
+          'The last sync failed. Runback will try again.',
+        )
       );
   }
 }
 
-/** „heute, 18:04“, „gestern, 07:12“ oder „03.10.2026, 18:04“. */
+/** "today, 18:04", "yesterday, 07:12" or "03.10.2026, 18:04". */
 export function formatSyncTime(at: number | null, now: number): string {
-  if (at == null) return 'noch nie';
+  if (at == null) return tr('noch nie', 'never');
   const date = new Date(at);
-  const time = date.toLocaleTimeString('de-DE', {
+  const time = date.toLocaleTimeString(locale(), {
     hour: '2-digit',
     minute: '2-digit',
   });
   const day = (value: Date) =>
     new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
   const days = Math.round((day(new Date(now)) - day(date)) / 86_400_000);
-  if (days === 0) return `heute, ${time}`;
-  if (days === 1) return `gestern, ${time}`;
-  return `${date.toLocaleDateString('de-DE', {
+  if (days === 0) return `${tr('heute', 'today')}, ${time}`;
+  if (days === 1) return `${tr('gestern', 'yesterday')}, ${time}`;
+  return `${date.toLocaleDateString(locale(), {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',

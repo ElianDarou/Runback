@@ -1,14 +1,15 @@
 import type { MuscleShares } from './regions';
 import { sharesAreValid } from './regions';
+import { getLanguage, tr } from './i18n';
 
 /**
- * Krafttraining: Übungen, Sätze, Einheiten und Vorlagen.
+ * Strength training: exercises, sets, sessions and templates.
  *
- * Reine Funktionen ohne Zustand. Alles, was den Verlauf einer Einheit verändert,
- * gibt eine neue Einheit zurück; die Aufrufer entscheiden über Speichern.
+ * Pure functions without state. Anything that changes a session's course
+ * returns a new session; the callers decide whether to save.
  *
- * Grundregel aus T-5: Vorgabe und tatsächlicher Wert liegen getrennt und
- * bleiben beide erhalten. Abweichung wird festgehalten, aber nicht bewertet.
+ * Ground rule T-5: plan and actual value are kept apart and both are kept.
+ * A deviation is recorded, but not judged.
  */
 export const STRENGTH_MODEL_VERSION = 'strength-v1';
 export const CATALOG_VERSION = 'catalog-v2';
@@ -35,23 +36,26 @@ export type Equipment =
 
 export interface Exercise {
   id: string;
+  /** German name, stored with logged sets. Show it through `exerciseName`. */
   name: string;
+  /** English name; falls back to `name` when missing. */
+  en?: string;
   equipment: Equipment;
-  /** Trainiert eine Seite zur Zeit; Belastung geht dann nur auf diese Seite. */
+  /** Trains one side at a time; load then goes only to that side. */
   unilateral?: boolean;
-  /** Exzentrik- und Dehnungsfaktor für den Belastungsreiz (freshness.ts). */
+  /** Eccentric and stretch factor for the load stimulus (freshness.ts). */
   eccentric?: number;
   shares: MuscleShares;
-  /** `catalog` oder `user`. Eigene Übungen tragen keine Katalogherkunft. */
+  /** `catalog` or `user`. Own exercises carry no catalog origin. */
   origin: 'catalog' | 'user';
   catalogVersion?: string;
   aliases?: string[];
-  /** Datenbankherkunft; Muskelgruppen sind keine numerischen Modellanteile. */
+  /** Database origin; muscle groups are not numeric model shares. */
   source?: { database: string; revision: string; id: string };
   muscleGroups?: string[];
 }
 
-/** Zielvorgabe eines Satzes. Stammt aus Plan oder letzter Einheit. */
+/** Target of a set. Comes from the plan or the last session. */
 export interface PlannedSet {
   kind: SetKind;
   loadKind: LoadKind;
@@ -61,19 +65,19 @@ export interface PlannedSet {
   restSeconds?: number;
 }
 
-/** Ein Satz während oder nach der Einheit: Vorgabe plus tatsächlicher Wert. */
+/** A set during or after the session: target plus actual value. */
 export interface LoggedSet {
   id: string;
   planned: PlannedSet;
   actualReps?: number;
   actualSeconds?: number;
   actualWeightKg?: number;
-  /** Gemeldete Wiederholungen im Tank (RIR). Nutzereingabe, nie geschätzt. */
+  /** Reported reps in reserve (RIR). User input, never estimated. */
   actualRir?: number;
-  /** Importierter Ist-Satz ohne bekannte Abhakzeit. */
+  /** Imported actual set without a known tick-off time. */
   completed?: boolean;
   completedAt?: number;
-  /** Vom Nutzer übersprungen. Kein Fehler, nur eine Angabe zur Umsetzung. */
+  /** Skipped by the user. Not an error, just a note on follow-through. */
   skipped?: boolean;
 }
 
@@ -81,7 +85,7 @@ export interface SessionExercise {
   exerciseId: string;
   name: string;
   sets: LoggedSet[];
-  /** Frei ergänzt statt aus dem Plan übernommen. */
+  /** Added freely instead of taken from the plan. */
   added?: boolean;
 }
 
@@ -97,18 +101,18 @@ export interface StrengthSession {
   status: SessionStatus;
   exercises: SessionExercise[];
   currentExercise: number;
-  /** Läuft seit diesem Zeitpunkt, für die Pause nach einem Satz. */
+  /** Running since this point, for the rest after a set. */
   restStartedAt?: number;
   restSeconds?: number;
-  /** Pause angehalten seit diesem Zeitpunkt; die Restzeit steht dann still. */
+  /** Rest paused since this point; the remaining time then stands still. */
   restPausedAt?: number;
-  /** Bereits angehaltene Zeit dieser Pause in ms, ohne die laufende Unterbrechung. */
+  /** Already paused time of this rest in ms, without the ongoing pause. */
   restPausedMs?: number;
   note?: string;
   /**
-   * Kennung des gespeicherten Stands. Uhr und Benachrichtigung ändern die
-   * Einheit auch ohne die App; ein Speichern trägt deshalb `baseRevision`, und
-   * das Handy nimmt es nur an, wenn es auf dem gespeicherten Stand aufbaut.
+   * Identifier of the saved state. The watch and notifications also change the
+   * session without the app; a save therefore carries `baseRevision`, and the
+   * phone only accepts it if it builds on the saved state.
    */
   revision?: string;
   baseRevision?: string;
@@ -119,15 +123,15 @@ export interface StrengthSession {
     source: string;
     importVersion: string;
     incomplete: boolean;
-    /** Strong meldete diese Dauer, sie passt aber zu keiner Satzzahl; das Ende ist unbekannt. */
+    /** Strong reported this duration, but it fits no set count; the end is unknown. */
     rejectedDurationSeconds?: number;
   };
-  /** Vom Nutzer gesetztes Ende; `endTime` ist dann schon das korrigierte, das Original steht hier. */
+  /** End set by the user; `endTime` is then already the corrected one, the original is kept here. */
   endCorrection?: {
     endTime: number;
     originalEndTime?: number;
     setAt?: number;
-    /** Abgehakt nach dem gesetzten Ende; zählen nicht, bleiben im Original. */
+    /** Ticked off after the set end; not counted, kept in the original. */
     excludedSetTimes?: number[];
   };
 }
@@ -144,7 +148,7 @@ export interface TemplateExercise {
 export interface WorkoutTemplate {
   id: string;
   name: string;
-  /** Wochentage 0 (Sonntag) bis 6, wie `Date.getDay`. Leer heißt: kein fester Tag. */
+  /** Weekdays 0 (Sunday) to 6, as in `Date.getDay`. Empty means: no fixed day. */
   days: number[];
   exercises: TemplateExercise[];
   createdAt: number;
@@ -184,12 +188,32 @@ export const emptyStrengthState = (): StrengthState => ({
 });
 
 /**
- * Startet eine Einheit aus einer Vorlage. Ohne Vorlage entsteht eine leere
- * Einheit, der Übungen einzeln hinzugefügt werden.
+ * Visible name of a session. Default names are stored as text: German values
+ * come from older data and the watch, English values from sessions started
+ * in English. Both map to the active language on display; any other name is
+ * one the user typed and stays as it is. Stored data is never rewritten.
+ */
+export function displaySessionName(name: string): string {
+  switch (name) {
+    case 'Krafttraining':
+    case 'Strength training':
+      return tr('Krafttraining', 'Strength training');
+    case 'Freies Training':
+    case 'Free training':
+      return tr('Freies Training', 'Free training');
+    default:
+      return name;
+  }
+}
+
+/**
+ * Starts a session from a template. Without a template an empty session is
+ * created, to which exercises are added one by one.
  */
 export function startSession(
   template: WorkoutTemplate | null,
   now: number,
+  // Stored as German text, like sessions from older data; shown via displaySessionName.
   name = 'Freies Training',
 ): StrengthSession {
   const exercises = (template?.exercises || []).map(
@@ -256,7 +280,7 @@ export function selectExercise(
     : { ...session, currentExercise: clamped };
 }
 
-/** Trägt geänderte Werte ein, ohne den Satz abzuschließen. */
+/** Enters changed values without completing the set. */
 export function editSet(
   session: StrengthSession,
   exerciseIndex: number,
@@ -279,8 +303,8 @@ export function editSet(
 }
 
 /**
- * Schließt einen Satz ab. Nicht angegebene Werte übernehmen die Vorgabe, damit
- * das Bestätigen mit einer Aktion möglich bleibt (T-4).
+ * Completes a set. Values not given take over the target, so that confirming
+ * stays possible with one action (T-4).
  */
 export function completeSet(
   session: StrengthSession,
@@ -298,7 +322,7 @@ export function completeSet(
     return session;
   }
   if (isSetCompleted(set)) {
-    // Erneutes Tippen nimmt den Abschluss zurück; die Werte bleiben stehen.
+    // Tapping again takes the completion back; the values stay.
     const reopened = replaceSet(exercise, setId, {
       ...set,
       completedAt: undefined,
@@ -334,9 +358,9 @@ export function completeSet(
 }
 
 /**
- * Bestätigt oder öffnet einen Satz so, wie es beim Tippen gemeint war
- * (`wasDone`). Hat ihn die Uhr inzwischen abgehakt, bleiben Abschluss und
- * Pause, nur die Werte kommen dazu; nichts wird versehentlich zurückgenommen.
+ * Confirms or reopens a set as the tap meant it (`wasDone`). If the watch has
+ * ticked it off in the meantime, completion and rest stay and only the values
+ * are added; nothing is taken back by accident.
  */
 export function confirmSet(
   session: StrengthSession,
@@ -381,7 +405,7 @@ export function skipSet(
   );
 }
 
-/** Neuer Stand auf Grundlage von `base`; siehe `StrengthSession.revision`. */
+/** New state based on `base`; see `StrengthSession.revision`. */
 export function revise(
   base: StrengthSession,
   next: StrengthSession,
@@ -396,10 +420,10 @@ export function revise(
   };
 }
 
-/** Pause nach einem Satz, wenn der Nutzer nichts anderes eingestellt hat. */
+/** Rest after a set, unless the user has set something else. */
 export const DEFAULT_REST_SECONDS = 120;
 
-/** Hängt einen Satz an, vorbelegt aus dem letzten Satz derselben Übung. */
+/** Appends a set, pre-filled from the last set of the same exercise. */
 export function addSet(
   session: StrengthSession,
   exerciseIndex: number,
@@ -450,14 +474,14 @@ export function removeSet(
     ...exercise,
     sets: exercise.sets.filter(set => set.id !== setId),
   });
-  // Die Pause gehört zum gelöschten Satz; ohne ihn gibt es nichts abzuwarten.
+  // The rest belongs to the deleted set; without it there is nothing to wait for.
   return removed.completedAt !== undefined &&
     removed.completedAt === session.restStartedAt
     ? clearRest(next)
     : next;
 }
 
-/** Setzt einen gelöschten Satz unverändert an seine alte Stelle zurück. */
+/** Puts a deleted set back unchanged in its old place. */
 export function restoreSet(
   session: StrengthSession,
   exerciseIndex: number,
@@ -475,7 +499,7 @@ export function restoreSet(
   });
 }
 
-/** Ergänzt eine Übung spontan. Sie wird als frei ergänzt gekennzeichnet. */
+/** Adds an exercise spontaneously. It is marked as added freely. */
 export function addExercise(
   session: StrengthSession,
   exercise: Exercise,
@@ -509,7 +533,7 @@ export interface ExerciseProgress {
   completed: number;
   total: number;
   done: boolean;
-  /** Erster Satz, der noch offen ist. Für die Vorbelegung der Eingabe. */
+  /** First set that is still open. For pre-filling the input. */
   activeSetId?: string;
 }
 
@@ -552,8 +576,8 @@ export function sessionProgress(session: StrengthSession): {
 }
 
 /**
- * Verbleibende Pausensekunden, oder null, wenn keine Pause läuft. Eine
- * angehaltene Pause behält ihre Restzeit, bis sie weiterläuft.
+ * Remaining rest seconds, or null if no rest is running. A paused rest keeps
+ * its remaining time until it resumes.
  */
 export function restRemaining(
   session: StrengthSession,
@@ -570,7 +594,7 @@ export function restRemaining(
   return remaining > 0 ? remaining : null;
 }
 
-/** Zeitpunkt, an dem die laufende Pause endet; angehalten oder ohne Pause null. */
+/** Time at which the running rest ends; null if paused or without a rest. */
 export function restEndsAt(session: StrengthSession): number | null {
   if (
     session.restStartedAt === undefined ||
@@ -586,7 +610,7 @@ export function restEndsAt(session: StrengthSession): number | null {
   );
 }
 
-/** Hält die laufende Pause an. Ohne laufende Pause ändert sich nichts. */
+/** Pauses the running rest. Without a running rest nothing changes. */
 export function pauseRest(
   session: StrengthSession,
   now: number,
@@ -600,7 +624,7 @@ export function pauseRest(
   return { ...session, restPausedAt: now };
 }
 
-/** Lässt eine angehaltene Pause mit ihrer Restzeit weiterlaufen. */
+/** Lets a paused rest run on with its remaining time. */
 export function resumeRest(
   session: StrengthSession,
   now: number,
@@ -616,7 +640,7 @@ export function resumeRest(
   };
 }
 
-/** Beendet die Pause sofort, etwa beim Überspringen. */
+/** Ends the rest immediately, for example when skipping. */
 export function clearRest(session: StrengthSession): StrengthSession {
   return session.restStartedAt === undefined &&
     session.restPausedAt === undefined
@@ -625,9 +649,8 @@ export function clearRest(session: StrengthSession): StrengthSession {
 }
 
 /**
- * Der letzte vergleichbare abgeschlossene Satz aus der Historie. `history` wird
- * in der übergebenen Reihenfolge durchsucht; die Aufrufer sortieren neueste
- * Einheit zuerst.
+ * The last comparable completed set from the history. `history` is searched in
+ * the order given; callers sort the newest session first.
  */
 export function referenceSet(
   history: StrengthSession[],
@@ -649,8 +672,8 @@ export function referenceSet(
 }
 
 /**
- * Kurzform der letzten vergleichbaren Leistung, etwa `80 kg × 8`.
- * Aus der Historie, damit im Training sichtbar ist, woran angeknüpft wird.
+ * Short form of the last comparable performance, e.g. `80 kg × 8`.
+ * From the history, so training shows what it builds on.
  */
 export function referenceLabel(
   history: StrengthSession[],
@@ -665,7 +688,10 @@ export function referenceLabel(
     return `${formatWeight(set.actualWeightKg)} kg × ${set.actualReps}`;
   }
   if (set.actualReps) {
-    return `${set.actualReps} Wdh.`;
+    return tr(
+      `${set.actualReps} Wdh.`,
+      `${set.actualReps} ${set.actualReps === 1 ? 'rep' : 'reps'}`,
+    );
   }
   if (set.actualSeconds) {
     return `${set.actualSeconds} s`;
@@ -675,20 +701,22 @@ export function referenceLabel(
 
 export function formatWeight(value: number): string {
   const rounded = Math.round(value * 100) / 100;
-  return String(rounded).replace('.', ',');
+  return getLanguage() === 'de'
+    ? String(rounded).replace('.', ',')
+    : String(rounded);
 }
 
 /**
- * Bis hierhin ist Epley gegen gemessene 1RM geprüft (LeSuer 1997, Reynolds
- * 2006); darüber dominiert Ausdauer, und die Schätzung streut zu stark, um
- * ungewichtet in einen Trend einzugehen.
+ * Up to here Epley is checked against measured 1RM (LeSuer 1997, Reynolds
+ * 2006); above it endurance dominates, and the estimate scatters too much to
+ * enter a trend unweighted.
  */
 export const MAX_REPS_FOR_E1RM = 12;
 
 /**
- * Geschätztes Einwiederholungsmaximum nach Epley.
- * Schätzung, keine Messung. Nur für Arbeitssätze mit Last und bis zu zwölf
- * Wiederholungen; längere Sätze liefern keinen Wert statt eines groben.
+ * Estimated one-rep max after Epley.
+ * An estimate, not a measurement. Only for working sets with load and up to
+ * twelve reps; longer sets yield no value instead of a rough one.
  */
 export function epley1RM(weightKg: number, reps: number): number | null {
   if (!(weightKg > 0) || !(reps > 0) || reps > MAX_REPS_FOR_E1RM) {
@@ -697,7 +725,7 @@ export function epley1RM(weightKg: number, reps: number): number | null {
   return weightKg * (1 + reps / 30);
 }
 
-/** Bester geschätzter Wert einer Einheit für eine Übung. */
+/** Best estimated value of a session for an exercise. */
 export function sessionBest1RM(
   session: StrengthSession,
   exerciseId: string,
@@ -744,7 +772,7 @@ export function summarize(session: StrengthSession): SessionSummary {
   };
 }
 
-/** Vorlage, die heute ansteht. Ohne Treffer null; das ist kein Fehler. */
+/** Template due today. Null without a match; that is not an error. */
 export function templateForDay(
   templates: WorkoutTemplate[],
   day: number,

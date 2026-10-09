@@ -13,19 +13,19 @@ import kotlin.random.Random
 class SetDetectorTest {
     private val g = 9.81
 
-    /** Abschnitt künstlicher Uhrdaten: Winkel des Unterarms und Drehrate je Zeitpunkt. */
+    /** Section of synthetic watch data: forearm angle and rotation rate per time point. */
     private class Motion(val seconds: Double, val angle: (Double) -> Double, val rate: (Double) -> Double)
 
     private fun rest(seconds: Double) = Motion(seconds, { 0.0 }, { 0.0 })
 
-    /** Curl-artig: Unterarm kippt je Wiederholung um `degrees` und zurück. */
+    /** Curl-like: forearm tilts by `degrees` per rep and back. */
     private fun reps(count: Int, periodS: Double, degrees: Double = 100.0, scale: Double = 1.0) = Motion(count * periodS,
         { t -> scale * Math.toRadians(degrees) * (1 - cos(2 * PI * t / periodS)) / 2 },
         { t -> scale * Math.toRadians(degrees) * PI / periodS * sin(2 * PI * t / periodS) })
 
     private class Run(val sets: List<SetDetector.DetectedSet>, val detector: SetDetector)
 
-    /** Speist 50-Hz-Beschleunigung und -Gyroskop mit leichtem Zeitversatz und Rauschen ein. */
+    /** Feeds 50 Hz acceleration and gyroscope with a slight time offset and noise. */
     private fun feed(
         vararg parts: Motion,
         profile: RepProfiles.Profile = RepProfiles.forExercise("triceps_pushdown")!!,
@@ -33,7 +33,7 @@ class SetDetectorTest {
         accelOverride: ((Double) -> DoubleArray)? = null,
         gyroOverride: ((Double) -> DoubleArray)? = null,
         seed: Int = 7,
-        /** Sensorzeit des ersten Werts; eine Fortsetzung beginnt nach der vorigen. */
+        /** Sensor time of the first value; a continuation starts after the previous one. */
         startS: Double = 0.0,
     ): Run {
         val random = Random(seed)
@@ -64,11 +64,11 @@ class SetDetectorTest {
         assertEquals(1, run.sets.size)
         val set = run.sets.single()
         assertEquals(8, set.count)
-        assertTrue("Anfang ${seconds(set.startNanos)}", abs(seconds(set.startNanos) - 20.0) < 1.6)
-        assertTrue("Ende ${seconds(set.endNanos)}", abs(seconds(set.endNanos) - 44.0) < 1.6)
-        // Das Satzende wird wenige Sekunden nach der letzten Wiederholung erkannt, nicht sofort.
+        assertTrue("start ${seconds(set.startNanos)}", abs(seconds(set.startNanos) - 20.0) < 1.6)
+        assertTrue("end ${seconds(set.endNanos)}", abs(seconds(set.endNanos) - 44.0) < 1.6)
+        // The set end is detected a few seconds after the last rep, not immediately.
         val latency = seconds(set.features.getLong("finishedAtNanos")) - 44.0
-        assertTrue("Verzögerung $latency", latency in 3.0..10.0)
+        assertTrue("latency $latency", latency in 3.0..10.0)
         assertEquals(set.count, set.reps.size)
         assertTrue(set.reps.zipWithNext().all { (a, b) -> a.endNanos <= b.startNanos })
         assertTrue(set.confidence >= SetDetector.UNCERTAIN_BELOW)
@@ -84,7 +84,7 @@ class SetDetectorTest {
     }
 
     @Test fun aShortStallInsideTheSetDoesNotEndIt() {
-        // Etwa 2,5 s durchatmen zwischen zwei Wiederholungen.
+        // Catching a breath for about 2.5 s between two reps.
         val run = feed(rest(15.0), reps(5, 2.2), rest(2.5), reps(5, 2.2), rest(25.0))
         assertEquals(listOf(10), run.sets.map { it.count })
     }
@@ -94,7 +94,7 @@ class SetDetectorTest {
     }
 
     @Test fun walkingIsNoSet() {
-        // Armschwung 1,1 s, Fußaufsatz doppelt so oft.
+        // Arm swing 1.1 s, foot strike twice as often.
         val run = feed(Motion(90.0, { 0.0 }, { 0.0 }),
             accelOverride = { t -> doubleArrayOf(3 * sin(2 * PI * t / 1.1) + 2 * sin(4 * PI * t / 1.1), -g + 2.5 * cos(4 * PI * t / 1.1), 0.5) },
             gyroOverride = { t -> doubleArrayOf(0.3 * cos(2 * PI * t / 1.1), 0.2, 1.8 * cos(2 * PI * t / 1.1)) })
@@ -102,7 +102,7 @@ class SetDetectorTest {
     }
 
     @Test fun harmonicInOneSensorDoesNotDoubleTheCount() {
-        // Die Beschleunigung schwingt doppelt so schnell wie der Arm (Hin- und Rückweg); es gilt die Drehung.
+        // The acceleration swings twice as fast as the arm (out and back); the rotation counts.
         val period = 3.0
         val start = 15.0
         val count = 8
@@ -120,16 +120,16 @@ class SetDetectorTest {
         val first = feed(rest(15.0), reps(8, 2.5), rest(20.0), detector = detector)
         assertEquals(1, first.sets.size)
         detector.reset()
-        // Ruhe nach dem Satz: nichts Neues, der Satz im Puffer kommt nicht noch einmal.
+        // Rest after the set: nothing new, the set in the buffer does not come again.
         assertTrue(feed(rest(40.0), detector = detector, seed = 9, startS = 55.0).sets.isEmpty())
-        // Der nächste Satz wird wieder erkannt.
+        // The next set is detected again.
         assertEquals(listOf(6), feed(reps(6, 2.5), rest(20.0), detector = detector, seed = 11, startS = 95.0).sets.map { it.count })
     }
 
     @Test fun unilateralSidesBecomeOneSet() {
         val curl = RepProfiles.forExercise("fedb:Concentration_Curls")!!
         assertTrue(curl.unilateral)
-        // Anderer Arm zuerst: die Uhr bewegt sich kaum mit, dann der eigene Arm.
+        // Other arm first: the watch barely moves with it, then the own arm.
         val run = feed(rest(15.0), reps(7, 3.2, scale = 0.25), rest(4.0), reps(7, 3.2), rest(40.0), profile = curl)
         assertEquals(1, run.sets.size)
         val set = run.sets.single()
@@ -145,22 +145,22 @@ class SetDetectorTest {
     }
 
     @Test fun accelerationAtTwiceTheRepRateIsNotWalking() {
-        // Gyroskop eine Schwingung je Wiederholung, Beschleunigung zwei — im Takt von Gehen, aber kein Gehen.
+        // Gyroscope one swing per rep, acceleration two — in the rhythm of walking, but not walking.
         for (period in listOf(2.2, 2.5, 2.8)) {
             val start = 15.0
             val run = feed(rest(start), reps(8, period), rest(25.0), accelOverride = { t ->
                 val inSet = t >= start && t < start + 8 * period
                 doubleArrayOf(if (inSet) 3 * sin(4 * PI * (t - start) / period) else 0.0, -g, 0.3)
             })
-            assertEquals("Periode $period", listOf(8), run.sets.map { it.count })
+            assertEquals("period $period", listOf(8), run.sets.map { it.count })
         }
     }
 
     @Test fun aShortSetRightAfterChoosingTheExerciseIsFound() {
-        // Puffer läuft ab Aufzeichnungsbeginn, ohne auszuwerten.
+        // The buffer runs from the start of the recording without evaluating.
         val detector = SetDetector(RepProfiles.BUFFER_ONLY).also { it.pause() }
         feed(rest(30.0), detector = detector)
-        // Übung gewählt, sofort vier Wiederholungen: der Vorlauf davor trägt die Analyse.
+        // Exercise chosen, four reps right away: the lead-in before them carries the analysis.
         detector.retarget(RepProfiles.forExercise("triceps_pushdown")!!)
         val run = feed(reps(4, 2.5), rest(25.0), detector = detector, seed = 3, startS = 30.0)
         assertEquals(listOf(4), run.sets.map { it.count })
@@ -170,11 +170,11 @@ class SetDetectorTest {
     @Test fun aNewTargetDropsWhatBelongedToTheOldOne() {
         val curl = RepProfiles.forExercise("fedb:Concentration_Curls")!!
         val detector = SetDetector(curl)
-        // Erster Arm fertig, wartet auf den zweiten — dann wird eine andere Übung gewählt.
+        // First arm done, waiting for the second — then a different exercise is chosen.
         assertTrue(feed(rest(15.0), reps(7, 3.2), rest(10.0), detector = detector).sets.isEmpty())
         detector.retarget(RepProfiles.forExercise("triceps_pushdown")!!)
         assertTrue(feed(rest(60.0), detector = detector, seed = 5, startS = 47.4).sets.isEmpty())
-        // Gleiches Profil, anderes Ziel mitten im Satz: der halbe Satz wird nicht dem neuen zugeschrieben.
+        // Same profile, different target mid-set: the half set is not credited to the new one.
         val triceps = SetDetector(RepProfiles.forExercise("triceps_pushdown")!!)
         feed(rest(15.0), reps(6, 2.5), detector = triceps)
         triceps.retarget(RepProfiles.forExercise("cable_triceps_extension_unspecified")!!)
@@ -199,6 +199,70 @@ class SetDetectorTest {
         assertNull(RepProfiles.forExercise(null))
         listOf("fedb:Concentration_Curls", "triceps_pushdown", "barbell_bench_press", "lat_pulldown",
             "fedb:Arnold_Dumbbell_Press", "seated_cable_row").forEach { assertTrue(it, RepProfiles.forExercise(it) != null) }
+    }
+
+    @Test fun postureChangeBeforeAndAfterTheSetKeepsTheEdgeReps() {
+        // Arm held in another position before and after the set (dumbbell up, set down): the edge reps count.
+        val raised = Motion(20.0, { Math.toRadians(150.0) }, { 0.0 })
+        val run = feed(raised, reps(8, 3.0), Motion(25.0, { Math.toRadians(150.0) }, { 0.0 }))
+        assertEquals(8, run.sets.single().count)
+    }
+
+    @Test fun aLongSetThatChangesShapeStaysOneSet() {
+        // 24 reps, flatter towards the end and with a shifted turning point (fatigue).
+        val periodS = 2.5
+        val count = 24
+        val fade = { t: Double -> 1 - 0.5 * t / (count * periodS) }
+        val tired = Motion(count * periodS,
+            { t -> fade(t) * Math.toRadians(100.0) * (1 - cos(2 * PI * t / periodS + 0.6 * sin(2 * PI * t / periodS) * t / (count * periodS))) / 2 },
+            { t -> fade(t) * Math.toRadians(100.0) * PI / periodS * sin(2 * PI * t / periodS) })
+        val run = feed(rest(20.0), tired, rest(25.0))
+        assertEquals(1, run.sets.size)
+        assertTrue("${run.sets.single().count}", abs(run.sets.single().count - count) <= 1)
+    }
+
+    @Test fun repsRightAfterLiftingTheWeightCountFromTheFirst() {
+        // Lifting the dumbbells: a large, irregular swing that hides the rhythm of the
+        // first reps from the analysis window until it has passed.
+        val lift = Motion(6.0,
+            { t -> Math.toRadians(160.0) * sin(PI * t / 6.0) * sin(PI * t / 6.0) + 0.5 * sin(2 * PI * t / 1.7) * sin(PI * t / 6.0) },
+            { t -> 4 * sin(2 * PI * t / 2.3) * sin(PI * t / 6.0) })
+        val run = feed(rest(15.0), lift, reps(10, 3.0), rest(25.0))
+        assertEquals(listOf(10), run.sets.map { it.count })
+    }
+
+    @Test fun aClearSetOfThreeRepsIsStillReported() {
+        val run = feed(rest(15.0), reps(3, 3.0), rest(25.0))
+        assertEquals(listOf(3), run.sets.map { it.count })
+    }
+
+    @Test fun aTiringArmDoesNotPullInTheOtherArm() {
+        // Own arm fades from full to half height, then the other arm right away, barely seen by the watch.
+        val curl = RepProfiles.forExercise("fedb:Concentration_Curls")!!
+        val periodS = 3.2
+        val count = 10
+        val fade = { t: Double -> 1 - 0.5 * t / (count * periodS) }
+        val tiring = Motion(count * periodS,
+            { t -> fade(t) * Math.toRadians(100.0) * (1 - cos(2 * PI * t / periodS)) / 2 },
+            { t -> fade(t) * Math.toRadians(100.0) * PI / periodS * sin(2 * PI * t / periodS) })
+        val run = feed(rest(15.0), tiring, rest(1.5), reps(count, periodS, scale = 0.3), rest(40.0), profile = curl)
+        assertEquals(listOf(count), run.sets.map { it.count })
+    }
+
+    @Test fun aLongSlowSetAfterLongRestIsReported() {
+        // 28 reps of 6 s: the lead-in before the first rep must stay inside the buffer until the end.
+        val run = feed(rest(60.0), reps(28, 6.0), rest(30.0))
+        assertEquals(listOf(28), run.sets.map { it.count })
+    }
+
+    @Test fun movingMedianFollowsAStepWithoutARamp() {
+        val step = DoubleArray(1000) { if (it < 500) 0.0 else 5.0 }
+        val median = RepSignal.movingMedian(step, 300)
+        assertEquals(0.0, median[400], 1e-9)
+        assertEquals(5.0, median[600], 1e-9)
+        assertTrue(RepSignal.movingAverage(step, 300)[400] > 0.5)
+        assertEquals(0, RepSignal.movingMedian(DoubleArray(0), 300).size)
+        assertEquals(2.0, RepSignal.movingMedian(DoubleArray(7) { 2.0 }, 300)[3], 1e-9)
     }
 
     @Test fun signalHelpersFindPeriodAndAxis() {

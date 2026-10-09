@@ -124,7 +124,7 @@ describe('onboarding', () => {
     ).toBe(true);
   });
 
-  it('fragt nach den genutzten Bereichen und speichert sie als Funktionen', async () => {
+  it('asks which areas are used and saves them as features', async () => {
     const persist = jest.fn().mockResolvedValue(undefined);
     const tree = render({ persist, settings: { onboardingStep: 'features' } });
     const checkbox = (label: string) =>
@@ -140,7 +140,7 @@ describe('onboarding', () => {
     await ReactTestRenderer.act(() =>
       checkbox('Muskelkater melden').props.onPress(),
     );
-    // Der letzte Bereich bleibt an.
+    // The last area stays on.
     await ReactTestRenderer.act(() => checkbox('Laufen').props.onPress());
     expect(checkbox('Laufen').props.accessibilityState.checked).toBe(true);
     await ReactTestRenderer.act(() => button(tree, 'Weiter').props.onPress());

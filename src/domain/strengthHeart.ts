@@ -1,42 +1,43 @@
 import { median } from './inference';
 import type { StrengthSession } from './strength';
 import { sourceName } from './importReview';
+import { tr } from './i18n';
 
 /**
- * Puls im Krafttraining, aus der Darstellungsreihe der Uhr (Kotlin
- * `StrengthHeart`): Fenster von mindestens 5 s ab Start der Einheit, leere
- * Fenster bleiben leer. Hier entsteht, was ein Kraftsportler damit anfangen
- * kann — der Puls am Ende eines Satzes und wie weit er in der ersten
- * Pausenminute fällt. Beobachtung, keine Empfehlung und keine Fitnesszahl.
+ * Strength heart rate, from the watch's display series (Kotlin
+ * `StrengthHeart`): windows of at least 5 s from the start of the session;
+ * empty windows stay empty. This derives what a strength athlete can use: the
+ * heart rate at the end of a set and how far it drops in the first rest
+ * minute. An observation, not a recommendation or a fitness number.
  *
- * Satzanfänge sind nicht bekannt, nur das Abhaken. Deshalb gelten feste,
- * vorab gesetzte Fenster um das Abhaken (siehe Konstanten), und eine
- * Erholung zählt nur, wenn der nächste Satz sicher noch nicht lief.
+ * Set starts are not known, only the tick-off. So fixed windows set in
+ * advance around the tick-off apply (see constants), and a recovery only
+ * counts when the next set certainly had not started yet.
  */
 export const STRENGTH_HEART_INSIGHTS_VERSION = 'strength-heart-insights-v1';
-/** Der Satzpuls ist das höchste Fenster von 30 s vor bis 15 s nach dem Abhaken. */
+/** The set peak is the highest window from 30 s before to 15 s after the tick-off. */
 export const SET_PEAK_BEFORE_SECONDS = 30;
 export const SET_PEAK_AFTER_SECONDS = 15;
-/** Erholung: Satzpuls minus Puls eine Minute nach dem Abhaken. */
+/** Recovery: set peak minus heart rate one minute after the tick-off. */
 export const RECOVERY_AFTER_SECONDS = 60;
-/** Kommt der nächste Satz früher, lief er womöglich schon in dieser Minute. */
+/** If the next set comes sooner, it may already have run during this minute. */
 export const RECOVERY_MIN_GAP_SECONDS = 120;
-/** Ein Median über weniger Sätze wäre ein Einzelwert. */
+/** A median over fewer sets would just be a single value. */
 export const MIN_SETS_FOR_MEDIAN = 3;
 
 export interface StrengthHeartSummary {
   model_version: string;
   source: 'watch' | string;
-  /** Handyzeit, zu der Fenster 0 beginnt (= Start der Einheit). */
+  /** Phone time at which window 0 begins (= start of the session). */
   startTime: number;
   stepSeconds: number;
   averageBpm: number;
   maxBpm: number;
   minBpm: number;
-  /** Anteil der Fenster mit Wert, 0–1. */
+  /** Share of windows with a value, 0–1. */
   coverage: number;
   samples: number;
-  /** Uhr und Handy über Pings abgeglichen; sonst können Sekunden fehlen. */
+  /** Watch and phone clocks aligned via pings; otherwise seconds may be missing. */
   clockAligned: boolean;
 }
 
@@ -47,7 +48,7 @@ export interface StrengthHeart extends StrengthHeartSummary {
 const finite = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value);
 
-/** Prüft, was über die Brücke kommt; Unbrauchbares wird `undefined`. */
+/** Checks what comes over the bridge; unusable data becomes `undefined`. */
 export function readStrengthHeart(raw: unknown): StrengthHeart | undefined {
   const value = raw as Partial<StrengthHeart> | null | undefined;
   if (
@@ -85,7 +86,7 @@ export function readStrengthHeartSummaries(
 }
 
 export interface HeartPoint {
-  /** Sekunden seit Start der Einheit, Mitte des Fensters. */
+  /** Seconds since start of the session, middle of the window. */
   t: number;
   bpm: number | null;
 }
@@ -97,7 +98,7 @@ export function heartPoints(heart: StrengthHeart): HeartPoint[] {
   }));
 }
 
-/** Werte der Fenster, die den Zeitraum [from, to] (Sekunden seit Start) berühren. */
+/** Values of the windows that touch the period [from, to] (seconds since start). */
 function windowValues(heart: StrengthHeart, from: number, to: number) {
   const step = heart.stepSeconds;
   const first = Math.max(0, Math.floor(from / step));
@@ -117,7 +118,7 @@ export interface SetHeart {
   exerciseIndex: number;
   completedAt: number;
   peakBpm?: number;
-  /** Abfall in der ersten Pausenminute, in Schlägen; positiv = gefallen. */
+  /** Drop in the first rest minute, in beats; positive = fell. */
   recoveryBpm?: number;
 }
 
@@ -125,7 +126,7 @@ export interface ExerciseHeart {
   exerciseIndex: number;
   exerciseId: string;
   name: string;
-  /** Median des Satzpulses; nur mit Werten aus mindestens einem Satz. */
+  /** Median of the set peak; only with values from at least one set. */
   peakBpm?: number;
   sets: number;
 }
@@ -134,22 +135,22 @@ export interface SessionHeartInsight {
   model_version: typeof STRENGTH_HEART_INSIGHTS_VERSION;
   heartModel: string;
   sets: SetHeart[];
-  /** Median des Satzpulses, ab drei Sätzen mit Wert. */
+  /** Median of the set peak, from three sets with a value. */
   medianPeakBpm?: number;
-  /** Median der Erholung, ab drei Sätzen mit langer genug Pause. */
+  /** Median of the recovery, from three sets with a long enough rest. */
   medianRecoveryBpm?: number;
   recoverySets: number;
   byExercise: ExerciseHeart[];
 }
 
-/** Puls von der Uhr; importierter Puls (`import:<Quelle>`) kommt als Minutenmittel. */
+/** Heart rate from the watch; imported heart rate (`import:<Source>`) comes as per-minute averages. */
 export const isWatchHeart = (heart: StrengthHeartSummary): boolean =>
   !heart.source || heart.source === 'watch';
 
-/** Woher der Puls kommt, als Wort für die Anzeige. */
+/** Where the heart rate comes from, as a word for display. */
 export function heartSourceLabel(heart: StrengthHeartSummary): string {
   return isWatchHeart(heart)
-    ? 'Uhr'
+    ? tr('Uhr', 'Watch')
     : sourceName(heart.source.replace(/^import:/, ''));
 }
 
@@ -157,7 +158,7 @@ export function sessionHeartInsight(
   session: StrengthSession,
   heart: StrengthHeart,
 ): SessionHeartInsight {
-  // Minutenmittel aus Importen tragen keinen Puls am Satzende und keine Erholung.
+  // Per-minute averages from imports carry no heart rate at the end of a set and no recovery.
   const completed = (isWatchHeart(heart) ? session.exercises : [])
     .flatMap((exercise, exerciseIndex) =>
       exercise.sets

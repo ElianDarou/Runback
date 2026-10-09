@@ -55,7 +55,7 @@ describe('import preview', () => {
     expect(preview.runs).toEqual({ new: 3, duplicates: 2, deleted: 0 });
     expect(preview.wellness).toEqual({ weight: 4, body_waist: 2, body_hips: 1 });
     expect(preview.strength.workouts).toHaveLength(2);
-    // Eine Dauer von 0 ist unbekannt, keine Zahl.
+    // A duration of 0 is unknown, not a number.
     expect(preview.strength.workouts[1].durationSeconds).toBeNull();
     expect(readImportPreview(null)).toBeNull();
   });
@@ -90,8 +90,8 @@ describe('import preview', () => {
   });
 
   it('keeps already stored parts chosen so the import shares them', () => {
-    // Nur Bekanntes: kein Haken sichtbar, aber gewählt, damit das Löschen eines
-    // älteren Imports diese Einträge nicht entfernt.
+    // Only known parts: no check mark is visible, but they stay selected so that deleting
+    // an older import does not remove these entries.
     const preview = readImportPreview({
       runs: { duplicates: 2 },
       wellness: { steps: 3 },

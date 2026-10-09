@@ -14,7 +14,8 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ".github/workflows/android.yml"
-REQUIRED_JOBS = {"Check self-hosted server and Docker image", "Check and build phone + Wear OS"}
+SERVER_JOB = "Check self-hosted server and Docker image"
+REQUIRED_JOBS = {SERVER_JOB, "Check and build phone + Wear OS", "Select checks and verified PR build"}
 
 
 def require(condition, message):
@@ -89,7 +90,7 @@ def verified_assets(archive_bytes, run, tree, commit_lookup):
     return assets, metadata
 
 
-def find_reusable_build(repository, sha, current, tree, fetch=None):
+def find_reusable_build(repository, sha, current, tree, fetch=None, server_required=True):
     fetch = fetch or api
     prefix = f"repos/{repository}"
     pulls = fetch(f"{prefix}/commits/{sha}/pulls?per_page=100")
@@ -117,7 +118,13 @@ def find_reusable_build(repository, sha, current, tree, fetch=None):
             require(jobs["total_count"] <= 100, "Cannot establish completed checks")
             passed = {job["name"] for job in jobs["jobs"]
                       if job["status"] == "completed" and job["conclusion"] == "success"}
-            if not REQUIRED_JOBS.issubset(passed):
+            required = REQUIRED_JOBS if server_required else REQUIRED_JOBS - {SERVER_JOB}
+            if not required.issubset(passed):
+                continue
+            # A skipped server job is valid only when the current diff proves that
+            # no server inputs changed; missing checks are never evidence of success.
+            if not any(job["name"] == SERVER_JOB and job["status"] == "completed"
+                       and job["conclusion"] in {"success", "skipped"} for job in jobs["jobs"]):
                 continue
             artifacts = fetch(f"{prefix}/actions/runs/{run['id']}/artifacts?per_page=100")
             name = f"runback-apks-{run['run_number']}-{run['run_attempt']}"
@@ -140,9 +147,9 @@ def prepare_release(assets, metadata, sha, current_id, output):
         for name in sorted(assets) if name.endswith(".apk") or name == "BUILD-METADATA.json"
     ).encode()
     assets["RELEASE-NOTES.md"] += (
-        f"\nFür Main-Commit `{sha}` aus dem erfolgreichen PR-Lauf `{metadata['ciRun']}` übernommen. "
-        f"Der vollständige Repository-Inhalt ist identisch (`{metadata['tree']}`). "
-        "APKs und ihre Versionsnummer bleiben unverändert.\n"
+        f"\nTaken over for main commit `{sha}` from the successful PR run `{metadata['ciRun']}`. "
+        f"The full repository content is identical (`{metadata['tree']}`). "
+        "The APKs and their version number are unchanged.\n"
     ).encode()
     output.mkdir()
     for name, data in assets.items():
@@ -159,7 +166,8 @@ def main():
             tree = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], cwd=ROOT, text=True).strip()
             require(subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip() == sha,
                     "Checkout does not match the merged commit")
-            found = find_reusable_build(repository, sha, current, tree)
+            found = find_reusable_build(repository, sha, current, tree,
+                                        server_required=os.environ.get("CHECK_SERVER") != "false")
             if found:
                 assets, metadata = found
                 prepare_release(assets, metadata, sha, current["id"], output)
