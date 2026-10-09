@@ -201,6 +201,51 @@ class SetDetectorTest {
             "fedb:Arnold_Dumbbell_Press", "seated_cable_row").forEach { assertTrue(it, RepProfiles.forExercise(it) != null) }
     }
 
+    @Test fun postureChangeBeforeAndAfterTheSetKeepsTheEdgeReps() {
+        // Arm held in another position before and after the set (dumbbell up, set down): the edge reps count.
+        val raised = Motion(20.0, { Math.toRadians(150.0) }, { 0.0 })
+        val run = feed(raised, reps(8, 3.0), Motion(25.0, { Math.toRadians(150.0) }, { 0.0 }))
+        assertEquals(8, run.sets.single().count)
+    }
+
+    @Test fun aLongSetThatChangesShapeStaysOneSet() {
+        // 24 reps, flatter towards the end and with a shifted turning point (fatigue).
+        val periodS = 2.5
+        val count = 24
+        val fade = { t: Double -> 1 - 0.5 * t / (count * periodS) }
+        val tired = Motion(count * periodS,
+            { t -> fade(t) * Math.toRadians(100.0) * (1 - cos(2 * PI * t / periodS + 0.6 * sin(2 * PI * t / periodS) * t / (count * periodS))) / 2 },
+            { t -> fade(t) * Math.toRadians(100.0) * PI / periodS * sin(2 * PI * t / periodS) })
+        val run = feed(rest(20.0), tired, rest(25.0))
+        assertEquals(1, run.sets.size)
+        assertTrue("${run.sets.single().count}", abs(run.sets.single().count - count) <= 1)
+    }
+
+    @Test fun repsRightAfterLiftingTheWeightCountFromTheFirst() {
+        // Lifting the dumbbells: a large, irregular swing that hides the rhythm of the
+        // first reps from the analysis window until it has passed.
+        val lift = Motion(6.0,
+            { t -> Math.toRadians(160.0) * sin(PI * t / 6.0) * sin(PI * t / 6.0) + 0.5 * sin(2 * PI * t / 1.7) * sin(PI * t / 6.0) },
+            { t -> 4 * sin(2 * PI * t / 2.3) * sin(PI * t / 6.0) })
+        val run = feed(rest(15.0), lift, reps(10, 3.0), rest(25.0))
+        assertEquals(listOf(10), run.sets.map { it.count })
+    }
+
+    @Test fun aClearSetOfThreeRepsIsStillReported() {
+        val run = feed(rest(15.0), reps(3, 3.0), rest(25.0))
+        assertEquals(listOf(3), run.sets.map { it.count })
+    }
+
+    @Test fun movingMedianFollowsAStepWithoutARamp() {
+        val step = DoubleArray(1000) { if (it < 500) 0.0 else 5.0 }
+        val median = RepSignal.movingMedian(step, 300)
+        assertEquals(0.0, median[400], 1e-9)
+        assertEquals(5.0, median[600], 1e-9)
+        assertTrue(RepSignal.movingAverage(step, 300)[400] > 0.5)
+        assertEquals(0, RepSignal.movingMedian(DoubleArray(0), 300).size)
+        assertEquals(2.0, RepSignal.movingMedian(DoubleArray(7) { 2.0 }, 300)[3], 1e-9)
+    }
+
     @Test fun signalHelpersFindPeriodAndAxis() {
         val n = 750
         val wave = DoubleArray(n) { sin(2 * PI * it / (2.5 * RepSignal.RATE_HZ)) }
