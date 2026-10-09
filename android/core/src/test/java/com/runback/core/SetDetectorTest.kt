@@ -236,6 +236,25 @@ class SetDetectorTest {
         assertEquals(listOf(3), run.sets.map { it.count })
     }
 
+    @Test fun aTiringArmDoesNotPullInTheOtherArm() {
+        // Own arm fades from full to half height, then the other arm right away, barely seen by the watch.
+        val curl = RepProfiles.forExercise("fedb:Concentration_Curls")!!
+        val periodS = 3.2
+        val count = 10
+        val fade = { t: Double -> 1 - 0.5 * t / (count * periodS) }
+        val tiring = Motion(count * periodS,
+            { t -> fade(t) * Math.toRadians(100.0) * (1 - cos(2 * PI * t / periodS)) / 2 },
+            { t -> fade(t) * Math.toRadians(100.0) * PI / periodS * sin(2 * PI * t / periodS) })
+        val run = feed(rest(15.0), tiring, rest(1.5), reps(count, periodS, scale = 0.3), rest(40.0), profile = curl)
+        assertEquals(listOf(count), run.sets.map { it.count })
+    }
+
+    @Test fun aLongSlowSetAfterLongRestIsReported() {
+        // 28 reps of 6 s: the lead-in before the first rep must stay inside the buffer until the end.
+        val run = feed(rest(60.0), reps(28, 6.0), rest(30.0))
+        assertEquals(listOf(28), run.sets.map { it.count })
+    }
+
     @Test fun movingMedianFollowsAStepWithoutARamp() {
         val step = DoubleArray(1000) { if (it < 500) 0.0 else 5.0 }
         val median = RepSignal.movingMedian(step, 300)

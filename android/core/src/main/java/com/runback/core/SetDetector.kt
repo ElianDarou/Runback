@@ -13,7 +13,7 @@ import kotlin.math.sqrt
  * reps — classic signal processing, no learned model.
  *
  * How it works: bring acceleration and gyroscope to 50 Hz and keep them in a
- * ring buffer (200 s). At rest only check for motion cheaply. When moving,
+ * ring buffer (240 s). At rest only check for motion cheaply. When moving,
  * every 0.5 s check the last 15 s: main axis per sensor, autocorrelation;
  * even motion with a repeat period between `minPeriodS` and `maxPeriodS`,
  * ideally confirmed by both sensors. Fast periodicity around 1.2 s (walking,
@@ -469,7 +469,9 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
             val shape = RepSignal.shape(v, i, a.periodS) ?: continue
             val recentTemplate = if (recent.size >= 3) RepSignal.template(recent.toList()) else null
             val similarity = max(RepSignal.dot(shape, a.template), recentTemplate?.let { RepSignal.dot(shape, it) } ?: -1.0)
-            val height = if (chosen.size >= 3) RepSignal.median(chosen.takeLast(5).map { p[it] }) else a.height
+            // One arm keeps the fixed height: a tiring arm must not lower the bar until the
+            // other arm's weak reps pass as a continuation (`heightFits`).
+            val height = if (!profile.unilateral && chosen.size >= 3) RepSignal.median(chosen.takeLast(5).map { p[it] }) else a.height
             val heightOk = heightFits(p[i], height)
             if (chosen.isEmpty()) {
                 if (similarity >= 0.5 && heightOk && a.lo + i > minStart) { chosen += i; similarities += similarity; recent.addLast(shape) }
@@ -503,8 +505,12 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
 
     private fun follow() {
         val a = active ?: return
+        if (total - a.firstPeak > MAX_SET_S * RepSignal.RATE_HZ || a.lo < oldest()) {
+            state = State.IDLE; active = null; hits = 0; provisionalReps = 0
+            return
+        }
         val c = chain(a)
-        if (c.peaks.isEmpty() || total - a.firstPeak > MAX_SET_S * RepSignal.RATE_HZ || a.lo < oldest()) {
+        if (c.peaks.isEmpty()) {
             state = State.IDLE; active = null; hits = 0; provisionalReps = 0
             return
         }
@@ -620,7 +626,11 @@ class SetDetector(profile: RepProfiles.Profile, private val hasGyro: Boolean = t
         const val UNCERTAIN_BELOW = 0.6
         private const val ACCEL = 0
         private const val GYRO = 1
-        private const val RING_SECONDS = 200
+        /**
+         * Long enough for the longest set (`MAX_SET_S`), the lead-in before its first rep
+         * (`LEAD_IN_PERIODS` × the longest period of 7 s + 3 s) and the end detection after it.
+         */
+        private const val RING_SECONDS = 240
         private const val WINDOW_S = 15.0
         private const val LOOKBACK_S = 45.0
         private const val EVALUATE_EVERY = 25L
