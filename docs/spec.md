@@ -5,14 +5,14 @@ How something is implemented lives in the code, not here.
 
 ## Goal
 
-Runback is a local Android training app for running and strength training. From
-recorded and imported workouts, it derives **at most one** justified, actionable,
-and checkable recommendation per area — and later checks honestly whether it was
-carried out and whether it helped.
+Runback is a local Android training app for running and strength training.
+It records workouts with your phone and watch, imports history from other apps,
+and honestly shows what the data contains: pace, heart rate, splits, running form,
+sets, muscles, and comparisons with earlier workouts.
 
-Core promise: one workout in → at most one recommendation for that area out, if
-the data supports it. Otherwise the app says briefly what is known and what is
-missing. **No recommendation is a full result.**
+Core promise: your data stays complete, traceable, and with you. Every number has
+a source; what is unknown stays visibly unknown. Goals, plans, and recommendations
+are optional features built on that data.
 
 ## Mindset
 
@@ -20,8 +20,6 @@ missing. **No recommendation is a full result.**
   user. A better run can be due to the tip — or to sleep, the weather, or a
   randomly bad run before it. “Not clear yet” is therefore the normal case, and
   “more of an impression” is preferred over a precise number without a basis.
-- **Calm instead of reactive.** A new run is not a reason for a new tip. Keeping
-  things as they are is a recommendation.
 - **The user decides.** The app suggests, the user accepts. Plans are user
   artifacts; the app does not rewrite them on its own.
 - **Everything is optional.** Recording works without a goal, focus, plan, setup,
@@ -29,49 +27,6 @@ missing. **No recommendation is a full result.**
   produces neither hints nor empty areas.
 - **Narrow output, arbitrary internal complexity.** One statement per surface,
   one sentence in the imperative, depth under “Details”.
-
-## Two areas
-
-**Running** and **Strength training** are separate areas with their own goal, their
-own focus, and their own recommendation. They are checked against separate data
-(runs, or sets and soreness), so they hardly interfere with each other in the
-analysis. Anyone who uses only one area sees nothing of the other.
-
-- At most **one active recommendation per area**, so never more than two.
-- A recommendation that touches both areas (“reduce leg load before the long run”)
-  takes **both slots**.
-- **Coupling lock:** Before the second recommendation is suggested, Runback checks
-  whether its action class can influence the target of the first (more leg volume
-  → running pace). If so, it does not appear in parallel but as “Up next”.
-- On “Today”, the recommendation is for the workout that is being started right
-  now. Never both stacked on top of each other.
-
-Unlocked action classes: Running “calmer start”, Strength training “load of an
-exercise”. More metrics do not have to create more classes.
-
-## The three levels
-
-For each area:
-
-| Level | Meaning |
-|---|---|
-| **Goal** | Optional plan, possibly with a date. May end. A date makes build-up and tapering predictable. |
-| **Focus** | Ongoing theme without an end date, at most one active per area. Is **never evaluated**. A goal may suggest a focus. |
-| **Recommendation** | At most one concrete action per area, which is checked. States: Suggestion → Accepted → Active / Paused → Completed / Cancelled. |
-
-The three levels are independently optional. Changing the focus does not end a
-running recommendation; ending a goal does not delete the focus.
-
-The focus has two fields: the **focus type** from a short, versioned list per area
-(it drives prioritization), and a **custom label** as free text (shown in the UI,
-not evaluated). With a goal, Runback suggests a focus type; without a goal, Runback
-does not guess — the user chooses themselves or leaves it empty. A very broad focus
-(“get fitter”) is treated like “no focus”; then data quality and actionability decide.
-
-Old and new terms refer to the same object: “work topic”, “next action”, and
-“intervention” are today called recommendation. Not “running recommendation” —
-strength training belongs to it too. Not “change” — keeping things as they are is
-a recommendation.
 
 ## Ground rules
 
@@ -135,23 +90,77 @@ Kept separate and never mixed:
   stays **unknown**. Never phrased as “ready”, “fit to load”, or “injury risk”. Its
   range is a rough estimate, not a prediction interval, until a check on later,
   unknown reports shows otherwise.
-- **Prioritization** — deterministic, no learning profile:
-  - A versioned **relevance matrix** gives each action class a fixed weight per focus
-    type. Same inputs → same order.
-  - A focus can **block** classes, not just downgrade them (“stay injury-free” blocks
-    volume increases).
-  - A goal with a date filters hard by **calendar**: no technique build-up in the last
-    three weeks, no tapering more than twelve weeks before.
-  - After that, the following counts: higher weight, better data quality, better
-    actionability, smaller effort.
-  - Under “Details” are also the **discarded alternatives** with reasons. If a
-    recommendation is running, the next one may appear as “Up next” without changing
-    the active check.
-  - The weights are editorial. In the UI this is called “How Runback prioritizes”,
-    never “calculated for you”.
 
 Exercise catalog, muscle regions, models, and matrix are versioned data; their
 version goes into every derivation.
+
+## Recommendations (optional)
+
+When enabled, Runback gives at most one justified, actionable, and checkable
+recommendation per area, then later checks honestly whether it was carried out
+and whether it helped. **No recommendation is a full result.** A new run is not
+a reason for a new tip; keeping things as they are is a recommendation.
+
+### Two areas
+
+**Running** and **Strength training** are separate areas with their own goal, their
+own focus, and their own recommendation. They are checked against separate data
+(runs, or sets and soreness), so they hardly interfere with each other in the
+analysis. Anyone who uses only one area sees nothing of the other.
+
+- At most **one active recommendation per area**, so never more than two.
+- A recommendation that touches both areas (“reduce leg load before the long run”)
+  takes **both slots**.
+- **Coupling lock:** Before the second recommendation is suggested, Runback checks
+  whether its action class can influence the target of the first (more leg volume
+  → running pace). If so, it does not appear in parallel but as “Up next”.
+- On “Today”, the recommendation is for the workout that is being started right
+  now. Never both stacked on top of each other.
+
+Unlocked action classes: Running “calmer start”, Strength training “load of an
+exercise”. More metrics do not have to create more classes.
+
+### The three levels
+
+For each area:
+
+| Level | Meaning |
+|---|---|
+| **Goal** | Optional plan, possibly with a date. May end. A date makes build-up and tapering predictable. |
+| **Focus** | Ongoing theme without an end date, at most one active per area. Is **never evaluated**. A goal may suggest a focus. |
+| **Recommendation** | At most one concrete action per area, which is checked. States: Suggestion → Accepted → Active / Paused → Completed / Cancelled. |
+
+The three levels are independently optional. Changing the focus does not end a
+running recommendation; ending a goal does not delete the focus.
+
+The focus has two fields: the **focus type** from a short, versioned list per area
+(it drives prioritization), and a **custom label** as free text (shown in the UI,
+not evaluated). With a goal, Runback suggests a focus type; without a goal, Runback
+does not guess — the user chooses themselves or leaves it empty. A very broad focus
+(“get fitter”) is treated like “no focus”; then data quality and actionability decide.
+
+Old and new terms refer to the same object: “work topic”, “next action”, and
+“intervention” are today called recommendation. Not “running recommendation” —
+strength training belongs to it too. Not “change” — keeping things as they are is
+a recommendation.
+
+### Prioritization
+
+Deterministic, no learning profile:
+
+- A versioned **relevance matrix** gives each action class a fixed weight per focus
+  type. Same inputs → same order.
+- A focus can **block** classes, not just downgrade them (“stay injury-free” blocks
+  volume increases).
+- A goal with a date filters hard by **calendar**: no technique build-up in the last
+  three weeks, no tapering more than twelve weeks before.
+- After that, the following counts: higher weight, better data quality, better
+  actionability, smaller effort.
+- Under “Details” are also the **discarded alternatives** with reasons. If a
+  recommendation is running, the next one may appear as “Up next” without changing
+  the active check.
+- The weights are editorial. In the UI this is called “How Runback prioritizes”,
+  never “calculated for you”.
 
 ## Scope
 

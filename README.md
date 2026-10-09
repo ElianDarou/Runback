@@ -6,14 +6,29 @@ setup.
 
 Website: [runback-training.vercel.app](https://runback-training.vercel.app)
 
-Runback records workouts, imports your history, and derives from it
-**at most one** justified recommendation for running and one for strength training —
-and later checks honestly whether it helped. “Not clear yet” is a normal result.
+Runback records runs and strength training with your phone and watch, imports
+your history from other apps, and shows what the data contains: pace, heart rate,
+kilometer splits, running form, sets, muscles, and comparisons with your recent
+workouts. Missing values appear as “–” rather than an estimated number.
 
 ## Language
 
 The app is available in German and English. Switch it under **Settings → Language**.
 The default is the device language.
+
+## Data
+
+- **Import** from Garmin, Strava, Fitbit, Google Fit, Apple Health, Samsung Health,
+  Mi Fitness, Polar, Strong, and others — see [Imports](docs/imports.md).
+- **Backup** as a ZIP with everything Runback knows; restore onto a fresh installation.
+- **Export** of a run as GPX, run reports, and strength training as ZIP.
+- **Health Connect** read and (per run, explicitly) write.
+- **BLE sensors** for heart rate and running cadence.
+- **Weather** only once enabled, via Open-Meteo.
+- **OpenRouter** optional with your own key, for phrasing and the training chat. The chat
+  reads, it writes nothing and decides nothing.
+- **Own server** optional, self-hosted, with a read-only copy of shared data — see
+  [server/README.md](server/README.md).
 
 ## What you see in the app
 
@@ -22,8 +37,8 @@ can be pinned to the bar: Plan, Coach, Statistics, Routes,
 Templates, or Soreness. Everything else is under **All features**.
 
 - **Today** — What do I do now? A week strip, today’s workout as a card with a start
-  button (sport, purpose, template, and pace/heart rate target in the start sheet), the
-  running recommendation in compact form, reporting soreness, and the latest workouts.
+  button (sport, purpose, template, and pace/heart rate target in the start sheet),
+  reporting soreness, the current recommendation (if active), and the latest workouts.
 - **History** — What have I done? Workouts grouped by week with totals. Detail view with
   map, metrics, next step, feeling, and splits.
 - **Plan** — What do I do this week? Week calendar, add a workout, have a week suggested,
@@ -41,11 +56,7 @@ strength training), the blocks on Today, recommendations (suggest, Coach only, o
 display during recording, the rest timer, and more. Under **Navigation** you choose the tabs.
 What is switched off disappears from the app; data is kept.
 
-After a run, Runback shows three things: how the run fits its purpose, where the current
-recommendation stands, and what you can do next — including “keep going as you are”.
-Details, data basis, and uncertainty are under “Details”.
-
-## Goal, focus, recommendation
+## Goal, focus, recommendation (optional)
 
 Running and strength training are separate areas. Each has its own goal, its own focus,
 and its own recommendation; if you only do one, you see nothing of the other.
@@ -58,19 +69,9 @@ and its own recommendation; if you only do one, you see nothing of the other.
   yet. If a recommendation touches both areas (“less leg load before the long run”), there is
   no second one in the meantime.
 
-## Data
-
-- **Import** from Garmin, Strava, Fitbit, Google Fit, Apple Health, Samsung Health,
-  Mi Fitness, Polar, Strong, and others — see [Imports](docs/imports.md).
-- **Backup** as a ZIP with everything Runback knows; restore onto a fresh installation.
-- **Export** of a run as GPX, run reports, and strength training as ZIP.
-- **Health Connect** read and (per run, explicitly) write.
-- **BLE sensors** for heart rate and running cadence.
-- **Weather** only once enabled, via Open-Meteo.
-- **OpenRouter** optional with your own key, for phrasing and the training chat. The chat
-  reads, it writes nothing and decides nothing.
-- **Own server** optional, self-hosted, with a read-only copy of shared data — see
-  [server/README.md](server/README.md).
+After a run, Runback shows three things: how the run fits its purpose, where the current
+recommendation stands, and what you can do next — including “keep going as you are”.
+Details, data basis, and uncertainty are under “Details”.
 
 ## Installation
 
