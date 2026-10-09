@@ -150,6 +150,35 @@ class RunStoreTest {
     }
 
     @Test
+    fun liveDistanceMatchesSavedDistanceWithGpsNoiseAndKilometerSplits() {
+        val run = store.start()
+        val id = run.getString("id")
+        val start = run.getLong("startTime")
+        // Stationary jitter, followed by slow movement across two kilometer splits.
+        val samples = (0..1100).map { index ->
+            val offset = if (index <= 100) (index % 2) * 0.00002 else (index - 100) * 0.00002
+            RawSample(start + index * 1000L, "gps", JSONObject().put("latitude", 52.0 + offset)
+                .put("longitude", 13.0).put("accuracyM", 5.0))
+        }
+        store.appendSamples(id, samples.take(101))
+        assertEquals(0.0, store.active()!!.getDouble("distanceMeters"), 0.0)
+        // Live refresh is throttled to five seconds.
+        Thread.sleep(5_100)
+        store.appendSamples(id, samples.drop(101))
+        val live = store.active()!!.getDouble("distanceMeters")
+        assertEquals(2221.7, live, 0.1)
+        assertEquals(live, store.finish()!!.getDouble("distanceMeters"), 0.001)
+        val detail = store.detail(id)
+        assertEquals(live, detail.getDouble("distanceMeters"), 0.001)
+        val segments = detail.getJSONArray("segments")
+        assertEquals(3, segments.length())
+        assertEquals(live, (0 until segments.length()).sumOf { segments.getJSONObject(it).getDouble("distanceMeters") }, 0.001)
+        val timeline = store.timeline(id).getJSONArray("rows")
+        assertEquals(live, timeline.getJSONObject(timeline.length() - 1).getDouble("distanceMeters"), 0.001)
+        assertEquals(samples.size, store.rawSamples(id).length())
+    }
+
+    @Test
     fun rawGpsIsRetainedWhileUnacceptableJumpIsExcludedFromDistance() {
         val id = store.start().getString("id")
         val first = JSONObject().put("latitude", 52.0).put("longitude", 13.0)

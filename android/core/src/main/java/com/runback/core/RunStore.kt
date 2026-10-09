@@ -288,7 +288,7 @@ class RunStore(context: Context) : DocumentStore {
             val hasSourceSamples = samples.any { it.kind == "gps" || it.kind == "heartRate" }
             val now = SystemClock.elapsedRealtime()
             // Keep the live card responsive without rescanning the complete track for
-            // every sensor batch. Finished runs are always derived exactly below.
+            // every sensor batch. Saving processes the remaining samples with the same rule.
             val lastDerive = run.optLong("_lastDistanceDeriveAt", 0L)
             if (hasSourceSamples && (lastDerive <= 0L || now < lastDerive || now - lastDerive >= 5_000L)) {
                 if (hasGpsSamples) run.put("distanceMeters", liveDistance(id))
@@ -322,24 +322,17 @@ class RunStore(context: Context) : DocumentStore {
         return paused
     }
     private fun liveDistance(id: String): Double {
-        val boundaries = events(id)
-        val cuts = (0 until boundaries.length()).mapNotNull { index ->
-            boundaries.optJSONObject(index)?.takeIf { it.optString("type") in listOf("pause", "resume", "interrupted") }?.optLong("at")
-        }
-        var previous: RawSample? = null
-        var distance = 0.0
+        val cuts = cuts(id)
+        val accumulator = RunMath.DistanceAccumulator()
+        var previousTime: Long? = null
         selectedSamples(id, "gps").forEach { sample ->
-            val before = previous
-            if (before != null && cuts.none { it > before.time && it <= sample.time }) {
-                val first = before.values; val second = sample.values
-                RunMath.acceptedDistance(
-                    first.optDouble("latitude"), first.optDouble("longitude"), before.time, first.optDouble("accuracyM", 0.0),
-                    second.optDouble("latitude"), second.optDouble("longitude"), sample.time, second.optDouble("accuracyM", 0.0),
-                )?.let { distance += it }
-            }
-            previous = sample
+            val values = sample.values
+            val crossing = previousTime?.let { before -> cuts.any { it > before && it <= sample.time } } ?: false
+            accumulator.add(sample.time, values.optDouble("latitude"), values.optDouble("longitude"),
+                values.optDouble("accuracyM", 0.0), resetBefore = crossing)
+            previousTime = sample.time
         }
-        return distance
+        return accumulator.distanceMeters
     }
     private fun sensorSources(id: String): JSONObject = JSONObject().apply {
         SensorSourceSelection.selectedSource(selectedSamples(id, "gps"), "gps")?.let { put("gps", it) }
@@ -477,11 +470,10 @@ class RunStore(context: Context) : DocumentStore {
         val elevationGrid = (derived.elevation as? RunElevation.Outcome.Available)?.result?.grid
         val gridMs = RunPhases.GRID_SECONDS * 1000L
         fun altitudeAt(time: Long): Double? = elevationGrid?.getOrNull(((time - startTime) / gridMs).toInt())
-        var distance = 0.0; var segmentDistance = 0.0; var segmentDuration = 0.0; var segmentGap = 0.0
+        var segmentDistance = 0.0; var segmentDuration = 0.0; var segmentGap = 0.0
         var segmentStart: Long? = null; var segmentEnd: Long? = null
         var gaps = 0; var previous: JSONObject? = null
-        // Anchor: distance only counts once the shift exceeds the GPS noise floor.
-        var anchor: JSONObject? = null
+        val accumulator = RunMath.DistanceAccumulator()
         fun split() {
             val from = segmentStart; val to = segmentEnd
             if (segmentDistance > 0 && from != null && to != null) {
@@ -504,27 +496,26 @@ class RunStore(context: Context) : DocumentStore {
                 }
                 segments.put(s)
             }
-            segmentDistance = 0.0; segmentDuration = 0.0; segmentGap = 0.0; segmentStart = null; segmentEnd = null; anchor = null
+            segmentDistance = 0.0; segmentDuration = 0.0; segmentGap = 0.0; segmentStart = null; segmentEnd = null
         }
         points.forEachIndexed { index, p ->
             var gap = false
+            val crossing = previous?.let { before -> cuts.any { it > before.optLong("time") && it <= p.optLong("time") } } ?: false
+            val step = accumulator.add(p.optLong("time"), p.optDouble("latitude"), p.optDouble("longitude"),
+                p.optDouble("accuracyM", 0.0), resetBefore = crossing)
             previous?.let { before ->
-                val crossing = cuts.any { it > before.optLong("time") && it <= p.optLong("time") }
                 if (crossing) { split() } else {
                     val reason = RunMath.rejectionReason(before.optDouble("latitude"), before.optDouble("longitude"), before.optLong("time"), before.optDouble("accuracyM", 0.0),
                         p.optDouble("latitude"), p.optDouble("longitude"), p.optLong("time"), p.optDouble("accuracyM", 0.0))
                     val seconds = (p.optLong("time") - before.optLong("time")) / 1000.0
                     if (reason != null) {
-                        gap = true; gaps++; anchor = null
+                        gap = true; gaps++
                         if (seconds > 0) { segmentGap += seconds; segmentDuration += seconds }
                         if (gapList.length() < 512) gapList.put(JSONObject().put("fromElapsedSeconds", (before.optLong("time") - startTime) / 1000.0)
                             .put("toElapsedSeconds", (p.optLong("time") - startTime) / 1000.0).put("reason", reason))
                     } else {
                         segmentDuration += seconds
-                        val base = anchor ?: before
-                        val step = RunMath.anchoredDistance(base.optDouble("latitude"), base.optDouble("longitude"), base.optDouble("accuracyM", 0.0),
-                            p.optDouble("latitude"), p.optDouble("longitude"), p.optDouble("accuracyM", 0.0))
-                        if (step != null) { distance += step; segmentDistance += step; anchor = p } else if (anchor == null) anchor = base
+                        if (step != null) segmentDistance += step
                     }
                 }
             }
@@ -536,7 +527,7 @@ class RunStore(context: Context) : DocumentStore {
                 if (geometry.length() < 512) geometry.put(JSONObject().put("latitude", p.optDouble("latitude")).put("longitude", p.optDouble("longitude")).put("time", p.optLong("time")).put("gap", gap))
             }; previous = p
         }; split()
-        if (points.size > 1) run.put("distanceMeters", distance)
+        if (points.size > 1) run.put("distanceMeters", accumulator.distanceMeters)
         // Time-weighted instead of by sample count: irregular recording would otherwise skew the mean.
         // Coverage is measured against the effective duration, i.e. the shortened one after a set end.
         val durationSeconds = present(JSONObject(run.toString())).optDouble("durationSeconds", Double.NaN)

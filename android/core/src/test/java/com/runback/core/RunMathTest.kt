@@ -4,6 +4,44 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RunMathTest {
+    @Test fun distanceAccumulatorRejectsStationaryJitterButCountsSlowMovement() {
+        val distance = RunMath.DistanceAccumulator()
+        repeat(101) { index ->
+            distance.add(index * 1000L, 52.0 + (index % 2) * 0.00002, 13.0, 5.0)
+        }
+        assertEquals(0.0, distance.distanceMeters, 0.0)
+        repeat(100) { index ->
+            distance.add((101 + index) * 1000L, 52.0 + (index + 1) * 0.00002, 13.0, 5.0)
+        }
+        // The anchor counts 99 northward steps; the final 2.2 m remain below GPS accuracy.
+        assertEquals(RunMath.distanceMeters(52.0, 13.0, 52.00198, 13.0), distance.distanceMeters, 0.001)
+    }
+
+    @Test fun distanceAccumulatorResetsPendingMovementAtPausesAndGpsGaps() {
+        for (reason in listOf("pause", "timeout", "accuracy", "speed", "invalid")) {
+            val distance = RunMath.DistanceAccumulator()
+            distance.add(1000, 52.0, 13.0, 5.0)
+            assertEquals(0.0, distance.add(2000, 52.00002, 13.0, 5.0)!!, 0.0)
+            val nextTime = if (reason == "timeout") 40_000L else 3000L
+            val gapLatitude = when (reason) { "speed" -> 53.0; "invalid" -> Double.NaN; else -> 52.00004 }
+            val accuracy = if (reason == "accuracy") 60.0 else 5.0
+            assertNull(distance.add(nextTime, gapLatitude, 13.0, accuracy, resetBefore = reason == "pause"))
+            distance.add(nextTime + 1000, 52.00004, 13.0, 5.0)
+            distance.add(nextTime + 2000, 52.00006, 13.0, 5.0)
+            distance.add(nextTime + 3000, 52.00008, 13.0, 5.0)
+            assertEquals(reason, 0.0, distance.distanceMeters, 0.0)
+            distance.add(nextTime + 4000, 52.00010, 13.0, 5.0)
+            assertEquals(reason, RunMath.distanceMeters(52.00004, 13.0, 52.00010, 13.0), distance.distanceMeters, 0.001)
+        }
+    }
+
+    @Test fun distanceAccumulatorCountsEveryValidStepWithoutAccuracy() {
+        val distance = RunMath.DistanceAccumulator()
+        distance.add(1000, 52.0, 13.0, 0.0)
+        distance.add(2000, 52.00002, 13.0, 0.0)
+        assertEquals(2.22, distance.distanceMeters, 0.01)
+    }
+
     @Test fun knownEquatorialDistance() {
         assertEquals(111.195, RunMath.distanceMeters(0.0, 0.0, 0.0, 0.001), 0.01)
     }
