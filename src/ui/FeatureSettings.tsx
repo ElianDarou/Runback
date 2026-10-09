@@ -355,7 +355,7 @@ export function FeatureSettings({
           )}
         </Copy>
         <Section title={tr('Training begleiten', 'Support training')}>
-          {functionRows(['coach', 'planning', 'goals'])}
+          {functionRows(['coach', 'planning', 'goals', 'music'])}
         </Section>
         <Section title={tr('Auswerten und vorbereiten', 'Analyze and prepare')}>
           {functionRows(['statistics', 'routes', 'templates', 'soreness'])}

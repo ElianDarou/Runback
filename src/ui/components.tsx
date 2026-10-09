@@ -179,6 +179,33 @@ export function SwipeToDelete({
   );
 }
 
+/** Spotify playback always retains the track's original cover alongside its metadata. */
+/** Original Spotify mark: developer-assets.spotifycdn.com/images/guidelines/design/icon3.svg. */
+export function SpotifyAttribution() {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs }}>
+      <NativeImage
+        source={require('../../assets/spotify-icon.png')}
+        accessibilityRole="image"
+        accessibilityLabel="Spotify"
+        style={{ width: space.lg * 2, height: space.lg * 2 }}
+      />
+      <Copy muted>Spotify</Copy>
+    </View>
+  );
+}
+
+export function MusicArtwork({ uri, label }: { uri?: string; label: string }) {
+  return uri?.startsWith('https://') ? (
+    <NativeImage
+      source={{ uri }}
+      accessibilityRole="image"
+      accessibilityLabel={label}
+      style={{ width: space.xl * 2, height: space.xl * 2 }}
+    />
+  ) : null;
+}
+
 export function Title({ children }: PropsWithChildren) {
   return (
     <Text accessibilityRole="header" style={s.title}>
@@ -288,9 +315,18 @@ export function Stepper({
 export function Copy({
   children,
   muted = false,
+  selectable = false,
   style,
-}: PropsWithChildren<{ muted?: boolean; style?: object }>) {
-  return <Text style={[s.copy, muted && s.muted, style]}>{children}</Text>;
+}: PropsWithChildren<{
+  muted?: boolean;
+  selectable?: boolean;
+  style?: object;
+}>) {
+  return (
+    <Text selectable={selectable} style={[s.copy, muted && s.muted, style]}>
+      {children}
+    </Text>
+  );
 }
 
 export function Card({

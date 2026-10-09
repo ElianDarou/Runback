@@ -230,6 +230,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
                     }
                     else -> shutdown()
                 }
+                publishMusicState()
             } catch (error: Exception) {
                 failRecording(error)
             }
@@ -338,6 +339,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
             if (!recording) return
             try {
                 flush()
+                publishMusicState()
                 val now = SystemClock.elapsedRealtime()
                 if (now - lastCheckpoint >= CHECKPOINT_INTERVAL_MS) {
                     activeId?.let { store.checkpoint(it) }
@@ -774,6 +776,12 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
             .onFailure { Log.w(TAG, "Could not send the wear sensor packet", it) }
     }
 
+    /** Optional phone playback observes aggregates; failures never interrupt recording. */
+    private fun publishMusicState() {
+        val sink = musicSink ?: return
+        runCatching { sink(store.active()) }
+    }
+
     private fun hasLocationPermission(): Boolean =
         checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
             checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
@@ -935,6 +943,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
                 Log.e(TAG, "Could not persist final recording checkpoint", error)
             } finally {
                 recording = false
+                publishMusicState()
                 endListening()
                 runCatching { BleSensors.get(this).stopAll() }
                 workerThread.quitSafely()
@@ -962,6 +971,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
             if (sport == "cycling") Lang.tr("Radfahrt", "Ride") else Lang.tr("Lauf", "Run")
         @Volatile var sampleSink: RecordingSampleSink? = null
         @Volatile var controlSink: RecordingControlSink? = null
+        @Volatile var musicSink: ((JSONObject?) -> Unit)? = null
         @Volatile private var activeService: RecordingService? = null
         fun hasLiveService(): Boolean = activeService != null
         /** The new target pace applies to the cues from now on; it is already saved. */

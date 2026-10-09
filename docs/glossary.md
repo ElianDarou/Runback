@@ -107,6 +107,8 @@ product. Code names are identifiers and stay as they are.
 | Vorlage (Oberkörper) | Forward lean | `leanDeg` | Lean of the upper body while running compared to standing at the start. Only phone on the torso. |
 | Analyse-Export | Analysis export | `buildRunAnalysisExport` | Three files to share: report (Markdown), analysis (JSON), time series (CSV, 5 s). |
 | Kraft-Export | Strength export | `strengthExport.ts` | ZIP of all strength sessions recorded in Runback (without imports): training log (Markdown), sessions, sets and heart rate as CSV, everything as JSONL. Missing values stay empty. |
+| Musik | Music | `music.ts`, Kotlin `MusicController` | Optional phone-only Spotify playback, explicitly started for a run, following measured steps or a chosen beat rate; no training recommendation. |
+| Musiktempo | Music tempo | `MusicConfig.mode`, `fixedBpm` | Beats per minute of a song or the rate chosen by the user. Kept separate from running pace; one beat may accompany one or two steps. |
 | Grundregel | Ground rule | — | Rule that applies to everything and is not traded for a UI shortcut. |
 | Eigener Server | Own server | `ServerLink` | Optional self-hosted server with a read-only copy of the shared data; the phone remains the original. |
 | Abgleich | Sync | `serverSync` | Transfers changes from the phone to the server; training remains possible without a connection. |

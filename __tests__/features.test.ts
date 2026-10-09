@@ -341,3 +341,16 @@ describe('Features and navigation v2', () => {
     expect(recommendationsShown(f, 'running')).toBe(true);
   });
 });
+
+
+describe('optional music', () => {
+  it('stays off for new and existing users and takes no navigation slot', () => {
+    const defaults = normalizeFeatures(undefined);
+    expect(defaults.music.enabled).toBe(false);
+    expect(normalizeFeatures({ version: 2 }).music.enabled).toBe(false);
+    const music = withFeature(defaults, 'music', true);
+    expect(featureEnabled(music, 'music')).toBe(true);
+    expect(availableTabs(music)).toEqual(availableTabs(defaults));
+    expect(withFeature(music, 'music', false).music.enabled).toBe(false);
+  });
+});

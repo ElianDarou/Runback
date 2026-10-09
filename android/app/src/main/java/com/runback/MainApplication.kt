@@ -53,6 +53,7 @@ class MainApplication : Application(), ReactApplication {
       )
     }
     DisplayNames.restore(RunStore(this))
+    RecordingService.musicSink = { run -> MusicController.get(this).onRun(run) }
     ServerLink.start(this)
     WearController.retryPending(this)
     loadReactNative(this)

@@ -209,6 +209,7 @@ import {
   type Run,
   type Settings,
 } from '../native';
+import { MusicLive, MusicSettings } from './MusicSettings';
 import { FeatureSettings } from './FeatureSettings';
 import { RoutePlannerScreen } from './RoutePlannerScreen';
 import { PHONE_PLACEMENTS, normalizePlacement } from '../domain/gait';
@@ -339,6 +340,7 @@ type Page =
   | 'templates'
   | 'muscle-map'
   | 'server'
+  | 'music'
   | 'settings'
   | 'devices'
   | 'data'
@@ -369,6 +371,7 @@ interface Trail {
 const PARENT_PAGE: Partial<Record<Page, Page>> = {
   devices: 'settings',
   server: 'settings',
+  music: 'features',
   'run-audio': 'settings',
   data: 'settings',
   models: 'settings',
@@ -3404,6 +3407,15 @@ export function RunbackApp({
           />
         ) : null}
         <WearRecordingRow run={recording} />
+        {features.music.enabled &&
+        isRun(recording) &&
+        recording.source === 'phone' ? (
+          <MusicLive
+            runId={recording.id}
+            paused={recording.status === 'paused'}
+            onSettings={() => openPage('music')}
+          />
+        ) : null}
         {recording.distanceMeters > 0 ? null : (
           <Copy muted>
             {tr(
@@ -4443,7 +4455,8 @@ export function RunbackApp({
   );
   const openFunction = (id: FeatureId) => {
     if (!featureEnabled(features, id)) return;
-    if (id === 'goals') openPage('goals');
+    if (id === 'music') openPage('music');
+    else if (id === 'goals') openPage('goals');
     else {
       const entry = FEATURE_CATALOG.find(item => item.id === id);
       if (entry?.tab) {
@@ -6391,9 +6404,17 @@ export function RunbackApp({
       onOpenNavigation={() => openPage('features-navigation')}
       onOpenMain={() => openPage('features')}
       onOpenDetails={screen => {
-        setFeatureDetail(screen);
-        openPage('features-detail');
+        if (screen === 'music') openPage('music');
+        else {
+          setFeatureDetail(screen);
+          openPage('features-detail');
+        }
       }}
+    />
+  ) : page === 'music' ? (
+    <MusicSettings
+      enabled={features.music.enabled}
+      onToggle={enabled => changeFeatures({ ...features, music: { enabled } })}
     />
   ) : page === 'server' ? (
     <ServerSettings key={serverStatus?.url ?? "off"} status={serverStatus} onStatus={setServerStatus} />

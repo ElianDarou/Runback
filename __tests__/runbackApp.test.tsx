@@ -62,6 +62,7 @@ jest.mock('../src/native', () => {
   };
 });
 
+import { FEATURES_VERSION } from '../src/domain/features';
 import { RunbackApp } from '../src/ui/RunbackApp';
 import { native, nativeCall } from '../src/native';
 import {
@@ -1036,7 +1037,7 @@ describe('Features', () => {
     expect(screenText(tree)).toContain('Neu: Wähle, was Runback zeigt');
     await tapText(tree, 'Neu: Wähle, was Runback zeigt');
     expect(screenText(tree)).toContain('Funktionen');
-    expect(settingsSaved().features?.version).toBe(2);
+    expect(settingsSaved().features?.version).toBe(FEATURES_VERSION);
     await tap(tree, 'Heute');
     expect(screenText(tree)).not.toContain('Neu: Wähle, was Runback zeigt');
     await act(async () => {
