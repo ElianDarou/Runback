@@ -11,10 +11,11 @@ import kotlin.math.*
  * Overlapping phone and Wear sensor values are merged per source.
  * 3.0: GPS gaps no longer end a segment; they count as a gap within it. Grade
  * and elevation gain come from RunElevation instead of raw neighboring points.
+ * 3.1: Live distance uses the same noise-floor anchor as saved runs and timelines.
  * Older derivations keep their version.
  */
 object RunMath {
-    const val MODEL_VERSION = "runback-distance-3.0"
+    const val MODEL_VERSION = "runback-distance-3.1"
     /** Altitude change that safely exceeds barometer noise of ±1–2 m. */
     const val ELEVATION_HYSTERESIS_METERS = 3.0
     /** GPS altitude is noisy by ±5–15 m; below that, no change can be shown. */
@@ -77,6 +78,33 @@ object RunMath {
                          lat: Double, lon: Double, accuracy: Double): Double? {
         val distance = distanceMeters(anchorLat, anchorLon, lat, lon)
         return distance.takeIf { it >= noiseFloorMeters(anchorAccuracy, accuracy) }
+    }
+
+    /** Shared by live recording, saved splits and timelines; gaps reset the noise anchor. */
+    class DistanceAccumulator {
+        private data class Point(val time: Long, val latitude: Double, val longitude: Double, val accuracy: Double)
+        private var previous: Point? = null
+        private var anchor: Point? = null
+        var distanceMeters = 0.0; private set
+
+        /** null means no valid step; a valid shift below the noise floor contributes zero. */
+        fun add(time: Long, latitude: Double, longitude: Double, accuracy: Double, resetBefore: Boolean = false): Double? {
+            val point = Point(time, latitude, longitude, accuracy)
+            val before = previous
+            previous = point
+            if (before == null || resetBefore || rejectionReason(
+                    before.latitude, before.longitude, before.time, before.accuracy,
+                    latitude, longitude, time, accuracy,
+                ) != null) {
+                anchor = null
+                return null
+            }
+            val base = anchor ?: before
+            val step = anchoredDistance(base.latitude, base.longitude, base.accuracy, latitude, longitude, accuracy)
+            anchor = if (step != null) point else base
+            distanceMeters += step ?: 0.0
+            return step ?: 0.0
+        }
     }
 
     /** Sums ascent and descent separately; small fluctuations around the reference don't count. */
