@@ -13,6 +13,7 @@ export type {
   Run,
 } from './domain/trainingRecords';
 import { readServerLinkStatus, type ServerScope } from './domain/serverLink';
+import type { MusicConfig, MusicStatus } from './domain/music';
 import { NativeEventEmitter, NativeModules } from 'react-native';
 import type { RouteCoordinate, RoutePlan } from './domain/routes';
 import type { RunTimeline } from './domain/runReport';
@@ -160,6 +161,18 @@ export async function routeCall<T = unknown>(
   return (typeof result === 'string' ? JSON.parse(result) : result) as T;
 }
 export const native = {
+  musicStatus: () => nativeCall<MusicStatus>('getMusicStatus'),
+  configureMusic: (config: MusicConfig, clientId: string, bpmKey: string) =>
+    nativeCall<MusicStatus>('configureMusic', JSON.stringify(config), clientId, bpmKey),
+  cancelMusicAuthorization: () => nativeCall<MusicStatus>('cancelMusicAuthorization'),
+  authorizeMusic: () => nativeCall<MusicStatus>('authorizeMusic'),
+  importMusicPlaylist: (value: string) => nativeCall<MusicStatus>('importMusicPlaylist', value),
+  lookupMusicBpm: () => nativeCall<MusicStatus>('lookupMusicBpm'),
+  setMusicBpm: (uri: string, bpm?: number) => nativeCall<MusicStatus>('setMusicBpm', uri, bpm ?? -1),
+  clearMusicBpmKey: () => nativeCall<MusicStatus>('clearMusicBpmKey'),
+  disconnectMusic: () => nativeCall<MusicStatus>('disconnectMusic'),
+  startMusic: (runId: string) => nativeCall<MusicStatus>('startMusic', runId),
+  stopMusic: () => nativeCall<MusicStatus>('stopMusic'),
   async serverStatus() {
     return readServerLinkStatus(await nativeCall('getServerStatus'));
   },

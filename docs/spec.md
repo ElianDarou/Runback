@@ -97,7 +97,9 @@ Violating one is a bug, not a trade-off.
    Good data stays usable.
 8. **The bridge stays lean.** Raw samples stay native. JS sees aggregates and
    bounded display data.
-9. **Data leaves only for a reason.** External services only for weather,
+9. **Data leaves only for a reason.** External services only for optional Spotify
+   playback/playlist access and GetSongBPM title/artist lookups (with personal
+   credentials; no workout data), weather,
    maps/elevation, and optionally OpenRouter with the user’s own key. No coordinates
    or raw data to the LLM, no keys in logs or backups. Exception: the user may send
    a read-only copy of shared data to their own server. GPS and health values need
@@ -158,6 +160,11 @@ version goes into every derivation.
 - One user, no account, no mandatory cloud, free core. Optionally a self-hosted
   server per person for a read-only copy, website, and API. The phone remains the
   original and works fully without a connection.
+- Optional phone-only music follows measured cadence or an explicitly chosen beat
+  rate, from a personal Spotify playlist. Playback starts only by the user, uses
+  Spotify unchanged, and never creates a training recommendation. Unknown song
+  tempo and missing cadence stay unknown. Credentials stay local and are excluded
+  from backups; the selected playlist and corrected tempos are included.
 - Workout types are an open field (`running`, `cycling`, `strength`); further types
   must be possible without rebuilding the data layer.
 - Running analysis and pace index count only runs; strength analysis counts only sets.
@@ -170,7 +177,7 @@ version goes into every derivation.
 
 iOS · mandatory cloud/accounts · synchronization from the server back into the app ·
 social features · segment matching/ghost run ·
-sensor plugin system · music integration · ACWR recommendations · paid
+sensor plugin system · ACWR recommendations · paid
 mandatory services · medical diagnoses · universal whole-body readiness or
 injury-risk score · fully automatic plan change without confirmation ·
 guaranteed recommendation after every run · equating estimate with measurement.

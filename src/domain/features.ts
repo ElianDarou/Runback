@@ -15,7 +15,7 @@ import type { SorenessReport } from './sorenessInput';
  * default matches the app's earlier behavior, with one exception: after
  * soreness, Runback now asks after strength training instead of daily.
  */
-export const FEATURES_VERSION = 2 as const;
+export const FEATURES_VERSION = 3 as const;
 
 export type SorenessPrompt =
   | 'never'
@@ -59,7 +59,8 @@ export type FeatureId =
   | 'routes'
   | 'templates'
   | 'soreness'
-  | 'goals';
+  | 'goals'
+  | 'music';
 /**
  * Feature list in settings and home. Titles and descriptions are getters so
  * they follow the active language at read time, not at import time.
@@ -99,10 +100,7 @@ export const FEATURE_CATALOG: readonly {
       return tr('Ziele & Fokus', 'Goals & focus');
     },
     get description() {
-      return tr(
-        'Vorhaben je Bereich festlegen',
-        'Set goals for each area',
-      );
+      return tr('Vorhaben je Bereich festlegen', 'Set goals for each area');
     },
   },
   {
@@ -145,15 +143,24 @@ export const FEATURE_CATALOG: readonly {
     tab: 'templates',
   },
   {
+    id: 'music',
+    get title() {
+      return tr('Musik', 'Music');
+    },
+    get description() {
+      return tr(
+        'Mit Spotify zum Schrittrhythmus laufen',
+        'Run to your stride rhythm with Spotify',
+      );
+    },
+  },
+  {
     id: 'soreness',
     get title() {
       return tr('Muskelkater', 'Soreness');
     },
     get description() {
-      return tr(
-        'Muskelkater melden und ansehen',
-        'Report and review soreness',
-      );
+      return tr('Muskelkater melden und ansehen', 'Report and review soreness');
     },
     tab: 'soreness',
   },
@@ -180,6 +187,7 @@ export interface FeatureSettings {
   home: { sections: HomeSection[] };
   coach: { enabled: boolean };
   goals: { enabled: boolean };
+  music: { enabled: boolean };
   templates: { enabled: boolean };
   navigation: { tabs: OptionalTab[] };
   planning: { enabled: boolean; suggest: boolean; month: boolean };
@@ -258,6 +266,7 @@ export const DEFAULT_FEATURES: FeatureSettings = {
   planning: { enabled: true, suggest: true, month: true },
   coach: { enabled: true },
   goals: { enabled: true },
+  music: { enabled: false },
   templates: { enabled: true },
   navigation: { tabs: ['plan', 'coach'] },
   recommendations: {
@@ -323,6 +332,7 @@ export function normalizeFeatures(
       planning: { ...d.planning },
       coach: { ...d.coach },
       goals: { ...d.goals },
+      music: { ...d.music },
       templates: { ...d.templates },
       navigation: { tabs: [...d.navigation.tabs] },
       recommendations: { ...d.recommendations },
@@ -350,6 +360,7 @@ export function normalizeFeatures(
   const restSeconds = Number(strength.defaultRestSeconds);
   const coach = isRecord(raw.coach) ? raw.coach : {};
   const goals = isRecord(raw.goals) ? raw.goals : {};
+  const music = isRecord(raw.music) ? raw.music : {};
   const templates = isRecord(raw.templates) ? raw.templates : {};
   const navigation = isRecord(raw.navigation) ? raw.navigation : {};
   const navigationTabs = Array.isArray(navigation.tabs)
@@ -372,6 +383,7 @@ export function normalizeFeatures(
     sports: { cycling: bool(sports.cycling, d.sports.cycling) },
     coach: { enabled: bool(coach.enabled, d.coach.enabled) },
     goals: { enabled: bool(goals.enabled, d.goals.enabled) },
+    music: { enabled: bool(music.enabled, d.music.enabled) },
     templates: { enabled: bool(templates.enabled, d.templates.enabled) },
     navigation: { tabs: navigationTabs },
     soreness: {

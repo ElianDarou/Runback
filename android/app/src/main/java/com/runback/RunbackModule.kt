@@ -43,6 +43,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     private val store = RunStore(context)
     private val worker = Executors.newSingleThreadExecutor()
     private val aiWorker = Executors.newSingleThreadExecutor()
+    private val musicWorker = Executors.newSingleThreadExecutor()
     private val importWorker = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val importer = ActivityImporter(context, store)
@@ -118,7 +119,39 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     @ReactMethod fun listRuns(promise: Promise) = task(promise) { store.listRuns() }
     @ReactMethod fun getCapabilities(promise: Promise) = task(promise) { capabilities() }
     @ReactMethod fun getSettings(promise: Promise) = task(promise) { store.settings() }
-    @ReactMethod fun saveSettings(json: String, promise: Promise) = task(promise) { store.saveSettings(JSONObject(json)); store.settings() }
+    @ReactMethod fun saveSettings(json: String, promise: Promise) = task(promise) {
+        store.saveSettings(JSONObject(json)); MusicController.get(context).onSettingsChanged(); store.settings()
+    }
+
+    private fun musicTask(promise: Promise, block: () -> JSONObject) {
+        musicWorker.execute {
+            try { promise.resolve(block().toString()) }
+            catch (error: Exception) { promise.reject("MUSIC_ERROR", (if (error is IllegalArgumentException || error is IllegalStateException) error.message else null) ?: Lang.tr("Musikaktion fehlgeschlagen; prüfe Verbindung und Zugangsdaten und versuche es erneut.", "Music action failed; check your connection and credentials and try again.")) }
+        }
+    }
+    @ReactMethod fun getMusicStatus(promise: Promise) = task(promise) { MusicController.get(context).status() }
+    @ReactMethod fun configureMusic(json: String, clientId: String, bpmKey: String, promise: Promise) = musicTask(promise) { MusicController.get(context).configure(JSONObject(json), clientId.trim(), bpmKey.trim()) }
+    @ReactMethod fun authorizeMusic(promise: Promise) {
+        val activity = context.currentActivity ?: run { promise.reject("MUSIC_ERROR", Lang.tr("Öffne zuerst Runback.", "Open Runback first.")); return }
+        musicTask(promise) { MusicController.get(context).authorize(activity) }
+    }
+    @ReactMethod fun importMusicPlaylist(value: String, promise: Promise) = musicTask(promise) { MusicController.get(context).importPlaylist(value.trim()) }
+    @ReactMethod fun lookupMusicBpm(promise: Promise) = musicTask(promise) { MusicController.get(context).lookupMissing() }
+    @ReactMethod fun setMusicBpm(uri: String, bpm: Double, promise: Promise) = musicTask(promise) { MusicController.get(context).setBpm(uri, bpm) }
+    @ReactMethod fun clearMusicBpmKey(promise: Promise) = musicTask(promise) { MusicController.get(context).clearBpmKey() }
+    // Cancellation must not wait behind the authorization worker that it is cancelling.
+    @ReactMethod fun cancelMusicAuthorization(promise: Promise) = task(promise) { MusicController.get(context).cancelAuthorization() }
+    @ReactMethod fun disconnectMusic(promise: Promise) = task(promise) { MusicController.get(context).disconnect() }
+    @ReactMethod fun startMusic(runId: String, promise: Promise) {
+        val activity = context.currentActivity ?: run { promise.reject("MUSIC_ERROR", Lang.tr("Öffne zuerst Runback.", "Open Runback first.")); return }
+        val completed = java.util.concurrent.atomic.AtomicBoolean(false)
+        MusicController.get(context).start(activity, runId) { value, error ->
+            if (completed.compareAndSet(false, true)) {
+                if (error != null) promise.reject("MUSIC_ERROR", error) else promise.resolve(value.toString())
+            }
+        }
+    }
+    @ReactMethod fun stopMusic(promise: Promise) = task(promise) { MusicController.get(context).stopUser() }
     @ReactMethod fun getRun(id: String, promise: Promise) = task(promise) {
         store.detail(id).apply {
             put("route", optJSONArray("geometry") ?: JSONArray())
@@ -150,6 +183,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     @ReactMethod fun deleteRun(id: String, promise: Promise) = task(promise) { store.deleteRun(id); state() }
     @ReactMethod fun clearAllData(promise: Promise) = task(promise) {
         check(store.active() == null) { Lang.tr("Beende zuerst die laufende Aufzeichnung.", "Finish the running recording first.") }
+        MusicController.get(context).disconnect()
         importer.cancel(); chat.resetData { store.clearAllData() }; MotionSessions.deleteFiles(context); state()
     }
     @ReactMethod fun deleteAllData(promise: Promise) = clearAllData(promise)
@@ -534,7 +568,9 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
             if (code != Activity.RESULT_OK || uri == null) promise.resolve("{\"cancelled\":true}")
             else task(promise) {
                 check(store.active() == null) { Lang.tr("Beende zuerst die Aufzeichnung.", "Finish the recording first.") }
-                chat.resetData { context.contentResolver.openInputStream(uri)!!.use(store::restore) }
+                val restored = chat.resetData { context.contentResolver.openInputStream(uri)!!.use(store::restore) }
+                MusicController.get(context).resetConnection()
+                restored
             }
         }
     }
@@ -780,6 +816,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         pending?.first?.reject("APP_CLOSED", Lang.tr("Die App wurde geschlossen.", "The app was closed."))
         pending = null
         chat.resetData {}
+        musicWorker.shutdown()
         aiWorker.shutdown()
         worker.execute {
             analysisArchives.values.forEach { runCatching { it.discard() } }
