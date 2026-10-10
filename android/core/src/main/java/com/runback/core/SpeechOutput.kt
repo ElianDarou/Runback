@@ -6,6 +6,7 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 
@@ -14,20 +15,29 @@ import android.speech.tts.UtteranceProgressListener
  * talks. Pure bookkeeping; [SpeechOutput] owns the platform calls.
  */
 class UtteranceFocus {
-    private val pending = HashSet<String>()
+    private val pending = HashMap<String, Long>()
     var held = false
         private set
 
     /** Returns true when focus must be requested for this utterance. */
-    fun begin(id: String): Boolean {
-        pending += id
+    fun begin(id: String, nowMs: Long): Boolean {
+        pending[id] = nowMs
         if (held) return false
         held = true
         return true
     }
 
     /** Returns true when this was the last queued utterance and focus may be released. */
-    fun end(id: String): Boolean = pending.remove(id) && pending.isEmpty() && held
+    fun end(id: String): Boolean = pending.remove(id) != null && pending.isEmpty() && held
+
+    /**
+     * Forgets utterances queued at least [maxAgeMs] ago whose engine callback never came.
+     * Returns true when nothing is left and focus may be released.
+     */
+    fun expire(nowMs: Long, maxAgeMs: Long): Boolean {
+        val removed = pending.values.removeAll { nowMs - it >= maxAgeMs }
+        return removed && pending.isEmpty() && held
+    }
 
     /** Returns true when focus is still held and must be abandoned now. */
     fun release(): Boolean {
@@ -75,8 +85,14 @@ class SpeechOutput(context: Context) {
 
     // A short gap keeps music from swelling between back-to-back announcements.
     private val release = Runnable { if (focus.release()) abandonFocus() }
-    // Safety net: a missing engine callback must not leave the music ducked.
-    private val forceRelease = Runnable { if (focus.clear()) abandonFocus() }
+    // Safety net: a missing engine callback must not leave the music ducked. Each utterance
+    // expires on its own, so later announcements cannot keep a lost one alive.
+    private val expire = Runnable {
+        if (focus.expire(SystemClock.uptimeMillis(), MAX_UTTERANCE_MS)) {
+            main.removeCallbacks(release)
+            main.post(release)
+        }
+    }
 
     init {
         tts = TextToSpeech(context.applicationContext) { status ->
@@ -104,20 +120,24 @@ class SpeechOutput(context: Context) {
         val id = "$tag-${nextId++}"
         main.removeCallbacks(release)
         // Speak even when focus is refused: a missed turn instruction is worse than no ducking.
-        if (focus.begin(id)) audio?.requestAudioFocus(focusRequest)
+        if (focus.begin(id, SystemClock.uptimeMillis())) audio?.requestAudioFocus(focusRequest)
         val result = engine.speak(text, queueMode, null, id)
         if (result == TextToSpeech.ERROR) {
             if (focus.end(id)) main.post(release)
         } else {
-            main.removeCallbacks(forceRelease)
-            main.postDelayed(forceRelease, MAX_FOCUS_MS)
+            main.postDelayed(expire, MAX_UTTERANCE_MS)
         }
         return result
     }
 
+    /** Stopping and dropping focus run together on main, so a speak queued meanwhile keeps its focus. */
     fun stop() {
+        if (Looper.myLooper() == Looper.getMainLooper()) stopNow() else main.post(::stopNow)
+    }
+
+    private fun stopNow() {
         tts?.stop()
-        if (Looper.myLooper() == Looper.getMainLooper()) dropFocus() else main.post(::dropFocus)
+        dropFocus()
     }
 
     fun shutdown() {
@@ -140,17 +160,16 @@ class SpeechOutput(context: Context) {
 
     private fun dropFocus() {
         main.removeCallbacks(release)
-        main.removeCallbacks(forceRelease)
+        main.removeCallbacks(expire)
         if (focus.clear()) abandonFocus()
     }
 
     private fun abandonFocus() {
-        main.removeCallbacks(forceRelease)
         audio?.abandonAudioFocusRequest(focusRequest)
     }
 
     private companion object {
         const val RELEASE_DELAY_MS = 300L
-        const val MAX_FOCUS_MS = 60_000L
+        const val MAX_UTTERANCE_MS = 60_000L
     }
 }
