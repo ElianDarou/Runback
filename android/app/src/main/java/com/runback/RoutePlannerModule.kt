@@ -18,6 +18,7 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.runback.core.Lang
 import com.runback.core.RunStore
+import com.runback.core.SpeechOutput
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -26,16 +27,15 @@ import java.util.concurrent.Executors
 
 /** Small bridge for route planning. GPS samples stay in the recording service. */
 class RoutePlannerModule(private val context: ReactApplicationContext) :
-    ReactContextBaseJavaModule(context), TextToSpeech.OnInitListener {
+    ReactContextBaseJavaModule(context) {
     private val worker = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
     private val store = RunStore(context)
-    private var textToSpeech: TextToSpeech? = null
-    private var speechReady = false
+    private var textToSpeech: SpeechOutput? = null
 
     init {
         main.post {
-            textToSpeech = TextToSpeech(context.applicationContext, this)
+            textToSpeech = SpeechOutput(context)
         }
     }
 
@@ -273,13 +273,6 @@ class RoutePlannerModule(private val context: ReactApplicationContext) :
         return result.append("</trkseg></trk></gpx>").toString()
     }
 
-    override fun onInit(status: Int) {
-        speechReady = status == TextToSpeech.SUCCESS
-        if (speechReady) {
-            textToSpeech?.language = Lang.locale()
-        }
-    }
-
     private fun locationManager() =
         context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
 
@@ -424,11 +417,11 @@ class RoutePlannerModule(private val context: ReactApplicationContext) :
     @ReactMethod
     fun routeSpeak(text: String, promise: Promise) {
         main.post {
-            if (!speechReady || textToSpeech == null) {
+            if (textToSpeech?.ready != true) {
                 promise.reject("TTS_UNAVAILABLE", Lang.tr("Sprachausgabe ist auf diesem Gerät nicht verfügbar.", "Voice output is not available on this device."))
                 return@post
             }
-            val result = textToSpeech?.speak(text.trim(), TextToSpeech.QUEUE_FLUSH, null, "runback-route")
+            val result = textToSpeech?.speak(text.trim(), TextToSpeech.QUEUE_FLUSH, "runback-route")
             if (result == TextToSpeech.ERROR) {
                 promise.reject("TTS_ERROR", Lang.tr("Die Sprachausgabe konnte nicht gestartet werden.", "The voice output could not be started."))
             } else {
@@ -447,7 +440,6 @@ class RoutePlannerModule(private val context: ReactApplicationContext) :
 
     override fun onCatalystInstanceDestroy() {
         main.post {
-            textToSpeech?.stop()
             textToSpeech?.shutdown()
             textToSpeech = null
         }
