@@ -72,6 +72,7 @@ import {
   Row,
   Segmented,
   Sheet,
+  SwitchRow,
 } from '../src/ui/components';
 import { acceptRecommendation, analyzeRun } from '../src/domain';
 import {
@@ -727,6 +728,51 @@ describe('Template management', () => {
       });
       expect(screenText(tree)).toContain('Vorlagen verwalten');
       expect(screenText(tree)).toContain('Geräte & Verbindungen');
+    } finally {
+      await act(async () => tree.unmount());
+      backSpy.mockRestore();
+    }
+  });
+});
+
+describe('Progress announcements', () => {
+  const startSheetOpen = (tree: TestRenderer.ReactTestRenderer) =>
+    tree.root
+      .findAllByType(Sheet)
+      .some(
+        sheet =>
+          sheet.props.title === 'Was startest du?' && sheet.props.visible,
+      );
+
+  it('switches in the start sheet and returns there from the gear via back and save', async () => {
+    const backSpy = jest.spyOn(BackHandler, 'addEventListener');
+    const tree = await render();
+    try {
+      await tap(tree, 'Lauf starten');
+      expect(screenText(tree)).toContain('Jeden Kilometer');
+      jest.mocked(native.saveSettings).mockClear();
+      await act(async () => {
+        tree.root.findByType(SwitchRow).props.onChange(true);
+      });
+      expect(native.saveSettings).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          runAnnouncements: expect.objectContaining({ on: true }),
+        }),
+      );
+
+      await tap(tree, 'Zwischenansagen einstellen');
+      expect(startSheetOpen(tree)).toBe(false);
+      expect(screenText(tree)).toContain('Stimme & Vibration');
+      const back = backSpy.mock.calls.at(-1)![1];
+      await act(async () => {
+        expect(back()).toBe(true);
+      });
+      expect(startSheetOpen(tree)).toBe(true);
+
+      await tap(tree, 'Zwischenansagen einstellen');
+      await tap(tree, 'Speichern');
+      expect(startSheetOpen(tree)).toBe(true);
+      expect(screenText(tree)).not.toContain('Stimme & Vibration');
     } finally {
       await act(async () => tree.unmount());
       backSpy.mockRestore();

@@ -44,6 +44,7 @@ product. Code names are identifiers and stay as they are.
 | Laufziel | Run goal | `RunTarget` (version 3) | Goal of one run, chosen in the start sheet with the last choice preselected: Wie weit / How far (Offen, Strecke, Zeit; `goal`) and Wonach / Run by (Nur tracken, Tempo, Puls, Intervalle; `kind`). Not the goal of an area. |
 | Intervalle (Laufziel) | Intervals (run goal) | `IntervalPlan`, Kotlin `RunIntervals` | Optional warm-up, then work stretches by time or distance with a rest between them. A distance stretch ends only on measured distance. |
 | Ansagen zum Ziel | Goal announcements | Kotlin `RunGoalCues` | Halfway, almost there (1 km, or 5 or 1 minutes), goal reached. With a pace to hold also ahead of or behind the plan; without measured distance that part stays silent. |
+| Zwischenansagen | Progress announcements | `RunAnnouncementSettings`, Kotlin `RunAnnouncements` | Spoken progress every few kilometers or minutes (kilometer mark, distance, pace, heart rate). Not part of the run goal: switched in the start sheet, set up under Voice & vibration. While on, they replace a route's own progress cues. |
 | Sportart | Sport | `Sport` | `running`, `cycling`; if the field is missing, running applies. |
 | Effort | Effort | `EffortEstimate` | Modeled external demand of a run. Not a fitness or fatigue value. |
 | Tempoindex | Pace index | `EffortEstimate` | Simple pace measure relative to 3 m/s. Not performance, not a score. |

@@ -1,6 +1,8 @@
 import { fixed, tr } from './i18n';
 import {
+  normalizeRunAnnouncementSettings,
   normalizeRunAnnouncements,
+  type RunAnnouncementSettings,
   type RunAnnouncements,
 } from './runAnnouncements';
 
@@ -421,6 +423,37 @@ export function runTargetLabel(target: RunTarget): string {
   if (!target.goal) return guide;
   const goal = runGoalLabel(target.goal);
   return target.kind === 'none' ? goal : `${goal} · ${guide}`;
+}
+
+/**
+ * The target as it goes to the recording at start: progress announcements
+ * come from their own setting, never from what the goal still carries. Without
+ * the switch the field is missing, so a route keeps its own cues.
+ */
+export function withRunAnnouncements(
+  target: RunTarget,
+  announcements: RunAnnouncementSettings,
+): RunTarget {
+  const rest = { ...target };
+  delete rest.announcements;
+  return announcements.on
+    ? { ...rest, announcements: announcements.setup }
+    : rest;
+}
+
+/** The target for a new run from the stored settings. */
+export function runTargetForStart(settings: {
+  runTarget?: unknown;
+  runAnnouncements?: unknown;
+}): RunTarget {
+  const target = normalizeRunTarget(settings.runTarget);
+  return withRunAnnouncements(
+    target,
+    normalizeRunAnnouncementSettings(
+      settings.runAnnouncements,
+      target.announcements,
+    ),
+  );
 }
 
 /** Whether a target does anything during the run (cues or a goal to reach). */

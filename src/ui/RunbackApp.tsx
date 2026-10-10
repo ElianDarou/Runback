@@ -206,10 +206,15 @@ import {
   normalizeRunTargetMemory,
   PACE_STEP_SECONDS,
   rememberRunTarget,
+  runTargetForStart,
   runTargetLabel,
   stepTargetPace,
   targetProgressLabel,
 } from '../domain/runTarget';
+import {
+  normalizeRunAnnouncementSettings,
+  runAnnouncementsLabel,
+} from '../domain/runAnnouncements';
 import {
   native,
   nativeCall,
@@ -259,6 +264,7 @@ import {
   Sheet,
   Stat,
   Stepper,
+  SwitchRow,
   Title,
   color,
   radius,
@@ -757,6 +763,8 @@ export function RunbackApp({
   const [purposeSkipped, setPurposeSkipped] = useState<string[]>([]);
   const [historyView, setHistoryView] = useState<HistoryView>('units');
   const [templatesParent, setTemplatesParent] = useState<Page>('main');
+  // "Voice & vibration" also opens from the start sheet and returns there.
+  const [runAudioFromStart, setRunAudioFromStart] = useState(false);
   const [note, setNote] = useState('');
   const [importStatus, setImportStatus] = useState<any>(null);
   // "Edit end": sheet for the open run or the open strength session.
@@ -1018,6 +1026,10 @@ export function RunbackApp({
   const words = sportWords(sport);
   const runTarget = normalizeRunTarget(settings.runTarget);
   const runTargetMemory = normalizeRunTargetMemory(settings.runTargetMemory);
+  const runAnnouncements = normalizeRunAnnouncementSettings(
+    settings.runAnnouncements,
+    runTarget.announcements,
+  );
 
   const refresh = useCallback(async () => {
     const generation = stateGeneration.current;
@@ -1732,6 +1744,7 @@ export function RunbackApp({
     }
     if (next === 'run-target' || next === 'run-audio')
       setPreviewRunTarget(null);
+    if (next === 'run-audio') setRunAudioFromStart(false);
     if (next === 'goal') {
       setGoalInput(schedule.goal?.name || settings.goal || '');
       // Without a start there is no plan state and no build-up: suggest today;
@@ -1794,9 +1807,15 @@ export function RunbackApp({
       return;
     }
     setTrail([]);
+    const toStart = page === 'run-audio' && runAudioFromStart;
     setPage(
-      page === 'templates' ? templatesParent : PARENT_PAGE[page] ?? 'main',
+      page === 'templates'
+        ? templatesParent
+        : toStart
+        ? 'main'
+        : PARENT_PAGE[page] ?? 'main',
     );
+    if (toStart) setStartSheet('run');
     setSelectedSession(null);
     setSelectedExercise(null);
     setSelectedStrengthRecord(null);
@@ -2104,7 +2123,7 @@ export function RunbackApp({
       nextSport,
       JSON.stringify(
         nextSport === 'running'
-          ? normalizeRunTarget(stateRef.current.settings.runTarget)
+          ? runTargetForStart(stateRef.current.settings)
           : NO_RUN_TARGET,
       ),
     );
@@ -3149,6 +3168,24 @@ export function RunbackApp({
                 setStartSheet(null);
                 openPage('run-target');
               }}
+            />
+          ) : null}
+          {sport === 'running' ? (
+            <SwitchRow
+              title={tr('Zwischenansagen', 'Progress announcements')}
+              subtitle={runAnnouncementsLabel(runAnnouncements.setup)}
+              value={runAnnouncements.on}
+              onChange={on =>
+                void action(() =>
+                  persist({ runAnnouncements: { ...runAnnouncements, on } }),
+                )
+              }
+              onSettings={() => {
+                setStartSheet(null);
+                openPage('run-audio');
+                setRunAudioFromStart(true);
+              }}
+              disabled={busy}
             />
           ) : null}
           {sport === 'running' ? (
@@ -6445,13 +6482,20 @@ export function RunbackApp({
     renderGoal()
   ) : page === 'run-target' || page === 'run-audio' ? (
     <RunTargetScreen
+      key={page}
       settings={page === 'run-audio'}
       value={previewRunTarget ?? runTarget}
-      onSave={async target => {
+      announcements={page === 'run-audio' ? runAnnouncements : undefined}
+      onSave={async (target, announcements) => {
         await persistRunTarget(target);
-        setPage(page === 'run-audio' ? 'settings' : 'main');
-        if (page !== 'run-audio' && !todaysScheduledRun) {
-          setStartSheet('run');
+        if (announcements) await persist({ runAnnouncements: announcements });
+        if (page === 'run-audio') {
+          setPage(runAudioFromStart ? 'main' : 'settings');
+          // Back to the sheet it was opened from, also next to a planned run.
+          if (runAudioFromStart) setStartSheet('run');
+        } else {
+          setPage('main');
+          if (!todaysScheduledRun) setStartSheet('run');
         }
       }}
     />
