@@ -31,7 +31,7 @@ import {
 } from '../domain/routes';
 import { fixed, tr } from '../domain/i18n';
 import { requestRoutePlan } from '../services/routeProvider';
-import { normalizeRunTarget } from '../domain/runTarget';
+import { runTargetForStart } from '../domain/runTarget';
 import {
   native,
   nativeCall,
@@ -491,7 +491,7 @@ export function RoutePlannerScreen({
           // The run type is asked after the run, like every recording.
           'unknown',
           'running',
-          JSON.stringify(normalizeRunTarget(current.settings.runTarget)),
+          JSON.stringify(runTargetForStart(current.settings)),
         );
         started = result.recording ? normalizeRun(result.recording) : null;
       }

@@ -2,18 +2,43 @@ import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 import { RunTargetScreen } from '../src/ui/RunTargetScreen';
 import { DistanceTimes } from '../src/ui/DistanceTimes';
-import { Button, ChipGroup, Input, Row } from '../src/ui/components';
+import { Button, ChipGroup, Input, Row, SwitchRow } from '../src/ui/components';
 import { NO_RUN_TARGET } from '../src/domain/runTarget';
+import { DEFAULT_RUN_ANNOUNCEMENTS } from '../src/domain/runAnnouncements';
 import type { Run } from '../src/native';
 jest.mock('../src/native', () => ({ nativeCall: jest.fn(async () => ({})) }));
 
-it('saves independent time announcements without requiring a pace target', async () => {
+it('keeps progress announcements out of the run goal', async () => {
+  let tree!: TestRenderer.ReactTestRenderer;
+  await act(async () => {
+    tree = TestRenderer.create(
+      <RunTargetScreen value={NO_RUN_TARGET} onSave={jest.fn()} />,
+    );
+  });
+  expect(
+    tree.root
+      .findAllByType(ChipGroup)
+      .some(item => item.props.label === 'Auslöser für Durchsagen'),
+  ).toBe(false);
+  expect(tree.root.findAllByType(SwitchRow)).toHaveLength(0);
+  act(() => tree.unmount());
+});
+
+it('saves progress announcements from settings apart from the goal', async () => {
   const onSave = jest.fn(async () => undefined);
   let tree!: TestRenderer.ReactTestRenderer;
   await act(async () => {
     tree = TestRenderer.create(
-      <RunTargetScreen value={NO_RUN_TARGET} onSave={onSave} />,
+      <RunTargetScreen
+        settings
+        value={NO_RUN_TARGET}
+        announcements={{ on: false, setup: DEFAULT_RUN_ANNOUNCEMENTS }}
+        onSave={onSave}
+      />,
     );
+  });
+  await act(async () => {
+    tree.root.findByType(SwitchRow).props.onChange(true);
   });
   await act(async () => {
     tree.root
@@ -30,17 +55,31 @@ it('saves independent time announcements without requiring a pace target', async
   await act(async () => {
     await tree.root.findByType(Button).props.onPress();
   });
-  expect(onSave).toHaveBeenCalledWith(
-    expect.objectContaining({
-      kind: 'none',
-      version: 3,
-      announcements: expect.objectContaining({
-        trigger: 'time',
-        interval: 10,
-        heartRate: true,
-      }),
+  const [target, announcements] = onSave.mock.calls[0] as unknown[] as [
+    Record<string, unknown>,
+    unknown,
+  ];
+  expect(target).toMatchObject({ kind: 'none', version: 3 });
+  expect(target.announcements).toBeUndefined();
+  expect(announcements).toEqual({
+    on: true,
+    setup: expect.objectContaining({
+      trigger: 'time',
+      interval: 10,
+      heartRate: true,
     }),
-  );
+  });
+  onSave.mockClear();
+  await act(async () => {
+    tree.root
+      .findAllByType(Input)
+      .find(item => item.props.label === 'Abstand der Durchsagen')!
+      .props.onChangeText('90');
+  });
+  await act(async () => {
+    await tree.root.findByType(Button).props.onPress();
+  });
+  expect(onSave).not.toHaveBeenCalled();
   act(() => tree.unmount());
 });
 

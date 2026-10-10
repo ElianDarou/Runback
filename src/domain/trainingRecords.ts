@@ -9,6 +9,7 @@ import type {
 } from './types';
 import type { ScheduleState } from './schedule';
 import type { IntervalState, RunTarget, RunTargetMemory } from './runTarget';
+import type { RunAnnouncementSettings } from './runAnnouncements';
 import type { FeatureSettings } from './features';
 import type { PurposeHintProvenance } from './purposeHint';
 import type { Language } from './i18n';
@@ -53,6 +54,8 @@ export interface Settings {
   runTarget?: RunTarget;
   /** Last values per goal kind, so switching chips restores them (`RunTargetMemory`). */
   runTargetMemory?: RunTargetMemory;
+  /** Progress announcements: a switch and their setup, apart from the goal (`RunAnnouncementSettings`). */
+  runAnnouncements?: RunAnnouncementSettings;
   weather?: boolean;
   /** Max heart rate in bpm for the heart rate zones; if missing, Runback estimates it from runs. */
   maxHeartRate?: number;

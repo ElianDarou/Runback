@@ -17,6 +17,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -422,6 +423,57 @@ export function FeatureRow({
         <Text style={s.rowSubtitle}>{subtitle}</Text>
       </Pressable>
       {trailing}
+    </View>
+  );
+}
+
+/**
+ * On or off for one thing. The optional gear opens the page where it is set
+ * up; the text itself is not tappable.
+ */
+export function SwitchRow({
+  title,
+  subtitle,
+  value,
+  onChange,
+  onSettings,
+  disabled = false,
+}: {
+  title: string;
+  subtitle?: string;
+  value: boolean;
+  onChange: (value: boolean) => void;
+  onSettings?: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <View style={s.row}>
+      <View style={s.rowText}>
+        <Text style={s.rowTitle}>{title}</Text>
+        {subtitle ? <Text style={s.rowSubtitle}>{subtitle}</Text> : null}
+      </View>
+      {onSettings ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={tr(`${title} einstellen`, `Set ${title}`)}
+          accessibilityState={{ disabled }}
+          disabled={disabled}
+          onPress={onSettings}
+          style={({ pressed }) => [s.iconButton, pressed && s.pressed]}
+        >
+          <Icon name="settings" />
+        </Pressable>
+      ) : null}
+      <Switch
+        accessibilityLabel={title}
+        accessibilityRole="switch"
+        accessibilityState={{ checked: value, disabled }}
+        value={value}
+        disabled={disabled}
+        onValueChange={onChange}
+        trackColor={{ false: color.line, true: color.green }}
+        thumbColor={value ? color.ink : color.muted}
+      />
     </View>
   );
 }
@@ -1893,6 +1945,12 @@ export const s = StyleSheet.create({
     justifyContent: 'center',
   },
   checkMark: { color: color.green, ...type.label, fontWeight: '700' },
+  iconButton: {
+    minWidth: 48,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   chipText: { color: color.muted, ...type.label },
   chipTextSelected: { color: color.text, fontWeight: '600' },
   field: { gap: space.xs },
