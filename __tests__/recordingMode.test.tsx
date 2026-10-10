@@ -41,6 +41,7 @@ import {
 import { RunbackApp } from '../src/ui/RunbackApp';
 import { DistanceTimes } from '../src/ui/DistanceTimes';
 import { RunTargetScreen } from '../src/ui/RunTargetScreen';
+import { ChipGroup } from '../src/ui/components';
 import {
   localDateKey,
   normalizeSchedule,
@@ -167,7 +168,7 @@ afterEach(async () => {
 });
 
 describe('Free recording on Today', () => {
-  it('keeps the start card to one button and asks sport and purpose in the sheet', async () => {
+  it('keeps the start card to one button and asks sport and goal in the sheet', async () => {
     await mount();
     const home = screenText();
     // The start page asks for no decision: no chip, no plan.
@@ -181,18 +182,22 @@ describe('Free recording on Today', () => {
     expect(sheet).toContain('Laufen');
     expect(sheet).toContain('Radfahren');
     expect(sheet).toContain('Krafttraining');
-    expect(sheet).toContain('Wie willst du laufen?');
+    // How far and what to run by; the run type is asked after the run.
+    expect(sheet).toContain('Wie weit');
+    expect(sheet).toContain('Wonach');
+    expect(sheet).not.toContain('Wie willst du laufen?');
+    expect(sheet).not.toContain('Laufvorlage');
 
     await tap('Radfahren');
     expect(stored.settings.sport).toBe('cycling');
+    expect(screenText()).not.toContain('Wie weit');
 
-    await tap('Tempowechsel');
     await tap('Aufzeichnung starten');
     expect(nativeCall).toHaveBeenCalledWith(
       'startRun',
-      'intervals',
+      'unknown',
       'cycling',
-      '{"kind":"none","version":2}',
+      '{"kind":"none","version":3}',
     );
     const live = screenText();
     expect(live).toContain('Radfahrt läuft');
@@ -220,44 +225,80 @@ describe('Free recording on Today', () => {
     await tap('Aufzeichnung starten');
     expect(nativeCall).toHaveBeenCalledWith(
       'startRun',
-      'free',
+      'unknown',
       'running',
-      '{"kind":"none","version":2}',
+      '{"kind":"none","version":3}',
     );
     // A free recording is not linked to the appointment.
     expect(stored.settings.schedule?.sessions[0].activityId).toBeUndefined();
   });
 
-  it('edits the pace target on its own page and returns to the sheet', async () => {
+  it('sets how far and what to run by with chips and keeps the last choice', async () => {
     await mount();
-    expect(screenText()).not.toContain('Laufen nach');
+    expect(screenText()).not.toContain('Wie weit');
 
     await tap('Lauf starten');
-    expect(screenText()).toContain('Laufen nach');
-    expect(screenText()).toContain('Ohne Ziel');
+    expect(screenText()).toContain('Nur tracken');
     expect(screenText()).not.toContain('Minuten pro Kilometer');
 
-    await tapText('Laufen nach');
-    expect(screenText()).toContain('Wie möchtest du laufen?');
-    expect(findPressable('Aufzeichnung starten')).toBeUndefined();
+    await tap('Strecke');
     await tap('Tempo');
-    expect(screenText()).toContain('Minuten pro Kilometer');
-    await tap('Ziel übernehmen');
     expect(stored.settings.runTarget).toMatchObject({
       kind: 'pace',
+      version: 3,
       secondsPerKm: 330,
       mode: 'range',
+      goal: { kind: 'distance', meters: 5000 },
     });
+    expect(screenText()).toContain('5 km · 5:30 /km');
 
-    // Back on Today, the sheet is open again where it was left.
+    // The values open on their own page and come back to the sheet.
+    await tapText('Tippe, um Werte zu ändern');
+    expect(screenText()).toContain('Laufziel');
+    expect(findPressable('Aufzeichnung starten')).toBeUndefined();
+    expect(screenText()).toContain('Oder Zielzeit');
+    await tap('Ziel übernehmen');
     expect(findPressable('Aufzeichnung starten')).toBeTruthy();
+
     await tap('Aufzeichnung starten');
     expect(nativeCall).toHaveBeenCalledWith(
       'startRun',
-      'free',
+      'unknown',
       'running',
-      expect.stringContaining('"secondsPerKm":330'),
+      expect.stringContaining('"goal":{"kind":"distance","meters":5000}'),
     );
+    // The values are remembered per kind for the next switch of chips.
+    expect(stored.settings.runTargetMemory).toMatchObject({
+      goalMeters: 5000,
+      pace: { secondsPerKm: 330, mode: 'range' },
+    });
+  });
+
+  it('shows what is left of the goal during the run', async () => {
+    stored.recording = {
+      id: 'live',
+      startTime: Date.now() - 900_000,
+      endTime: 0,
+      status: 'recording',
+      purpose: 'unknown',
+      sport: 'running',
+      durationSeconds: 900,
+      distanceMeters: 3170,
+      source: 'phone',
+      target: {
+        kind: 'pace',
+        version: 3,
+        secondsPerKm: 300,
+        mode: 'range',
+        output: 'both',
+        goal: { kind: 'distance', meters: 5000 },
+      },
+    } as Run;
+    await mount();
+    const text = screenText();
+    expect(text).toContain('Noch 1,83 km');
+    expect(text).toContain('5 km · 5:00 /km');
+    expect(text).not.toContain('Noch offen');
   });
 });
 
@@ -347,8 +388,9 @@ describe('Recording features', () => {
     const sheet = screenText();
     expect(sheet).not.toContain('Radfahren');
     expect(sheet).not.toContain('Art der Einheit');
-    expect(sheet).not.toContain('Laufen nach');
-    expect(sheet).toContain('Wie willst du laufen?');
+    expect(sheet).not.toContain('Wie weit');
+    expect(sheet).not.toContain('Wonach');
+    expect(sheet).toContain('Aufzeichnung starten');
   });
 
   it('shows only the chosen metrics during recording', async () => {
@@ -513,7 +555,7 @@ describe('Run type after the run', () => {
     await mount();
     await openRun();
     expect(screenText()).toContain('Wie war der Lauf gemeint?');
-    expect(screenText()).toContain('Sah aus wie: Auf Zeit — hoher Puls.');
+    expect(screenText()).toContain('Sah aus wie: Schnell — hoher Puls.');
     expect(native.feedback).not.toHaveBeenCalled();
 
     await tap('Stimmt');
@@ -521,7 +563,7 @@ describe('Run type after the run', () => {
       purpose: 'race',
       purposeConfirmed: true,
       purposeHint: {
-        model_version: 'runback-purpose-hint-2',
+        model_version: 'runback-purpose-hint-3',
         purpose: 'race',
         signals: ['heart_rate_high'],
         maxHeartRate: { value: 190, source: 'setting' },
@@ -553,12 +595,110 @@ describe('Run type after the run', () => {
       'Vorschlag bestätigt · runback-purpose-hint-2 · Maxpuls 190 (eingestellt)',
     );
     await tap('Bearbeiten & verwalten');
-    await tapText('Tempowechsel');
+    await tapText('Intervalle');
     expect(native.feedback).toHaveBeenCalledWith('hinted', {
       purpose: 'intervals',
       purposeConfirmed: true,
       purposeHint: null,
     });
+  });
+
+  const recorded = (patch: Partial<Run> = {}) =>
+    finished({
+      id: 'fresh',
+      purpose: 'unknown',
+      distanceMeters: 5000,
+      durationSeconds: 1250,
+      avgHeartRate: 172,
+      heartRateCoverage: 0.95,
+      ...patch,
+    });
+  const chosen = () =>
+    tree.root
+      .findAllByType(ChipGroup)
+      .find(item => item.props.label === 'Laufart dieser Aufzeichnung')!.props
+      .value;
+
+  it('asks a fresh recording once with the most likely run type preselected', async () => {
+    stored.settings = { ...stored.settings, maxHeartRate: 190 };
+    stored.runs = [recorded()];
+    await mount();
+    await openRun();
+    expect(screenText()).toContain('Wie war der Lauf?');
+    expect(screenText()).toContain('Vorausgewählt: hoher Puls.');
+    expect(chosen()).toBe('race');
+    // The page itself does not ask a second time.
+    expect(screenText()).not.toContain('Wie war der Lauf gemeint?');
+    expect(native.feedback).not.toHaveBeenCalled();
+
+    await tap('OK');
+    expect(native.feedback).toHaveBeenCalledWith('fresh', {
+      purpose: 'race',
+      purposeConfirmed: true,
+      purposeAsked: true,
+      purposeHint: expect.objectContaining({
+        model_version: 'runback-purpose-hint-3',
+        purpose: 'race',
+      }),
+    });
+    expect(screenText()).not.toContain('Wie war der Lauf?');
+  });
+
+  it('saves another choice without the hint trace, and cancel only marks it asked', async () => {
+    stored.settings = { ...stored.settings, maxHeartRate: 190 };
+    stored.runs = [recorded()];
+    await mount();
+    await openRun();
+    await tap('Locker');
+    expect(chosen()).toBe('easy');
+    await tap('OK');
+    expect(native.feedback).toHaveBeenLastCalledWith('fresh', {
+      purpose: 'easy',
+      purposeConfirmed: true,
+      purposeAsked: true,
+      purposeHint: null,
+    });
+
+    await act(async () => tree.unmount());
+    (native.feedback as jest.Mock).mockClear();
+    stored.runs = [recorded({ id: 'other' })];
+    await mount();
+    await openRun();
+    await tap('Abbrechen');
+    expect(native.feedback).toHaveBeenCalledWith('other', {
+      purposeAsked: true,
+    });
+    expect(screenText()).not.toContain('Wie war der Lauf?');
+  });
+
+  it('does not ask after a cancel, nor for imports', async () => {
+    stored.runs = [
+      normalizeRun({ ...recorded(), feedback: { purposeAsked: true } }),
+    ];
+    await mount();
+    await openRun();
+    expect(screenText()).not.toContain('Wie war der Lauf?');
+    expect(screenText()).not.toContain('Wie war der Lauf gemeint?');
+
+    await act(async () => tree.unmount());
+    stored.runs = [recorded({ id: 'imported', source: 'garmin' })];
+    await mount();
+    await openRun();
+    expect(screenText()).not.toContain('Wie war der Lauf?');
+    // Imports keep the quiet question on the page.
+    expect(screenText()).toContain('Wie war der Lauf gemeint?');
+  });
+
+  it('keeps the run type question open when saving fails so the user can retry', async () => {
+    stored.runs = [recorded()];
+    await mount();
+    await openRun();
+    (native.feedback as jest.Mock).mockRejectedValueOnce(new Error('Storage unavailable'));
+    await tap('OK');
+    expect(screenText()).toContain('Wie war der Lauf?');
+    expect(screenText()).toContain('Storage unavailable');
+    await tap('OK');
+    expect(screenText()).not.toContain('Wie war der Lauf?');
   });
 
   it('reads pace changes from older watch versions correctly', () => {

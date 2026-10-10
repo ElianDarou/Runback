@@ -639,13 +639,13 @@ export function FeatureSettings({
             {running ? (
               <>
                 <Row
-                  title={tr('Laufen nach Tempo oder Puls', 'Run by pace or heart rate')}
+                  title={tr('Laufziel vor dem Start', 'Run goal before the start')}
                   subtitle={tr(
-                    'Zielvorgabe vor dem Start anbieten',
-                    'Offer a target before the start',
+                    'Wie weit und wonach du läufst',
+                    'How far and what you run by',
                   )}
                   trailing={toggle(
-                    tr('Laufen nach Tempo oder Puls', 'Run by pace or heart rate'),
+                    tr('Laufziel vor dem Start', 'Run goal before the start'),
                     features.recording.targets,
                     value => patch('recording', { targets: value }),
                   )}

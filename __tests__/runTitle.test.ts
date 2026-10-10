@@ -1,10 +1,13 @@
 import {
   RUN_PURPOSES,
+  comparablePurpose,
   dayPartTitle,
+  hasNamedPurpose,
   isMeaningfulRunName,
   normalizePurpose,
   purposeLabel,
   runTitle,
+  samePurpose,
   selectablePurpose,
 } from '../src/domain/runTitle';
 
@@ -88,21 +91,32 @@ describe('runTitle', () => {
 });
 
 describe('Run types', () => {
-  it('does not offer “Not set yet” as a choice', () => {
+  it('offers the three types the comparisons need', () => {
     expect(RUN_PURPOSES.map(option => option.label)).toEqual([
-      'Einfach laufen',
-      'Ruhig',
-      'Lange Runde',
-      'Tempowechsel',
-      'Auf Zeit',
+      'Locker',
+      'Schnell',
+      'Intervalle',
     ]);
-    expect(selectablePurpose('unknown')).toBe('free');
-    expect(selectablePurpose(undefined)).toBe('free');
+    expect(selectablePurpose('unknown')).toBe('unknown');
+    expect(selectablePurpose(undefined)).toBe('unknown');
     expect(selectablePurpose('race')).toBe('race');
     expect(purposeLabel('unknown')).toBe('Noch offen');
   });
 
-  it('reads the old watch values as pace changes', () => {
+  it('maps old run types for comparisons without rewriting them', () => {
+    expect(comparablePurpose('long')).toBe('easy');
+    expect(comparablePurpose('free')).toBe('unknown');
+    expect(comparablePurpose('intervals')).toBe('intervals');
+    expect(samePurpose('long', 'easy')).toBe(true);
+    expect(samePurpose('free', 'unknown')).toBe(true);
+    expect(samePurpose('race', 'easy')).toBe(false);
+    expect(selectablePurpose('long')).toBe('easy');
+    expect(purposeLabel('long')).toBe('Locker');
+    expect(hasNamedPurpose('free')).toBe(false);
+    expect(hasNamedPurpose('long')).toBe(true);
+  });
+
+  it('reads the old watch values as intervals', () => {
     expect(normalizePurpose('quality')).toBe('intervals');
     expect(normalizePurpose('interval')).toBe('intervals');
     expect(normalizePurpose('easy')).toBe('easy');
@@ -110,10 +124,17 @@ describe('Run types', () => {
     expect(normalizePurpose(undefined)).toBe('unknown');
   });
 
-  it('turns “Easy” into a title that serves as a name', () => {
+  it('turns run types into titles that serve as names', () => {
     expect(runTitle({ startTime: at(7), purpose: 'easy' })).toBe(
-      'Ruhige Runde',
+      'Lockere Runde',
     );
-    expect(runTitle({ startTime: at(7), purpose: 'race' })).toBe('Auf Zeit');
+    expect(runTitle({ startTime: at(7), purpose: 'race' })).toBe(
+      'Schneller Lauf',
+    );
+    expect(runTitle({ startTime: at(7), purpose: 'intervals' })).toBe(
+      'Intervalle',
+    );
+    // An old long run keeps the name it had.
+    expect(runTitle({ startTime: at(7), purpose: 'long' })).toBe('Lange Runde');
   });
 });

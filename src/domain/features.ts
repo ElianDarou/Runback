@@ -136,8 +136,8 @@ export const FEATURE_CATALOG: readonly {
     },
     get description() {
       return tr(
-        'Kraft- und Lauftraining vorbereiten',
-        'Prepare strength and running workouts',
+        'Krafttraining vorbereiten',
+        'Prepare strength workouts',
       );
     },
     tab: 'templates',
@@ -756,7 +756,7 @@ export function recordingMetricLabel(value: RecordingMetric): string {
     case 'heartRate':
       return tr('Herzfrequenz', 'Heart rate');
     case 'target':
-      return tr('Laufen nach', 'Run to');
+      return tr('Laufziel', 'Run goal');
   }
 }
 /** Name of the primary recording value, in the active language. */

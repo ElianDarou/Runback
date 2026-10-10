@@ -2,6 +2,7 @@ import { analyzeRun } from './analysis';
 import { couplingGate, isRunRecommendation } from './areas';
 import { focusTypeLabel, type TrainingFocus } from './focus';
 import { tr } from './i18n';
+import { samePurpose } from './runTitle';
 import { relevance, RELEVANCE_VERSION } from './prioritization';
 import type { Experiment, Recommendation, RunSummary } from './types';
 
@@ -20,7 +21,7 @@ export function sameRecommendation(
     Math.abs(value / reference - 1) * 100 <= tolerance;
   return (
     a.kind === b.kind &&
-    a.purpose === b.purpose &&
+    samePurpose(a.purpose, b.purpose) &&
     within(
       a.criteria.openingPaceSecondsPerKm,
       b.criteria.openingPaceSecondsPerKm,

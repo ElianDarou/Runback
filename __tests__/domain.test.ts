@@ -1,6 +1,8 @@
 import {
   acceptRecommendation,
   analyzeRun,
+  MODEL_VERSION,
+  LEGACY_MODEL_VERSION,
   evaluateExperiment,
   scheduleCue,
   transitionExperiment,
@@ -95,6 +97,26 @@ describe('domain rules', () => {
     expect(result.recommendation?.goal).toMatch(/keine Aussage über Leistung/);
   });
 
+  it('compares an easy run with old long runs, which count as easy now', () => {
+    const result = analyzeRun(
+      baseline(),
+      undefined,
+      history({ purpose: 'long' }),
+    );
+    expect(result.state).toBe('recommendation');
+    expect(result.recommendation?.purpose).toBe('easy');
+  });
+
+  it('treats an old “just run” like a run without a run type', () => {
+    const result = analyzeRun(
+      baseline({ purpose: 'free' }),
+      undefined,
+      history(),
+    );
+    expect(result.state).toBe('insufficient');
+    expect(result.focus).toMatch(/Ohne gewählte Laufart/);
+  });
+
   it('does not build a recommendation on a single outlier run', () => {
     const alone = analyzeRun(baseline());
     expect(alone.state).toBe('insufficient');
@@ -112,7 +134,7 @@ describe('domain rules', () => {
 
   it('does not use runs of another purpose, another size or a slope as comparison', () => {
     const mismatched = [
-      ...history({ purpose: 'long' }),
+      ...history({ purpose: 'race' }),
       ...history({ distanceMeters: 4000 }).map((item, index) => ({
         ...item,
         id: `far-${index}`,
@@ -199,6 +221,36 @@ describe('domain rules', () => {
     ).toBe(true);
     expect(result.causalClaim).toBe(false);
     expect(result.summary).toMatch(/kein Ursachennachweis/);
+  });
+
+  it('versions the combined run types and preserves the grouping of an accepted older check', () => {
+    const proposal = recommendation();
+    expect(proposal.model_version).toBe(MODEL_VERSION);
+    const old = acceptRecommendation(
+      { ...proposal, purpose: 'long', model_version: LEGACY_MODEL_VERSION },
+      BASE_START + 1000,
+    );
+    const current = acceptRecommendation(
+      { ...proposal, purpose: 'long' },
+      BASE_START + 1000,
+    );
+    const easy = followup('easy-followup', 0, 330);
+    const long = {
+      ...followup('long-followup', 1, 330),
+      purpose: 'long' as const,
+    };
+    const legacy = evaluateExperiment(old, [easy, long]);
+    expect(legacy.model_version).toBe(LEGACY_MODEL_VERSION);
+    expect(legacy.eligibleRunIds).toEqual(['long-followup']);
+    expect(legacy.excluded).toContainEqual({
+      runId: 'easy-followup',
+      reason: 'Andere Laufart.',
+    });
+    expect(evaluateExperiment(current, [easy, long]).eligibleRunIds).toEqual([
+      'easy-followup',
+      'long-followup',
+    ]);
+    expect(old.recommendation.model_version).toBe(LEGACY_MODEL_VERSION);
   });
 
   it('enforces cue hourly budget and per-rule cooldown', () => {

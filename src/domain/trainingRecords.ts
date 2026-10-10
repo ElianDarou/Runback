@@ -8,12 +8,16 @@ import type {
   Adherence,
 } from './types';
 import type { ScheduleState } from './schedule';
-import type { RunTarget } from './runTarget';
+import type { IntervalState, RunTarget, RunTargetMemory } from './runTarget';
 import type { FeatureSettings } from './features';
 import type { PurposeHintProvenance } from './purposeHint';
 import type { Language } from './i18n';
 
-/** Shared records of phone and server, without a dependency on the native bridge. */
+/**
+ * Shared records of phone and server, without a dependency on the native bridge.
+ * Run templates are no longer offered (the goal in the start sheet replaced
+ * them); stored ones stay in the settings untouched.
+ */
 export interface Preset {
   id: string;
   name: string;
@@ -35,6 +39,7 @@ export interface Settings {
   strengthFocus?: TrainingFocus | null;
   strengthPostponedUntil?: number;
   minutes?: number;
+  /** No longer read: the run type is asked after the run (`likelyPurpose`). */
   purpose?: RunPurpose;
   /** Last chosen sport for free recording. */
   sport?: Sport;
@@ -44,8 +49,10 @@ export interface Settings {
   motionCapture?: MotionCaptureSettings;
   trainingDays?: number[];
   cues?: boolean;
-  /** Explicitly chosen companion for the next run. */
+  /** Explicitly chosen goal for the next run (how far and what to run by). */
   runTarget?: RunTarget;
+  /** Last values per goal kind, so switching chips restores them (`RunTargetMemory`). */
+  runTargetMemory?: RunTargetMemory;
   weather?: boolean;
   /** Max heart rate in bpm for the heart rate zones; if missing, Runback estimates it from runs. */
   maxHeartRate?: number;
@@ -93,8 +100,12 @@ export interface Run extends RunSummary {
   route?: RoutePoint[];
   events?: { type?: string; at?: number; message?: string }[];
   target?: RunTarget;
+  /** Current interval phase, written by Kotlin on each phase change. */
+  intervalState?: IntervalState;
   /** Run type explicitly chosen or confirmed; then the detail page stops asking. */
   purposeConfirmed?: boolean;
+  /** The run type question was shown once and dismissed; it does not come back. */
+  purposeAsked?: boolean;
   /** Trace of a confirmed suggestion; missing when chosen by the user. */
   purposeHint?: PurposeHintProvenance;
 }

@@ -45,7 +45,7 @@ class MainActivity : ReactActivity() {
     val runId = uri.getQueryParameter("runId") ?: return
     val commandId = uri.getQueryParameter("commandId").takeIf { !it.isNullOrBlank() }
     val commandSequence = uri.getQueryParameter("sequence")?.toLongOrNull() ?: 0L
-    val purpose = uri.getQueryParameter("purpose").cleanRemoteValue() ?: "easy"
+    val purpose = uri.getQueryParameter("purpose").cleanRemoteValue() ?: "unknown"
     val sport = uri.getQueryParameter("sport").cleanRemoteValue() ?: "running"
     val routePlanId = uri.getQueryParameter("routePlanId").cleanRemoteValue()
     val target = uri.getQueryParameter("target").cleanRemoteValue()

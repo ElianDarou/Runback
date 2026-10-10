@@ -66,7 +66,38 @@ describe('Coupling of run and strength training', () => {
     expect(result.assessment).toBe('observation');
     expect(result.method).toBe('caliper_matching');
     expect(result.matchedPairs).toHaveLength(1);
-    expect(result.matchedPairs?.[0].freshnessDifference).toBeLessThanOrEqual(10);
+    expect(result.matchedPairs?.[0].freshnessDifference).toBeLessThanOrEqual(
+      10,
+    );
+  });
+
+  it('counts old long runs as easy runs and leaves fast runs out', () => {
+    const entries = coupledRuns(3).map((entry, index) => ({
+      ...entry,
+      run: {
+        ...entry.run,
+        purpose: index === 1 ? ('long' as const) : entry.run.purpose,
+      },
+    }));
+    const freshness: Record<string, number> = { '0': 50, '1': 55, '2': 90 };
+    const lookup = (_region: string, at: number) =>
+      freshness[String(at / DAY)] ?? null;
+    const mixed = evaluateCoupling({
+      enabled: true,
+      runs: entries,
+      freshness: lookup,
+    });
+    expect(mixed.model_version).toBe('run-strength-coupling-v2');
+    expect(mixed.matchedPairs).toHaveLength(1);
+    const withFast = entries.map((entry, index) =>
+      index === 1
+        ? { ...entry, run: { ...entry.run, purpose: 'race' as const } }
+        : entry,
+    );
+    expect(
+      evaluateCoupling({ enabled: true, runs: withFast, freshness: lookup })
+        .matchedPairs ?? [],
+    ).toHaveLength(0);
   });
 
   it('orients caliper pairs by freshness instead of date', () => {
@@ -84,6 +115,35 @@ describe('Coupling of run and strength training', () => {
       freshnessDifference: 5,
     });
     expect(result.matchedPairs?.[0].fadeDifferencePercent).toBeCloseTo(5);
+  });
+
+  it('matches old long and easy runs by measured duration and keeps different lengths out', () => {
+    const entries = coupledRuns(3).map((entry, index) => ({
+      ...entry,
+      run: {
+        ...entry.run,
+        purpose: index === 0 ? ('easy' as const) : ('long' as const),
+        durationSeconds: [1200, 1260, 3600][index],
+        endTime: entry.run.startTime + [1200, 1260, 3600][index] * 1000,
+        distanceMeters: entry.run.distanceMeters * [1, 1.05, 3][index],
+        segments: entry.run.segments!.map(segment => ({
+          ...segment,
+          durationSeconds: segment.durationSeconds * [1, 1.05, 3][index],
+          distanceMeters: segment.distanceMeters * [1, 1.05, 3][index],
+        })),
+      },
+    }));
+    const input = {
+      enabled: true,
+      runs: entries,
+      freshness: (_region: string, at: number) => 50 + (at / DAY) * 5,
+    };
+    const result = evaluateCoupling(input);
+    expect(result.comparableRunIds).toEqual(['run-0', 'run-1']);
+    expect(result.matchedPairs).toHaveLength(1);
+    expect(
+      evaluateCoupling({ ...input, runs: [...entries].reverse() }),
+    ).toEqual(result);
   });
 
   it('picks the largest region proxy regardless of input order', () => {
@@ -114,7 +174,9 @@ describe('Coupling of run and strength training', () => {
     expect(result.regression?.covariates).toEqual(['100_minus_leg_freshness']);
     // No adjusted value without a standard error and interval.
     expect(result.regression?.standardErrors).toHaveLength(2);
-    expect(result.regression?.residualDegreesOfFreedom).toBeGreaterThanOrEqual(8);
+    expect(result.regression?.residualDegreesOfFreedom).toBeGreaterThanOrEqual(
+      8,
+    );
     const [lower, upper] = result.regression!.adjustedFadeInterval;
     expect(lower).toBeLessThanOrEqual(result.adjustedFadePercent as number);
     expect(upper).toBeGreaterThanOrEqual(result.adjustedFadePercent as number);

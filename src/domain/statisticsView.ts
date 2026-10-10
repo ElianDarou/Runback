@@ -1,7 +1,7 @@
 import type { Run } from './trainingRecords';
 import type { RunPurpose } from './types';
 import { medianOrNull } from './inference';
-import { normalizePurpose, purposeLabel } from './runTitle';
+import { comparablePurpose, normalizePurpose, purposeLabel } from './runTitle';
 import { average, mondayStart, validRun } from './statistics';
 import { dateFormat, fixed, tr } from './i18n';
 
@@ -427,7 +427,8 @@ function purposeShares(runs: Run[]): PurposeShare[] {
   const totalKm = runs.reduce((sum, run) => sum + run.distanceMeters / 1000, 0);
   const groups = new Map<RunPurpose, Run[]>();
   runs.forEach(run => {
-    const purpose = normalizePurpose(run.purpose);
+    // Old long runs belong to easy, old "just run" to not set yet.
+    const purpose = comparablePurpose(normalizePurpose(run.purpose));
     groups.set(purpose, (groups.get(purpose) || []).concat(run));
   });
   return Array.from(groups.entries())

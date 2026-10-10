@@ -173,9 +173,10 @@ it('links a started planned run to its recording without claiming completion', a
   });
   expect(nativeCall).toHaveBeenCalledWith(
     'startRun',
-    'easy',
+    // The run type is asked after the run, not taken from the plan.
+    'unknown',
     'running',
-    '{"kind":"none","version":2}',
+    '{"kind":"none","version":3}',
   );
   expect(stored.settings.schedule?.sessions[0]).toMatchObject({
     activityId: 'recorded-run',
@@ -234,9 +235,9 @@ it('keeps the plan unlinked if recording permission is denied', async () => {
   expect(stored.settings.schedule?.sessions[0].activityId).toBeUndefined();
   expect(nativeCall).not.toHaveBeenCalledWith(
     'startRun',
-    'easy',
+    'unknown',
     'running',
-    '{"kind":"none","version":2}',
+    '{"kind":"none","version":3}',
   );
 });
 

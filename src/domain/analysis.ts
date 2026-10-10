@@ -13,6 +13,7 @@ import {
 
 import { finite, median } from './inference';
 import { fixed, tr } from './i18n';
+import { comparablePurpose, samePurpose } from './runTitle';
 
 /**
  * v2: The comparison base is the median of several comparable runs instead of
@@ -20,7 +21,9 @@ import { fixed, tr } from './i18n';
  * Cadence lock also applies to steps per foot, flatness counts ascent and
  * descent instead of net elevation, and load is RPE × minutes.
  */
-export const MODEL_VERSION = 'runback-rules-2.0.0';
+/** 2.1: easy and legacy long runs share comparison baselines. */
+export const MODEL_VERSION = 'runback-rules-2.1.0';
+export const LEGACY_MODEL_VERSION = 'runback-rules-2.0.0';
 /** Data-quality rules; 2: gaps per segment take effect (gapSeconds from distance model 3.0). */
 export const QUALITY_VERSION = 'runback-quality-2';
 export const PACING_METHOD = 'pacing-fade-v2';
@@ -218,7 +221,8 @@ export function assessQuality(run: RunSummary): QualityReport {
         id,
       );
     }
-    const segmentLock = possibleLock && cadenceLocked(s.avgHeartRate, s.avgCadence);
+    const segmentLock =
+      possibleLock && cadenceLocked(s.avgHeartRate, s.avgCadence);
     if (segmentLock) {
       issue(
         'heartRate',
@@ -415,7 +419,9 @@ export function segmentIsFlat(s: SegmentAggregate): boolean {
       FLAT_GRADE_PERCENT
     );
   }
-  return finite(s.gradePercent) && Math.abs(s.gradePercent) <= FLAT_GRADE_PERCENT;
+  return (
+    finite(s.gradePercent) && Math.abs(s.gradePercent) <= FLAT_GRADE_PERCENT
+  );
 }
 
 export function flatPacingContext(
@@ -456,7 +462,7 @@ export function comparableBaseline(
     if (
       candidate.startTime >= run.startTime ||
       run.startTime - candidate.startTime > BASELINE_WINDOW_DAYS * DAY ||
-      candidate.purpose !== run.purpose ||
+      !samePurpose(candidate.purpose, run.purpose) ||
       (candidate.sport ?? 'running') !== (run.sport ?? 'running')
     ) {
       continue;
@@ -523,7 +529,10 @@ export function analyzeRun(
       ...result,
       focus:
         active.status === 'paused'
-          ? tr('Deine Empfehlung ist pausiert.', 'Your recommendation is paused.')
+          ? tr(
+              'Deine Empfehlung ist pausiert.',
+              'Your recommendation is paused.',
+            )
           : tr(
               'Deine Empfehlung bleibt bestehen.',
               'Your recommendation stays in place.',
@@ -538,7 +547,7 @@ export function analyzeRun(
       state: 'active',
     };
   }
-  if (run.purpose === 'unknown' || run.purpose === 'free') {
+  if (comparablePurpose(run.purpose) === 'unknown') {
     result.focus = tr(
       'Ohne gewählte Laufart bewerten wir wechselndes Tempo nicht als Fehler.',
       'Without a run type we do not treat changing pace as a mistake.',
@@ -643,11 +652,15 @@ export function analyzeRun(
       ...result,
       state: 'maintain',
       focus: tr(
-        `Im Median deiner letzten ${baseline.length} vergleichbaren Läufe war die zweite Hälfte ${fixed(
+        `Im Median deiner letzten ${
+          baseline.length
+        } vergleichbaren Läufe war die zweite Hälfte ${fixed(
           medianFade,
           1,
         )} % langsamer. Das ist kein Muster, das eine Änderung trägt.`,
-        `At the median of your last ${baseline.length} comparable runs, the second half was ${fixed(
+        `At the median of your last ${
+          baseline.length
+        } comparable runs, the second half was ${fixed(
           medianFade,
           1,
         )}% slower. That is not a pattern that justifies a change.`,
@@ -682,7 +695,9 @@ export function analyzeRun(
       )} min/km). Keep the run type and planned distance.`,
     ),
     reason: tr(
-      `In ${baseline.length} vergleichbaren Läufen war die zweite Hälfte im Median ${fixed(
+      `In ${
+        baseline.length
+      } vergleichbaren Läufen war die zweite Hälfte im Median ${fixed(
         medianFade,
         1,
       )} % langsamer. Probiere einen ruhigeren Start aus; Gelände, Wetter und Tagesform können mitwirken.`,
@@ -691,7 +706,8 @@ export function analyzeRun(
         1,
       )}% slower at the median. Try a calmer start; terrain, weather and form on the day may play a part.`,
     ),
-    purpose: run.purpose,
+    // Only easy runs get here; an old long run keeps its stored type.
+    purpose: run.purpose === 'long' ? 'long' : 'easy',
     goal: tr(
       'Gleichmäßigere Einteilung: weniger später Tempoabfall bei gleicher Laufart und gleichem Umfang. Das ist keine Aussage über Leistungsfähigkeit.',
       'More even pacing: less late pace fade at the same run type and distance. This says nothing about fitness.',
@@ -711,7 +727,8 @@ export function analyzeRun(
       openingPaceSecondsPerKm: opening,
       openingPaceTolerancePercent: 3,
       outcome: 'late_pace_fade_percent',
-      minimumRelevantChangePercentPoints: MINIMUM_RELEVANT_CHANGE_PERCENT_POINTS,
+      minimumRelevantChangePercentPoints:
+        MINIMUM_RELEVANT_CHANGE_PERCENT_POINTS,
       durationTolerancePercent: DURATION_TOLERANCE_PERCENT,
       distanceTolerancePercent: DISTANCE_TOLERANCE_PERCENT,
       minimumObservations: 6,

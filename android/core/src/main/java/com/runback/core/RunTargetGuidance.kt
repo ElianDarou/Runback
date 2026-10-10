@@ -223,7 +223,8 @@ class RunTargetGuidance private constructor(
     }
 
     companion object {
-        const val VERSION = 2
+        /** 3: goal (distance or time), intervals, and an explicit pace mode; see src/domain/runTarget.ts. */
+        const val VERSION = 3
         private const val MAX_ACCURACY_M = 20.0
         private const val MAX_FIX_AGE_MS = 10_000L
         private const val START_GRACE_MS = 30_000L
@@ -245,7 +246,7 @@ class RunTargetGuidance private constructor(
             ?.let { fromJson(JSONObject(it)) }
 
         fun fromJson(value: JSONObject?): RunTargetGuidance? {
-            if (value == null || value.optInt("version") !in setOf(1, VERSION)) return null
+            if (value == null || value.optInt("version") !in setOf(1, 2, VERSION)) return null
             RunAnnouncements.fromJson(value.optJSONObject("announcements"))
             val kind = value.optString("kind")
             val seconds = value.optDouble("cueIntervalSeconds", 30.0)
@@ -253,7 +254,11 @@ class RunTargetGuidance private constructor(
                 Lang.tr("Hinweisabstand wird nicht unterstützt.", "Cue interval is not supported.")
             }
             val interval = (seconds * 1000).toLong()
-            if (kind == "none") return RunTargetGuidance(value.toString(), kind, "voice", Double.NaN, "", Double.NaN, Double.NaN, interval)
+            if (kind == "none") {
+                // "Just track" has no cues of its own; a goal may still speak with this output.
+                val output = value.optString("output", "both").takeIf { it in setOf("voice", "vibration", "both") } ?: "both"
+                return RunTargetGuidance(value.toString(), kind, output, Double.NaN, "", Double.NaN, Double.NaN, interval)
+            }
             val output = value.optString("output")
             require(output in setOf("voice", "vibration", "both")) { Lang.tr("Unbekannte Ausgabe für Laufhinweise.", "Unknown output for run cues.") }
             return when (kind) {
@@ -271,6 +276,12 @@ class RunTargetGuidance private constructor(
                         Lang.tr("Pulsbereich wird nicht unterstützt.", "Heart rate range is not supported.")
                     }
                     RunTargetGuidance(value.toString(), kind, output, Double.NaN, "", min, max, interval)
+                }
+                "intervals" -> {
+                    require(value.optInt("version") == VERSION) { Lang.tr("Unbekanntes Laufziel.", "Unknown run target.") }
+                    // Intervals bring their own cues (RunIntervals); this only validates and carries the output.
+                    RunIntervals.parse(value.optJSONObject("intervals"))
+                    RunTargetGuidance(value.toString(), kind, output, Double.NaN, "", Double.NaN, Double.NaN, interval)
                 }
                 else -> throw IllegalArgumentException(Lang.tr("Unbekanntes Laufziel.", "Unknown run target."))
             }.also { it.reset(0L, false) }

@@ -2,12 +2,14 @@ import {
   analyzeRun,
   flatPacingContext,
   MODEL_VERSION,
+  LEGACY_MODEL_VERSION,
   PACING_METHOD,
   pacingFor,
   provenance,
 } from './analysis';
 import { signTest } from './inference';
 import { tr } from './i18n';
+import { samePurpose } from './runTitle';
 import { isRunRecommendation, recommendationArea } from './areas';
 import type { StrengthSession } from './strength';
 import { evaluateStrengthExperiment } from './strengthRecommendation';
@@ -40,7 +42,9 @@ export function acceptRecommendation<R extends AnyRecommendation>(
   existing?: Experiment,
 ): Experiment<R> {
   if (!Number.isFinite(now)) {
-    throw new Error(tr('Ungültiger Annahmezeitpunkt.', 'Invalid acceptance time.'));
+    throw new Error(
+      tr('Ungültiger Annahmezeitpunkt.', 'Invalid acceptance time.'),
+    );
   }
   if (
     existing &&
@@ -165,8 +169,10 @@ export function evaluateExperiment(
   reported: Record<string, Adherence> = {},
 ): ExperimentEvaluation {
   const c = experiment.recommendation.criteria;
+  const modelVersion = experiment.recommendation.model_version;
   const result: ExperimentEvaluation = {
     ...provenance([]),
+    model_version: modelVersion,
     verdict: 'insufficient_evidence',
     summary: tr(
       'Noch keine geeigneten Folgeläufe. Die Umsetzung und das Ergebnis werden getrennt geprüft.',
@@ -179,7 +185,7 @@ export function evaluateExperiment(
   };
   if (
     c.method !== PACING_METHOD ||
-    experiment.recommendation.model_version !== MODEL_VERSION
+    ![MODEL_VERSION, LEGACY_MODEL_VERSION].includes(modelVersion)
   ) {
     return {
       ...result,
@@ -202,14 +208,30 @@ export function evaluateExperiment(
     const exclude = (reason: string) =>
       result.excluded.push({ runId: run.id, reason });
     if (!activeAt(experiment, run.startTime)) {
-      exclude(tr('Empfehlung war bei Laufbeginn nicht aktiv.', 'Recommendation was not active when the run started.'));
+      exclude(
+        tr(
+          'Empfehlung war bei Laufbeginn nicht aktiv.',
+          'Recommendation was not active when the run started.',
+        ),
+      );
       continue;
     }
     if (run.startTime > experiment.acceptedAt + c.maxDays * DAY) {
-      exclude(tr('Vorab festgelegter Beobachtungszeitraum abgelaufen.', 'Observation period set in advance has ended.'));
+      exclude(
+        tr(
+          'Vorab festgelegter Beobachtungszeitraum abgelaufen.',
+          'Observation period set in advance has ended.',
+        ),
+      );
       continue;
     }
-    if (run.purpose !== experiment.recommendation.purpose) {
+    // Accepted checks retain their original grouping; only new checks combine
+    // easy and long runs, with their fixed volume limits below.
+    const matchesPurpose =
+      modelVersion === LEGACY_MODEL_VERSION
+        ? run.purpose === experiment.recommendation.purpose
+        : samePurpose(run.purpose, experiment.recommendation.purpose);
+    if (!matchesPurpose) {
       exclude(tr('Andere Laufart.', 'Different run type.'));
       continue;
     }
@@ -219,12 +241,22 @@ export function evaluateExperiment(
       Math.abs(run.distanceMeters / c.baselineDistanceMeters - 1) * 100 >
         c.distanceTolerancePercent
     ) {
-      exclude(tr('Geplanter Umfang nicht ausreichend erhalten.', 'Planned volume was not kept closely enough.'));
+      exclude(
+        tr(
+          'Geplanter Umfang nicht ausreichend erhalten.',
+          'Planned volume was not kept closely enough.',
+        ),
+      );
       continue;
     }
     const pacing = pacingFor(run);
     if (!pacing || !flatPacingContext(run, pacing)) {
-      exclude(tr('Vergleichbare flache Laufabschnitte fehlen.', 'Comparable flat run sections are missing.'));
+      exclude(
+        tr(
+          'Vergleichbare flache Laufabschnitte fehlen.',
+          'Comparable flat run sections are missing.',
+        ),
+      );
       continue;
     }
     const base = c.baselineContext;
@@ -234,7 +266,12 @@ export function evaluateExperiment(
       current?.temperatureC !== undefined &&
       Math.abs(base.temperatureC - current.temperatureC) > 5
     ) {
-      exclude(tr('Temperatur unterscheidet sich um mehr als 5 °C.', 'Temperature differs by more than 5 °C.'));
+      exclude(
+        tr(
+          'Temperatur unterscheidet sich um mehr als 5 °C.',
+          'Temperature differs by more than 5 °C.',
+        ),
+      );
       continue;
     }
     if (
@@ -242,7 +279,12 @@ export function evaluateExperiment(
       current?.windMps !== undefined &&
       Math.abs(base.windMps - current.windMps) > 2
     ) {
-      exclude(tr('Wind unterscheidet sich um mehr als 2 m/s.', 'Wind differs by more than 2 m/s.'));
+      exclude(
+        tr(
+          'Wind unterscheidet sich um mehr als 2 m/s.',
+          'Wind differs by more than 2 m/s.',
+        ),
+      );
       continue;
     }
     result.eligibleRunIds.push(run.id);
@@ -276,7 +318,7 @@ export function evaluateExperiment(
       verdict: 'not_implemented',
       summary: tr(
         'Du hast den ruhigeren Start bisher nicht probiert. Ob er hilft, bleibt noch offen.',
-        'You haven\'t tried the calmer start yet. Whether it helps is still open.',
+        "You haven't tried the calmer start yet. Whether it helps is still open.",
       ),
     };
   }
@@ -296,14 +338,8 @@ export function evaluateExperiment(
         ? tr('Zwischenstand verfügbar. ', 'Interim result available. ')
         : '';
     result.summary = tr(
-      `${
-        outcomes.length
-      } umgesetzte, geeignete Läufe; Prüfung ab ${
-        c.minimumObservations
-      } Läufen über mindestens ${c.minimumDays} Tage. ${interim}Der beobachtete Unterschied beweist keine Ursache.`,
-      `${outcomes.length} followed, suitable runs; review from ${
-        c.minimumObservations
-      } runs over at least ${c.minimumDays} days. ${interim}The observed difference does not prove a cause.`,
+      `${outcomes.length} umgesetzte, geeignete Läufe; Prüfung ab ${c.minimumObservations} Läufen über mindestens ${c.minimumDays} Tage. ${interim}Der beobachtete Unterschied beweist keine Ursache.`,
+      `${outcomes.length} followed, suitable runs; review from ${c.minimumObservations} runs over at least ${c.minimumDays} days. ${interim}The observed difference does not prove a cause.`,
     );
     return result;
   }

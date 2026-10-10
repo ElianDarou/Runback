@@ -138,7 +138,7 @@ object WearSync {
         context: Context,
         action: String,
         runId: String,
-        purpose: String = "easy",
+        purpose: String = "unknown",
         sport: String = "running",
         routePlanId: String? = null,
         target: String? = null,
@@ -213,7 +213,7 @@ object WearSync {
                 context,
                 action,
                 runId,
-                command.optString("purpose", "easy"),
+                command.optString("purpose", "unknown"),
                 command.optString("sport", "running"),
                 command.optString("routePlanId").takeIf { it.isNotBlank() && it != "null" },
                 command.optString("target").takeIf { it.isNotBlank() && it != "null" },
@@ -344,7 +344,7 @@ class WearSyncListener : WearableListenerService() {
             commandId = WearProtocol.commandId(command)
             sequence = WearProtocol.commandSequence(command)
             require(!commandId.isNullOrBlank() && sequence > 0L) { Lang.tr("Aufzeichnungsbefehl ohne Korrelation", "Recording command without correlation") }
-            val purpose = command.optString("purpose", "easy")
+            val purpose = command.optString("purpose", "unknown")
             val sport = command.optString("sport", "running")
             val target = command.optString("target").takeIf { it.isNotBlank() && it != "null" }
             val store = RunStore(this)

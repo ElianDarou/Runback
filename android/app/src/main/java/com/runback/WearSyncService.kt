@@ -83,7 +83,7 @@ class WearSyncService : WearableListenerService() {
             commandId = WearProtocol.commandId(command)
             sequence = WearProtocol.commandSequence(command)
             require(!commandId.isNullOrBlank() && sequence > 0L) { Lang.tr("Aufzeichnungsbefehl ohne Korrelation", "Recording command without correlation") }
-            val purpose = command.optString("purpose", "easy")
+            val purpose = command.optString("purpose", "unknown")
             val sport = command.optString("sport", "running")
             val routePlanId = command.optString("routePlanId").takeIf { it.isNotBlank() && it != "null" }
             val target = command.optString("target").takeIf { it.isNotBlank() && it != "null" }
@@ -370,7 +370,7 @@ class WearSyncService : WearableListenerService() {
         RecordingService.send(
             this,
             RecordingService.FINISH,
-            active.optString("purpose", "easy"),
+            active.optString("purpose", "unknown"),
             active.optString("source", WearProtocol.PHONE_SOURCE),
             active.optString("sport", "running"),
             runId = runId,

@@ -1,6 +1,10 @@
 import { ServerSettings } from './ServerSettings';
 import { ConnectionMark } from './components';
-import { serverMark, serverStateLabel, type ServerLinkStatus } from '../domain/serverLink';
+import {
+  serverMark,
+  serverStateLabel,
+  type ServerLinkStatus,
+} from '../domain/serverLink';
 import { exerciseDisplayName, nativeDisplayNames } from '../domain/catalog';
 import React, {
   memo,
@@ -109,7 +113,7 @@ import { PlanEditor } from './PlanEditor';
 import { PlanList } from './PlanList';
 import { BodyMap, type BodyMapMode } from './BodyMap';
 import { SorenessCapture } from './SorenessCapture';
-import { RunTargetScreen } from './RunTargetScreen';
+import { RunGoalChips, RunTargetScreen } from './RunTargetScreen';
 import { DistanceTimes } from './DistanceTimes';
 import { distanceTime } from '../domain/distanceTimes';
 import {
@@ -147,6 +151,9 @@ import { KilometerTable, RunSeriesPanel } from './RunCharts';
 import { RunInsights, toneFor } from './RunInsights';
 import { maxHeartRate, recentComparison } from '../domain/insights';
 import {
+  asksPurposeOnOpen,
+  likelyPurpose,
+  likelyPurposeReason,
   purposeHintProvenance,
   purposeHintReason,
   suggestRunPurpose,
@@ -194,18 +201,20 @@ import {
   NO_RUN_TARGET,
   RUN_TARGET_VERSION,
   type RunTarget,
+  hasRunTarget,
   normalizeRunTarget,
+  normalizeRunTargetMemory,
   PACE_STEP_SECONDS,
+  rememberRunTarget,
   runTargetLabel,
   stepTargetPace,
-  targetForPurpose,
+  targetProgressLabel,
 } from '../domain/runTarget';
 import {
   native,
   nativeCall,
   normalizeRun,
   type AppState,
-  type Preset,
   type Run,
   type Settings,
 } from '../native';
@@ -305,9 +314,7 @@ const speed = (run: Run) => {
 const tempoValue = (run: Run) => (usesPace(run.sport) ? pace(run) : speed(run));
 const tempoUnit = (run: Run) => (usesPace(run.sport) ? '/km' : 'km/h');
 const tempoLabel = (run: Run) =>
-  usesPace(run.sport)
-    ? tr('Ø min / km', 'Avg pace')
-    : tr('Ø km/h', 'Avg km/h');
+  usesPace(run.sport) ? tr('Ø min / km', 'Avg pace') : tr('Ø km/h', 'Avg km/h');
 const date = (timestamp: number) =>
   dateFormat({
     weekday: 'short',
@@ -390,7 +397,6 @@ type HistoryView = 'units' | 'stats';
 /** How often a change is retried on a newer state from the watch or a notification. */
 const MAX_SAVE_RETRIES = 3;
 type StartKind = 'run' | 'strength';
-type TemplatesView = 'strength' | 'run';
 const historyViewOptions = (): { value: HistoryView; label: string }[] => [
   { value: 'units', label: tr('Einheiten', 'Workouts') },
   { value: 'stats', label: tr('Statistik', 'Statistics') },
@@ -458,7 +464,9 @@ const unitSummary = (unit: Unit) => {
     )} ${tempoUnit(unit.run)}`;
   }
   const sets = summarize(unit.session).completedSets;
-  return `${date(unit.at)} · ${sets} ${sets === 1 ? tr('Satz', 'set') : tr('Sätze', 'sets')}`;
+  return `${date(unit.at)} · ${sets} ${
+    sets === 1 ? tr('Satz', 'set') : tr('Sätze', 'sets')
+  }`;
 };
 
 /**
@@ -510,7 +518,11 @@ const weekSummary = (units: Unit[]) => {
     0,
   );
   const parts = [
-    counted(units.length, tr('Einheit', 'workout'), tr('Einheiten', 'workouts')),
+    counted(
+      units.length,
+      tr('Einheit', 'workout'),
+      tr('Einheiten', 'workouts'),
+    ),
   ];
   if (km > 0) {
     parts.push(`${number(km / 1000, 1)} km`);
@@ -649,19 +661,32 @@ export function RunbackApp({
   // The watch and notifications have no JS of their own: they get the names
   // of this language whenever it is set or changes.
   useEffect(() => {
-    void native.setDisplayNames(language, nativeDisplayNames(language).names).catch(() => {});
+    void native
+      .setDisplayNames(language, nativeDisplayNames(language).names)
+      .catch(() => {});
   }, [language]);
-  const [serverStatus, setServerStatus] = useState<ServerLinkStatus | null>(null);
+  const [serverStatus, setServerStatus] = useState<ServerLinkStatus | null>(
+    null,
+  );
   useEffect(() => {
     let alive = true;
     const update = () => {
       if (AndroidAppState.currentState === 'background') return;
-      void native.serverStatus().then(next => { if (alive) setServerStatus(next); }).catch(() => {});
+      void native
+        .serverStatus()
+        .then(next => {
+          if (alive) setServerStatus(next);
+        })
+        .catch(() => {});
     };
     update();
     const timer = setInterval(update, 5000);
     const subscription = AndroidAppState.addEventListener('change', update);
-    return () => { alive = false; clearInterval(timer); subscription.remove(); };
+    return () => {
+      alive = false;
+      clearInterval(timer);
+      subscription.remove();
+    };
   }, []);
   const stateRef = useRef(state);
   const stateGeneration = useRef(0);
@@ -722,9 +747,15 @@ export function RunbackApp({
   const [coachArea, setCoachArea] = useState<'running' | 'strength'>('running');
   // Add run types afterwards: one run at a time; skipped ones stay open.
   const [purposeSheet, setPurposeSheet] = useState(false);
+  // The question after a run: the user's pick before OK, and runs already
+  // answered here (hidden at once, before the saved answer comes back).
+  const [purposeChoice, setPurposeChoice] = useState<{
+    runId: string;
+    purpose: RunPurpose;
+  } | null>(null);
+  const [purposeClosed, setPurposeClosed] = useState<string[]>([]);
   const [purposeSkipped, setPurposeSkipped] = useState<string[]>([]);
   const [historyView, setHistoryView] = useState<HistoryView>('units');
-  const [templatesView, setTemplatesView] = useState<TemplatesView>('strength');
   const [templatesParent, setTemplatesParent] = useState<Page>('main');
   const [note, setNote] = useState('');
   const [importStatus, setImportStatus] = useState<any>(null);
@@ -753,7 +784,6 @@ export function RunbackApp({
   const [previewRunTarget, setPreviewRunTarget] = useState<RunTarget | null>(
     null,
   );
-  const [presetName, setPresetName] = useState('');
   const [strength, setStrength] = useState<StrengthState>(emptyStrengthState());
   const [workoutOpen, setWorkoutOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -980,7 +1010,6 @@ export function RunbackApp({
     strengthExperiment && strengthRecs && features.recommendations.showQueued
       ? strengthSelection.selected
       : undefined;
-  const purpose = settings.purpose || 'free';
   // A deselected sport falls back to the first allowed one.
   const chosenSport = normalizeSport(settings.sport);
   const sport = sports.includes(chosenSport)
@@ -988,6 +1017,7 @@ export function RunbackApp({
     : sports[0] ?? 'running';
   const words = sportWords(sport);
   const runTarget = normalizeRunTarget(settings.runTarget);
+  const runTargetMemory = normalizeRunTargetMemory(settings.runTargetMemory);
 
   const refresh = useCallback(async () => {
     const generation = stateGeneration.current;
@@ -1035,34 +1065,37 @@ export function RunbackApp({
     setWorkoutOpen(Boolean(nextStrength.active));
     setSorenessOpen(false);
   }, []);
-  const action = useCallback(async (fn: () => Promise<void>) => {
-    if (busyRef.current) {
-      return;
-    }
-    stateGeneration.current += 1;
-    busyRef.current = true;
-    setBusy(true);
-    setError('');
-    setMessage('');
-    try {
-      await fn();
-    } catch (e) {
-      setError(
-        e instanceof Error
-          ? e.message
-          : tr(
-              'Die Aktion konnte nicht abgeschlossen werden. Bitte erneut versuchen.',
-              'The action could not be completed. Try again.',
-            ),
-      );
-    } finally {
+  const action = useCallback(
+    async (fn: () => Promise<void>) => {
+      if (busyRef.current) {
+        return;
+      }
       stateGeneration.current += 1;
-      busyRef.current = false;
-      setBusy(false);
-    }
-  // `tr` reads the module-level language, so the text recomputes via this dependency.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [language]);
+      busyRef.current = true;
+      setBusy(true);
+      setError('');
+      setMessage('');
+      try {
+        await fn();
+      } catch (e) {
+        setError(
+          e instanceof Error
+            ? e.message
+            : tr(
+                'Die Aktion konnte nicht abgeschlossen werden. Bitte erneut versuchen.',
+                'The action could not be completed. Try again.',
+              ),
+        );
+      } finally {
+        stateGeneration.current += 1;
+        busyRef.current = false;
+        setBusy(false);
+      }
+      // `tr` reads the module-level language, so the text recomputes via this dependency.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    },
+    [language],
+  );
   const persist = useCallback(async (patch: Partial<Settings>) => {
     const updated = { ...stateRef.current.settings, ...patch };
     settingsRevision.current += 1;
@@ -1079,20 +1112,32 @@ export function RunbackApp({
   const save = (patch: Partial<Settings>) => {
     void action(() => persist(patch));
   };
+  /** The goal for the next run, with its values remembered per kind. */
+  const persistRunTarget = (target: RunTarget) =>
+    persist({
+      runTarget: target,
+      runTargetMemory: rememberRunTarget(
+        normalizeRunTargetMemory(stateRef.current.settings.runTargetMemory),
+        target,
+      ),
+    });
 
-  const openGoogleMaps = useCallback(async (points: RouteCoordinate[]) => {
-    const url = googleMapsDirectionsUrl(points);
-    if (!url)
-      throw new Error(
-        tr(
-          'Diese Route kann nicht geöffnet werden.',
-          'This route cannot be opened.',
-        ),
-      );
-    await Linking.openURL(url);
-  // `tr` reads the module-level language, so the text recomputes via this dependency.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [language]);
+  const openGoogleMaps = useCallback(
+    async (points: RouteCoordinate[]) => {
+      const url = googleMapsDirectionsUrl(points);
+      if (!url)
+        throw new Error(
+          tr(
+            'Diese Route kann nicht geöffnet werden.',
+            'This route cannot be opened.',
+          ),
+        );
+      await Linking.openURL(url);
+      // `tr` reads the module-level language, so the text recomputes via this dependency.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    },
+    [language],
+  );
 
   const openCoMaps = useCallback(async (points: RouteCoordinate[]) => {
     await native.openRouteFile(points, 'comaps');
@@ -1147,7 +1192,9 @@ export function RunbackApp({
           setExportProgress(
             tr(
               `${index + 1} von ${ids.length} Läufen`,
-              `${index + 1} of ${ids.length} ${ids.length === 1 ? 'run' : 'runs'}`,
+              `${index + 1} of ${ids.length} ${
+                ids.length === 1 ? 'run' : 'runs'
+              }`,
             ),
           );
           const run = await native.run(id);
@@ -1272,7 +1319,9 @@ export function RunbackApp({
           setExportProgress(
             tr(
               `${index + 1} von ${ids.length} Einheiten`,
-              `${index + 1} of ${ids.length} ${ids.length === 1 ? 'session' : 'sessions'}`,
+              `${index + 1} of ${ids.length} ${
+                ids.length === 1 ? 'session' : 'sessions'
+              }`,
             ),
           );
           const session = await native.strengthSession(id);
@@ -2035,11 +2084,9 @@ export function RunbackApp({
     ? templateForDay(strength.templates, new Date(now).getDay())
     : null;
   // A recording needs only location permission, nothing else: no plan, no
-  // template. Sport and run type are labels, not targets.
-  const beginRecording = async (
-    nextPurpose: RunPurpose,
-    nextSport: Sport,
-  ): Promise<Run> => {
+  // template. The run type is not asked here; the question after the run
+  // preselects the most likely one (`likelyPurpose`).
+  const beginRecording = async (nextSport: Sport): Promise<Run> => {
     const permissions = await nativeCall<{ locationPermission: boolean }>(
       'requestRecordingPermissions',
     );
@@ -2053,14 +2100,11 @@ export function RunbackApp({
     }
     const started = await nativeCall<{ recording?: Run }>(
       'startRun',
-      nextPurpose,
+      'unknown',
       nextSport,
       JSON.stringify(
         nextSport === 'running'
-          ? targetForPurpose(
-              normalizeRunTarget(stateRef.current.settings.runTarget),
-              nextPurpose,
-            )
+          ? normalizeRunTarget(stateRef.current.settings.runTarget)
           : NO_RUN_TARGET,
       ),
     );
@@ -2082,7 +2126,7 @@ export function RunbackApp({
   const start = () => {
     void action(async () => {
       if (!stateRef.current.recording) {
-        await beginRecording(purpose, sport);
+        await beginRecording(sport);
       }
       switchTab('today');
     });
@@ -2208,7 +2252,7 @@ export function RunbackApp({
       }
       let activityId: string;
       if (entry.kind === 'run') {
-        const active = await beginRecording(entry.purpose || 'free', 'running');
+        const active = await beginRecording('running');
         activityId = active.id;
         pendingScheduleLink.current = { entryId: entry.id, activityId };
         switchTab('today');
@@ -2427,7 +2471,10 @@ export function RunbackApp({
               [tr('Übersprungen', 'Skipped'), importStatus.skipped],
               [tr('Fehlgeschlagen', 'Failed'), importStatus.failed],
               [tr('Kontextwerte', 'Context values'), importStatus.wellness],
-              [tr('Krafteinheiten', 'Strength sessions'), importStatus.strength],
+              [
+                tr('Krafteinheiten', 'Strength sessions'),
+                importStatus.strength,
+              ],
               [tr('Nicht gewählt', 'Not selected'), importStatus.excluded],
             ] as [string, number | undefined][]
           )
@@ -2501,7 +2548,9 @@ export function RunbackApp({
       const next = await native.saveSorenessReport(report);
       setSorenessReports(next);
       setSorenessOpen(false);
-      setMessage(tr('Muskelkatermeldung gespeichert.', 'Soreness report saved.'));
+      setMessage(
+        tr('Muskelkatermeldung gespeichert.', 'Soreness report saved.'),
+      );
     });
   };
 
@@ -2523,11 +2572,11 @@ export function RunbackApp({
       startStrength(todaysTemplate);
     }
   };
-  const targetRow = (nextPurpose: RunPurpose) =>
+  const targetRow = () =>
     features.recording.targets ? (
       <Row
-        title={tr('Laufen nach', 'Run by')}
-        subtitle={runTargetLabel(targetForPurpose(runTarget, nextPurpose))}
+        title={tr('Laufziel', 'Run goal')}
+        subtitle={runTargetLabel(runTarget)}
         onPress={() => {
           setStartSheet(null);
           openPage('run-target');
@@ -2576,7 +2625,9 @@ export function RunbackApp({
           accessibilityRole="button"
           accessibilityLabel={tr(
             `Empfehlung ${areaLabel(area)}: ${active.recommendation.action}`,
-            `Recommendation ${areaLabel(area)}: ${active.recommendation.action}`,
+            `Recommendation ${areaLabel(area)}: ${
+              active.recommendation.action
+            }`,
           )}
           onPress={() => openCoach(area)}
           style={({ pressed }) => [
@@ -2638,10 +2689,7 @@ export function RunbackApp({
             <Badge>{tr('Vorschlag', 'Suggestion')}</Badge>
             <Text style={styles.muted}>
               {areaLabel(area)} ·{' '}
-              {tr(
-                'Prüfe, ob er zu dir passt.',
-                'Check whether it fits you.',
-              )}
+              {tr('Prüfe, ob er zu dir passt.', 'Check whether it fits you.')}
             </Text>
           </View>
         </Pressable>
@@ -2731,7 +2779,9 @@ export function RunbackApp({
           <Copy muted>
             {tr(
               `Krafttraining · seit ${minutes} Minuten`,
-              `Strength training · ${minutes} ${minutes === 1 ? 'minute' : 'minutes'} so far`,
+              `Strength training · ${minutes} ${
+                minutes === 1 ? 'minute' : 'minutes'
+              } so far`,
             )}
           </Copy>
           <Button
@@ -2747,7 +2797,7 @@ export function RunbackApp({
     // Without the running area, "something else" starts directly at strength training.
     const otherKind: StartKind = sports.length ? 'run' : 'strength';
     if (todaysScheduledRun && showRunning) {
-      const plannedPurpose = todaysScheduledRun.purpose || 'free';
+      const plannedPurpose = todaysScheduledRun.purpose;
       return (
         <Card style={styles.hero}>
           <Text style={styles.heroLabel}>
@@ -2760,10 +2810,12 @@ export function RunbackApp({
             {tr(
               `Lauf · ${todaysScheduledRun.minutes} Min`,
               `Run · ${todaysScheduledRun.minutes} min`,
-            )}{' '}
-            · {purposeLabel(plannedPurpose)}
+            )}
+            {hasNamedPurpose(plannedPurpose)
+              ? ` · ${purposeLabel(plannedPurpose)}`
+              : ''}
           </Copy>
-          {targetRow(plannedPurpose)}
+          {targetRow()}
           <Button
             title={tr('Lauf starten', 'Start run')}
             onPress={startPlannedRun}
@@ -3080,7 +3132,6 @@ export function RunbackApp({
               title={tr('Vorlagen verwalten', 'Manage templates')}
               onPress={() => {
                 setStartSheet(null);
-                setTemplatesView('strength');
                 openPage('templates');
               }}
             />
@@ -3088,57 +3139,18 @@ export function RunbackApp({
         </>
       ) : (
         <>
-          {features.templates.enabled && settings.presets?.length ? (
-            <Field label={tr('Vorlage', 'Template')}>
-              <ChipGroup
-                label={tr('Laufvorlage', 'Run template')}
-                options={[
-                  ...settings.presets.map(p => ({
-                    value: p.id,
-                    label: p.name,
-                  })),
-                  { value: '', label: tr('Ohne', 'None') },
-                ]}
-                value={
-                  settings.presets.find(
-                    p =>
-                      p.purpose === purpose &&
-                      p.minutes === (settings.minutes || 30),
-                  )?.id ?? ''
-                }
-                onChange={id => {
-                  const preset = settings.presets?.find(p => p.id === id);
-                  if (preset) {
-                    save({
-                      purpose: preset.purpose,
-                      minutes: preset.minutes,
-                      cues: preset.cues,
-                    });
-                  }
-                }}
-                disabled={busy}
-              />
-            </Field>
-          ) : null}
-          <Field label={tr('Wie willst du laufen?', 'How do you want to run?')}>
-            <ChipGroup
-              label={tr('Laufart dieser Aufzeichnung', 'Run type for this recording')}
-              options={purposes.map(p => ({
-                value: p.value,
-                label: p.label,
-              }))}
-              value={selectablePurpose(purpose)}
-              onChange={value => save({ purpose: value })}
+          {sport === 'running' && features.recording.targets ? (
+            <RunGoalChips
+              target={runTarget}
+              memory={runTargetMemory}
               disabled={busy}
+              onChange={target => void action(() => persistRunTarget(target))}
+              onEdit={() => {
+                setStartSheet(null);
+                openPage('run-target');
+              }}
             />
-            <Copy muted>
-              {
-                purposes.find(p => p.value === selectablePurpose(purpose))
-                  ?.description
-              }
-            </Copy>
-          </Field>
-          {sport === 'running' ? targetRow(purpose) : null}
+          ) : null}
           {sport === 'running' ? (
             // The carry position rarely changes: collapsed, with the last choice as value.
             <Disclosure
@@ -3202,8 +3214,16 @@ export function RunbackApp({
         <>
           <Copy muted>
             {tr(
-              `Noch ${counted(purposeQueue.length, 'Lauf', 'Läufe')} ohne Laufart`,
-              `Still ${counted(purposeQueue.length, 'run', 'runs')} without a run type`,
+              `Noch ${counted(
+                purposeQueue.length,
+                'Lauf',
+                'Läufe',
+              )} ohne Laufart`,
+              `Still ${counted(
+                purposeQueue.length,
+                'run',
+                'runs',
+              )} without a run type`,
             )}
           </Copy>
           <Row
@@ -3314,7 +3334,9 @@ export function RunbackApp({
                   `${recordingWords.noun} interrupted`,
                 )}
           </Text>
-          <Copy muted>{purposeLabel(recording.purpose)}</Copy>
+          {hasNamedPurpose(recording.purpose) ? (
+            <Copy muted>{purposeLabel(recording.purpose)}</Copy>
+          ) : null}
         </View>
         <View style={styles.bigMetric}>
           {primary === 'distance' ? (
@@ -3377,9 +3399,13 @@ export function RunbackApp({
         ) : null}
         {metrics.includes('target') &&
         recording.target &&
-        recording.target.kind !== 'none' ? (
+        hasRunTarget(recording.target) ? (
           <Row
-            title={tr('Laufen nach', 'Run by')}
+            // What is left of the goal or the interval phase, above the goal itself.
+            title={
+              targetProgressLabel(recording.target, recording) ??
+              tr('Laufziel', 'Run goal')
+            }
             subtitle={runTargetLabel(recording.target)}
             trailing={
               recording.target.kind === 'pace' ? (
@@ -3505,7 +3531,8 @@ export function RunbackApp({
           'Prozentpunkte weniger Tempoabfall als der Median der Vergleichsläufe (',
           'percentage points less pace fade than the median of the comparison runs (',
         )}
-        {number(recommendation.criteria.baselineFadePercent, 1)}{percentSign()})
+        {number(recommendation.criteria.baselineFadePercent, 1)}
+        {percentSign()})
       </Copy>
       {recommendation.criteria.exclusions.map((text, i) => (
         <Copy muted key={i}>
@@ -3582,7 +3609,9 @@ export function RunbackApp({
 
   const storedRunTitle = (id: string) => {
     const run = runningRuns.find(item => item.id === id);
-    return run ? runTitle(run) : tr('Lauf nicht mehr vorhanden', 'Run no longer exists');
+    return run
+      ? runTitle(run)
+      : tr('Lauf nicht mehr vorhanden', 'Run no longer exists');
   };
   // Same reason, same line: 28 runs without a run type is one finding.
   const groupedAlternatives = () => {
@@ -3681,7 +3710,8 @@ export function RunbackApp({
           'Vorzeichentest: häufiger als zufällig mindestens',
           'sign test: more often than chance, at least',
         )}{' '}
-        {recommendation.criteria.minimumRelevantChangePercent}{percentSign()}{' '}
+        {recommendation.criteria.minimumRelevantChangePercent}
+        {percentSign()}{' '}
         {tr(
           'über dem Median der Vergleichseinheiten',
           'above the median of the comparison sessions',
@@ -3927,7 +3957,11 @@ export function RunbackApp({
       : needsPurpose
       ? tr(
           `Bei ${counted(withoutPurpose, 'Lauf', 'Läufen')} fehlt die Laufart.`,
-          `The run type is missing for ${counted(withoutPurpose, 'run', 'runs')}.`,
+          `The run type is missing for ${counted(
+            withoutPurpose,
+            'run',
+            'runs',
+          )}.`,
         )
       : tr(
           'Vorschläge entstehen aus ruhigen und langen Runden mit mindestens vier gleichmäßigen Abschnitten ab 500 m.',
@@ -4006,7 +4040,12 @@ export function RunbackApp({
                     />
                   ))}
                   {queued ? (
-                    <Section title={tr('Grundlage der Vorschau', 'Basis of the preview')}>
+                    <Section
+                      title={tr(
+                        'Grundlage der Vorschau',
+                        'Basis of the preview',
+                      )}
+                    >
                       <Copy muted>{queued.reason}</Copy>
                       {renderCriteria(queued)}
                     </Section>
@@ -4046,7 +4085,10 @@ export function RunbackApp({
                 <EmptyState
                   title={
                     postponed
-                      ? tr('Entscheide morgen in Ruhe.', 'Decide calmly tomorrow.')
+                      ? tr(
+                          'Entscheide morgen in Ruhe.',
+                          'Decide calmly tomorrow.',
+                        )
                       : maintaining
                       ? tr(
                           'Behalte deine Einteilung bei.',
@@ -4116,7 +4158,9 @@ export function RunbackApp({
           </Section>
         ) : null}
         {runRecs && past.length ? (
-          <Section title={tr('Frühere Empfehlungen', 'Earlier recommendations')}>
+          <Section
+            title={tr('Frühere Empfehlungen', 'Earlier recommendations')}
+          >
             {past.map(e => (
               <Card key={e.id}>
                 <Copy>{e.recommendation.action}</Copy>
@@ -4174,7 +4218,10 @@ export function RunbackApp({
                   strengthExperiment,
                   evaluation,
                   evaluation.adherence.some(item => item.value === 'yes')
-                    ? tr('Ja, in passenden Einheiten.', 'Yes, in suitable sessions.')
+                    ? tr(
+                        'Ja, in passenden Einheiten.',
+                        'Yes, in suitable sessions.',
+                      )
                     : evaluation.verdict === 'not_implemented'
                     ? tr(
                         'Du hast es bisher nicht probiert.',
@@ -4235,7 +4282,12 @@ export function RunbackApp({
                     />
                   ))}
                   {strengthQueued ? (
-                    <Section title={tr('Grundlage der Vorschau', 'Basis of the preview')}>
+                    <Section
+                      title={tr(
+                        'Grundlage der Vorschau',
+                        'Basis of the preview',
+                      )}
+                    >
                       <Copy muted>{strengthQueued.reason}</Copy>
                     </Section>
                   ) : null}
@@ -4274,7 +4326,10 @@ export function RunbackApp({
                 <EmptyState
                   title={
                     postponed
-                      ? tr('Entscheide morgen in Ruhe.', 'Decide calmly tomorrow.')
+                      ? tr(
+                          'Entscheide morgen in Ruhe.',
+                          'Decide calmly tomorrow.',
+                        )
                       : tr('Noch keine Empfehlung', 'No recommendation yet')
                   }
                   copy={
@@ -4303,7 +4358,10 @@ export function RunbackApp({
                           onPress: () => switchTab('history'),
                         }
                       : {
-                          title: tr('Erstes Training starten', 'Start first session'),
+                          title: tr(
+                            'Erstes Training starten',
+                            'Start first session',
+                          ),
                           onPress: () => switchTab('today'),
                         }
                   }
@@ -4341,7 +4399,9 @@ export function RunbackApp({
           </Section>
         ) : null}
         {strengthRecs && past.length ? (
-          <Section title={tr('Frühere Empfehlungen', 'Earlier recommendations')}>
+          <Section
+            title={tr('Frühere Empfehlungen', 'Earlier recommendations')}
+          >
             {past.map(e => (
               <Card key={e.id}>
                 <Copy>{e.recommendation.action}</Copy>
@@ -4362,7 +4422,10 @@ export function RunbackApp({
                   small
                   title={
                     pastRecommendationOpen === e.id
-                      ? tr('Gespeicherte Details ausblenden', 'Hide saved details')
+                      ? tr(
+                          'Gespeicherte Details ausblenden',
+                          'Hide saved details',
+                        )
                       : tr('Gespeicherte Details ansehen', 'View saved details')
                   }
                   onPress={() =>
@@ -4460,8 +4523,6 @@ export function RunbackApp({
     else {
       const entry = FEATURE_CATALOG.find(item => item.id === id);
       if (entry?.tab) {
-        if (id === 'templates')
-          setTemplatesView(showStrength ? 'strength' : 'run');
         switchTab(entry.tab);
       }
     }
@@ -4603,7 +4664,9 @@ export function RunbackApp({
         <Text style={styles.smallMuted}>
           {tr('1 · sehr leicht', '1 · very easy')}
         </Text>
-        <Text style={styles.smallMuted}>{tr('10 · maximal', '10 · maximum')}</Text>
+        <Text style={styles.smallMuted}>
+          {tr('10 · maximal', '10 · maximum')}
+        </Text>
       </View>
     </View>
   );
@@ -4671,7 +4734,10 @@ export function RunbackApp({
     const purposeChips = (
       <Field label={tr('Laufart', 'Run type')}>
         <ChipGroup
-          label={tr('Laufart dieser Aufzeichnung', 'Run type for this recording')}
+          label={tr(
+            'Laufart dieser Aufzeichnung',
+            'Run type for this recording',
+          )}
           options={purposes.map(p => ({ value: p.value, label: p.label }))}
           value={selectablePurpose(selected.purpose)}
           onChange={value =>
@@ -4699,9 +4765,93 @@ export function RunbackApp({
             maxHeartRate(settings.maxHeartRate, runningRuns),
           )
         : undefined;
+    // The popup asks a fresh recording once; after "Cancel" the page stays quiet
+    // and the run type is still changeable under the details.
+    const showPurposeQuestion =
+      asksPurposeOnOpen(selected) && !purposeClosed.includes(selected.id);
     const askPurpose =
       isRun(selected) &&
+      !selected.purposeAsked &&
+      !asksPurposeOnOpen(selected) &&
       (purposeMissing(selected) || (unconfirmedFree && Boolean(purposeHint)));
+    const likely = showPurposeQuestion
+      ? likelyPurpose({
+          run: selected,
+          target: selected.target,
+          history: runningRuns,
+          maxHeartRate: maxHeartRate(settings.maxHeartRate, runningRuns),
+          plannedPurpose: schedule.sessions.find(
+            item => item.activityId === selected.id,
+          )?.purpose,
+        })
+      : undefined;
+    const chosenPurpose =
+      purposeChoice?.runId === selected.id
+        ? purposeChoice.purpose
+        : likely?.purpose;
+    const likelyReason = likely ? likelyPurposeReason(likely) : undefined;
+    const closePurposeQuestion = (patch: Record<string, unknown>) => {
+      if (busy) return;
+      const id = selected.id;
+      void action(async () => {
+        await native.feedback(id, { ...patch, purposeAsked: true });
+        setPurposeClosed(current => [...current, id]);
+        setSelected(await native.run(id));
+        await refresh();
+      });
+    };
+    const purposeQuestion =
+      likely && chosenPurpose ? (
+        <Sheet
+          visible
+          title={tr('Wie war der Lauf?', 'How was the run?')}
+          onClose={() => closePurposeQuestion({})}
+        >
+          <ChipGroup
+            label={tr(
+              'Laufart dieser Aufzeichnung',
+              'Run type for this recording',
+            )}
+            options={purposes.map(p => ({ value: p.value, label: p.label }))}
+            value={chosenPurpose}
+            onChange={value =>
+              setPurposeChoice({ runId: selected.id, purpose: value })
+            }
+            disabled={busy}
+          />
+          <Copy muted>
+            {chosenPurpose === likely.purpose && likelyReason
+              ? tr(
+                  `Vorausgewählt: ${likelyReason}. Damit vergleichen wir den Lauf mit ähnlichen Läufen.`,
+                  `Preselected: ${likelyReason}. This is how we compare the run with similar runs.`,
+                )
+              : tr(
+                  'Damit vergleichen wir den Lauf mit ähnlichen Läufen.',
+                  'This is how we compare the run with similar runs.',
+                )}
+          </Copy>
+          <Button
+            title={tr('OK', 'OK')}
+            onPress={() =>
+              closePurposeQuestion({
+                purpose: chosenPurpose,
+                purposeConfirmed: true,
+                purposeHint:
+                  likely.hint && likely.hint.purpose === chosenPurpose
+                    ? purposeHintProvenance(likely.hint)
+                    : null,
+              })
+            }
+            disabled={busy}
+          />
+          <Button
+            secondary
+            title={tr('Abbrechen', 'Cancel')}
+            onPress={() => closePurposeQuestion({})}
+            disabled={busy}
+          />
+        </Sheet>
+      ) : null;
     const purposePrompt = (
       <>
         {purposeHint ? (
@@ -4745,6 +4895,7 @@ export function RunbackApp({
     if (feelingOnly) {
       return (
         <>
+          {purposeQuestion}
           <Title>{runTitle(selected)}</Title>
           <Copy muted>
             {selectedWords.noun} · {date(selected.startTime)} ·{' '}
@@ -4778,6 +4929,7 @@ export function RunbackApp({
     }
     return (
       <>
+        {purposeQuestion}
         <Title>{runTitle(selected)}</Title>
         <Copy muted>
           {selectedWords.noun} · {date(selected.startTime)}
@@ -4845,15 +4997,24 @@ export function RunbackApp({
             }${snapshot.quality.issues[0].message}${
               snapshot.quality.issues.length > 1
                 ? tr(
-                    ` · ${snapshot.quality.issues.length - 1} weitere unter „Daten & Herkunft“`,
-                    ` · ${snapshot.quality.issues.length - 1} more under “Data & origin”`,
+                    ` · ${
+                      snapshot.quality.issues.length - 1
+                    } weitere unter „Daten & Herkunft“`,
+                    ` · ${
+                      snapshot.quality.issues.length - 1
+                    } more under “Data & origin”`,
                   )
                 : ''
             }`}
           </Copy>
         ) : null}
         {askPurpose ? (
-          <Section title={tr('Wie war der Lauf gemeint?', 'What was the run meant to be?')}>
+          <Section
+            title={tr(
+              'Wie war der Lauf gemeint?',
+              'What was the run meant to be?',
+            )}
+          >
             {purposePrompt}
           </Section>
         ) : null}
@@ -4908,10 +5069,7 @@ export function RunbackApp({
             )}
             subtitle={
               distanceTarget.estimatedSeconds === undefined
-                ? tr(
-                    'Zu wenig vergleichbare Läufe',
-                    'Too few comparable runs',
-                  )
+                ? tr('Zu wenig vergleichbare Läufe', 'Too few comparable runs')
                 : tr(
                     `Gleiche Strecke · Schätzung ${formatGoalTime(
                       distanceTarget.estimatedSeconds,
@@ -4932,7 +5090,9 @@ export function RunbackApp({
         runRecs &&
         !(askPurpose && !snapshot.recommendation && !experiment) ? (
           <Card style={styles.nextStepCard}>
-            <Text style={styles.heroLabel}>{tr('Nächster Schritt', 'Next step')}</Text>
+            <Text style={styles.heroLabel}>
+              {tr('Nächster Schritt', 'Next step')}
+            </Text>
             <Copy>{snapshot.nextAction}</Copy>
             {snapshot.recommendation && !experiment && runRecs ? (
               <Button
@@ -5118,17 +5278,22 @@ export function RunbackApp({
             {selected.purposeHint ? (
               <Row
                 title={tr('Laufart', 'Run type')}
-                subtitle={`${tr('Vorschlag bestätigt', 'Suggestion confirmed')} · ${
-                  selected.purposeHint.model_version
-                }${
+                subtitle={`${tr(
+                  'Vorschlag bestätigt',
+                  'Suggestion confirmed',
+                )} · ${selected.purposeHint.model_version}${
                   selected.purposeHint.maxHeartRate
                     ? tr(
-                        ` · Maxpuls ${selected.purposeHint.maxHeartRate.value} (${
+                        ` · Maxpuls ${
+                          selected.purposeHint.maxHeartRate.value
+                        } (${
                           selected.purposeHint.maxHeartRate.source === 'setting'
                             ? 'eingestellt'
                             : 'geschätzt'
                         })`,
-                        ` · max heart rate ${selected.purposeHint.maxHeartRate.value} (${
+                        ` · max heart rate ${
+                          selected.purposeHint.maxHeartRate.value
+                        } (${
                           selected.purposeHint.maxHeartRate.source === 'setting'
                             ? 'set'
                             : 'estimated'
@@ -5204,7 +5369,10 @@ export function RunbackApp({
             ) : null}
             <Field label={tr('Sportart', 'Sport')}>
               <ChipGroup
-                label={tr('Sportart dieser Aufzeichnung', 'Sport for this recording')}
+                label={tr(
+                  'Sportart dieser Aufzeichnung',
+                  'Sport for this recording',
+                )}
                 options={SPORTS.filter(
                   option =>
                     sports.includes(option.value) ||
@@ -5296,11 +5464,10 @@ export function RunbackApp({
           <Row
             title={tr('Vorlagen verwalten', 'Manage templates')}
             subtitle={tr(
-              'Verwalte deine Kraft- und Laufvorlagen',
-              'Manage your strength and run templates',
+              'Verwalte deine Kraftvorlagen',
+              'Manage your strength templates',
             )}
             onPress={() => {
-              setTemplatesView(showStrength ? 'strength' : 'run');
               openPage('templates');
             }}
           />
@@ -5326,8 +5493,16 @@ export function RunbackApp({
         <Row
           title={tr('Deine Daten', 'Your data')}
           subtitle={tr(
-            `${counted(runs.length, 'Aufzeichnung', 'Aufzeichnungen')} · Import, Backup, Löschen`,
-            `${counted(runs.length, 'recording', 'recordings')} · import, backup, delete`,
+            `${counted(
+              runs.length,
+              'Aufzeichnung',
+              'Aufzeichnungen',
+            )} · Import, Backup, Löschen`,
+            `${counted(
+              runs.length,
+              'recording',
+              'recordings',
+            )} · import, backup, delete`,
           )}
           onPress={() => openPage('data')}
         />
@@ -5362,7 +5537,9 @@ export function RunbackApp({
       {racePrediction.status !== 'no_goal' ? (
         <GoalProgress prediction={racePrediction} />
       ) : null}
-      <Section title={tr('Was möchtest du erreichen?', 'What do you want to achieve?')}>
+      <Section
+        title={tr('Was möchtest du erreichen?', 'What do you want to achieve?')}
+      >
         <TextInput
           accessibilityLabel={tr('Dein Ziel', 'Your goal')}
           value={goalInput}
@@ -5413,7 +5590,12 @@ export function RunbackApp({
             style={styles.input}
           />
         </Field>
-        <Field label={tr('Zielzeit (optional, h:mm:ss)', 'Goal time (optional, h:mm:ss)')}>
+        <Field
+          label={tr(
+            'Zielzeit (optional, h:mm:ss)',
+            'Goal time (optional, h:mm:ss)',
+          )}
+        >
           <TextInput
             accessibilityLabel={tr('Zielzeit', 'Goal time')}
             value={goalTimeInput}
@@ -5445,7 +5627,9 @@ export function RunbackApp({
             style={styles.input}
           />
         </Field>
-        <Field label={tr('Trainingsphase (optional)', 'Training phase (optional)')}>
+        <Field
+          label={tr('Trainingsphase (optional)', 'Training phase (optional)')}
+        >
           <TextInput
             accessibilityLabel={tr('Trainingsphase', 'Training phase')}
             value={goalPhaseInput}
@@ -5757,7 +5941,10 @@ export function RunbackApp({
                           await Promise.all([reloadTrainingState(), refresh()]);
                           setMessage(
                             result.message ||
-                              tr('Backup wiederhergestellt.', 'Backup restored.'),
+                              tr(
+                                'Backup wiederhergestellt.',
+                                'Backup restored.',
+                              ),
                           );
                         }
                       });
@@ -5898,164 +6085,60 @@ export function RunbackApp({
       onCancelImport={cancelImport}
       onOpenImports={() => openPage('imports')}
       onOpenTemplates={() => {
-        setTemplatesView('strength');
         openPage('templates');
       }}
     />
   );
 
-  // Templates in one place: strength templates (exercise sequences) and run
-  // templates (run type and time for the start). Both appear in the start sheet.
-  const renderPresets = () => (
-    <>
-      <Copy muted>
-        {tr(
-          'Eine Laufvorlage setzt Laufart und Zeit beim Start. Die aktuelle Wahl speicherst du hier als neue Vorlage.',
-          'A run template sets the run type and time at the start. Save the current choice here as a new template.',
-        )}
-      </Copy>
-      <Section title={tr('Aktuelle Einstellung speichern', 'Save current setting')}>
-        <Copy>
-          {purposeLabel(purpose)} · {settings.minutes || 30}{' '}
-          {tr('Minuten', 'minutes')}
-        </Copy>
-        <TextInput
-          accessibilityLabel={tr('Name der Laufvorlage', 'Run template name')}
-          value={presetName}
-          onChangeText={setPresetName}
-          placeholder={tr(
-            'Zum Beispiel: Feierabendrunde',
-            'For example: after-work loop',
-          )}
-          placeholderTextColor={color.muted}
-          style={styles.input}
-        />
-        <Button
-          title={tr('Vorlage speichern', 'Save template')}
-          disabled={!presetName.trim() || busy}
-          onPress={() => {
-            const preset: Preset = {
-              id: `preset-${Date.now()}`,
-              name: presetName.trim(),
-              purpose,
-              minutes: settings.minutes || 30,
-              cues: Boolean(settings.cues),
-            };
-            void action(async () => {
-              await persist({ presets: [...(settings.presets || []), preset] });
-              setPresetName('');
-            });
-          }}
-        />
-      </Section>
-      <Section title={tr('Deine Vorlagen', 'Your templates')}>
-        {features.templates.enabled && settings.presets?.length ? (
-          settings.presets.map(p => (
-            <View key={p.id}>
-              <Row
-                title={p.name}
-                subtitle={tr(
-                  `${purposeLabel(p.purpose)} · ${p.minutes} Minuten`,
-                  `${purposeLabel(p.purpose)} · ${p.minutes} minutes`,
-                )}
-                onPress={() => {
-                  void action(async () => {
-                    await persist({
-                      purpose: p.purpose,
-                      minutes: p.minutes,
-                      cues: p.cues,
-                    });
-                    switchTab('today');
-                    openStartSheet('run');
-                  });
-                }}
-              />
-              <Pressable
-                accessibilityRole="button"
-                style={styles.textButton}
-                onPress={() =>
-                  save({
-                    presets: settings.presets?.filter(item => item.id !== p.id),
-                  })
-                }
-              >
-                <Text style={styles.muted}>
-                  {tr('Vorlage entfernen', 'Remove template')}
-                </Text>
-              </Pressable>
-            </View>
-          ))
-        ) : (
-          <Copy muted>
-            {tr('Noch keine Vorlage gespeichert.', 'No template saved yet.')}
-          </Copy>
-        )}
-      </Section>
-    </>
-  );
-
+  // Strength templates (exercise sequences). Run templates are gone: the goal
+  // in the start sheet keeps the last choice, which is what they were for.
   const renderTemplates = () => (
     <>
       <Title>{tr('Vorlagen', 'Templates')}</Title>
-      <Segmented
-        label={tr('Art der Vorlage', 'Type of template')}
-        options={[
-          { value: 'strength', label: tr('Kraftvorlagen', 'Strength templates') },
-          { value: 'run', label: tr('Laufvorlagen', 'Run templates') },
-        ]}
-        value={templatesView}
-        onChange={setTemplatesView}
+      <ImportedTemplates
+        refreshKey={`${importRevision}:${importStatus?.state ?? ''}:${
+          importStatus?.strength ?? ''
+        }:${importStatus?.strengthDuplicates ?? ''}`}
+        templates={strength.templates}
+        dismissedIds={settings.dismissedStrengthImportTemplateIds ?? []}
+        busy={busy}
+        onDismiss={async id => {
+          await persist({
+            dismissedStrengthImportTemplateIds: Array.from(
+              new Set([
+                ...(stateRef.current.settings
+                  .dismissedStrengthImportTemplateIds ?? []),
+                id,
+              ]),
+            ),
+          });
+        }}
+        onSave={async template => {
+          const next = acceptImportedTemplate(strengthRef.current.templates, {
+            ...template,
+            createdAt: Date.now(),
+          });
+          setStrength(await native.saveStrengthTemplates(next));
+        }}
       />
-      {templatesView === 'strength' ? (
-        <>
-          <ImportedTemplates
-            refreshKey={`${importRevision}:${importStatus?.state ?? ''}:${
-              importStatus?.strength ?? ''
-            }:${importStatus?.strengthDuplicates ?? ''}`}
-            templates={strength.templates}
-            dismissedIds={settings.dismissedStrengthImportTemplateIds ?? []}
-            busy={busy}
-            onDismiss={async id => {
-              await persist({
-                dismissedStrengthImportTemplateIds: Array.from(
-                  new Set([
-                    ...(stateRef.current.settings
-                      .dismissedStrengthImportTemplateIds ?? []),
-                    id,
-                  ]),
-                ),
-              });
-            }}
-            onSave={async template => {
-              const next = acceptImportedTemplate(
-                strengthRef.current.templates,
-                { ...template, createdAt: Date.now() },
-              );
-              setStrength(await native.saveStrengthTemplates(next));
-            }}
-          />
-          <PlanList
-            busy={busy}
-            onCreate={() =>
-              setPlanDraft(createTemplate(Date.now(), '', strength.templates))
-            }
-            onDelete={id =>
-              persistTemplates(deleteTemplate(strength.templates, id))
-            }
-            onDuplicate={id =>
-              persistTemplates(
-                duplicateTemplate(strength.templates, id, Date.now()),
-              )
-            }
-            onEdit={template => setPlanDraft(template)}
-            onStart={template => startStrength(template)}
-            templates={strength.templates}
-            today={new Date().getDay()}
-          />
-        </>
-      ) : (
-        renderPresets()
-      )}
+      <PlanList
+        busy={busy}
+        onCreate={() =>
+          setPlanDraft(createTemplate(Date.now(), '', strength.templates))
+        }
+        onDelete={id =>
+          persistTemplates(deleteTemplate(strength.templates, id))
+        }
+        onDuplicate={id =>
+          persistTemplates(
+            duplicateTemplate(strength.templates, id, Date.now()),
+          )
+        }
+        onEdit={template => setPlanDraft(template)}
+        onStart={template => startStrength(template)}
+        templates={strength.templates}
+        today={new Date().getDay()}
+      />
     </>
   );
 
@@ -6088,7 +6171,10 @@ export function RunbackApp({
         <Segmented
           label={tr('Was die Karte zeigt', 'What the map shows')}
           options={[
-            { value: 'soreness', label: tr('Gemeldeter Muskelkater', 'Reported soreness') },
+            {
+              value: 'soreness',
+              label: tr('Gemeldeter Muskelkater', 'Reported soreness'),
+            },
             { value: 'freshness', label: tr('Frische', 'Freshness') },
           ]}
           value={muscleMapMode}
@@ -6120,10 +6206,7 @@ export function RunbackApp({
                     : counted(latestReport.entries.length, 'region', 'regions')
                 }`,
               )
-            : tr(
-                'Noch keine Meldung gespeichert.',
-                'No report saved yet.',
-              )}
+            : tr('Noch keine Meldung gespeichert.', 'No report saved yet.')}
         </Copy>
         <Button
           title={tr('Muskelkater melden', 'Report soreness')}
@@ -6201,7 +6284,9 @@ export function RunbackApp({
           </Copy>
         </Disclosure>
       </Section>
-      <Section title={tr('Erklärungen ohne Cloud', 'Explanations without cloud')}>
+      <Section
+        title={tr('Erklärungen ohne Cloud', 'Explanations without cloud')}
+      >
         <Copy muted>
           {tr(
             'Die lokalen Regeln entscheiden. Ein Sprachmodell ist optional und formuliert nur.',
@@ -6269,10 +6354,7 @@ export function RunbackApp({
     <>
       <Title>{selectedRecord.label}</Title>
       <Copy muted>{selectedRecord.detail}</Copy>
-      <Stat
-        value={selectedRecord.value}
-        label={tr('Distanz', 'Distance')}
-      />
+      <Stat value={selectedRecord.value} label={tr('Distanz', 'Distance')} />
       <Section title={tr('Läufe', 'Runs')}>
         {recordRuns.map(run => (
           <Row
@@ -6291,10 +6373,7 @@ export function RunbackApp({
         {!recordRuns.length ? (
           <EmptyState
             title={tr('Keine Läufe mehr vorhanden', 'No runs left')}
-            copy={tr(
-              'Öffne die Statistik erneut.',
-              'Open statistics again.',
-            )}
+            copy={tr('Öffne die Statistik erneut.', 'Open statistics again.')}
             action={{
               title: tr('Zur Statistik', 'To statistics'),
               onPress: leaveDetail,
@@ -6368,11 +6447,8 @@ export function RunbackApp({
     <RunTargetScreen
       settings={page === 'run-audio'}
       value={previewRunTarget ?? runTarget}
-      purpose={
-        todaysScheduledRun ? todaysScheduledRun.purpose || 'free' : purpose
-      }
       onSave={async target => {
-        await persist({ runTarget: target });
+        await persistRunTarget(target);
         setPage(page === 'run-audio' ? 'settings' : 'main');
         if (page !== 'run-audio' && !todaysScheduledRun) {
           setStartSheet('run');
@@ -6417,7 +6493,11 @@ export function RunbackApp({
       onToggle={enabled => changeFeatures({ ...features, music: { enabled } })}
     />
   ) : page === 'server' ? (
-    <ServerSettings key={serverStatus?.url ?? "off"} status={serverStatus} onStatus={setServerStatus} />
+    <ServerSettings
+      key={serverStatus?.url ?? 'off'}
+      status={serverStatus}
+      onStatus={setServerStatus}
+    />
   ) : page === 'settings' ? (
     renderSettings()
   ) : page === 'devices' ? (
@@ -6452,7 +6532,6 @@ export function RunbackApp({
       onManageTemplates={
         features.templates.enabled
           ? () => {
-              setTemplatesView(showStrength ? 'strength' : 'run');
               openPage('templates');
             }
           : undefined
@@ -6771,7 +6850,11 @@ export function RunbackApp({
   )
     ? effectiveUnitFilter
     : 'all';
-  const runCountLabel = counted(runCount, tr('Lauf', 'run'), tr('Läufe', 'runs'));
+  const runCountLabel = counted(
+    runCount,
+    tr('Lauf', 'run'),
+    tr('Läufe', 'runs'),
+  );
   const cyclingCountLabel = counted(
     cyclingCount,
     tr('Radfahrt', 'ride'),
@@ -6888,7 +6971,10 @@ export function RunbackApp({
                 : tr('Einstellungen', 'Settings')
             }
             onPress={() => openPage('settings')}
-            style={({ pressed }) => [styles.settingsButton, pressed && styles.pressed]}
+            style={({ pressed }) => [
+              styles.settingsButton,
+              pressed && styles.pressed,
+            ]}
           >
             <ConnectionMark mark={serverMark(serverStatus)} />
             <Icon name="settings" />
@@ -6918,7 +7004,9 @@ export function RunbackApp({
       {loading ? (
         <View style={styles.loading}>
           <ActivityIndicator color={color.green} />
-          <Copy muted>{tr('Einheiten werden geladen …', 'Loading workouts …')}</Copy>
+          <Copy muted>
+            {tr('Einheiten werden geladen …', 'Loading workouts …')}
+          </Copy>
         </View>
       ) : isChat ? (
         <TrainingChat onSettings={() => openPage('models')} />
@@ -7001,7 +7089,10 @@ export function RunbackApp({
                     {tr('ausgewählt', 'selected')}
                   </Copy>
                   <Button
-                    title={tr('Auswahl als ZIP exportieren', 'Export selection as ZIP')}
+                    title={tr(
+                      'Auswahl als ZIP exportieren',
+                      'Export selection as ZIP',
+                    )}
                     disabled={busy || !exportSelection.length}
                     onPress={() => shareRuns(async () => exportSelection)}
                   />

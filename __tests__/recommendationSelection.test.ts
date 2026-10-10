@@ -3,23 +3,26 @@ import { acceptRecommendation } from '../src/domain/experiments';
 import { selectRecommendations } from '../src/domain/recommendationSelection';
 import type { RunSummary } from '../src/domain/types';
 
+// Old long runs count as easy runs now; what tells a later recommendation
+// apart is its volume (`scale`), not the run type.
 const run = (
   id: string,
   startTime: number,
   purpose: 'easy' | 'long' = 'easy',
+  scale = purpose === 'long' ? 2 : 1,
 ): RunSummary => ({
   id,
   startTime,
-  endTime: startTime + 1320000,
-  durationSeconds: 1320,
-  distanceMeters: 2000,
+  endTime: startTime + 1320000 * scale,
+  durationSeconds: 1320 * scale,
+  distanceMeters: 2000 * scale,
   purpose,
   source: 'test',
   status: 'complete',
   segments: [300, 300, 360, 360].map((durationSeconds, index) => ({
     id: `${id}:${index}`,
-    durationSeconds,
-    distanceMeters: 500,
+    durationSeconds: durationSeconds * scale,
+    distanceMeters: 500 * scale,
     gradePercent: 0,
   })),
 });

@@ -162,9 +162,9 @@ describe('buildRunReport', () => {
     expect(report).toContain('| Pausen gesamt | 1:00 |');
     expect(report).toContain('| Wetter | 14 °C · Wind 3,1 m/s |');
     expect(report).toContain(
-      '| Begleitung unterwegs | Nicht schneller als 5:30 /km |',
+      '| Ziel unterwegs | Nicht schneller als 5:30 /km |',
     );
-    expect(report).toContain('| Laufart | Ruhig |');
+    expect(report).toContain('| Laufart | Locker |');
     expect(report).toContain('| Quelle | Telefon (Runback) |');
   });
 

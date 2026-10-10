@@ -13,6 +13,7 @@ import {
   RunSummary,
 } from './types';
 import { tr } from './i18n';
+import { comparablePurpose, samePurpose } from './runTitle';
 
 export interface RunPreset {
   id: string;
@@ -148,7 +149,7 @@ export function defaultCueRules(): CueRule[] {
 export function scheduleCue(input: CueInput): CueEvent | undefined {
   if (
     !input.enabled ||
-    !['easy', 'long'].includes(input.purpose) ||
+    comparablePurpose(input.purpose) !== 'easy' ||
     !Number.isFinite(input.now)
   ) {
     return undefined;
@@ -272,8 +273,8 @@ export function compareRuns(
 ): { comparable: boolean; summary: string; limitations: string[] } {
   const limitations: string[] = [];
   if (
-    a.purpose !== b.purpose ||
-    ['unknown', 'free', 'intervals', 'race'].includes(a.purpose)
+    !samePurpose(a.purpose, b.purpose) ||
+    comparablePurpose(a.purpose) !== 'easy'
   ) {
     limitations.push(
       tr(
