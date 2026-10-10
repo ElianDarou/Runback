@@ -35,7 +35,7 @@ import java.util.UUID
 import org.json.JSONObject
 
 /** All storage and sensor callbacks run on one thread; an interrupted run never resumes itself. */
-class RecordingService : Service(), SensorEventListener, LocationListener, TextToSpeech.OnInitListener {
+class RecordingService : Service(), SensorEventListener, LocationListener {
     private lateinit var workerThread: HandlerThread
     private lateinit var worker: Handler
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -57,8 +57,8 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
     private var syncPeers = true
     private val pending = ArrayList<RawSample>()
     private val warned = HashSet<String>()
-    private var routeSpeech: TextToSpeech? = null
-    private var routeSpeechReady = false
+    private var routeSpeech: SpeechOutput? = null
+    private val routeSpeechReady get() = routeSpeech?.ready == true
     private var routePlan: JSONObject? = null
     private var routeVoice = JSONObject()
     private var routeCursor = 0
@@ -76,7 +76,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
     override fun onCreate() {
         super.onCreate()
         store = RunStore(this)
-        routeSpeech = TextToSpeech(this, this)
+        routeSpeech = SpeechOutput(this)
         sensors = getSystemService(SENSOR_SERVICE) as SensorManager
         locations = getSystemService(LOCATION_SERVICE) as LocationManager
         workerThread = HandlerThread("RunbackRecording").also { it.start() }
@@ -437,13 +437,6 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
         }
     }
 
-    override fun onInit(status: Int) {
-        routeSpeechReady = status == TextToSpeech.SUCCESS
-        if (routeSpeechReady) {
-            routeSpeech?.language = Lang.locale()
-        }
-    }
-
     private fun loadRouteGuidance(explicitRouteId: String?, runId: String?) {
         routePlan = null
         routeCursor = 0
@@ -561,7 +554,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
             now - latestGuidanceGpsAt in 0..10_000L) ?: return
         if (routeSpeechReady && routeSpeech?.isSpeaking != true) {
             mainHandler.post {
-                routeSpeech?.speak(text, TextToSpeech.QUEUE_ADD, null, "runback-progress")
+                routeSpeech?.speak(text, TextToSpeech.QUEUE_ADD, "runback-progress")
             }
             store.addEvent(runId, "progress_cue", JSONObject().put("message", text).put("model_version", RunAnnouncements.VERSION))
         }
@@ -577,7 +570,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
         }
         if (guidance.wantsVoice() && routeSpeechReady && routeSpeech?.isSpeaking != true) {
             mainHandler.post {
-                routeSpeech?.speak(cue.message, TextToSpeech.QUEUE_ADD, null, "runback-target-${cue.code}")
+                routeSpeech?.speak(cue.message, TextToSpeech.QUEUE_ADD, "runback-target-${cue.code}")
             }
         }
         if (guidance.wantsVibration()) {
@@ -773,7 +766,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
     private fun speakRoute(text: String) {
         if (!routeSpeechReady || text.isBlank()) return
         mainHandler.post {
-            routeSpeech?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "runback-route-service")
+            routeSpeech?.speak(text, TextToSpeech.QUEUE_FLUSH, "runback-route-service")
         }
     }
 
@@ -982,7 +975,6 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
 
     override fun onDestroy() {
         runCatching { unregisterReceiver(shutdownReceiver) }
-        routeSpeech?.stop()
         routeSpeech?.shutdown()
         routeSpeech = null
         // FIFO posting drains callbacks already received before closing the worker.
