@@ -1807,13 +1807,15 @@ export function RunbackApp({
       return;
     }
     setTrail([]);
+    const toStart = page === 'run-audio' && runAudioFromStart;
     setPage(
       page === 'templates'
         ? templatesParent
-        : page === 'run-audio' && runAudioFromStart
+        : toStart
         ? 'main'
         : PARENT_PAGE[page] ?? 'main',
     );
+    if (toStart) setStartSheet('run');
     setSelectedSession(null);
     setSelectedExercise(null);
     setSelectedStrengthRecord(null);
@@ -6487,10 +6489,13 @@ export function RunbackApp({
       onSave={async (target, announcements) => {
         await persistRunTarget(target);
         if (announcements) await persist({ runAnnouncements: announcements });
-        const toSettings = page === 'run-audio' && !runAudioFromStart;
-        setPage(toSettings ? 'settings' : 'main');
-        if (!toSettings && !todaysScheduledRun) {
-          setStartSheet('run');
+        if (page === 'run-audio') {
+          setPage(runAudioFromStart ? 'main' : 'settings');
+          // Back to the sheet it was opened from, also next to a planned run.
+          if (runAudioFromStart) setStartSheet('run');
+        } else {
+          setPage('main');
+          if (!todaysScheduledRun) setStartSheet('run');
         }
       }}
     />
