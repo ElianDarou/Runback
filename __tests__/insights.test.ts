@@ -436,9 +436,9 @@ describe('Comparison with yourself', () => {
     runWith('p3', [310, 310, 310, 310, 310], [155, 155, 155, 155, 155], {
       startTime: daysAgo(20),
     }),
-    runWith('long', [330, 330, 330, 330, 330], [140, 140, 140, 140, 140], {
+    runWith('fast', [330, 330, 330, 330, 330], [140, 140, 140, 140, 140], {
       startTime: daysAgo(5),
-      purpose: 'long',
+      purpose: 'race',
     }),
     runWith('old', [200, 200, 200, 200, 200], [170, 170, 170, 170, 170], {
       startTime: daysAgo(200),
@@ -461,10 +461,24 @@ describe('Comparison with yourself', () => {
     const free = { ...current, purpose: 'free' as const };
     expect(recentRuns(free, history).map(run => run.id)).toEqual([
       'p1',
-      'long',
+      'fast',
       'p2',
       'p3',
     ]);
+  });
+
+  it('counts an old long run as an easy run', () => {
+    const oldLong = history.map(run =>
+      run.id === 'p2' ? { ...run, purpose: 'long' as const } : run,
+    );
+    expect(recentRuns(current, oldLong).map(run => run.id)).toEqual([
+      'p1',
+      'p2',
+      'p3',
+    ]);
+    expect(
+      recentComparison(current, oldLong, pacingFor(current))!.samePurpose,
+    ).toBe(true);
   });
 
   it('rates against the median in color and direction', () => {

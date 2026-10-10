@@ -64,9 +64,10 @@ Where running and strength training both appear (Coach, Statistics), a
    (`Disclosure`).
 
 At most one primary action per screen. Three secondary buttons stacked are a list
-(`Row`). Decisions that only matter in the moment of an action (sport, run type,
-template at the start) do not stay permanently on the page but live in a `Sheet`
-that opens on tap — with the last choice as the default.
+(`Row`). Decisions that only matter in the moment of an action (sport, run goal,
+template at the start; run type after a run) do not stay permanently on the page
+but live in a `Sheet` that opens on tap — with the last or most likely choice as
+the default.
 
 ## Text
 

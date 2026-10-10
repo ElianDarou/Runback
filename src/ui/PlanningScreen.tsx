@@ -1533,14 +1533,14 @@ export function PlanningScreen({
                 ? tr(
                     `${templates.length} ${
                       templates.length === 1 ? 'Kraftvorlage' : 'Kraftvorlagen'
-                    } · Laufvorlagen`,
+                    }`,
                     `${templates.length} ${
                       templates.length === 1
                         ? 'strength template'
                         : 'strength templates'
-                    } · Run templates`,
+                    }`,
                   )
-                : tr('Kraft- und Laufvorlagen', 'Strength and run templates')
+                : tr('Kraftvorlagen', 'Strength templates')
             }
             onPress={onManageTemplates}
           />

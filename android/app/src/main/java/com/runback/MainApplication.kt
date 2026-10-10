@@ -46,7 +46,7 @@ class MainApplication : Application(), ReactApplication {
         this,
         action,
         runId,
-        purpose = session?.optString("purpose").takeUnless { it.isNullOrBlank() } ?: "easy",
+        purpose = session?.optString("purpose").takeUnless { it.isNullOrBlank() } ?: "unknown",
         sport = session?.optString("sport").takeUnless { it.isNullOrBlank() } ?: "running",
         commandId = commandId,
         target = session?.optJSONObject("target")?.toString(),

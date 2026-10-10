@@ -23,68 +23,51 @@ export interface RunPurposeOption {
 
 // Getters keep the texts in the active language at read time.
 /**
- * Run types to choose from. "Not set yet" (`unknown`) is not a choice but the
- * state until the user says something; it shows as "Just run" instead.
- * The values stay the same so stored runs and the watch remain valid.
+ * Run types to choose from: what the comparisons need to know about a run.
+ * Easy runs feed pacing, heart rate drift, and the easy pace of the plan;
+ * fast runs are only compared with fast runs; intervals have intended pace
+ * swings. "Not set yet" (`unknown`) is not a choice but the state until the
+ * user says something.
+ *
+ * Older records also hold `long` (now part of easy: length is in the
+ * distance, and comparisons already match similar lengths) and `free` ("just
+ * run", which every evaluation treated like "not set yet"). The values stay
+ * stored as they are; `comparablePurpose` maps them.
  */
 export const RUN_PURPOSES: RunPurposeOption[] = [
   {
-    value: 'free',
-    get label() {
-      return tr('Einfach laufen', 'Just run');
-    },
-    get description() {
-      return tr(
-        'Ohne Vorgabe — das Tempo wird nicht bewertet',
-        'No target — pace is not rated',
-      );
-    },
-  },
-  {
     value: 'easy',
     get label() {
-      return tr('Ruhig', 'Easy');
+      return tr('Locker', 'Easy');
     },
     get description() {
       return tr(
         'Entspannt, du könntest dabei reden',
-        'Relaxed — you could talk while running',
-      );
-    },
-  },
-  {
-    value: 'long',
-    get label() {
-      return tr('Lange Runde', 'Long run');
-    },
-    get description() {
-      return tr(
-        'Länger als sonst, in ruhigem Tempo',
-        'Longer than usual, at an easy pace',
-      );
-    },
-  },
-  {
-    value: 'intervals',
-    get label() {
-      return tr('Tempowechsel', 'Pace changes');
-    },
-    get description() {
-      return tr(
-        'Schnelle Stücke mit Pausen dazwischen',
-        'Fast stretches with rests in between',
+        'Relaxed, you could talk while running',
       );
     },
   },
   {
     value: 'race',
     get label() {
-      return tr('Auf Zeit', 'Time trial');
+      return tr('Schnell', 'Fast');
     },
     get description() {
       return tr(
-        'So schnell es heute geht — Wettkampf oder deine Hausrunde',
-        'As fast as today allows — a race or your usual loop',
+        'So schnell es heute geht, Wettkampf oder deine Hausrunde',
+        'As fast as today allows, a race or your usual loop',
+      );
+    },
+  },
+  {
+    value: 'intervals',
+    get label() {
+      return tr('Intervalle', 'Intervals');
+    },
+    get description() {
+      return tr(
+        'Schnelle Stücke mit Pausen dazwischen',
+        'Fast stretches with rests in between',
       );
     },
   },
@@ -101,17 +84,20 @@ const PURPOSE_VALUES: RunPurpose[] = [
 
 // A function: the labels depend on the active language.
 const purposeLabels = (): Record<RunPurpose, string> => ({
-  free: tr('Einfach laufen', 'Just run'),
-  easy: tr('Ruhig', 'Easy'),
-  long: tr('Lange Runde', 'Long run'),
-  intervals: tr('Tempowechsel', 'Pace changes'),
-  race: tr('Auf Zeit', 'Time trial'),
+  free: tr('Offen', 'Open'),
+  easy: tr('Locker', 'Easy'),
+  long: tr('Locker', 'Easy'),
+  intervals: tr('Intervalle', 'Intervals'),
+  race: tr('Schnell', 'Fast'),
   unknown: tr('Noch offen', 'Not set yet'),
 });
 
 /** As a run title a bare adjective sounds odd ("Easy"). */
 const purposeTitles = (): Partial<Record<RunPurpose, string>> => ({
-  easy: tr('Ruhige Runde', 'Easy run'),
+  easy: tr('Lockere Runde', 'Easy run'),
+  // Old runs keep the name they were given.
+  long: tr('Lange Runde', 'Long run'),
+  race: tr('Schneller Lauf', 'Fast run'),
 });
 
 export function purposeLabel(value: RunPurpose | undefined): string {
@@ -127,14 +113,46 @@ export function normalizePurpose(value: unknown): RunPurpose {
     : 'unknown';
 }
 
-/** Value for the picker: "Not set yet" shows there as "Just run". */
-export function selectablePurpose(value: RunPurpose | undefined): RunPurpose {
-  return !value || value === 'unknown' ? 'free' : value;
+/** The three run types the comparisons use; see RUN_PURPOSES. */
+export type ComparablePurpose = 'easy' | 'race' | 'intervals' | 'unknown';
+
+/**
+ * Run type as the comparisons see it: an old long run counts as easy, an old
+ * "just run" as not set yet. Stored values are never rewritten.
+ */
+export function comparablePurpose(
+  value: RunPurpose | undefined,
+): ComparablePurpose {
+  switch (value) {
+    case 'easy':
+    case 'long':
+      return 'easy';
+    case 'race':
+    case 'intervals':
+      return value;
+    default:
+      return 'unknown';
+  }
+}
+
+/** Whether two runs belong to the same run type for a comparison. */
+export function samePurpose(
+  a: RunPurpose | undefined,
+  b: RunPurpose | undefined,
+): boolean {
+  return comparablePurpose(a) === comparablePurpose(b);
+}
+
+/** Value for a picker; an open run selects nothing. */
+export function selectablePurpose(
+  value: RunPurpose | undefined,
+): ComparablePurpose {
+  return comparablePurpose(value);
 }
 
 /** A run type that says something about the run — "free" and "open" do not. */
 export function hasNamedPurpose(purpose: RunPurpose | undefined): boolean {
-  return purpose !== undefined && purpose !== 'unknown' && purpose !== 'free';
+  return comparablePurpose(purpose) !== 'unknown';
 }
 
 // Names that carry no information. The German entries stay because existing

@@ -226,7 +226,8 @@ describe('Today', () => {
     // The run type is chosen only at the moment of starting.
     expect(text).not.toContain('Zweck');
     await tap(tree, 'Lauf starten');
-    expect(screenText(tree)).toContain('Wie willst du laufen?');
+    expect(screenText(tree)).toContain('Wie weit');
+    expect(screenText(tree)).not.toContain('Wie willst du laufen?');
     await act(async () => {
       tree.unmount();
     });
@@ -305,8 +306,8 @@ describe('History', () => {
       expect(screenText(tree)).toContain('17,0 km');
       expect(
         tree.root.findAllByType(Row).map(node => node.props.title),
-      ).toEqual(['Ruhige Runde', 'Lange Runde']);
-      await pressRow('Ruhige Runde');
+      ).toEqual(['Lockere Runde', 'Lange Runde']);
+      await pressRow('Lockere Runde');
       expect(native.run).toHaveBeenLastCalledWith('record-easy');
       await tap(tree, 'Zurück');
       expect(screenText(tree)).toContain('Stärkste Woche');
@@ -367,12 +368,21 @@ describe('Focus', () => {
         status,
       };
       const before = JSON.stringify(accepted);
+      // An old long run counts as easy now; the later recommendation differs
+      // from the active one by its volume.
       const later = {
         ...baseline,
         id: 'later',
         startTime: 60 * DAY,
-        endTime: 60 * DAY + 1320000,
+        endTime: 60 * DAY + 2640000,
+        durationSeconds: 2640,
+        distanceMeters: 4000,
         purpose: 'long' as const,
+        segments: baseline.segments.map(segment => ({
+          ...segment,
+          durationSeconds: segment.durationSeconds * 2,
+          distanceMeters: segment.distanceMeters * 2,
+        })),
       };
       jest.mocked(native.state).mockResolvedValueOnce({
         runs: [
@@ -632,7 +642,8 @@ describe('Template management', () => {
     try {
       await tap(tree, 'Einstellungen');
       await tap(tree, 'Vorlagen verwalten');
-      expect(screenText(tree)).toContain('Kraftvorlagen');
+      expect(screenText(tree)).toContain('Vorlagen');
+      expect(screenText(tree)).not.toContain('Laufvorlagen');
       expect(screenText(tree)).toContain('Oberkörper');
       expect(native.saveStrengthTemplates).not.toHaveBeenCalled();
 
@@ -679,7 +690,7 @@ describe('Template management', () => {
     }
   });
 
-  it('opens run templates without planning and strength training and returns to settings via Android back', async () => {
+  it('no longer shows stored run templates and returns to settings via Android back', async () => {
     jest.mocked(native.state).mockResolvedValueOnce({
       runs: [],
       recording: null,
@@ -707,7 +718,9 @@ describe('Template management', () => {
       expect(tabLabels(tree)).not.toContain('Plan');
       await tap(tree, 'Einstellungen');
       await tap(tree, 'Vorlagen verwalten');
-      expect(screenText(tree)).toContain('Feierabend');
+      // Stored run templates stay in the settings but are not offered anymore.
+      expect(screenText(tree)).not.toContain('Feierabend');
+      expect(screenText(tree)).toContain('Neuen Plan anlegen');
       const back = backSpy.mock.calls.at(-1)![1];
       await act(async () => {
         expect(back()).toBe(true);
@@ -1107,7 +1120,7 @@ describe('Run detail', () => {
     const tree = await render();
     try {
       await tap(tree, 'Verlauf');
-      await tapText(tree, 'Ruhige Runde');
+      await tapText(tree, 'Lockere Runde');
       const text = screenText(tree);
       expect(text).toContain('Bewegung');
       expect(text).toContain('2,50 km · 12:30 ohne Gehpause');

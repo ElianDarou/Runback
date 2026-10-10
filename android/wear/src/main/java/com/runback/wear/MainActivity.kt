@@ -32,6 +32,7 @@ import com.runback.core.DisplayNames
 import com.runback.core.Lang
 import com.runback.core.RecordingService
 import com.runback.core.RunStore
+import com.runback.core.RunTargetProgress
 import com.runback.core.StrengthLive
 import com.runback.core.WearCommandGate
 import com.runback.core.WearProtocol
@@ -59,12 +60,14 @@ class MainActivity : Activity() {
     private lateinit var content: LinearLayout
     private lateinit var scroll: ScrollView
     private var page = PAGE_HOME
-    private var purpose = "free"
-    private var target = JSONObject().put("kind", "none").put("version", 1)
+    // The run type is asked on the phone after the run (Locker, Schnell, Intervalle).
+    private val purpose = "unknown"
+    private var target = JSONObject().put("kind", "none").put("version", 3)
     private var lastState = ""
     private var timer: TextView? = null
     private var distance: TextView? = null
     private var sensors: TextView? = null
+    private var goalLine: TextView? = null
     private var sync: TextView? = null
     private var strengthRest: TextView? = null
     private var strengthStatus: TextView? = null
@@ -94,7 +97,6 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         store = RunStore(this)
         val settings = store.settings()
-        purpose = normalizePurpose(settings.optString("wearPurpose", "free"))
         target = settings.optJSONObject("wearTarget") ?: target
         window.statusBarColor = bg
         window.navigationBarColor = bg
@@ -190,7 +192,7 @@ class MainActivity : Activity() {
             text("${Lang.tr("Krafttraining", "Strength training")} · ${captureLabel()}", 12, green, margin = 4)
         }
         button(Lang.tr("Lauf starten", "Start run"), mirror == null, 8) { requestStart() }
-        button("${Lang.tr("Laufart", "Run type")} · ${purposeLabel(purpose)}", false, 6, small = true) { choosePurpose() }
+        button("${Lang.tr("Laufziel", "Run goal")} · ${targetLabel()}", false, 6, small = true) { page = PAGE_OPTIONS; render() }
         if (mirror == null) button(Lang.tr("Krafttraining starten", "Start strength training"), false, 6) { page = PAGE_PICK; render() }
         button(Lang.tr("Verlauf", "History"), false, 6) { page = PAGE_HISTORY; render() }
         button(Lang.tr("Laufoptionen", "Run options"), false, 6) { page = PAGE_OPTIONS; render() }
@@ -225,6 +227,7 @@ class MainActivity : Activity() {
         }, 12, if (state == "recording") green else muted, true)
         timer = text("00:00", 34, ink, true, 2)
         distance = text(kmLabel(0.0), 22, ink, true, 0)
+        goalLine = text("", 13, green, margin = 2)
         sensors = text("", 13, muted, margin = 4)
         if (state == "recording") {
             button("Pause", true, 10) { command(RecordingService.PAUSE) }
@@ -492,6 +495,12 @@ class MainActivity : Activity() {
         timer?.text = formatDuration(active.optDouble("durationSeconds", active.optDouble("durationSec")).toLong())
         distance?.text = kmLabel(active.optDouble("distanceMeters", active.optDouble("distanceM")))
         sensors?.text = sensorLine(active, System.currentTimeMillis())
+        goalLine?.text = RunTargetProgress.line(
+            active.optJSONObject("target"),
+            active.optDouble("durationSeconds", active.optDouble("durationSec")),
+            active.optDouble("distanceMeters", active.optDouble("distanceM")),
+            active.optJSONObject("intervalState"),
+        ).orEmpty()
     }
 
     /** "Heart rate 142 · GPS": heart rate and GPS only while they give values. Paused measures nothing. */
@@ -596,7 +605,8 @@ class MainActivity : Activity() {
 
     private fun runOptions() {
         text(Lang.tr("LAUFOPTIONEN", "RUN OPTIONS"), 12, green, true)
-        button("${Lang.tr("Ziel", "Goal")} · ${targetLabel()}", false, 8) { chooseTarget() }
+        button("${Lang.tr("Wie weit", "How far")} · ${goalLabel()}", false, 8) { chooseGoal() }
+        button("${Lang.tr("Wonach", "Run by")} · ${guideLabel()}", false, 6) { chooseTarget() }
         button(Lang.tr("Stimme & Vibration", "Voice & vibration"), false, 6) { chooseGuidance() }
         button(Lang.tr("Zwischenstände", "Progress updates"), false, 6) { chooseAnnouncements() }
         button(Lang.tr("Zurück", "Back"), false, 12) { page = PAGE_HOME; render() }
@@ -671,11 +681,7 @@ class MainActivity : Activity() {
 
     private fun startRun() {
         page = PAGE_HOME
-        val selected = JSONObject(target.toString())
-        if (selected.optString("kind") == "pace") {
-            selected.put("mode", if (purpose in listOf("easy", "long")) "ceiling" else "range")
-        }
-        command(RecordingService.START, selected.toString())
+        command(RecordingService.START, target.toString())
     }
     private fun command(
         action: String,
@@ -843,27 +849,71 @@ class MainActivity : Activity() {
                 handler.postDelayed({ WearSync.retry(this); render() }, 600)
             }.show()
     }
-    private fun choosePurpose() {
-        val values = arrayOf("free", "easy", "long", "intervals", "race")
-        AlertDialog.Builder(this).setTitle(Lang.tr("Wie willst du laufen?", "How do you want to run?"))
-            .setItems(values.map(::purposeLabel).toTypedArray()) { _, index ->
-                purpose = values[index]
-                store.saveSettings(store.settings().put("wearPurpose", purpose))
-                render()
-            }.show()
-    }
-    private fun chooseTarget() {
-        val labels = arrayOf(Lang.tr("Ohne Ziel", "No goal"), Lang.tr("Tempo", "Pace"), Lang.tr("Pulsbereich", "Heart rate range"))
-        AlertDialog.Builder(this).setTitle(Lang.tr("Laufen nach", "Run by"))
+    private fun chooseGoal() {
+        val labels = arrayOf(Lang.tr("Offen", "Open"), Lang.tr("Strecke", "Distance"), Lang.tr("Zeit", "Time"))
+        AlertDialog.Builder(this).setTitle(Lang.tr("Wie weit", "How far"))
             .setItems(labels) { _, index ->
                 when (index) {
-                    0 -> saveTarget(JSONObject().put("kind", "none").put("version", 1))
-                    1 -> editPaceTarget()
-                    2 -> editHeartTarget()
+                    0 -> saveTarget(JSONObject(target.toString()).apply { remove("goal") })
+                    1 -> editGoal("distance")
+                    2 -> editGoal("time")
                 }
             }.show()
     }
-    private fun editPaceTarget() {
+    private fun editGoal(kind: String) {
+        val goal = target.optJSONObject("goal")?.takeIf { it.optString("kind") == kind }
+        val input = EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or
+                (if (kind == "distance") android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL else 0)
+            setText(if (kind == "distance") {
+                val km = (goal?.optDouble("meters", 5_000.0) ?: 5_000.0) / 1000
+                if (km % 1.0 == 0.0) km.toInt().toString() else km.toString()
+            } else ((goal?.optInt("seconds", 1_800) ?: 1_800) / 60).toString())
+            setSelectAllOnFocus(true)
+        }
+        AlertDialog.Builder(this).setTitle(if (kind == "distance") Lang.tr("Strecke in km", "Distance in km") else Lang.tr("Zeit in Minuten", "Time in minutes"))
+            .setView(input).setNegativeButton(Lang.tr("Zurück", "Back"), null)
+            .setPositiveButton(Lang.tr("Übernehmen", "Apply")) { _, _ ->
+                val value = input.text.toString().replace(',', '.').toDoubleOrNull()
+                val next = if (kind == "distance") value?.let { (it * 1000).roundToInt() }?.takeIf { it in 100..100_000 }
+                else value?.takeIf { it % 1.0 == 0.0 }?.let { (it * 60).toInt() }?.takeIf { it in 60..36_000 }
+                if (next == null) {
+                    invalidTarget(if (kind == "distance") Lang.tr("Wähle 0,1 bis 100 km.", "Choose 0.1 to 100 km.")
+                    else Lang.tr("Wähle 1 bis 600 Minuten.", "Choose 1 to 600 minutes."))
+                } else {
+                    val updated = JSONObject(target.toString())
+                    // Intervals set their own volume; a goal switches back to just tracking.
+                    if (updated.optString("kind") == "intervals") {
+                        updated.put("kind", "none").remove("intervals")
+                    }
+                    saveTarget(updated.put("goal", JSONObject().put("kind", kind)
+                        .put(if (kind == "distance") "meters" else "seconds", next)))
+                }
+            }.show()
+    }
+    private fun chooseTarget() {
+        val labels = arrayOf(
+            Lang.tr("Nur tracken", "Just track"), Lang.tr("Tempo halten", "Hold a pace"),
+            Lang.tr("Nicht schneller als", "Not faster than"), Lang.tr("Pulsbereich", "Heart rate range"),
+            Lang.tr("Intervalle", "Intervals"),
+        )
+        AlertDialog.Builder(this).setTitle(Lang.tr("Wonach", "Run by"))
+            .setItems(labels) { _, index ->
+                when (index) {
+                    0 -> saveTarget(withGoal(JSONObject().put("kind", "none")))
+                    1 -> editPaceTarget("range")
+                    2 -> editPaceTarget("ceiling")
+                    3 -> editHeartTarget()
+                    4 -> editIntervals()
+                }
+            }.show()
+    }
+    /** Keeps the current goal for a new guide; intervals never carry one. */
+    private fun withGoal(next: JSONObject): JSONObject {
+        if (next.optString("kind") != "intervals") target.optJSONObject("goal")?.let { next.put("goal", JSONObject(it.toString())) }
+        return next
+    }
+    private fun editPaceTarget(mode: String) {
         val seconds = target.optDouble("secondsPerKm", 330.0).toInt()
         val input = EditText(this).apply {
             setText("${seconds / 60}:${(seconds % 60).toString().padStart(2, '0')}")
@@ -876,8 +926,8 @@ class MainActivity : Activity() {
                 val match = Regex("^(\\d{1,2}):([0-5]\\d)$").matchEntire(input.text.toString().trim())
                 val value = match?.let { it.groupValues[1].toInt() * 60 + it.groupValues[2].toInt() }
                 if (value != null && value in 120..1200) {
-                    saveTarget(JSONObject().put("kind", "pace").put("version", 1)
-                        .put("secondsPerKm", value).put("mode", "range").put("output", target.optString("output", "both")))
+                    saveTarget(withGoal(JSONObject().put("kind", "pace")
+                        .put("secondsPerKm", value).put("mode", mode).put("output", target.optString("output", "both"))))
                 } else invalidTarget(Lang.tr("Gib das Tempo zum Beispiel als 5:30 ein.", "Enter a pace like 5:30."))
             }.show()
     }
@@ -892,15 +942,47 @@ class MainActivity : Activity() {
             .setPositiveButton(Lang.tr("Übernehmen", "Apply")) { _, _ ->
                 val values = input.text.toString().trim().split(Regex("[–—-]")).mapNotNull { it.trim().toIntOrNull() }
                 if (values.size == 2 && values[0] >= 40 && values[1] <= 240 && values[1] - values[0] >= 5) {
-                    saveTarget(JSONObject().put("kind", "heart_rate").put("version", 1)
-                        .put("minBpm", values[0]).put("maxBpm", values[1]).put("output", target.optString("output", "both")))
+                    saveTarget(withGoal(JSONObject().put("kind", "heart_rate")
+                        .put("minBpm", values[0]).put("maxBpm", values[1]).put("output", target.optString("output", "both"))))
                 } else invalidTarget(Lang.tr("Gib den Bereich zum Beispiel als 130–150 ein.", "Enter the range like 130–150."))
             }.show()
     }
+    /** Three short lists instead of typing on the watch: repeats, work, rest. */
+    private fun editIntervals() {
+        val repeats = intArrayOf(2, 3, 4, 5, 6, 8, 10, 12, 15, 20)
+        val works = listOf(
+            JSONObject().put("kind", "distance").put("meters", 200), JSONObject().put("kind", "distance").put("meters", 400),
+            JSONObject().put("kind", "distance").put("meters", 800), JSONObject().put("kind", "distance").put("meters", 1_000),
+            JSONObject().put("kind", "time").put("seconds", 60), JSONObject().put("kind", "time").put("seconds", 120),
+            JSONObject().put("kind", "time").put("seconds", 180), JSONObject().put("kind", "time").put("seconds", 300),
+        )
+        val rests = intArrayOf(0, 30, 60, 90, 120, 180)
+        AlertDialog.Builder(this).setTitle(Lang.tr("Wiederholungen", "Repeats"))
+            .setItems(repeats.map { "$it ×" }.toTypedArray()) { _, r ->
+                AlertDialog.Builder(this).setTitle(Lang.tr("Belastung", "Work"))
+                    .setItems(works.map(::workLabel).toTypedArray()) { _, w ->
+                        AlertDialog.Builder(this).setTitle(Lang.tr("Pause", "Rest"))
+                            .setItems(rests.map { if (it == 0) Lang.tr("Keine", "None") else RunTargetProgress.clock(it.toDouble()) }.toTypedArray()) { _, p ->
+                                saveTarget(JSONObject().put("kind", "intervals").put("output", target.optString("output", "both"))
+                                    .put("intervals", JSONObject().put("repeats", repeats[r]).put("work", works[w])
+                                        .put("restSeconds", rests[p]).put("warmupSeconds", 0)))
+                            }.setNegativeButton(Lang.tr("Zurück", "Back"), null).show()
+                    }.setNegativeButton(Lang.tr("Zurück", "Back"), null).show()
+            }.setNegativeButton(Lang.tr("Zurück", "Back"), null).show()
+    }
+    private fun workLabel(work: JSONObject) = if (work.optString("kind") == "time") {
+        val seconds = work.optInt("seconds")
+        if (seconds % 60 == 0) "${seconds / 60} min" else RunTargetProgress.clock(seconds.toDouble())
+    } else {
+        val meters = work.optInt("meters")
+        if (meters >= 1_000) "${meters / 1000} km" else "$meters m"
+    }
     private fun saveTarget(next: JSONObject) {
-        next.put("version", 2)
+        next.put("version", 3)
         if (!next.has("cueIntervalSeconds")) next.put("cueIntervalSeconds", target.optInt("cueIntervalSeconds", 30))
         if (!next.has("announcements")) target.optJSONObject("announcements")?.let { next.put("announcements", JSONObject(it.toString())) }
+        if (!next.has("output") && target.has("output")) next.put("output", target.optString("output"))
+        if (next.optString("kind") == "intervals") next.remove("goal")
         target = next
         store.saveSettings(store.settings().put("wearTarget", next))
         render()
@@ -974,22 +1056,39 @@ class MainActivity : Activity() {
     private fun invalidTarget(message: String) {
         AlertDialog.Builder(this).setTitle(Lang.tr("Nicht gespeichert", "Not saved")).setMessage(message).setPositiveButton("OK", null).show()
     }
-    private fun targetLabel() = when (target.optString("kind")) {
+    private fun goalLabel(): String {
+        if (target.optString("kind") == "intervals") return Lang.tr("Durch Intervalle", "By intervals")
+        val goal = target.optJSONObject("goal") ?: return Lang.tr("Offen", "Open")
+        return if (goal.optString("kind") == "distance") {
+            val km = goal.optDouble("meters") / 1000
+            if (km % 1.0 == 0.0) "${km.toInt()} km" else String.format(Lang.locale(), "%.2f km", km).replace(Regex("0+ km$"), " km")
+        } else "${goal.optInt("seconds") / 60} min"
+    }
+    private fun guideLabel() = when (target.optString("kind")) {
         "pace" -> {
             val seconds = target.optDouble("secondsPerKm", 330.0).toInt()
-            val prefix = if (purpose in listOf("easy", "long")) "max " else ""
+            val prefix = if (target.optString("mode") == "ceiling") "max " else ""
             "$prefix${seconds / 60}:${(seconds % 60).toString().padStart(2, '0')} /km"
         }
         "heart_rate" -> "${target.optInt("minBpm")}–${target.optInt("maxBpm")} bpm"
-        else -> Lang.tr("Ohne Ziel", "No goal")
+        "intervals" -> target.optJSONObject("intervals")?.let {
+            "${it.optInt("repeats")} × ${workLabel(it.optJSONObject("work") ?: JSONObject())}"
+        } ?: Lang.tr("Intervalle", "Intervals")
+        else -> Lang.tr("Nur tracken", "Just track")
     }
-    // Same words as RUN_PURPOSES in src/domain/runTitle.ts.
+    /** Goal and guide in one line, like `runTargetLabel` on the phone. */
+    private fun targetLabel(): String {
+        val kind = target.optString("kind")
+        if (kind == "intervals") return guideLabel()
+        if (!target.has("goal")) return guideLabel()
+        return if (kind == "none" || kind.isBlank()) goalLabel() else "${goalLabel()} · ${guideLabel()}"
+    }
+    // Same words as RUN_PURPOSES in src/domain/runTitle.ts; old long runs count as easy.
     private fun purposeLabel(value: String) = when (normalizePurpose(value)) {
-        "easy" -> Lang.tr("Ruhig", "Easy")
-        "long" -> Lang.tr("Lange Runde", "Long run")
-        "intervals" -> Lang.tr("Tempowechsel", "Pace changes")
-        "race" -> Lang.tr("Auf Zeit", "Time trial")
-        "free" -> Lang.tr("Einfach laufen", "Just run")
+        "easy", "long" -> Lang.tr("Locker", "Easy")
+        "intervals" -> Lang.tr("Intervalle", "Intervals")
+        "race" -> Lang.tr("Schnell", "Fast")
+        "free" -> Lang.tr("Offen", "Open")
         else -> Lang.tr("Noch offen", "Not set yet")
     }
     // Older versions stored pace changes as "quality".

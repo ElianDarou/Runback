@@ -1,7 +1,7 @@
 import type { Run } from './trainingRecords';
 import { applyStrengthEndCorrection } from './endCorrection';
 import { normalizePurpose } from './runTitle';
-import { normalizeRunTarget } from './runTarget';
+import { normalizeIntervalState, normalizeRunTarget } from './runTarget';
 import { normalizeSport } from './sport';
 import type { StrengthSession, StrengthState } from './strength';
 import { importedStrengthSession } from './strengthImports';
@@ -25,6 +25,7 @@ export function normalizeRun(raw: any): Run {
     source: raw.source || 'phone',
     purpose: normalizePurpose(feedback.purpose ?? raw.purpose),
     purposeConfirmed: feedback.purposeConfirmed === true,
+    purposeAsked: feedback.purposeAsked === true,
     purposeHint:
       feedback.purposeHint && typeof feedback.purposeHint === 'object'
         ? feedback.purposeHint
@@ -36,6 +37,7 @@ export function normalizeRun(raw: any): Run {
     note: raw.note ?? feedback.note,
     route: raw.route ?? raw.geometry,
     target: raw.target ? normalizeRunTarget(raw.target) : undefined,
+    intervalState: normalizeIntervalState(raw.intervalState),
   };
 }
 

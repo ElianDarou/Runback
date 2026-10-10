@@ -38,8 +38,12 @@ product. Code names are identifiers and stay as they are.
 | Stabil | Stable | `PlateauStatus` `stable` | Strength trend that demonstrably stays narrowly around zero. “Not clear yet” is not a plateau. |
 | Trainingstag | Training day | `collapseToDays` | Two workouts on the same day count once in the strength trend. |
 | Datenqualität | Data quality | `QualityReport` | How complete and suitable the data is for exactly this statement. |
-| Laufart | Run type | `RunPurpose` | What a run was meant to be: Just run (`free`), Easy (`easy`), Long run (`long`), Pace changes (`intervals`), Time trial (`race`, including the daily home loop for a personal best). Not set yet (`unknown`) is not a choice but the state until one is given. |
-| Vorschlag zur Laufart | Run type suggestion | `suggestRunPurpose` | After the run, from heart rate against max heart rate or breathing, pace variation (pace changes only with repeated back-and-forth on a known flat route), and length. Preview only; applies only after “That’s right” and then stores version, signals, max heart rate with its origin, and comparison runs. A manual choice clears this trail. |
+| Laufart | Run type | `RunPurpose` | What the comparisons need to know about a run: Locker / Easy (`easy`), Schnell / Fast (`race`, including the daily home loop for a personal best), Intervalle / Intervals (`intervals`). Not set yet (`unknown`) is not a choice but the state until one is given. Older records keep `long` (counts as easy) and `free` (counts as not set yet); `comparablePurpose` maps them, nothing is rewritten. |
+| Wie war der Lauf? | How was the run? | `asksPurposeOnOpen`, `likelyPurpose` | Question when a run recorded by Runback is first opened: the three run types with the most likely one preselected (started as intervals, heart rate or breathing, plan, pace ceiling, own choices on similar runs, else easy). OK saves, Cancel leaves the run open and does not ask again. |
+| Vorschlag zur Laufart | Run type suggestion | `suggestRunPurpose` | After the run, from heart rate against max heart rate or breathing, and pace variation (intervals only with repeated back-and-forth on a known flat route). Preview only; applies only after OK or “That’s right” and then stores version, signals, and max heart rate with its origin. A manual choice clears this trail. |
+| Laufziel | Run goal | `RunTarget` (version 3) | Goal of one run, chosen in the start sheet with the last choice preselected: Wie weit / How far (Offen, Strecke, Zeit; `goal`) and Wonach / Run by (Nur tracken, Tempo, Puls, Intervalle; `kind`). Not the goal of an area. |
+| Intervalle (Laufziel) | Intervals (run goal) | `IntervalPlan`, Kotlin `RunIntervals` | Optional warm-up, then work stretches by time or distance with a rest between them. A distance stretch ends only on measured distance. |
+| Ansagen zum Ziel | Goal announcements | Kotlin `RunGoalCues` | Halfway, almost there (1 km, or 5 or 1 minutes), goal reached. With a pace to hold also ahead of or behind the plan; without measured distance that part stays silent. |
 | Sportart | Sport | `Sport` | `running`, `cycling`; if the field is missing, running applies. |
 | Effort | Effort | `EffortEstimate` | Modeled external demand of a run. Not a fitness or fatigue value. |
 | Tempoindex | Pace index | `EffortEstimate` | Simple pace measure relative to 3 m/s. Not performance, not a score. |
@@ -118,8 +122,10 @@ product. Code names are identifiers and stay as they are.
 helped?”) · Baseline (→ Vergleichsläufe) · inconclusive (→ Noch nicht klar) ·
 Invariante (→ Grundregel) · Gesamtumfang (→ Belastung; was only distance in another
 unit) · Plateau as “no proof” (→ stable only with proof) · Standard deviation of
-freshness (→ Grobe Spanne) · Zweck, Trainingszweck, Locker, Lang, Intervalle,
-Wettkampf as run type (→ Laufart: Ruhig, Lange Runde, Tempowechsel, Auf Zeit).
+freshness (→ Grobe Spanne) · Zweck, Trainingszweck, Lang, Wettkampf as run type
+(→ Laufart) · Ruhig, Lange Runde, Tempowechsel, Auf Zeit, Einfach laufen (→ Locker,
+Schnell, Intervalle, Noch offen) · Laufvorlage (→ Laufziel; the last choice stays
+preselected) · Laufen nach (→ Wonach).
 
 **In one sentence:** A goal can suggest a focus; the focus helps choose a
 recommendation. Only the recommendation is checked for follow-through, result, and

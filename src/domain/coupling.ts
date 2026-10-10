@@ -1,8 +1,11 @@
 import { pacingFor } from './analysis';
 import type { RunPurpose, RunSummary } from './types';
 import { tr } from './i18n';
+import { comparablePurpose } from './runTitle';
 
-export const COUPLING_MODEL_VERSION = 'run-strength-coupling-v1';
+// v2: old long runs count as easy; comparisons use a group of similar durations.
+export const COUPLING_MODEL_VERSION = 'run-strength-coupling-v2';
+const DURATION_TOLERANCE_SHARE = 0.2;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MIN_PLAN_SPACING_MS = 12 * 60 * 60 * 1000;
 const NO_CAUSAL_CLAIM = false as const;
@@ -111,17 +114,15 @@ function validFreshness(value: number | null): value is number {
   return value !== null && Number.isFinite(value) && value >= 0 && value <= 100;
 }
 
-function purposeFor(
-  input: CouplingInput,
-): Extract<RunPurpose, 'easy' | 'long'> | null {
+/** Only easy runs (including old long runs) say something about leg freshness. */
+function purposeFor(input: CouplingInput): 'easy' | null {
   if (input.purpose) {
-    return input.purpose;
+    return 'easy';
   }
-  const first = input.runs.find(
-    entry => entry.run.purpose === 'easy' || entry.run.purpose === 'long',
-  );
-  return first?.run.purpose === 'easy' || first?.run.purpose === 'long'
-    ? first.run.purpose
+  return input.runs.some(
+    entry => comparablePurpose(entry.run.purpose) === 'easy',
+  )
+    ? 'easy'
     : null;
 }
 
@@ -134,7 +135,9 @@ function comparableRuns(
     return [];
   }
   const candidates = input.runs.filter(
-    entry => entry.run.purpose === purpose && entry.regionBase.trim(),
+    entry =>
+      comparablePurpose(entry.run.purpose) === purpose &&
+      entry.regionBase.trim(),
   );
   // One assessment must never compare different leg-region proxies. Choose
   // the largest proxy group, with a lexical tie-breaker, so input ordering
@@ -149,7 +152,7 @@ function comparableRuns(
       rightCount - leftCount || leftName.localeCompare(rightName),
   )[0]?.[0];
   const seenCanonicalIds = new Set<string>();
-  return candidates
+  const rows = candidates
     .filter(entry => {
       if (entry.regionBase.trim() !== regionBase) {
         return false;
@@ -213,6 +216,28 @@ function comparableRuns(
       (a, b) =>
         a.run.startTime - b.run.startTime || a.run.id.localeCompare(b.run.id),
     );
+  // Length is measured now, rather than inferred from the old "long" label.
+  // Every duration in the largest group is within 20% of its shortest run.
+  const byDuration = [...rows].sort(
+    (a, b) =>
+      a.run.durationSeconds - b.run.durationSeconds ||
+      a.run.startTime - b.run.startTime ||
+      a.run.id.localeCompare(b.run.id),
+  );
+  let largest: ComparableRun[] = [];
+  for (let start = 0; start < byDuration.length; start += 1) {
+    const group = byDuration
+      .slice(start)
+      .filter(
+        row =>
+          row.run.durationSeconds <=
+          byDuration[start].run.durationSeconds *
+            (1 + DURATION_TOLERANCE_SHARE),
+      );
+    if (group.length > largest.length) largest = group;
+  }
+  const ids = new Set(largest.map(row => row.run.id));
+  return rows.filter(row => ids.has(row.run.id));
 }
 
 function insufficient(
@@ -365,7 +390,9 @@ function regressionFor(
     if (!inverseColumn) {
       return null;
     }
-    standardErrors.push(Math.sqrt(Math.max(0, sigmaSquared * inverseColumn[column])));
+    standardErrors.push(
+      Math.sqrt(Math.max(0, sigmaSquared * inverseColumn[column])),
+    );
   }
   const halfWidth = tQuantile95(residualDegreesOfFreedom) * standardErrors[0];
   const regression: CouplingRegression = {
@@ -375,7 +402,10 @@ function regressionFor(
       ? ['100_minus_leg_freshness', 'temperatureC']
       : ['100_minus_leg_freshness'],
     standardErrors,
-    adjustedFadeInterval: [coefficients[0] - halfWidth, coefficients[0] + halfWidth],
+    adjustedFadeInterval: [
+      coefficients[0] - halfWidth,
+      coefficients[0] + halfWidth,
+    ],
     residualDegreesOfFreedom,
   };
   if (withTemperature) {

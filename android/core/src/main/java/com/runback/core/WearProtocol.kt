@@ -17,7 +17,7 @@ object WearProtocol {
     fun control(
         action: String,
         runId: String,
-        purpose: String = "easy",
+        purpose: String = "unknown",
         sport: String = "running",
         target: String? = null,
         routePlanId: String? = null,

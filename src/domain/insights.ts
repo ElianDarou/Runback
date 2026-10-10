@@ -8,6 +8,7 @@ import type { RunSeries, SeriesRow } from './runSeries';
 import { formatPace } from './runSeries';
 import { segmentIsFlat } from './analysis';
 import { fixed, percentSign, tr } from './i18n';
+import { comparablePurpose, samePurpose } from './runTitle';
 
 /**
  * Deeper insights into a single run for the detail page. Everything here is
@@ -20,7 +21,8 @@ import { fixed, percentSign, tr } from './i18n';
  * Verdict strings such as `'unclear'` or `'efficient'` are stable keys that
  * the UI compares against. Show them through the `…Label()` functions.
  */
-export const INSIGHTS_VERSION = 'runback-insights-1';
+// 2: old long runs compare with easy runs, old "just run" with all runs.
+export const INSIGHTS_VERSION = 'runback-insights-2';
 
 const DAY = 24 * 60 * 60 * 1000;
 /** Comparison window for "your recent runs" and the heart rate–pace curve. */
@@ -813,12 +815,13 @@ export function recentRuns(
         other.status !== 'accidental',
     )
     .sort((a, b) => b.startTime - a.startTime);
-  const samePurpose = candidates.filter(other => other.purpose === run.purpose);
+  const sameType = candidates.filter(other =>
+    samePurpose(other.purpose, run.purpose),
+  );
   const chosen =
-    run.purpose !== 'unknown' &&
-    run.purpose !== 'free' &&
-    samePurpose.length >= RECENT_MIN_RUNS
-      ? samePurpose
+    comparablePurpose(run.purpose) !== 'unknown' &&
+    sameType.length >= RECENT_MIN_RUNS
+      ? sameType
       : candidates;
   return chosen.slice(0, RECENT_MAX_RUNS);
 }
@@ -914,7 +917,7 @@ export function recentComparison(
   if (!metrics.length) return undefined;
   return {
     count: recent.length,
-    samePurpose: recent.every(other => other.purpose === run.purpose),
+    samePurpose: recent.every(other => samePurpose(other.purpose, run.purpose)),
     metrics,
   };
 }

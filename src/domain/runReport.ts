@@ -30,7 +30,7 @@ import {
   sportWords,
   usesPace,
 } from './sport';
-import { runTargetLabel, type RunTarget } from './runTarget';
+import { hasRunTarget, runTargetLabel, type RunTarget } from './runTarget';
 import { focusLabel, type TrainingFocus } from './focus';
 import { QUALITY_VERSION } from './analysis';
 import { dateFormat, locale, percentSign, quote, tr } from './i18n';
@@ -187,6 +187,8 @@ const eventLabel = (type: string): string =>
       interrupted: tr('Unterbrochen', 'Interrupted'),
       target_cue: tr('Hinweis zum Ziel', 'Target cue'),
       target_pace: tr('Zieltempo geändert', 'Target pace changed'),
+      goal_cue: tr('Ansage zum Ziel', 'Goal announcement'),
+      interval_phase: tr('Intervallphase', 'Interval phase'),
       progress_cue: tr('Zwischenstand', 'Progress update'),
       warning: tr('Warnung', 'Warning'),
       feedback: tr('Feedback gespeichert', 'Feedback saved'),
@@ -398,9 +400,9 @@ function overviewRows(run: ReportRun): string[][] {
       parts.push(`${tr('Wind', 'Wind')} ${fmt(run.context.windMps, 1)} m/s`);
     rows.push([tr('Wetter', 'Weather'), parts.join(' · ')]);
   }
-  if (run.target && run.target.kind !== 'none') {
+  if (run.target && hasRunTarget(run.target)) {
     rows.push([
-      tr('Begleitung unterwegs', 'Guidance during the run'),
+      tr('Ziel unterwegs', 'Goal during the run'),
       runTargetLabel(run.target),
     ]);
   }
@@ -1190,7 +1192,7 @@ export function buildRunAnalysisExport(input: RunReportInput) {
       distanceModelVersion: run.model_version,
       rawSampleCount: run.samples,
       weather: run.context,
-      target: run.target && run.target.kind !== 'none' ? run.target : undefined,
+      target: hasRunTarget(run.target) ? run.target : undefined,
       rpe: run.rpe,
       note: run.note,
     },
@@ -1287,7 +1289,7 @@ function machineReadable(input: RunReportInput) {
       calories: run.calories,
       steps: run.steps,
       context: run.context,
-      target: run.target && run.target.kind !== 'none' ? run.target : undefined,
+      target: hasRunTarget(run.target) ? run.target : undefined,
       rpe: run.rpe,
       note: run.note,
       source: run.source,

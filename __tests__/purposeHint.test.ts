@@ -1,8 +1,12 @@
 import {
   PURPOSE_HINT_VERSION,
+  asksPurposeOnOpen,
+  likelyPurpose,
+  likelyPurposeReason,
   purposeHintReason,
   suggestRunPurpose,
 } from '../src/domain/purposeHint';
+import { NO_RUN_TARGET, normalizeRunTarget } from '../src/domain/runTarget';
 import type { MaxHeartRate } from '../src/domain/insights';
 import type { RunSummary, SegmentAggregate } from '../src/domain/types';
 
@@ -60,7 +64,7 @@ describe('suggestRunPurpose', () => {
     );
   });
 
-  it('calls a clearly longer easy run a long run', () => {
+  it('calls a clearly longer easy run easy, since long runs are easy runs now', () => {
     const hint = suggestRunPurpose(
       run({
         distanceMeters: 12000,
@@ -70,9 +74,10 @@ describe('suggestRunPurpose', () => {
       history(6000),
       MAX,
     );
-    expect(hint?.purpose).toBe('long');
-    expect(hint?.signals).toContain('longer_than_usual');
-    expect(hint?.baselineRunIds).toEqual(['old-0', 'old-1', 'old-2', 'old-3']);
+    expect(hint?.purpose).toBe('easy');
+    expect(hint?.signals).not.toContain('longer_than_usual');
+    expect(hint?.baselineRunIds).toBeUndefined();
+    expect(hint?.model_version).toBe('runback-purpose-hint-3');
     // Without heart rate no max heart rate was used, so none appears in the trace.
     expect(hint?.maxHeartRate).toBeUndefined();
   });
@@ -237,5 +242,158 @@ describe('suggestRunPurpose', () => {
         MAX,
       ),
     ).toBeUndefined();
+  });
+});
+
+describe('likelyPurpose', () => {
+  const fresh = run({ id: 'fresh', purpose: 'unknown' });
+  const earlier = (
+    purpose: RunSummary['purpose'],
+    distanceMeters: number,
+    days: number,
+  ) =>
+    run({
+      id: `${purpose}-${distanceMeters}-${days}`,
+      purpose,
+      distanceMeters,
+      startTime: START - days * DAY,
+    });
+
+  it('takes intervals from the start choice first', () => {
+    const target = normalizeRunTarget({
+      kind: 'intervals',
+      version: 3,
+      output: 'both',
+      intervals: {
+        repeats: 6,
+        work: { kind: 'distance', meters: 400 },
+        restSeconds: 90,
+      },
+    });
+    const likely = likelyPurpose({
+      run: { ...fresh, avgHeartRate: 120, heartRateCoverage: 0.95 },
+      target,
+      history: [],
+      maxHeartRate: MAX,
+    });
+    expect(likely).toEqual({
+      purpose: 'intervals',
+      source: 'intervals_target',
+    });
+    expect(likelyPurposeReason(likely)).toBe('Mit Intervallen gestartet');
+  });
+
+  it('preselects fast for the daily 5 km by heart rate and keeps the hint for the trace', () => {
+    const likely = likelyPurpose({
+      run: { ...fresh, avgHeartRate: 172, heartRateCoverage: 0.95 },
+      target: NO_RUN_TARGET,
+      history: [earlier('easy', 5000, 2)],
+      maxHeartRate: MAX,
+    });
+    expect(likely.purpose).toBe('race');
+    expect(likely.source).toBe('hint');
+    expect(likely.hint?.model_version).toBe(PURPOSE_HINT_VERSION);
+    expect(likelyPurposeReason(likely)).toBe(
+      'hoher Puls · gleichmäßiges Tempo',
+    );
+  });
+
+  it('then follows the plan and a pace ceiling', () => {
+    expect(
+      likelyPurpose({
+        run: fresh,
+        history: [],
+        maxHeartRate: undefined,
+        plannedPurpose: 'long',
+      }),
+    ).toEqual({ purpose: 'easy', source: 'plan' });
+    const ceiling = normalizeRunTarget({
+      kind: 'pace',
+      version: 3,
+      secondsPerKm: 360,
+      mode: 'ceiling',
+      output: 'both',
+    });
+    expect(
+      likelyPurpose({
+        run: fresh,
+        target: ceiling,
+        history: [],
+        maxHeartRate: undefined,
+      }),
+    ).toEqual({ purpose: 'easy', source: 'pace_ceiling' });
+  });
+
+  it('without signals uses the usual choice on similar runs, old values mapped', () => {
+    const likely = likelyPurpose({
+      run: fresh,
+      history: [
+        earlier('race', 5100, 1),
+        earlier('race', 4900, 2),
+        earlier('long', 15000, 3),
+        earlier('easy', 5000, 4),
+        earlier('free', 5000, 5),
+        earlier('unknown', 5000, 6),
+      ],
+      maxHeartRate: undefined,
+    });
+    expect(likely).toEqual({ purpose: 'race', source: 'similar_runs' });
+    expect(likelyPurposeReason(likely)).toBe('Wie deine ähnlichen Läufe');
+  });
+
+  it('falls back to recent runs, then to easy', () => {
+    expect(
+      likelyPurpose({
+        run: fresh,
+        history: [
+          earlier('long', 15000, 1),
+          earlier('race', 12000, 2),
+          earlier('long', 16000, 3),
+        ],
+        maxHeartRate: undefined,
+      }),
+    ).toEqual({ purpose: 'easy', source: 'recent_runs' });
+    const plain = likelyPurpose({
+      run: fresh,
+      history: [],
+      maxHeartRate: undefined,
+    });
+    expect(plain).toEqual({ purpose: 'easy', source: 'default' });
+    expect(likelyPurposeReason(plain)).toBeUndefined();
+  });
+
+  it('ignores later runs and the run itself', () => {
+    expect(
+      likelyPurpose({
+        run: fresh,
+        history: [{ ...fresh, purpose: 'race' }, earlier('race', 5000, -1)],
+        maxHeartRate: undefined,
+      }).source,
+    ).toBe('default');
+  });
+});
+
+describe('asksPurposeOnOpen', () => {
+  const recorded = {
+    purpose: 'unknown' as const,
+    source: 'phone',
+    status: 'completed',
+  };
+
+  it('asks a fresh own recording once', () => {
+    expect(asksPurposeOnOpen(recorded)).toBe(true);
+    expect(asksPurposeOnOpen({ ...recorded, source: 'wear_os' })).toBe(true);
+    expect(asksPurposeOnOpen({ ...recorded, purposeAsked: true })).toBe(false);
+    expect(asksPurposeOnOpen({ ...recorded, purposeConfirmed: true })).toBe(
+      false,
+    );
+  });
+
+  it('leaves old recordings, imports, rides and running recordings alone', () => {
+    expect(asksPurposeOnOpen({ ...recorded, purpose: 'free' })).toBe(false);
+    expect(asksPurposeOnOpen({ ...recorded, purpose: 'long' })).toBe(false);
+    expect(asksPurposeOnOpen({ ...recorded, source: 'strava' })).toBe(false);
+    expect(asksPurposeOnOpen({ ...recorded, sport: 'cycling' })).toBe(false);
+    expect(asksPurposeOnOpen({ ...recorded, status: 'recording' })).toBe(false);
   });
 });

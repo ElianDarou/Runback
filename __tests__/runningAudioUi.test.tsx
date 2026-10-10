@@ -12,7 +12,7 @@ it('saves independent time announcements without requiring a pace target', async
   let tree!: TestRenderer.ReactTestRenderer;
   await act(async () => {
     tree = TestRenderer.create(
-      <RunTargetScreen value={NO_RUN_TARGET} purpose="free" onSave={onSave} />,
+      <RunTargetScreen value={NO_RUN_TARGET} onSave={onSave} />,
     );
   });
   await act(async () => {
@@ -33,7 +33,7 @@ it('saves independent time announcements without requiring a pace target', async
   expect(onSave).toHaveBeenCalledWith(
     expect.objectContaining({
       kind: 'none',
-      version: 2,
+      version: 3,
       announcements: expect.objectContaining({
         trigger: 'time',
         interval: 10,
@@ -49,13 +49,13 @@ it('accepts five-second pace guidance and rejects an unsupported interval', asyn
   let tree!: TestRenderer.ReactTestRenderer;
   await act(async () => {
     tree = TestRenderer.create(
-      <RunTargetScreen value={NO_RUN_TARGET} purpose="free" onSave={onSave} />,
+      <RunTargetScreen value={NO_RUN_TARGET} onSave={onSave} />,
     );
   });
   await act(async () => {
     tree.root
       .findAllByType(ChipGroup)
-      .find(item => item.props.label === 'Laufziel')!
+      .find(item => item.props.label === 'Wonach')!
       .props.onChange('pace');
   });
   const interval = () =>
@@ -85,6 +85,122 @@ it('accepts five-second pace guidance and rejects an unsupported interval', asyn
   act(() => tree.unmount());
 });
 
+it('saves a distance goal with a pace from the finish time', async () => {
+  const onSave = jest.fn(async () => undefined);
+  let tree!: TestRenderer.ReactTestRenderer;
+  await act(async () => {
+    tree = TestRenderer.create(
+      <RunTargetScreen value={NO_RUN_TARGET} onSave={onSave} />,
+    );
+  });
+  const chips = (label: string) =>
+    tree.root
+      .findAllByType(ChipGroup)
+      .find(item => item.props.label === label)!;
+  const input = (label: string) =>
+    tree.root.findAllByType(Input).find(item => item.props.label === label)!;
+  await act(async () => {
+    chips('Wie weit').props.onChange('distance');
+  });
+  await act(async () => {
+    chips('Wonach').props.onChange('pace');
+  });
+  await act(async () => {
+    input('Zielstrecke in Kilometern').props.onChangeText('5');
+  });
+  await act(async () => {
+    input('Zielzeit für die Strecke').props.onChangeText('24:00');
+  });
+  expect(input('Zieltempo in Minuten pro Kilometer').props.value).toBe('4:48');
+  await act(async () => {
+    await tree.root.findByType(Button).props.onPress();
+  });
+  expect(onSave).toHaveBeenCalledWith(
+    expect.objectContaining({
+      kind: 'pace',
+      version: 3,
+      secondsPerKm: 288,
+      mode: 'range',
+      goal: { kind: 'distance', meters: 5000 },
+    }),
+  );
+  onSave.mockClear();
+  await act(async () =>
+    input('Zielzeit für die Strecke').props.onChangeText('1:00'),
+  );
+  await act(async () => tree.root.findByType(Button).props.onPress());
+  expect(onSave).not.toHaveBeenCalled();
+  await act(async () =>
+    input('Zielzeit für die Strecke').props.onChangeText('invalid'),
+  );
+  await act(async () => tree.root.findByType(Button).props.onPress());
+  expect(onSave).not.toHaveBeenCalled();
+  act(() => tree.unmount());
+});
+
+it('saves intervals without a goal and rejects a bad rest', async () => {
+  const onSave = jest.fn(async () => undefined);
+  let tree!: TestRenderer.ReactTestRenderer;
+  await act(async () => {
+    tree = TestRenderer.create(
+      <RunTargetScreen
+        value={{
+          kind: 'none',
+          version: 3,
+          goal: { kind: 'time', seconds: 1800 },
+        }}
+        onSave={onSave}
+      />,
+    );
+  });
+  const input = (label: string) =>
+    tree.root.findAllByType(Input).find(item => item.props.label === label)!;
+  await act(async () => {
+    tree.root
+      .findAllByType(ChipGroup)
+      .find(item => item.props.label === 'Wonach')!
+      .props.onChange('intervals');
+  });
+  await act(async () => {
+    input('Pause in Minuten und Sekunden').props.onChangeText('20:00');
+  });
+  await act(async () => {
+    await tree.root.findByType(Button).props.onPress();
+  });
+  expect(onSave).not.toHaveBeenCalled();
+  await act(async () => {
+    input('Pause in Minuten und Sekunden').props.onChangeText('1:00');
+  });
+  await act(async () => {
+    await tree.root.findByType(Button).props.onPress();
+  });
+  const saved = (onSave.mock.calls[0] as unknown[])[0] as Record<
+    string,
+    unknown
+  >;
+  expect(saved).toMatchObject({
+    kind: 'intervals',
+    intervals: {
+      repeats: 6,
+      work: { kind: 'distance', meters: 400 },
+      restSeconds: 60,
+      warmupSeconds: 0,
+    },
+  });
+  expect(saved.goal).toBeUndefined();
+  onSave.mockClear();
+  await act(async () =>
+    input('Pause in Minuten und Sekunden').props.onChangeText('0:00'),
+  );
+  await act(async () => tree.root.findByType(Button).props.onPress());
+  expect(onSave).toHaveBeenCalledWith(
+    expect.objectContaining({
+      intervals: expect.objectContaining({ restSeconds: 0 }),
+    }),
+  );
+  act(() => tree.unmount());
+});
+
 it('opens a target preview only on selection and leaves unsupported distances inactive', () => {
   const onChoose = jest.fn();
   const runs: Run[] = ['a', 'b', 'c'].map(id => ({
@@ -105,7 +221,9 @@ it('opens a target preview only on selection and leaves unsupported distances in
   });
   expect(onChoose).not.toHaveBeenCalled();
   const rows = tree.root.findAllByType(Row);
-  const five = rows.find(item => item.props.subtitle === 'Schätzung 25:00 min')!;
+  const five = rows.find(
+    item => item.props.subtitle === 'Schätzung 25:00 min',
+  )!;
   act(() => five.props.onPress());
   expect(onChoose).toHaveBeenCalledWith(5, 1500);
   expect(

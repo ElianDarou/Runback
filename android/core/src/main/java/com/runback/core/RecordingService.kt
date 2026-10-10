@@ -68,6 +68,9 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
     private var lastAnnouncedTurnIndex = -1
     private var targetGuidance: RunTargetGuidance? = null
     private var runAnnouncements: RunAnnouncements? = null
+    private var goalCues: RunGoalCues? = null
+    private var runIntervals: RunIntervals? = null
+    private var cueOutput = "both"
     private var latestGuidanceGpsAt = 0L
 
     override fun onCreate() {
@@ -172,7 +175,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
                 val commandId = intent.getStringExtra("commandId")?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
                 when (intent.action) {
                     START -> {
-                        val purpose = intent.getStringExtra("purpose") ?: "easy"
+                        val purpose = intent.getStringExtra("purpose") ?: "unknown"
                         val source = intent.getStringExtra("source") ?: "phone"
                         val sport = intent.getStringExtra("sport") ?: "running"
                         val routePlanId = intent.getStringExtra("routePlanId")
@@ -347,6 +350,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
                     updateNotification()
                 }
                 maybeGuideHeartRate()
+                maybeCueGoal()
                 maybeAnnounceRun()
                 if (now - lastWakeRenewal >= WAKE_RENEW_INTERVAL_MS) renewWakeLock()
                 worker.postDelayed(this, FLUSH_INTERVAL_MS)
@@ -478,6 +482,57 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
             RunAnnouncements.fromJson(session.optJSONObject("target")?.optJSONObject("announcements")) else null
         runAnnouncements?.onProgress(session.optDouble("distanceMeters", 0.0), session.optDouble("elapsedMs", 0.0) / 1000,
             System.currentTimeMillis(), null, false)
+        val target = session.optJSONObject("target")?.takeIf { session.optString("sport", "running") == "running" }
+        cueOutput = target?.optString("output", "both")?.takeIf { it in setOf("voice", "vibration", "both") } ?: "both"
+        goalCues = runCatching { RunGoalCues.fromJson(target) }.getOrNull()
+        goalCues?.prime(session.optDouble("distanceMeters", 0.0), session.optDouble("elapsedMs", 0.0) / 1000)
+        runIntervals = runCatching { RunIntervals.fromJson(target) }.getOrNull()
+        // A started session continues its phase; a fresh one announces the first phase.
+        if (resumed || session.has("intervalState")) runIntervals?.restore(session.optJSONObject("intervalState"))
+    }
+
+    /** Goal milestones and interval phases; both speak even while other speech is queued. */
+    private fun maybeCueGoal() {
+        if (goalCues == null && runIntervals == null) return
+        val runId = activeId ?: return
+        val session = store.active() ?: return
+        val now = System.currentTimeMillis()
+        val distance = session.optDouble("distanceMeters", Double.NaN)
+        val seconds = session.optDouble("elapsedMs", Double.NaN) / 1000.0
+        goalCues?.onProgress(distance, seconds, now - latestGuidanceGpsAt in 0..10_000L)?.let {
+            deliverGoalCue(runId, it, RunGoalCues.VERSION)
+        }
+        runIntervals?.let { intervals ->
+            val (cue, changed) = intervals.onProgress(distance, seconds)
+            if (changed) {
+                val phase = intervals.phases[intervals.phase]
+                runCatching { store.saveIntervalState(runId, intervals.state(), phase.kind, phase.index) }
+                    .onFailure { Log.w(TAG, "Could not store the interval phase", it) }
+            }
+            cue?.let { deliverGoalCue(runId, it, RunIntervals.VERSION) }
+        }
+    }
+
+    private fun deliverGoalCue(runId: String, cue: GoalCue, version: Int) {
+        runCatching {
+            store.addEvent(runId, "goal_cue", JSONObject()
+                .put("code", cue.code).put("message", cue.message).put("model_version", version))
+        }
+        if ((cueOutput == "voice" || cueOutput == "both") && routeSpeechReady) {
+            mainHandler.post {
+                routeSpeech?.speak(cue.message, TextToSpeech.QUEUE_ADD, null, "runback-goal-${cue.code}")
+            }
+        }
+        if (cueOutput == "vibration" || cueOutput == "both") {
+            val pattern = when (cue.code) {
+                "interval_work" -> longArrayOf(0, 500, 150, 500)
+                "interval_rest", "interval_warmup" -> longArrayOf(0, 500)
+                "interval_soon" -> longArrayOf(0, 120)
+                "goal_reached", "interval_done" -> longArrayOf(0, 200, 120, 200, 120, 200)
+                else -> longArrayOf(0, 250, 150, 250)
+            }
+            getSystemService(Vibrator::class.java)?.vibrate(VibrationEffect.createWaveform(pattern, -1))
+        }
     }
 
     private fun maybeGuideHeartRate() {
@@ -985,7 +1040,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener, TextT
         fun acceptRemoteLocation(runId: String, sample: RawSample) {
             activeService?.worker?.post { activeService?.handleRemoteLocation(runId, sample) }
         }
-        fun send(context: Context, action: String, purpose: String = "easy", source: String = "phone", sport: String = "running", routePlanId: String? = null, target: String? = null, runId: String? = null, remoteStart: Boolean = false, syncPeers: Boolean = true, commandId: String? = null, commandSequence: Long = 0L): String {
+        fun send(context: Context, action: String, purpose: String = "unknown", source: String = "phone", sport: String = "running", routePlanId: String? = null, target: String? = null, runId: String? = null, remoteStart: Boolean = false, syncPeers: Boolean = true, commandId: String? = null, commandSequence: Long = 0L): String {
             require(action in setOf(START, PAUSE, RESUME, FINISH)) { "Unknown recording action: $action" }
             val resolvedCommandId = commandId ?: UUID.randomUUID().toString()
             val intent = Intent(context, RecordingService::class.java)

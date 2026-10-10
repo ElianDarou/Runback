@@ -2,6 +2,8 @@ import type { RunPurpose, RunSummary } from './types';
 import type { MaxHeartRate } from './insights';
 import { isAccidentalRun, isRun } from './sport';
 import { tr } from './i18n';
+import { comparablePurpose, hasNamedPurpose } from './runTitle';
+import type { RunTarget } from './runTarget';
 
 /**
  * Suggests the run type after a run. It is only a preview: the run type is
@@ -15,7 +17,7 @@ import { tr } from './i18n';
  * elevation and a pace that switches back and forth several times — a steady
  * slowdown at the end of a hard run is not a pace change.
  */
-export const PURPOSE_HINT_VERSION = 'runback-purpose-hint-2';
+export const PURPOSE_HINT_VERSION = 'runback-purpose-hint-3';
 
 const DAY = 24 * 60 * 60 * 1000;
 /** A heart rate from this share of max heart rate counts as hard, up to the easy share as easy. */
@@ -38,11 +40,6 @@ const MIN_PACE_REVERSALS = 2;
  * like `segmentIsFlat`; for imports only the ascent is known).
  */
 const FLAT_ASCENT_SHARE = 0.01;
-/** Long run: clearly longer than usual and at least this far. */
-const LONG_FACTOR = 1.25;
-const LONG_MIN_METERS = 8000;
-const LONG_HISTORY_DAYS = 60;
-const LONG_HISTORY_MIN_RUNS = 3;
 
 export type PurposeHintSignal =
   | 'heart_rate_high'
@@ -51,15 +48,16 @@ export type PurposeHintSignal =
   | 'breathing_easy'
   | 'pace_varied'
   | 'pace_even'
+  // Only in hints confirmed before version 3, when long runs were their own type.
   | 'longer_than_usual';
 
 export interface PurposeHint {
-  purpose: Extract<RunPurpose, 'easy' | 'long' | 'intervals' | 'race'>;
+  purpose: Extract<RunPurpose, 'easy' | 'intervals' | 'race'>;
   signals: PurposeHintSignal[];
   model_version: string;
   /** Max heart rate the heart rate was read against, with its source. */
   maxHeartRate?: MaxHeartRate;
-  /** Comparison runs for "longer than usual". */
+  /** Comparison runs for "longer than usual" (hints before version 3). */
   baselineRunIds?: string[];
 }
 
@@ -67,12 +65,6 @@ type Intensity = 'hard' | 'easy';
 
 const finite = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value);
-
-function median(values: number[]): number {
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-}
 
 function heartRateUsable(
   run: RunSummary,
@@ -157,29 +149,6 @@ function flat(run: RunSummary): boolean | undefined {
   return ascent / run.distanceMeters <= FLAT_ASCENT_SHARE;
 }
 
-/** Comparison runs when the run was clearly longer than usual; otherwise `undefined`. */
-function longerThanUsual(
-  run: RunSummary,
-  history: RunSummary[],
-): string[] | undefined {
-  if (run.distanceMeters < LONG_MIN_METERS) return undefined;
-  const baseline = history
-    .filter(
-      other =>
-        other.id !== run.id &&
-        isRun(other) &&
-        !isAccidentalRun(other) &&
-        other.startTime < run.startTime &&
-        run.startTime - other.startTime <= LONG_HISTORY_DAYS * DAY &&
-        other.distanceMeters > 0,
-    );
-  if (baseline.length < LONG_HISTORY_MIN_RUNS) return undefined;
-  const usual = median(baseline.map(other => other.distanceMeters));
-  return run.distanceMeters >= usual * LONG_FACTOR
-    ? baseline.map(other => other.id)
-    : undefined;
-}
-
 /**
  * Suggests a run type, or returns `undefined` when the data doesn't support a
  * clear statement. `maxHeartRate` comes from `maxHeartRate()` in insights.ts
@@ -187,7 +156,7 @@ function longerThanUsual(
  */
 export function suggestRunPurpose(
   run: RunSummary,
-  history: RunSummary[],
+  _history: RunSummary[],
   maxHeartRate: MaxHeartRate | undefined,
 ): PurposeHint | undefined {
   if (!isRun(run) || isAccidentalRun(run) || run.distanceMeters < 1000) {
@@ -215,15 +184,11 @@ export function suggestRunPurpose(
   const variation = paceVariation(paces);
   const varied =
     variation !== undefined && variation >= INTERVAL_PACE_VARIATION;
-  const hint = (
-    purpose: PurposeHint['purpose'],
-    baselineRunIds?: string[],
-  ): PurposeHint => ({
+  const hint = (purpose: PurposeHint['purpose']): PurposeHint => ({
     purpose,
     signals,
     model_version: PURPOSE_HINT_VERSION,
     ...(usesHeart ? { maxHeartRate } : {}),
-    ...(baselineRunIds ? { baselineRunIds } : {}),
   });
 
   if (varied) {
@@ -241,13 +206,7 @@ export function suggestRunPurpose(
   }
   if (!intensity) return undefined;
   if (variation !== undefined) signals.push('pace_even');
-  if (intensity === 'hard') return hint('race');
-  const baselineRunIds = longerThanUsual(run, history);
-  if (baselineRunIds) {
-    signals.push('longer_than_usual');
-    return hint('long', baselineRunIds);
-  }
-  return hint('easy');
+  return hint(intensity === 'hard' ? 'race' : 'easy');
 }
 
 /** Short label for one signal, in the active language. */
@@ -286,3 +245,139 @@ export function purposeHintProvenance(hint: PurposeHint) {
   };
 }
 export type PurposeHintProvenance = ReturnType<typeof purposeHintProvenance>;
+
+/** Where the preselected run type of the question after a run comes from. */
+export type LikelyPurposeSource =
+  | 'intervals_target'
+  | 'hint'
+  | 'plan'
+  | 'pace_ceiling'
+  | 'similar_runs'
+  | 'recent_runs'
+  | 'default';
+
+export interface LikelyPurpose {
+  purpose: Extract<RunPurpose, 'easy' | 'race' | 'intervals'>;
+  source: LikelyPurposeSource;
+  /** Set when the heart rate or breathing hint decided. */
+  hint?: PurposeHint;
+}
+
+const SIMILAR_DAYS = 120;
+const SIMILAR_DISTANCE_SHARE = 0.2;
+const RECENT_RUNS = 5;
+
+/** Most frequent run type among the given runs (newest first); a tie goes to the newest. */
+function usualPurpose(
+  runs: RunSummary[],
+): LikelyPurpose['purpose'] | undefined {
+  const counts = new Map<LikelyPurpose['purpose'], number>();
+  for (const other of runs) {
+    const purpose = comparablePurpose(other.purpose);
+    if (purpose !== 'unknown')
+      counts.set(purpose, (counts.get(purpose) ?? 0) + 1);
+  }
+  let best: LikelyPurpose['purpose'] | undefined;
+  for (const other of runs) {
+    const purpose = comparablePurpose(other.purpose);
+    if (purpose === 'unknown') continue;
+    if (!best || (counts.get(purpose) ?? 0) > (counts.get(best) ?? 0))
+      best = purpose;
+  }
+  return best;
+}
+
+/**
+ * The most likely run type for the question after a run, so usually a single
+ * "OK" is enough. Only a preselection: nothing is saved until the user
+ * confirms. Order: started as intervals, the heart rate or breathing hint, the
+ * planned session, a pace ceiling, the user's own choices on similar runs,
+ * then on recent runs. Without any of these it falls back to easy, the most
+ * common kind of run.
+ */
+export function likelyPurpose(input: {
+  run: RunSummary;
+  target?: RunTarget;
+  history: RunSummary[];
+  maxHeartRate: MaxHeartRate | undefined;
+  plannedPurpose?: RunPurpose;
+}): LikelyPurpose {
+  const { run, target, history } = input;
+  if (target?.kind === 'intervals') {
+    return { purpose: 'intervals', source: 'intervals_target' };
+  }
+  const hint = suggestRunPurpose(run, history, input.maxHeartRate);
+  if (hint) return { purpose: hint.purpose, source: 'hint', hint };
+  const planned = comparablePurpose(input.plannedPurpose);
+  if (planned !== 'unknown') return { purpose: planned, source: 'plan' };
+  if (target?.kind === 'pace' && target.mode === 'ceiling') {
+    return { purpose: 'easy', source: 'pace_ceiling' };
+  }
+  const earlier = history
+    .filter(
+      other =>
+        other.id !== run.id &&
+        isRun(other) &&
+        !isAccidentalRun(other) &&
+        other.startTime < run.startTime &&
+        hasNamedPurpose(other.purpose),
+    )
+    .sort((a, b) => b.startTime - a.startTime);
+  const similar = earlier
+    .filter(
+      other =>
+        run.startTime - other.startTime <= SIMILAR_DAYS * DAY &&
+        run.distanceMeters > 0 &&
+        Math.abs(other.distanceMeters / run.distanceMeters - 1) <=
+          SIMILAR_DISTANCE_SHARE,
+    )
+    .slice(0, RECENT_RUNS);
+  const fromSimilar = usualPurpose(similar);
+  if (fromSimilar) return { purpose: fromSimilar, source: 'similar_runs' };
+  const fromRecent = usualPurpose(earlier.slice(0, RECENT_RUNS));
+  if (fromRecent) return { purpose: fromRecent, source: 'recent_runs' };
+  return { purpose: 'easy', source: 'default' };
+}
+
+/** Short reason for the preselection, or `undefined` for the plain default. */
+export function likelyPurposeReason(likely: LikelyPurpose): string | undefined {
+  switch (likely.source) {
+    case 'intervals_target':
+      return tr('Mit Intervallen gestartet', 'Started with intervals');
+    case 'hint':
+      return likely.hint ? purposeHintReason(likely.hint) : undefined;
+    case 'plan':
+      return tr('So geplant', 'As planned');
+    case 'pace_ceiling':
+      return tr('Mit Tempo-Obergrenze gelaufen', 'Run with a pace ceiling');
+    case 'similar_runs':
+      return tr('Wie deine ähnlichen Läufe', 'Like your similar runs');
+    case 'recent_runs':
+      return tr('Wie deine letzten Läufe', 'Like your recent runs');
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Runs recorded by Runback ask once for their run type when first opened.
+ * Older recordings always had a run type from the start, and imports have the
+ * "add run type" list instead, so neither gets the question.
+ */
+export function asksPurposeOnOpen(run: {
+  purpose: RunPurpose;
+  source: string;
+  status: string;
+  sport?: RunSummary['sport'];
+  purposeConfirmed?: boolean;
+  purposeAsked?: boolean;
+}): boolean {
+  return (
+    isRun(run) &&
+    run.status === 'completed' &&
+    (run.source === 'phone' || run.source === 'wear_os') &&
+    run.purpose === 'unknown' &&
+    !run.purposeConfirmed &&
+    !run.purposeAsked
+  );
+}

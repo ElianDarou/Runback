@@ -96,7 +96,7 @@ class RunStore(context: Context) : DocumentStore {
             .put("model_version", RunMath.MODEL_VERSION).put("sourceVersion", "raw-v2")
             .also { if (target != null) it.put("target", JSONObject(target.toString())) }
     }
-    fun start(purpose: String = "easy", source: String = "phone", sport: String = "running", target: JSONObject? = null, id: String? = null, commandId: String? = null): JSONObject = locked {
+    fun start(purpose: String = "unknown", source: String = "phone", sport: String = "running", target: JSONObject? = null, id: String? = null, commandId: String? = null): JSONObject = locked {
         activeId()?.let {
             check(id == null || id == it) { Lang.tr("Ein anderer Lauf ist bereits aktiv.", "Another run is already active.") }
             val existing = read(it)
@@ -198,6 +198,15 @@ class RunStore(context: Context) : DocumentStore {
                 .put("message", "%d:%02d /km".format(whole / 60, whole % 60)))
         }
         present(read(id))
+    }
+    /** Stores the current interval phase on the active run; the event keeps the order of phases. */
+    fun saveIntervalState(id: String, state: JSONObject, kind: String, index: Int) = locked {
+        val run = read(id)
+        transaction {
+            run.put("intervalState", JSONObject(state.toString()))
+            write(run)
+            addEvent(id, "interval_phase", JSONObject(state.toString()).put("kind", kind).put("index", index))
+        }
     }
     fun pause(commandId: String? = null): JSONObject? = setStatus("paused", "pause", commandId)
     fun finish(commandId: String? = null): JSONObject? = setStatus("completed", "finish", commandId)

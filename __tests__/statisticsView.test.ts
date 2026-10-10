@@ -116,18 +116,26 @@ describe('buildStatisticsView', () => {
   it('splits distance by purpose, largest share first', () => {
     const view = buildStatisticsView(
       [
-        run({ id: 'a', purpose: 'easy', distanceMeters: 3000 }),
-        run({ id: 'b', purpose: 'long', distanceMeters: 12000 }),
-        run({ id: 'c', purpose: 'unknown', distanceMeters: 5000 }),
+        run({ id: 'a', purpose: 'race', distanceMeters: 3000 }),
+        run({ id: 'b', purpose: 'easy', distanceMeters: 4000 }),
+        // Old long runs belong to easy, old “just run” to not set yet.
+        run({ id: 'c', purpose: 'long', distanceMeters: 8000 }),
+        run({ id: 'd', purpose: 'unknown', distanceMeters: 2000 }),
+        run({ id: 'e', purpose: 'free', distanceMeters: 3000 }),
       ],
       '4w',
       NOW,
     );
 
     expect(view.purposes.map(entry => entry.purpose)).toEqual([
-      'long',
-      'unknown',
       'easy',
+      'unknown',
+      'race',
+    ]);
+    expect(view.purposes.map(entry => entry.label)).toEqual([
+      'Locker',
+      'Noch offen',
+      'Schnell',
     ]);
     expect(view.purposes[0].share).toBeCloseTo(0.6, 5);
     expect(view.purposes.reduce((sum, entry) => sum + entry.share, 0)).toBeCloseTo(

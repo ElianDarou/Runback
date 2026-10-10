@@ -7,8 +7,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import type { RunPurpose } from '../domain/types';
-import { RUN_PURPOSES } from '../domain/runTitle';
 import {
   SORENESS_PROMPTS,
   normalizeFeatures,
@@ -22,7 +20,6 @@ import { getLanguage, tr } from '../domain/i18n';
 
 const STEPS = ['welcome', 'goal', 'features', 'import', 'ready'] as const;
 type Step = (typeof STEPS)[number];
-const PURPOSES = RUN_PURPOSES;
 
 // Built per call: the language can change at runtime. Index 0 is Monday.
 const dayLabels = () =>
@@ -63,9 +60,6 @@ export function Onboarding({
   const [goal, setGoal] = useState(settings.goal || '');
   const [minutes, setMinutes] = useState(String(settings.minutes || 30));
   const [days, setDays] = useState<number[]>(settings.trainingDays || []);
-  const [purpose, setPurpose] = useState<RunPurpose>(
-    settings.purpose || 'free',
-  );
   // What the user wants to use. Skipping means: everything is on.
   const [features, setFeatures] = useState<FeatureSettings>(() =>
     normalizeFeatures(settings.features, {
@@ -82,7 +76,6 @@ export function Onboarding({
       goal: goal.trim() || undefined,
       ...(value === undefined ? {} : { minutes: value }),
       trainingDays: [...days].sort(),
-      purpose,
       features,
     };
   };
@@ -292,24 +285,6 @@ export function Onboarding({
                 </Pressable>
               ))}
             </View>
-          </Section>
-          <Section
-            title={tr('Wie läufst du meistens?', 'How do you usually run?')}
-          >
-            {PURPOSES.map(option => (
-              <Pressable
-                key={option.value}
-                accessibilityRole="radio"
-                accessibilityState={{ checked: purpose === option.value }}
-                onPress={() => setPurpose(option.value)}
-                style={styles.choice}
-              >
-                <Text style={styles.choiceText}>{option.label}</Text>
-                <Text style={styles.check}>
-                  {purpose === option.value ? '✓' : ''}
-                </Text>
-              </Pressable>
-            ))}
           </Section>
           <Button
             title={tr('Weiter', 'Next')}
