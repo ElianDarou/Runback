@@ -513,7 +513,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener {
         }
         if ((cueOutput == "voice" || cueOutput == "both") && routeSpeechReady) {
             mainHandler.post {
-                routeSpeech?.speak(cue.message, TextToSpeech.QUEUE_ADD, null, "runback-goal-${cue.code}")
+                routeSpeech?.speak(cue.message, TextToSpeech.QUEUE_ADD, "runback-goal-${cue.code}")
             }
         }
         if (cueOutput == "vibration" || cueOutput == "both") {
