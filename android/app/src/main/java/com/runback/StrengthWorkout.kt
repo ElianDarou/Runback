@@ -129,7 +129,7 @@ object StrengthWorkout {
                 }
             }
         }
-        if (session != null) runCatching { MotionSessions.onStrengthSaved(context, store, null, session, now) }
+        if (session != null) runCatching { MotionSessions.onStrengthSaved(context, store, null, session, now, command.optJSONObject("capture")) }
         sync(context)
         publishTemplates(context)
         return session != null
@@ -146,6 +146,7 @@ object StrengthWorkout {
             runCatching {
                 val store = RunStore(context)
                 val list = StrengthLive.templateList(JSONArray(templates(store)), System.currentTimeMillis())
+                    .put("capture", MotionSessions.watchDefaults(store.settings()))
                 val request = PutDataMapRequest.create(WearProtocol.STRENGTH_TEMPLATES_PATH)
                 request.dataMap.putString("templates", list.toString())
                 Tasks.await(Wearable.getDataClient(context).putDataItem(request.asPutDataRequest()), 10, TimeUnit.SECONDS)

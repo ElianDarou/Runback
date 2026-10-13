@@ -124,6 +124,8 @@ object WearProtocol {
         templateId: String? = null,
         reps: Int? = null,
         detectionId: String? = null,
+        /** Only with `start_session`: what the watch records in this session (`CAPTURE_KEYS`). */
+        capture: JSONObject? = null,
     ): ByteArray {
         require(action in StrengthLive.ACTIONS) { "Unknown workout command" }
         require(sessionId.matches(ID_PATTERN)) { "Invalid session ID" }
@@ -138,6 +140,10 @@ object WearProtocol {
                 templateId?.let { put("templateId", it) }
                 reps?.let { put("reps", it) }
                 detectionId?.let { put("detectionId", it) }
+                capture?.let { requested ->
+                    require(action == StrengthLive.START_SESSION) { "Capture only belongs to a start" }
+                    put("capture", JSONObject().apply { CAPTURE_KEYS.forEach { key -> put(key, requested.optBoolean(key)) } })
+                }
             }
             .toString().toByteArray(Charsets.UTF_8)
     }
@@ -153,6 +159,11 @@ object WearProtocol {
         if (payload.has("templateId")) require(payload.optString("templateId").length in 1..200) { "Invalid template" }
         if (payload.has("reps")) require(payload.optInt("reps", -1) in 0..MAX_REPS) { "Invalid reps" }
         if (payload.has("detectionId")) require(payload.optString("detectionId").matches(ID_PATTERN)) { "Invalid detection" }
+        if (payload.has("capture")) {
+            val capture = payload.optJSONObject("capture")
+            require(payload.optString("action") == StrengthLive.START_SESSION && capture != null &&
+                CAPTURE_KEYS.all { capture.opt(it) is Boolean }) { "Invalid capture" }
+        }
         return payload
     }
 
@@ -169,7 +180,11 @@ object WearProtocol {
         return sessionId
     }
 
+    /** Capability of the phone app (res/values/wear.xml); the watch sends waiting data when it appears. */
+    const val PHONE_CAPABILITY = "runback_phone"
     private val ID_PATTERN = Regex("[A-Za-z0-9_-]{1,100}")
+    /** Switches the watch sends with a start; the phone checks them against each other (`MotionSessions`). */
+    val CAPTURE_KEYS = listOf("heartRate", "motion", "autoSets", "autoConfirm")
     /** The watch does not accept more reps in one command. */
     const val MAX_REPS = 999
 

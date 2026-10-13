@@ -47,6 +47,8 @@ class AutoSets(
 ) {
     /** Set the watch expects right now: from the phone's state. */
     private var target: SetDetectionLog.Target? = null
+    /** Visible name of the target exercise; the raw file keeps the stored name. */
+    private var targetTitle = ""
     private var completedInExercise = -1
     /** Buffers from the start of recording and across exercise changes; lead-in for the analysis. */
     private val buffer = SetDetector(RepProfiles.BUFFER_ONLY, hasGyro).also { it.pause() }
@@ -96,6 +98,7 @@ class AutoSets(
             detector = buffer; profile = nextProfile
         }
         target = next
+        targetTitle = StrengthMirror.exerciseTitle(exercise) ?: next?.exerciseName.orEmpty()
         completedInExercise = completed
         publishLive()
     }
@@ -115,7 +118,7 @@ class AutoSets(
     private fun publishLive() {
         val d = detector
         val t = target
-        val next = if (d == null || t == null) null else Live(t.exerciseName, d.state, d.provisionalReps)
+        val next = if (d == null || t == null) null else Live(targetTitle, d.state, d.provisionalReps)
         val key = next?.let { "${it.exercise}|${it.state}|${it.reps}" } ?: ""
         if (key == lastLive) return
         lastLive = key
@@ -132,7 +135,7 @@ class AutoSets(
         val id = "d-" + UUID.randomUUID().toString().replace("-", "").take(16)
         log(SystemClock.elapsedRealtimeNanos(), SetDetectionLog.detected(id, t, set))
         val decideAt = if (autoConfirm) SystemClock.elapsedRealtime() + AUTO_CONFIRM_MS else null
-        review = Review(id, t, set.count, set.uncertain, set.count, 0, false, decideAt, Status.OPEN)
+        review = Review(id, t, set.count, set.uncertain, set.count, 0, false, decideAt, Status.OPEN, title = targetTitle)
         decideAt?.let { scheduleAuto(id, it) }
         alert()
         notifyReview()
@@ -242,7 +245,7 @@ class AutoSets(
         val notification = Notification.Builder(context, CHANNEL)
             .setSmallIcon(R.drawable.ic_runback)
             .setContentTitle(Lang.tr("Satz erkannt", "Set detected"))
-            .setContentText("${repsLabel(current)} · ${current.target.exerciseName}")
+            .setContentText("${repsLabel(current)} · ${current.title}")
             .setCategory(Notification.CATEGORY_WORKOUT)
             .setContentIntent(open)
             .setFullScreenIntent(open, true)
@@ -272,6 +275,8 @@ class AutoSets(
         val status: Status,
         /** Last decision written to the raw file; the same one is not written twice. */
         val logged: Decision? = null,
+        /** Exercise as the user sees it. */
+        val title: String = target.exerciseName,
     )
 
     data class Decision(val reps: Int?, val byUser: Boolean)
