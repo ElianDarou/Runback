@@ -15,6 +15,7 @@ import android.net.Uri
 import android.os.SystemClock
 import com.google.android.gms.tasks.Tasks
 import com.google.android.gms.wearable.Asset
+import com.google.android.gms.wearable.CapabilityInfo
 import com.google.android.gms.wearable.DataEvent
 import com.google.android.gms.wearable.DataEventBuffer
 import com.google.android.gms.wearable.DataMapItem
@@ -321,6 +322,13 @@ class WearSyncListener : WearableListenerService() {
         }
     }
     override fun onPeerConnected(peer: Node) {
+        WearSync.retryControl(this)
+        WearSync.retry(this)
+        MotionSync.retry(this)
+    }
+    /** The phone declares `runback_phone` (wear.xml); this arrives when it comes in reach, unlike `onPeerConnected` on newer Play services. */
+    override fun onCapabilityChanged(info: CapabilityInfo) {
+        if (info.name != WearProtocol.PHONE_CAPABILITY || info.nodes.isEmpty()) return
         WearSync.retryControl(this)
         WearSync.retry(this)
         MotionSync.retry(this)

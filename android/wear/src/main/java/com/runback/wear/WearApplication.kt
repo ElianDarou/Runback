@@ -23,6 +23,8 @@ class WearApplication : Application() {
                 commandId = commandId,
                 target = session?.optJSONObject("target")?.toString(),
             )
+            // However the run ended (app, notification, phone): send it right away.
+            if (action == RecordingService.FINISH) WearSync.retry(this)
         }
         WearSync.retryControl(this)
         WearSync.retry(this)

@@ -66,16 +66,33 @@ object MotionSessions {
      * `autoSets`: the watch detects sets itself; only with motion; if the value is missing, it is on.
      * `autoConfirm`: the watch takes the detected number without input; only if switched on.
      */
-    private data class Capture(
+    internal data class Capture(
         val motion: Boolean, val heartRate: Boolean, val wrist: String, val autoSets: Boolean, val autoConfirm: Boolean,
     )
 
-    private fun config(store: RunStore): Capture {
-        val config = store.settings().optJSONObject("motionCapture") ?: JSONObject()
+    private fun config(store: RunStore, requested: JSONObject? = null): Capture = capture(store.settings(), requested)
+
+    /**
+     * The settings, or for a start from the watch the switches chosen there for
+     * this one session (`WearProtocol.CAPTURE_KEYS`). The wrist always comes from
+     * the settings. Detection needs motion, accepting without input needs detection.
+     */
+    internal fun capture(settings: JSONObject, requested: JSONObject? = null): Capture {
+        val config = settings.optJSONObject("motionCapture") ?: JSONObject()
         val wrist = config.optString("wrist").takeIf { it in setOf("left", "right") } ?: "unknown"
-        val motion = config.optBoolean("enabled", false)
-        val autoSets = motion && config.optBoolean("autoSets", true)
-        return Capture(motion, config.optBoolean("heartRate", true), wrist, autoSets, autoSets && config.optBoolean("autoConfirm", false))
+        val source = requested ?: JSONObject()
+            .put("heartRate", config.optBoolean("heartRate", true))
+            .put("motion", config.optBoolean("enabled", false))
+            .put("autoSets", config.optBoolean("autoSets", true))
+            .put("autoConfirm", config.optBoolean("autoConfirm", false))
+        val motion = source.optBoolean("motion")
+        val autoSets = motion && source.optBoolean("autoSets")
+        return Capture(motion, source.optBoolean("heartRate"), wrist, autoSets, autoSets && source.optBoolean("autoConfirm"))
+    }
+
+    /** Defaults for the watch's start screen, sent with the template list. */
+    fun watchDefaults(settings: JSONObject): JSONObject = capture(settings).let {
+        JSONObject().put("heartRate", it.heartRate).put("motion", it.motion).put("autoSets", it.autoSets).put("autoConfirm", it.autoConfirm)
     }
 
     /** Start rejected or no watch connected; like `strengthWatchTransfer` → `missing`. */
@@ -85,8 +102,8 @@ object MotionSessions {
     /** Older documents only know motion. */
     private fun hasMotion(doc: JSONObject) = doc.optJSONObject("capture")?.optBoolean("motion", true) ?: true
 
-    /** After every save of the active strength session. */
-    fun onStrengthSaved(context: Context, store: RunStore, previous: JSONObject?, next: JSONObject, now: Long) {
+    /** After every save of the active strength session; `requested`: switches from a watch start. */
+    fun onStrengthSaved(context: Context, store: RunStore, previous: JSONObject?, next: JSONObject, now: Long, requested: JSONObject? = null) {
         val id = next.optString("id").takeIf { it.matches(ID) } ?: return
         val sameSession = previous?.optString("id") == id
         var pingAfter = false
@@ -94,7 +111,7 @@ object MotionSessions {
         synchronized(lock) {
             var doc = store.getDocument(key(id))
             if (doc == null) {
-                val capture = config(store)
+                val capture = config(store, requested)
                 // Only at the start of a session; in the middle of training, everything before was missing.
                 if (!(capture.motion || capture.heartRate) || sameSession || next.optString("status") != "active") return
                 doc = JSONObject()
