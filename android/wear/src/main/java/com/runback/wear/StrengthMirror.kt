@@ -68,17 +68,21 @@ object StrengthMirror {
         }.sortedByDescending { it.second }
     }
 
+    /** What the phone records by default (`MotionSessions.watchDefaults`); `null` until it sent them. */
+    fun captureDefaults(context: Context): JSONObject? =
+        RunStore(context).getDocument(TEMPLATES)?.optJSONObject("capture")
+
     /**
      * Starts a session on the phone. The phone creates it and sends the state
      * back; then the watch opens the app on the phone, so the notification and
      * rest alarm run reliably there. `done(false)`: no phone reached.
      */
-    fun start(context: Context, templateId: String?, done: (Boolean) -> Unit) {
+    fun start(context: Context, templateId: String?, capture: JSONObject?, done: (Boolean) -> Unit) {
         val now = System.currentTimeMillis()
         val sessionId = "session-${java.lang.Long.toString(now, 36)}"
         pendingStart = sessionId to now
         val command = JSONObject().put("action", StrengthLive.START_SESSION).put("sessionId", sessionId)
-            .apply { templateId?.let { put("templateId", it) } }
+            .apply { templateId?.let { put("templateId", it) }; capture?.let { put("capture", it) } }
         send(context, command) { delivered ->
             if (!delivered) pendingStart = null
             else openPhone(context)
@@ -160,6 +164,7 @@ object StrengthMirror {
                     command.optString("templateId").takeIf { it.isNotBlank() },
                     if (command.has("reps")) command.getInt("reps") else null,
                     command.optString("detectionId").takeIf { it.isNotBlank() },
+                    command.optJSONObject("capture"),
                 )
                 val nodes = Tasks.await(Wearable.getNodeClient(app).connectedNodes, 5, TimeUnit.SECONDS)
                 nodes.count { node ->

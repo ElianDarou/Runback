@@ -127,6 +127,24 @@ class WearProtocolTest {
         }
     }
 
+    @Test fun watchStartCarriesWhatTheWatchRecords() {
+        val capture = JSONObject().put("heartRate", true).put("motion", true).put("autoSets", false).put("autoConfirm", false)
+        val payload = WearProtocol.decodeStrengthCommand(
+            WearProtocol.strengthCommand(StrengthLive.START_SESSION, "session-abc", capture = capture),
+        )
+        val sent = payload.getJSONObject("capture")
+        assertEquals(true, sent.getBoolean("motion"))
+        assertEquals(false, sent.getBoolean("autoSets"))
+        assertThrows(IllegalArgumentException::class.java) {
+            WearProtocol.strengthCommand(StrengthLive.SKIP_REST, "session-abc", capture = capture)
+        }
+        val incomplete = JSONObject().put("protocolVersion", WearProtocol.VERSION).put("action", StrengthLive.START_SESSION)
+            .put("sessionId", "session-abc").put("capture", JSONObject().put("heartRate", true))
+        assertThrows(IllegalArgumentException::class.java) {
+            WearProtocol.decodeStrengthCommand(incomplete.toString().toByteArray())
+        }
+    }
+
     @Test fun liveMotionMessagesAreKnown() {
         val payload = WearProtocol.decodeMotion(
             WearProtocol.motion("live", "session-1", JSONObject().put("bpm", 128).put("ageMs", 900).put("motion", true)),
