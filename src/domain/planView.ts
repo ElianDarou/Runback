@@ -39,7 +39,16 @@ export type PlanEntry =
       status: PlanStatus;
       activity?: PlanActivity;
     }
-  | { type: 'unplanned'; activity: PlanActivity };
+  | {
+      /**
+       * A recording on the day it started. `plannedFor` names the planned
+       * date when it belongs to a plan of another day; without it, it was
+       * trained without a plan.
+       */
+      type: 'recorded';
+      activity: PlanActivity;
+      plannedFor?: string;
+    };
 
 const matches = (activity: PlanActivity, id: string | undefined): boolean =>
   Boolean(id && (activity.id === id || activity.canonicalId === id));
@@ -66,9 +75,10 @@ export function planStatus(
 }
 
 /**
- * Entries per date key. A linked activity appears with its planned session
- * (on the planned date); every other activity on the day it started.
- * Within a day: by start time, planned-only sessions after recorded ones.
+ * Entries per date key. A linked activity appears with its planned session on
+ * the planned date. If it started on another day, it also shows there, so
+ * every day lists what was trained on it. Unlinked activities show on the day
+ * they started. Within a day: by start time, planned-only sessions last.
  */
 export function planEntriesByDate(
   sessions: ScheduledSession[],
@@ -81,7 +91,16 @@ export function planEntriesByDate(
   const linkedIds = new Set<string>();
   sessions.forEach(session => {
     const activity = linkedActivity(session, activities);
-    if (activity) linkedIds.add(activity.id);
+    if (activity) {
+      linkedIds.add(activity.id);
+      const started = localDateKey(new Date(activity.startTime));
+      if (started !== session.date)
+        push(started, {
+          type: 'recorded',
+          activity,
+          plannedFor: session.date,
+        });
+    }
     push(session.date, {
       type: 'planned',
       session,
@@ -92,12 +111,12 @@ export function planEntriesByDate(
   activities.forEach(activity => {
     if (linkedIds.has(activity.id)) return;
     push(localDateKey(new Date(activity.startTime)), {
-      type: 'unplanned',
+      type: 'recorded',
       activity,
     });
   });
   const order = (entry: PlanEntry) =>
-    entry.type === 'unplanned'
+    entry.type === 'recorded'
       ? entry.activity.startTime
       : entry.activity?.startTime ?? Number.MAX_SAFE_INTEGER;
   Object.values(byDate).forEach(entries =>

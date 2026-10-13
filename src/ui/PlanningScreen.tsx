@@ -341,6 +341,33 @@ function statusLabel(status: PlanStatus): string {
   }
 }
 
+const MARKS: PlanStatus[] = ['done', 'started', 'planned', 'skipped'];
+const MARK_GLYPH: Record<PlanStatus, string> = {
+  done: '✓',
+  started: '•',
+  planned: '○',
+  skipped: '–',
+};
+
+function entryMark(entry: PlanEntry): PlanStatus {
+  if (entry.type === 'planned') return entry.status;
+  return entry.activity.finished ? 'done' : 'started';
+}
+
+/** Lower case for counts in a sentence: "2 erledigt" / "2 done". */
+function markLabel(status: PlanStatus): string {
+  switch (status) {
+    case 'done':
+      return tr('erledigt', 'done');
+    case 'started':
+      return tr('gestartet', 'started');
+    case 'skipped':
+      return tr('ausgelassen', 'skipped');
+    default:
+      return tr('geplant', 'planned');
+  }
+}
+
 function sessionKindLabel(session: ScheduledSession): string {
   return session.kind === 'run' ? tr('Lauf', 'Run') : tr('Kraft', 'Strength');
 }
@@ -348,12 +375,13 @@ function sessionKindLabel(session: ScheduledSession): string {
 function createSessionDraft(
   date: string,
   session?: ScheduledSession,
+  defaultKind: ScheduleKind = 'run',
 ): SessionDraft {
   return {
     id: session?.id,
     date,
     title: session ? scheduleTitle(session) : '',
-    kind: session?.kind ?? 'run',
+    kind: session?.kind ?? defaultKind,
     minutes: session ? String(session.minutes) : '30',
     purpose: session?.purpose ?? 'easy',
     effort:
@@ -486,8 +514,10 @@ function suggestTrainingWeek(
   today: string,
   runs: Run[],
   now: number,
+  kinds: ScheduleKind[],
 ): WeekSuggestion {
-  const goal = state.goal;
+  // The build-up plans runs; without the running area there is none.
+  const goal = kinds.includes('run') ? state.goal : undefined;
   const distanceKm = goal ? effectiveGoalDistanceKm(goal) : undefined;
   const buildUp =
     goal?.targetDate && distanceKm !== undefined
@@ -502,6 +532,7 @@ function suggestTrainingWeek(
       : undefined;
   const suggestion = suggestWeek(state, weekStart, {
     today,
+    kinds,
     strengthTemplates: templates,
     runSlots: buildUp?.status === 'ready' ? buildUp.slots : undefined,
   });
@@ -627,6 +658,13 @@ export function PlanningScreen({
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [runs, strengthSessions, language, showRunning, showStrength],
+  );
+  const enabledKinds = useMemo<ScheduleKind[]>(
+    () => [
+      ...(showRunning ? (['run'] as const) : []),
+      ...(showStrength ? (['strength'] as const) : []),
+    ],
+    [showRunning, showStrength],
   );
   const shownSessions = useMemo(
     () =>
@@ -804,9 +842,17 @@ export function PlanningScreen({
     setMessage('');
     setValidation('');
     setProposal(
-      suggestTrainingWeek(displayState, weekStart, templates, today, runs, now),
+      suggestTrainingWeek(
+        displayState,
+        weekStart,
+        templates,
+        today,
+        runs,
+        now,
+        enabledKinds,
+      ),
     );
-  }, [displayState, now, runs, templates, today, weekStart]);
+  }, [displayState, enabledKinds, now, runs, templates, today, weekStart]);
 
   const applyProposal = useCallback(async () => {
     if (
@@ -839,9 +885,9 @@ export function PlanningScreen({
       setValidation('');
       setProposal(null);
       setDetailsId(null);
-      setEditor(createSessionDraft(date, session));
+      setEditor(createSessionDraft(date, session, enabledKinds[0]));
     },
-    [weekDateKeys],
+    [enabledKinds, weekDateKeys],
   );
 
   const saveEditor = useCallback(async () => {
@@ -1135,38 +1181,42 @@ export function PlanningScreen({
       ? weekSummary.planned > 0
       : monthSummary.planned > 0;
 
-  // One marker per entry: filled = recorded, ring = still planned, dash =
-  // skipped. The shape carries the state too, never color alone.
+  // One marker per entry. Each state has its own shape — ✓ done, • started,
+  // ring planned, – skipped — so color is never the only information.
   const renderMarker = (entry: PlanEntry, size: 'small' | 'large') => {
-    const mark =
-      entry.type === 'unplanned'
-        ? entry.activity.finished
-          ? 'done'
-          : 'started'
-        : entry.status;
-    const large = size === 'large';
+    const mark = entryMark(entry);
+    if (size === 'small')
+      return (
+        <Text
+          style={[
+            styles.smallMark,
+            (mark === 'done' || mark === 'started') && styles.todayText,
+          ]}
+        >
+          {MARK_GLYPH[mark]}
+        </Text>
+      );
     return (
       <View
         style={[
-          large ? styles.marker : styles.dot,
+          styles.marker,
           mark === 'done' && styles.markerDone,
           mark === 'started' && styles.markerStarted,
           mark === 'planned' && styles.markerPlanned,
           mark === 'skipped' && styles.markerSkipped,
         ]}
       >
-        {large && mark === 'done' ? (
-          <Text style={styles.markerCheck}>✓</Text>
+        {mark === 'done' ? <Text style={styles.markerCheck}>✓</Text> : null}
+        {mark === 'started' ? (
+          <Text style={[styles.markerDash, styles.todayText]}>•</Text>
         ) : null}
-        {large && mark === 'skipped' ? (
-          <Text style={styles.markerDash}>–</Text>
-        ) : null}
+        {mark === 'skipped' ? <Text style={styles.markerDash}>–</Text> : null}
       </View>
     );
   };
 
   const renderEntry = (entry: PlanEntry) => {
-    if (entry.type === 'unplanned') {
+    if (entry.type === 'recorded') {
       const { activity } = entry;
       const content = (
         <>
@@ -1180,8 +1230,19 @@ export function PlanningScreen({
                 activityKindLabel(activity),
                 activityMeta(activity),
                 activity.finished ? '' : statusLabel('started'),
-                // Only worth saying when the period has a plan to compare with.
-                periodHasPlan ? tr('ohne Plan', 'unplanned') : '',
+                entry.plannedFor
+                  ? tr(
+                      `für den Plan am ${dateLabel(
+                        localDateFrom(entry.plannedFor),
+                      )}`,
+                      `for the plan on ${dateLabel(
+                        localDateFrom(entry.plannedFor),
+                      )}`,
+                    )
+                  : // Only worth saying when the period has a plan to compare with.
+                  periodHasPlan
+                  ? tr('ohne Plan', 'unplanned')
+                  : '',
               ]
                 .filter(Boolean)
                 .join(' · ')}
@@ -1210,11 +1271,20 @@ export function PlanningScreen({
       );
     }
     const { session, status, activity } = entry;
+    const startedOn = activity
+      ? isoDate(localDateFrom(activity.startTime))
+      : undefined;
     const meta =
       activity && status !== 'planned'
         ? [
             sessionKindLabel(session),
             statusLabel(status),
+            startedOn && startedOn !== session.date
+              ? tr(
+                  `am ${dateLabel(localDateFrom(startedOn))}`,
+                  `on ${dateLabel(localDateFrom(startedOn))}`,
+                )
+              : '',
             activityMeta(activity),
           ]
         : [
@@ -1431,18 +1501,17 @@ export function PlanningScreen({
       <Pressable
         key={key}
         accessibilityRole="button"
-        accessibilityLabel={`${fullDateLabel(date)}${
-          entries.length
-            ? tr(
-                `, ${entries.length} ${
-                  entries.length === 1 ? 'Einheit' : 'Einheiten'
-                }`,
-                `, ${entries.length} ${
-                  entries.length === 1 ? 'workout' : 'workouts'
-                }`,
-              )
-            : ''
-        }`}
+        accessibilityLabel={[
+          fullDateLabel(date),
+          ...MARKS.map(mark => {
+            const count = entries.filter(
+              entry => entryMark(entry) === mark,
+            ).length;
+            return count ? `${count} ${markLabel(mark)}` : '';
+          }),
+        ]
+          .filter(Boolean)
+          .join(', ')}
         accessibilityState={{ selected }}
         onPress={() => {
           if (outside) setMonthDate(firstOfMonth(date));
@@ -1480,24 +1549,18 @@ export function PlanningScreen({
   };
 
   const legend = () => (
-    <View style={styles.legend}>
-      {(
-        [
-          ['done', tr('Erledigt', 'Done')],
-          ['planned', tr('Geplant', 'Planned')],
-          ['skipped', tr('Ausgelassen', 'Skipped')],
-        ] as const
-      ).map(([mark, text]) => (
+    <View style={styles.legend} accessible={false}>
+      {MARKS.map(mark => (
         <View key={mark} style={styles.legendItem}>
-          <View
+          <Text
             style={[
-              styles.dot,
-              mark === 'done' && styles.markerDone,
-              mark === 'planned' && styles.markerPlanned,
-              mark === 'skipped' && styles.markerSkipped,
+              styles.smallMark,
+              (mark === 'done' || mark === 'started') && styles.todayText,
             ]}
-          />
-          <Text style={styles.legendText}>{text}</Text>
+          >
+            {MARK_GLYPH[mark]}
+          </Text>
+          <Text style={styles.legendText}>{statusLabel(mark)}</Text>
         </View>
       ))}
     </View>
@@ -2205,11 +2268,11 @@ export function PlanningScreen({
                 </Field>
                 <Field label={tr('Art', 'Type')}>
                   <ChipGroup
-                    options={
-                      showStrength
-                        ? kindOptions()
-                        : kindOptions().filter(item => item.value === 'run')
-                    }
+                    options={kindOptions().filter(
+                      item =>
+                        enabledKinds.includes(item.value) ||
+                        item.value === editor.kind,
+                    )}
                     value={editor.kind}
                     onChange={kind =>
                       setEditor(current =>
@@ -2481,13 +2544,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  dot: {
-    width: space.xs,
-    height: space.xs,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
+  smallMark: { color: color.muted, ...typography.micro },
   markerDone: { backgroundColor: color.green, borderColor: color.green },
   markerStarted: { borderColor: color.green },
   markerPlanned: { borderColor: color.muted },

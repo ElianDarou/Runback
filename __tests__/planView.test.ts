@@ -61,18 +61,21 @@ describe('planView', () => {
     ).toBe('done');
   });
 
-  it('shows a linked activity on the planned date and others on their own day', () => {
+  it('shows a linked activity on its planned day and the day it started', () => {
     const byDate = planEntriesByDate(
       [session({ date: '2025-03-11', activityId: 'r1' })],
       [run(), run({ id: 'r2', startTime: at('2025-03-12', 18) })],
     );
-    expect(byDate['2025-03-10']).toBeUndefined();
+    // Trained on the 10th for the plan of the 11th: both days say so.
+    expect(byDate['2025-03-10']).toEqual([
+      expect.objectContaining({ type: 'recorded', plannedFor: '2025-03-11' }),
+    ]);
     expect(byDate['2025-03-11']).toEqual([
       expect.objectContaining({ type: 'planned', status: 'done' }),
     ]);
-    expect(byDate['2025-03-12']).toEqual([
-      expect.objectContaining({ type: 'unplanned' }),
-    ]);
+    expect(byDate['2025-03-12']).toHaveLength(1);
+    expect(byDate['2025-03-12'][0]).toMatchObject({ type: 'recorded' });
+    expect(byDate['2025-03-12'][0]).not.toHaveProperty('plannedFor');
   });
 
   it('orders a day by time and puts open plans last', () => {

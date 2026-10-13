@@ -56,6 +56,9 @@ class StrengthSessionService : Service() {
     private var speech: SpeechOutput? = null
 
     private val restDone = Runnable { onRestEnd() }
+    private val restSpeech = Runnable { announceRestEnd() }
+    // Session and rest end the pending spoken note belongs to; worker thread only.
+    private var restSpeechFor: Pair<String, Long>? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -139,7 +142,7 @@ class StrengthSessionService : Service() {
             val key = "${session.optString("id")}:$endsAt"
             if (store.getDocument(ALERTED)?.optString("key") == key) return
             store.putDocument(ALERTED, JSONObject().put("key", key).put("at", System.currentTimeMillis()))
-            alert(session)
+            alert(session, endsAt)
             StrengthWorkout.republish(this)
         } catch (error: Exception) {
             Log.w(TAG, "Could not report the rest end", error)
@@ -150,16 +153,31 @@ class StrengthSessionService : Service() {
         }
     }
 
-    private fun alert(session: JSONObject) {
+    private fun alert(session: JSONObject, endsAt: Long) {
         val settings = StrengthWorkout.alerts(store)
         if (!settings.restTimer) return
         if (settings.sound) alertSound()
-        if (settings.voice) announce(session, if (settings.sound) RestCue.DURATION_MS + 200L else 0L)
+        if (settings.voice) {
+            restSpeechFor = session.optString("id") to endsAt
+            worker.removeCallbacks(restSpeech)
+            // After the sound, so the two don't overlap.
+            worker.postDelayed(restSpeech, if (settings.sound) RestCue.DURATION_MS + 200L else 0L)
+        }
         if (settings.vibration && !alertWatch(session.optString("id"))) vibrate()
     }
 
-    /** "Rest is over. Bench press, set 2." — after the sound, so the two don't overlap. */
-    private fun announce(session: JSONObject, delayMs: Long) {
+    /**
+     * "Rest is over. Bench press, set 2." Read from the stored session when it
+     * is spoken: a set ticked or a rest skipped in the meantime would make an
+     * earlier text name the wrong set, so then nothing is said.
+     */
+    private fun announceRestEnd() {
+        val (sessionId, endsAt) = restSpeechFor ?: return
+        restSpeechFor = null
+        if (!StrengthWorkout.alerts(store).voice) return
+        val session = store.getDocument(ACTIVE)
+            ?.takeIf { it.optString("id") == sessionId && it.optString("status") == "active" } ?: return
+        if (StrengthLive.restEndsAt(session) != endsAt) return
         val mirror = StrengthWorkout.mirror(store, session, System.currentTimeMillis())
         val exercise = mirror.optJSONObject("exercise")?.optString("name")?.takeIf { it.isNotBlank() }?.let { DisplayNames.exercise(it) }
         val set = mirror.optJSONObject("set")
@@ -167,10 +185,10 @@ class StrengthSessionService : Service() {
             Lang.tr("Pause vorbei. $exercise, Satz ${set.optInt("number")}.", "Rest is over. $exercise, set ${set.optInt("number")}.")
         else Lang.tr("Pause vorbei.", "Rest is over.")
         // Re-read voice and rate: they may have changed since the session started.
-        main.postDelayed({
+        main.post {
             speech?.reload()
             speech?.speak(text, TextToSpeech.QUEUE_ADD, "runback-rest")
-        }, delayMs)
+        }
     }
 
     /** Vibrates the watch if it shows this session and is connected. */
@@ -287,6 +305,8 @@ class StrengthSessionService : Service() {
     private fun stop() {
         if (instance === this) instance = null
         worker.removeCallbacks(restDone)
+        worker.removeCallbacks(restSpeech)
+        restSpeechFor = null
         scheduledRestEnd = null
         wakeLock?.let { if (it.isHeld) it.release() }
         if (foreground) stopForeground(STOP_FOREGROUND_REMOVE)
@@ -297,6 +317,7 @@ class StrengthSessionService : Service() {
     override fun onDestroy() {
         if (instance === this) instance = null
         worker.removeCallbacks(restDone)
+        worker.removeCallbacks(restSpeech)
         main.removeCallbacksAndMessages(null)
         speech?.shutdown()
         speech = null

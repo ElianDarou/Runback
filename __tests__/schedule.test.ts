@@ -85,6 +85,36 @@ describe('Schedule normalization and offline round trip', () => {
 });
 
 describe('Week suggestion', () => {
+  it('neither proposes nor moves sessions of a switched-off area', () => {
+    const original = state({
+      availability: { '2025-03-11': 0 },
+      sessions: [
+        session('strength', '2025-03-11', { kind: 'strength', title: 'Kraft' }),
+      ],
+    });
+    // Both areas on: the session on a day without time moves.
+    expect(
+      suggestWeek(original, TODAY, { today: TODAY }).movedSessions.map(
+        item => item.id,
+      ),
+    ).toEqual(['strength']);
+    const runsOnly = suggestWeek(original, TODAY, {
+      today: TODAY,
+      kinds: ['run'],
+    });
+    expect(runsOnly.addedSessions.map(item => item.kind)).toEqual([
+      'run',
+      'run',
+      'run',
+    ]);
+    expect(runsOnly.movedSessions).toEqual([]);
+    const strengthOnly = suggestWeek(original, TODAY, {
+      today: TODAY,
+      kinds: ['strength'],
+    });
+    expect(strengthOnly.addedSessions).toEqual([]);
+  });
+
   it('returns a preview and does not change the saved state', () => {
     const original = state();
     const suggestion = suggestWeek(original, TODAY, { today: TODAY });

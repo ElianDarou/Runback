@@ -443,10 +443,10 @@ describe('PlanningScreen', () => {
     );
     await press(tree, 'Monat');
     expect(screenText(tree)).toContain('März 2025');
-    await press(tree, 'Donnerstag, 20. März, 1 Einheit');
+    await press(tree, 'Donnerstag, 20. März, 1 geplant');
     expect(screenText(tree)).toContain('Donnerstag, 20. März');
     expect(screenText(tree)).toContain('Später');
-    await press(tree, 'Dienstag, 11. März, 1 Einheit');
+    await press(tree, 'Dienstag, 11. März, 1 erledigt');
     expect(screenText(tree)).toContain('ohne Plan');
     unmount(tree);
   });
@@ -495,6 +495,61 @@ describe('PlanningScreen', () => {
     expect(screenText(tree)).not.toContain('Kraftplan');
     expect(screenText(tree)).not.toContain('Beine');
     expect(screenText(tree)).toContain('Trainingszeit');
+    unmount(tree);
+  });
+
+  it('plans only switched-on areas', async () => {
+    const tree = renderPlanning(emptySchedule(), {
+      now: localAt('2025-03-12', 12),
+    });
+    act(() => {
+      tree.update(
+        <PlanningScreen
+          state={emptySchedule({ routine: { days: [2, 3], minutes: 30 } })}
+          onSave={jest.fn<Promise<void>, [ScheduleState]>()}
+          templates={[]}
+          runs={[]}
+          strengthSessions={[]}
+          now={localAt('2025-03-12', 12)}
+          onStartRun={jest.fn<Promise<void>, [ScheduledSession]>()}
+          onStartStrength={jest.fn<Promise<void>, [ScheduledSession]>()}
+          showRunning={false}
+        />,
+      );
+    });
+    await press(tree, 'Einheit am Donnerstag hinzufügen');
+    const kind = tree.root.find(
+      node =>
+        node.props.label === 'Art der Einheit' &&
+        Array.isArray(node.props.options),
+    );
+    expect(kind.props.value).toBe('strength');
+    expect(kind.props.options.map((o: { value: string }) => o.value)).toEqual([
+      'strength',
+    ]);
+    unmount(tree);
+  });
+
+  it('names the other day when a workout was trained for a plan of another day', () => {
+    const tree = renderPlanning(
+      emptySchedule({
+        sessions: [
+          plannedSession({
+            id: 'linked',
+            title: 'Donnerstagslauf',
+            date: '2025-03-13',
+            activityId: 'early-run',
+          }),
+        ],
+      }),
+      {
+        now: localAt('2025-03-14', 12),
+        runs: [completedRun('early-run', '2025-03-12')],
+      },
+    );
+    const text = screenText(tree);
+    expect(text).toContain('Lauf · Erledigt · am Mi, 12. Mär.');
+    expect(text).toContain('für den Plan am Do, 13. Mär.');
     unmount(tree);
   });
 
