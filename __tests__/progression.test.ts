@@ -2,7 +2,6 @@ import {
   assessExerciseProgression,
   assessPlateau,
   buildE1RMSeries,
-  type ProgressionAssessment,
 } from '../src/domain/progression';
 import type { StrengthSession } from '../src/domain/strength';
 
@@ -104,13 +103,13 @@ describe('Strength progression', () => {
     session('s5', 28, 100),
   ];
 
-  it('lets freshness modulation not flip the direction of a suggestion', () => {
-    const result = assessExerciseProgression(rising, 'squat', {
-      regionFreshness: 0,
-    });
+  it('observes the direction without suggesting a load', () => {
+    const result = assessExerciseProgression(rising, 'squat');
     expect(result.verdict).toBe('increase');
-    expect(result.suggestion?.targetRange.targetKg).toBeGreaterThanOrEqual(112);
-    expect(result.suggestion?.targetRange.minKg).toBeGreaterThanOrEqual(112);
+    expect(result.model_version).toBe('strength-progression-v4');
+    expect(result).not.toHaveProperty('suggestion');
+    expect(result.reason).toMatch(/steigt/);
+    expect(result.reason).not.toMatch(/Empfehlung|Probiere/);
   });
 
   it('claims no direction from three monotonic sessions', () => {
@@ -121,7 +120,6 @@ describe('Strength progression', () => {
     );
     expect(result.verdict).toBe('not_assessable');
     expect(result.trend).toBeNull();
-    expect(result.suggestion).toBeNull();
     expect(result.reason).toMatch(/fehlen noch 2/);
   });
 
@@ -161,25 +159,7 @@ describe('Strength progression', () => {
       'squat',
     );
     expect(result.verdict).toBe('keep_going');
-    expect(result.suggestion?.verdict).toBe('keep_going');
     expect(result.plateau.status).toBe('unclear');
-  });
-
-  it('makes a check criterion mandatory for every generated suggestion', () => {
-    const results: ProgressionAssessment[] = [
-      assessExerciseProgression(rising, 'squat'),
-      assessExerciseProgression(flat, 'squat'),
-    ];
-    for (const result of results) {
-      expect(result.suggestion).not.toBeNull();
-      expect(result.suggestion?.reason).toBeTruthy();
-      expect(result.suggestion?.targetRange).toBeTruthy();
-      expect(result.suggestion?.expectedEffort).toBeTruthy();
-      expect(result.suggestion?.checkCriterion.method).toBe('strength-e1rm-v2');
-      expect(
-        result.suggestion?.checkCriterion.minimumRelevantChangePercent,
-      ).toBe(4);
-    }
   });
 
   it('does not let a single bad session flip the trend', () => {
@@ -244,10 +224,9 @@ describe('Strength progression', () => {
     expect(series.map(point => point.sessionId)).toEqual(['short']);
   });
 
-  it('gives no number and no fake suggestion when evidence is too thin', () => {
+  it('gives no direction when evidence is too thin', () => {
     const result = assessExerciseProgression([session('s1', 0, 100)], 'squat');
     expect(result.verdict).toBe('not_assessable');
-    expect(result.suggestion).toBeNull();
     expect(result.trend).toBeNull();
   });
 });

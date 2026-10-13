@@ -396,10 +396,6 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         prose.configure(enabled, model, apiKey)
     }
     @ReactMethod fun clearProseKey(promise: Promise) = task(promise) { prose.clearKey() }
-    @ReactMethod fun clearProseCache(promise: Promise) = task(promise) { prose.clearCache() }
-    @ReactMethod fun requestProse(engineJson: String, promise: Promise) = aiTask(promise) {
-        runBlocking { prose.request(JSONObject(engineJson)) }
-    }
 
     private fun aiTask(promise: Promise, block: () -> Any?) {
         aiWorker.execute {

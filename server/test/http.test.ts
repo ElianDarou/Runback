@@ -67,7 +67,7 @@ describe('Website and API', () => {
     assert.equal(wrong.status, 401);
   });
 
-  it('shows history, workouts, statistics and coach from the phone data', async () => {
+  it('shows history, workouts, statistics and goals from the phone data', async () => {
     const history = await (await page('/history')).text();
     assert.match(history, /<h1 class="title">Verlauf<\/h1>/);
     assert.match(history, /href="\/run\/r1"/);
@@ -93,10 +93,12 @@ describe('Website and API', () => {
     ).text();
     assert.match(runStatistics, /Wochen mit Lauf/);
 
-    const coach = await (await page('/coach')).text();
-    assert.match(coach, /Starte die ersten 2 km ruhiger\./);
-    assert.match(coach, /5 km unter 22 Minuten · bis 01\.12\.2026/);
-    assert.match(coach, /Schneller werden/);
+    const plan = await (await page('/plan')).text();
+    assert.match(plan, /5 km unter 22 Minuten · bis 01\.12\.2026/);
+    assert.match(plan, /Bankdrücken 80 kg/);
+    const goals = (await (await page('/api/v1/goals')).json()) as any;
+    assert.equal(goals.strength.goal, 'Bankdrücken 80 kg');
+    assert.equal((await page('/coach')).status, 404);
 
     assert.equal((await page('/run/gibt-es-nicht')).status, 404);
   });
@@ -268,12 +270,15 @@ describe('Website and API', () => {
   it('exports views and the database without credentials', async () => {
     const csv = await (await page('/api/v1/export/v1_runs.csv')).text();
     assert.match(csv, /^id,sport,purpose/);
-    const jsonl = (
-      await (await page('/api/v1/export/v1_recommendations.jsonl')).text()
-    )
+    const jsonl = (await (await page('/api/v1/export/v1_runs.jsonl')).text())
       .trim()
       .split('\n');
-    assert.equal(JSON.parse(jsonl[0]).status, 'active');
+    assert.equal(jsonl.length, 2);
+    assert.match(JSON.parse(jsonl[0]).id, /^r[12]$/);
+    assert.equal(
+      (await page('/api/v1/export/v1_recommendations.jsonl')).status,
+      404,
+    );
     assert.equal((await page('/api/v1/export/objects.csv')).status, 404);
 
     const file = Buffer.from(

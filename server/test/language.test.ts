@@ -123,15 +123,15 @@ describe('Website in English and German', () => {
 
   it('serves concurrent requests in both languages correctly', async () => {
     const [english, german] = await Promise.all([
-      text('/coach?lang=en'),
-      text('/coach?lang=de'),
+      text('/plan?lang=en'),
+      text('/plan?lang=de'),
       text('/plan', { 'accept-language': 'en' }),
       text('/plan', { 'accept-language': 'de' }),
     ]);
-    assert.match(english, /<h1 class="title">Coach<\/h1>/);
-    assert.match(english, /How a recommendation comes about/);
+    assert.match(english, /<h1 class="title">Plan<\/h1>/);
+    assert.match(english, /Goals/);
     assert.match(german, /<html lang="de">/);
-    assert.match(german, /So entsteht eine Empfehlung/);
+    assert.match(german, /Ziele/);
   });
 
   it('carries an explicitly chosen language into links', async () => {

@@ -4,7 +4,7 @@
  * A recording is first of all just that: time, distance, sensors. The sport
  * says how to read it. Running is the default — older records without the field
  * stay runs and are neither migrated nor evaluated differently. Analyses that
- * only apply to runs (pace, focus, weekly kilometers) do not appear for other
+ * only apply to runs (pace, weekly kilometers) do not appear for other
  * sports instead of showing wrong numbers.
  */
 import { tr } from './i18n';
@@ -40,7 +40,7 @@ export function normalizeSport(value: unknown): Sport {
     : DEFAULT_SPORT;
 }
 
-/** Only runs carry pace, focus and kilometer analyses. */
+/** Only runs carry pace and kilometer analyses. */
 export function isRun(record: { sport?: Sport }): boolean {
   return normalizeSport(record.sport) === 'running';
 }

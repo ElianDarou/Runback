@@ -23,7 +23,6 @@ import { loadDataset } from './records';
 import { SqlError, runSql } from './sql';
 import { SyncError, commit, deleteCopy, plan, receive } from './sync';
 import { planPage } from './web/plan';
-import { coachPage } from './web/coach';
 import type { PageContext } from './web/context';
 import { dataPage, loginPage, notFoundPage, type DataState } from './web/data';
 import { runPage, strengthPage } from './web/session';
@@ -601,7 +600,6 @@ export function createApp(store: Store, config: AppConfig) {
     if (path === '/history') return sendHtml(res, 200, historyPage(ctx));
     if (path === '/statistics') return sendHtml(res, 200, statisticsPage(ctx));
     if (path === '/plan') return sendHtml(res, 200, planPage(ctx));
-    if (path === '/coach') return sendHtml(res, 200, coachPage(ctx));
     if (path === '/data') {
       const sql = url.searchParams.get('sql');
       return sendHtml(

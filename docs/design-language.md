@@ -36,7 +36,7 @@ variants — whoever needs something new adds it there.
 ## Navigation
 
 **Today** and **History** remain fixed tabs; up to two more active features
-can be pinned in their own order: **Plan**, **Coach**,
+can be pinned in their own order: **Plan**,
 **Statistics**, **Routes**, **Templates**, or **Soreness**. Free slots stay
 free until the user fills them. Switching a feature off removes its slot; switching
 it on pins nothing automatically.
@@ -45,19 +45,18 @@ The gear icon opens Settings; if an own server is set up,
 a dot appears to its left: green connected, red unreachable. In Settings, **All features** also opens active features that have no tab.
 Under **Features**, the
 user decides what is active; under **Navigation**, what is in the bar.
-Recommendations and checks live in the optional Coach. **Goal & focus** remain
-reachable independently of the Coach. Templates have shared management
+**Goals** live under All features. Templates have shared management
 that stays usable even without planning. Devices and data remain in
 Settings.
 
-Where running and strength training both appear (Coach, Statistics), a
+Where running and strength training both appear (Statistics), a
 `Segmented` at the top selects the area — not every section twice.
 
 ## Page structure
 
 1. **Header** — brand or “‹ Back”, on the right the gear icon or the status.
 2. **Title** — one. No date, no greeting, no subtitle.
-3. **Recommendation** — the one thing the user can do here: a card with
+3. **Main action** — the one thing the user can do here: a card with
    one button.
 4. **Context** — values and lists that support it; compact rows.
 5. **Side paths** — management, details, deletion; at the bottom, collapsed
@@ -90,26 +89,24 @@ fit the same surface.
 Writing rules, German and English alike:
 
 - One sentence per statement, at most two per surface. Use “du”/“you”.
-- Actions start with the verb: “Lauf starten” / “Start run”, “Fokus speichern” /
-  “Save focus”.
+- Actions start with the verb: “Lauf starten” / “Start run”, “Ziel speichern” /
+  “Save goal”.
 - Three depths: the sentence → two lines of why → under “Details” the data basis,
   model version, and uncertainty.
 - Uncertainty in words (“ziemlich sicher” / “fairly sure”, “eher ein Eindruck” /
   “more of an impression”, “noch nicht klar” / “not clear yet”); intervals only under
   “Details”.
-- States as visible labels (`Badge`): Suggestion · Active · Paused · Completed ·
-  Cancelled (German: Vorschlag · Aktiv · Pausiert · Abgeschlossen · Abgebrochen).
-  Progress of a check as a number and `Progress` (“3 of 5 runs” / “3 von 5 Läufen”),
-  not as prose. The focus has no label, because it is not evaluated.
+- States as visible labels (`Badge`), e.g. Planned · Linked · Skipped (German:
+  Geplant · Verknüpft · Übersprungen). Progress as a number and `Progress`
+  (“3 of 5 runs” / “3 von 5 Läufen”), not as prose.
 - Verdicts in everyday language: “Not clear yet” / “Noch nicht klar”, “Too few
-  comparable runs” / “Zu wenig vergleichbare Läufe”, “You haven’t tried it yet” /
-  “Du hast es bisher nicht probiert”.
+  comparable runs” / “Zu wenig vergleichbare Läufe”.
 - Test for every text: **Would a running buddy say it like this?** “Your heart rate
   rose by 8 beats in the last third, even though you were just as fast” — yes.
   “HR drift 8 bpm at stable GAP” — no.
 - No meta-explanation of the app about itself. Caveats belong on the detail or
   settings page.
-- No label that explains the object type. “Your focus” plus the sentence is enough.
+- No label that explains the object type. “Your goal” plus the sentence is enough.
 - Show instructions only after the choice (first choose the source, then the steps),
   never all variants at once.
 

@@ -126,17 +126,11 @@ const history = [
 describe('buildRunReport', () => {
   const report = buildRunReport({
     run,
-    analysis: analyzeRun(run, undefined, history),
+    analysis: analyzeRun(run),
     timeline,
     context: {
       goal: 'Halbmarathon unter 1:50',
       goalTargetDate: '2024-10-06',
-      focus: {
-        version: 'focus-v1',
-        kind: 'endurance',
-        label: 'Ausdauer aufbauen',
-      },
-      adherence: 'yes',
       history,
     },
     now: start + 86400_000,
@@ -197,7 +191,8 @@ describe('buildRunReport', () => {
   it('includes impression, note, analysis and context', () => {
     expect(report).toContain('## Laufgefühl');
     expect(report).toContain('- Beine: 4 von 10');
-    expect(report).toContain('- Empfehlung ausprobiert: Ja');
+    expect(report).not.toContain('Empfehlung');
+    expect(report).not.toContain('Nächster Schritt');
     expect(report).toContain(
       '> Leichte Beine,\n> zweite Hälfte etwas schneller.',
     );
@@ -206,7 +201,6 @@ describe('buildRunReport', () => {
     expect(report).toContain(
       '- Ziel: Halbmarathon unter 1:50 (bis 2024-10-06)',
     );
-    expect(report).toContain('- Fokus: Ausdauer aufbauen');
     // Only earlier sessions count; neither the run itself nor later ones.
     expect(report).toContain(
       '- Vorher in den letzten 7 Tagen: 1 Einheit, 6,0 km',
@@ -233,7 +227,8 @@ describe('buildRunReport', () => {
     expect(data.timeline).toBeUndefined();
     expect(data.route).toBeUndefined();
     expect(data.dataQuality.model_version).toBe(QUALITY_VERSION);
-    expect(data.context.focus).toBe('Ausdauer aufbauen');
+    expect(data.analysis).not.toHaveProperty('recommendation');
+    expect(data.analysis).not.toHaveProperty('nextAction');
     expect(data.context.history.last7Days.sessions).toBe(1);
   });
 

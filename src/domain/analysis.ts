@@ -1,47 +1,29 @@
 import {
   EffortEstimate,
-  Experiment,
   PacingAnalysis,
   Provenance,
   QualityIssue,
   QualityReport,
-  Recommendation,
   RunAnalysis,
   RunSummary,
   SegmentAggregate,
 } from './types';
 
-import { finite, median } from './inference';
+import { finite } from './inference';
 import { fixed, tr } from './i18n';
-import { comparablePurpose, samePurpose } from './runTitle';
 
 /**
- * v2: The comparison base is the median of several comparable runs instead of
- * a single conspicuous run (regression to the mean), checked with a sign test.
- * Cadence lock also applies to steps per foot, flatness counts ascent and
+ * v2: Cadence lock also applies to steps per foot, flatness counts ascent and
  * descent instead of net elevation, and load is RPE × minutes.
+ * v3: Observation only; the analysis no longer derives a recommendation.
  */
-/** 2.1: easy and legacy long runs share comparison baselines. */
-export const MODEL_VERSION = 'runback-rules-2.1.0';
-export const LEGACY_MODEL_VERSION = 'runback-rules-2.0.0';
+export const MODEL_VERSION = 'runback-rules-3.0.0';
 /** Data-quality rules; 2: gaps per segment take effect (gapSeconds from distance model 3.0). */
 export const QUALITY_VERSION = 'runback-quality-2';
 export const PACING_METHOD = 'pacing-fade-v2';
 export const MAX_SEGMENTS = 500;
-/** From this median late pace fade on, a calmer start is suggested (chosen threshold). */
-export const FADE_TRIGGER_PERCENT = 8;
-/** Comparison base: at least three, at most five comparable runs. */
-export const MINIMUM_BASELINE_RUNS = 3;
-export const MAXIMUM_BASELINE_RUNS = 5;
-const BASELINE_WINDOW_DAYS = 90;
-const DURATION_TOLERANCE_PERCENT = 20;
-const DISTANCE_TOLERANCE_PERCENT = 15;
-/** Percentage points below which a change in pace fade counts as no change (chosen value). */
-export const MINIMUM_RELEVANT_CHANGE_PERCENT_POINTS = 3;
-export const SIGN_TEST_ALPHA = 0.05;
 /** Ascent plus descent per distance up to which a segment counts as flat. */
 export const FLAT_GRADE_PERCENT = 2;
-const DAY = 86400000;
 export const segmentId = (s: SegmentAggregate, i: number): string =>
   s.id ?? `split-${i + 1}`;
 export const provenance = (
@@ -434,349 +416,37 @@ export function flatPacingContext(
     .every(segmentIsFlat);
 }
 
-export interface BaselineRun {
-  run: RunSummary;
-  pacing: PacingAnalysis;
-}
-
-/**
- * Comparison runs for the baseline: same purpose, flat, similar size, within 90
- * days before. The triggering run comes first, the most recent earlier runs
- * follow; at most five in total.
- */
-export function comparableBaseline(
-  run: RunSummary,
-  pacing: PacingAnalysis,
-  history: RunSummary[],
-): BaselineRun[] {
-  const seen = new Set<string>([run.canonicalId ?? run.id, run.id]);
-  const previous: BaselineRun[] = [];
-  const ordered = [...history].sort(
-    (a, b) => b.startTime - a.startTime || a.id.localeCompare(b.id),
-  );
-  for (const candidate of ordered) {
-    const canonical = candidate.canonicalId ?? candidate.id;
-    if (seen.has(canonical) || seen.has(candidate.id)) {
-      continue;
-    }
-    if (
-      candidate.startTime >= run.startTime ||
-      run.startTime - candidate.startTime > BASELINE_WINDOW_DAYS * DAY ||
-      !samePurpose(candidate.purpose, run.purpose) ||
-      (candidate.sport ?? 'running') !== (run.sport ?? 'running')
-    ) {
-      continue;
-    }
-    if (
-      Math.abs(candidate.durationSeconds / run.durationSeconds - 1) * 100 >
-        DURATION_TOLERANCE_PERCENT ||
-      Math.abs(candidate.distanceMeters / run.distanceMeters - 1) * 100 >
-        DISTANCE_TOLERANCE_PERCENT
-    ) {
-      continue;
-    }
-    const candidatePacing = pacingFor(candidate);
-    if (!candidatePacing || !flatPacingContext(candidate, candidatePacing)) {
-      continue;
-    }
-    seen.add(canonical);
-    previous.push({ run: candidate, pacing: candidatePacing });
-    if (previous.length >= MAXIMUM_BASELINE_RUNS - 1) {
-      break;
-    }
-  }
-  return [{ run, pacing }, ...previous];
-}
-
-/**
- * `history` holds all known runs; the comparison baseline is built from them.
- * Without history there can be no recommendation, only observation.
- */
-export function analyzeRun(
-  run: RunSummary,
-  active?: Experiment,
-  history: RunSummary[] = [],
-): RunAnalysis {
+/** Observation only: data quality, effort, and the pace split of usable segments. */
+export function analyzeRun(run: RunSummary): RunAnalysis {
   const quality = assessQuality(run);
   const pacing = pacingFor(run, quality);
   const effort = estimateEffort(run, quality);
-  const result: RunAnalysis = {
+  const fade = pacing ? fixed(Math.abs(pacing.fadePercent), 1) : undefined;
+  const classification = !quality.paceUsable
+    ? tr(
+        'Dieser Lauf ist gespeichert; Zeit oder Distanz reichen für eine Tempoauswertung nicht aus.',
+        'This run is saved; time or distance is not enough for a pace review.',
+      )
+    : !pacing
+    ? tr(
+        'Zeit und Distanz sind für eine einfache Tempoauswertung nutzbar.',
+        'Time and distance are usable for a simple pace review.',
+      )
+    : pacing.fadePercent >= 0
+    ? tr(
+        `Die zweite Laufhälfte war ${fade} % langsamer (geeignete Abschnitte).`,
+        `The second half was ${fade}% slower (usable segments).`,
+      )
+    : tr(
+        `Die zweite Laufhälfte war ${fade} % schneller (geeignete Abschnitte).`,
+        `The second half was ${fade}% faster (usable segments).`,
+      );
+  return {
     ...provenance([run], pacing?.segmentIds ?? []),
-    classification: quality.paceUsable
-      ? tr(
-          'Zeit und Distanz sind für eine einfache Tempoauswertung nutzbar.',
-          'Time and distance are usable for a simple pace review.',
-        )
-      : tr(
-          'Dieser Lauf ist gespeichert; Zeit oder Distanz reichen für eine Tempoauswertung nicht aus.',
-          'This run is saved; time or distance is not enough for a pace review.',
-        ),
-    focus: tr(
-      'Noch nicht ausreichend beurteilbar.',
-      'Not enough data to judge yet.',
-    ),
-    nextAction: tr(
-      'Beim nächsten Lauf die Laufart angeben und geeignete Abschnitte aufzeichnen.',
-      'On the next run, set the run type and record usable segments.',
-    ),
-    state: 'insufficient',
+    classification,
     quality,
     effort,
     pacing,
-  };
-  if (active && (active.status === 'active' || active.status === 'paused')) {
-    return {
-      ...result,
-      focus:
-        active.status === 'paused'
-          ? tr(
-              'Deine Empfehlung ist pausiert.',
-              'Your recommendation is paused.',
-            )
-          : tr(
-              'Deine Empfehlung bleibt bestehen.',
-              'Your recommendation stays in place.',
-            ),
-      nextAction:
-        active.status === 'paused'
-          ? tr(
-              'Setze die Empfehlung fort, wenn sie wieder in deinen Alltag passt.',
-              'Resume the recommendation when it fits your routine again.',
-            )
-          : active.recommendation.action,
-      state: 'active',
-    };
-  }
-  if (comparablePurpose(run.purpose) === 'unknown') {
-    result.focus = tr(
-      'Ohne gewählte Laufart bewerten wir wechselndes Tempo nicht als Fehler.',
-      'Without a run type we do not treat changing pace as a mistake.',
-    );
-    result.question = {
-      id: `purpose-${run.id}`,
-      text: tr(
-        'War das wechselnde Tempo beabsichtigt?',
-        'Was the changing pace intended?',
-      ),
-      reason: tr(
-        'Die Laufart entscheidet, ob eine gleichmäßigere Einteilung sinnvoll ist.',
-        'The run type decides whether a more even pacing makes sense.',
-      ),
-    };
-    result.nextAction = tr(
-      'Ergänze bei Bedarf die Laufart; die Rückfrage ist freiwillig.',
-      'Add the run type if you like; the question is optional.',
-    );
-    return result;
-  }
-  if (run.purpose === 'intervals' || run.purpose === 'race') {
-    return {
-      ...result,
-      focus: tr(
-        'Temposchwankungen können zu dieser Laufart gehören.',
-        'Pace swings can belong to this run type.',
-      ),
-      nextAction: tr(
-        'Für diese Laufart gibt es noch keine ausreichend geprüfte Empfehlung.',
-        'There is no sufficiently tested recommendation for this run type yet.',
-      ),
-    };
-  }
-  if (!pacing) {
-    result.focus = tr(
-      'Für die Einteilung fehlen mindestens vier geeignete Abschnitte ab 500 m.',
-      'Pacing needs at least four usable segments from 500 m on.',
-    );
-    result.nextAction = tr(
-      'Laufart und geplanten Umfang beibehalten; aus diesen Daten folgt noch keine Änderung.',
-      'Keep the run type and planned distance; this data does not call for a change yet.',
-    );
-    return result;
-  }
-  const fade = fixed(Math.abs(pacing.fadePercent), 1);
-  result.classification =
-    pacing.fadePercent >= 0
-      ? tr(
-          `Die zweite Laufhälfte war ${fade} % langsamer (geeignete Abschnitte).`,
-          `The second half was ${fade}% slower (usable segments).`,
-        )
-      : tr(
-          `Die zweite Laufhälfte war ${fade} % schneller (geeignete Abschnitte).`,
-          `The second half was ${fade}% faster (usable segments).`,
-        );
-  if (!flatPacingContext(run, pacing)) {
-    return {
-      ...result,
-      focus: tr(
-        'Für eine Empfehlung zur Starteinteilung fehlen vergleichbar flache Abschnitte.',
-        'A recommendation on the start pacing needs comparably flat segments.',
-      ),
-      nextAction: tr(
-        'Tempoverteilung als Beobachtung nutzen. Für die Prüfung fehlen vergleichbar flache Abschnitte.',
-        'Use the pace split as an observation. The check needs comparably flat segments.',
-      ),
-    };
-  }
-  const baseline = comparableBaseline(run, pacing, history);
-  const fades = baseline.map(item => item.pacing.fadePercent);
-  const medianFade = median(fades);
-  if (baseline.length < MINIMUM_BASELINE_RUNS) {
-    if (pacing.fadePercent < FADE_TRIGGER_PERCENT) {
-      return {
-        ...result,
-        state: 'maintain',
-        focus: tr(
-          'Du hast zum Ende nicht deutlich an Tempo verloren.',
-          'You did not lose much pace toward the end.',
-        ),
-        nextAction: tr(
-          'Die bisherige Einteilung für diese Laufart beibehalten. Andere Trainingsaspekte bleiben offen.',
-          'Keep your current pacing for this run type. Other training aspects stay open.',
-        ),
-      };
-    }
-    return {
-      ...result,
-      focus: tr(
-        `Heute hat die zweite Hälfte deutlich nachgelassen. Ein einzelner Lauf trägt keine Empfehlung; es fehlen vergleichbare Läufe (${baseline.length} von ${MINIMUM_BASELINE_RUNS}).`,
-        `Today the second half clearly faded. A single run does not support a recommendation; comparable runs are missing (${baseline.length} of ${MINIMUM_BASELINE_RUNS}).`,
-      ),
-      nextAction: tr(
-        'Laufart und Umfang beibehalten. Entschieden wird über den Median mehrerer vergleichbarer flacher Läufe, nicht über einen Ausreißer.',
-        'Keep the run type and distance. The decision rests on the median of several comparable flat runs, not on one outlier.',
-      ),
-    };
-  }
-  if (medianFade < FADE_TRIGGER_PERCENT) {
-    return {
-      ...result,
-      state: 'maintain',
-      focus: tr(
-        `Im Median deiner letzten ${
-          baseline.length
-        } vergleichbaren Läufe war die zweite Hälfte ${fixed(
-          medianFade,
-          1,
-        )} % langsamer. Das ist kein Muster, das eine Änderung trägt.`,
-        `At the median of your last ${
-          baseline.length
-        } comparable runs, the second half was ${fixed(
-          medianFade,
-          1,
-        )}% slower. That is not a pattern that justifies a change.`,
-      ),
-      nextAction: tr(
-        'Die bisherige Einteilung für diese Laufart beibehalten. Andere Trainingsaspekte bleiben offen.',
-        'Keep your current pacing for this run type. Other training aspects stay open.',
-      ),
-    };
-  }
-  const opening =
-    median(baseline.map(item => item.pacing.firstPaceSecondsPerKm)) * 1.05;
-  const isLong = run.purpose === 'long';
-  const recommendation: Recommendation = {
-    ...provenance(
-      baseline.map(item => item.run),
-      pacing.segmentIds,
-    ),
-    id: `calmer-start:${run.id}:${MODEL_VERSION}`,
-    kind: 'calmer_start',
-    title: tr('Ruhiger beginnen', 'Start more calmly'),
-    action: tr(
-      `Beginne die nächste vergleichbar flache ${
-        isLong ? 'lange' : 'ruhige'
-      } Runde in der ersten Hälfte etwa 5 % ruhiger (${formatPace(
-        opening,
-      )} min/km). Behalte Laufart und geplanten Umfang bei.`,
-      `Start your next comparably flat ${
-        isLong ? 'long' : 'easy'
-      } run about 5% easier in the first half (${formatPace(
-        opening,
-      )} min/km). Keep the run type and planned distance.`,
-    ),
-    reason: tr(
-      `In ${
-        baseline.length
-      } vergleichbaren Läufen war die zweite Hälfte im Median ${fixed(
-        medianFade,
-        1,
-      )} % langsamer. Probiere einen ruhigeren Start aus; Gelände, Wetter und Tagesform können mitwirken.`,
-      `Across ${baseline.length} comparable runs, the second half was ${fixed(
-        medianFade,
-        1,
-      )}% slower at the median. Try a calmer start; terrain, weather and form on the day may play a part.`,
-    ),
-    // Only easy runs get here; an old long run keeps its stored type.
-    purpose: run.purpose === 'long' ? 'long' : 'easy',
-    goal: tr(
-      'Gleichmäßigere Einteilung: weniger später Tempoabfall bei gleicher Laufart und gleichem Umfang. Das ist keine Aussage über Leistungsfähigkeit.',
-      'More even pacing: less late pace fade at the same run type and distance. This says nothing about fitness.',
-    ),
-    criteria: {
-      method: PACING_METHOD,
-      baselineRunIds: baseline.map(item => item.run.id),
-      baselineFadePercent: medianFade,
-      signTestAlpha: SIGN_TEST_ALPHA,
-      baselineDurationSeconds: median(
-        baseline.map(item => item.run.durationSeconds),
-      ),
-      baselineDistanceMeters: median(
-        baseline.map(item => item.run.distanceMeters),
-      ),
-      baselineContext: run.context ? { ...run.context } : undefined,
-      openingPaceSecondsPerKm: opening,
-      openingPaceTolerancePercent: 3,
-      outcome: 'late_pace_fade_percent',
-      minimumRelevantChangePercentPoints:
-        MINIMUM_RELEVANT_CHANGE_PERCENT_POINTS,
-      durationTolerancePercent: DURATION_TOLERANCE_PERCENT,
-      distanceTolerancePercent: DISTANCE_TOLERANCE_PERCENT,
-      minimumObservations: 6,
-      minimumDays: 14,
-      reviewAfterRuns: 3,
-      maxDays: 56,
-      exclusions: [
-        tr('Andere Laufart', 'Different run type'),
-        tr(
-          'Dauer außerhalb ±20 % oder Distanz außerhalb ±15 %',
-          'Duration outside ±20% or distance outside ±15%',
-        ),
-        tr(
-          'Fehlende oder unzureichende Abschnitte',
-          'Missing or insufficient segments',
-        ),
-        tr(
-          'Unbekannte oder nicht flache Steigung',
-          'Unknown or not flat grade',
-        ),
-        tr(
-          'Bekannt deutlich abweichendes Wetter',
-          'Known weather that differs markedly',
-        ),
-      ],
-      stopConditions: [
-        tr(
-          'Bei Beschwerden die Empfehlung pausieren; das ist keine Diagnose',
-          'If you have complaints, pause the recommendation; this is not a diagnosis',
-        ),
-        tr('Geändertes Trainingsziel', 'Changed training goal'),
-        tr(
-          'Modellfehler oder gelöschte Vergleichsläufe',
-          'Model error or deleted comparison runs',
-        ),
-        tr(
-          'Nach 56 Tagen mit zu wenig vergleichbaren Läufen neu entscheiden',
-          'After 56 days with too few comparable runs, decide again',
-        ),
-      ],
-    },
-  };
-  return {
-    ...result,
-    state: 'recommendation',
-    focus: recommendation.reason,
-    nextAction: recommendation.action,
-    recommendation,
   };
 }
 

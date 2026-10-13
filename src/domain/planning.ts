@@ -1,17 +1,5 @@
-import {
-  analyzeRun,
-  assessQuality,
-  formatPace,
-  MODEL_VERSION,
-} from './analysis';
-import { uniqueRuns } from './experiments';
-import {
-  Experiment,
-  Recommendation,
-  RunAnalysis,
-  RunPurpose,
-  RunSummary,
-} from './types';
+import { assessQuality } from './analysis';
+import { RunPurpose, RunSummary } from './types';
 import { tr } from './i18n';
 import { comparablePurpose, samePurpose } from './runTitle';
 
@@ -367,63 +355,4 @@ export function compareRuns(
       ),
     ],
   };
-}
-
-export type EngineQuestion = 'biggest_problem' | 'why' | 'what_would_change';
-export function queryEngine(
-  question: EngineQuestion,
-  runs: RunSummary[],
-  active?: Experiment<Recommendation>,
-): { answer: string; model_version: string; runIds: string[] } {
-  const latest = uniqueRuns(runs).sort(
-    (a, b) => b.startTime - a.startTime || a.id.localeCompare(b.id),
-  )[0];
-  const analysis: RunAnalysis | undefined = latest
-    ? analyzeRun(latest, active, runs)
-    : undefined;
-  const answer = !analysis
-    ? tr(
-        'Noch keine Läufe vorhanden. Für eine Empfehlung fehlen noch passende Daten.',
-        'No runs yet. A recommendation still needs suitable data.',
-      )
-    : question === 'why'
-    ? active?.recommendation.reason ?? analysis.focus
-    : question === 'what_would_change'
-    ? active
-      ? tr(
-          'Die Auswertung späterer passender Läufe, ein geändertes Ziel oder ein Fehler im Rechenmodell können Anlass sein, neu zu entscheiden. Neue Daten allein ersetzen deine Empfehlung nicht.',
-          'Later matching runs, a changed goal or an error in the calculation model can be reason to decide again. New data alone does not replace your recommendation.',
-        )
-      : tr(
-          'Wenn klar ist, wofür du gelaufen bist, können mindestens vier passende flache Abschnitte zeigen, ob ein ruhigerer Start sinnvoll wäre.',
-          'Once it is clear what you ran for, at least four matching flat sections can show whether a calmer start would help.',
-        )
-    : analysis.focus;
-  return {
-    answer,
-    model_version: MODEL_VERSION,
-    runIds: latest ? [latest.id] : [],
-  };
-}
-export function nextRunPlan(
-  preset: RunPreset,
-  active?: Experiment<Recommendation>,
-): string {
-  const detail =
-    active?.status === 'active' &&
-    active.recommendation.purpose === preset.purpose
-      ? ` ${active.recommendation.action}`
-      : preset.targetPaceSecondsPerKm
-      ? tr(
-          ` Tempoziel ${formatPace(preset.targetPaceSecondsPerKm)} min/km.`,
-          ` Pace goal ${formatPace(preset.targetPaceSecondsPerKm)} min/km.`,
-        )
-      : tr(
-          ' Laufart und verfügbaren Umfang beachten.',
-          ' Check the run type and the time available.',
-        );
-  return tr(
-    `${preset.name}: etwa ${preset.durationMinutes} Minuten.${detail}`,
-    `${preset.name}: about ${preset.durationMinutes} minutes.${detail}`,
-  );
 }

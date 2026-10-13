@@ -1,9 +1,8 @@
 import { catalogExercise } from './catalog';
-import { focusLabel, type TrainingFocus } from './focus';
 import { finite } from './inference';
 import { dateFormat, numberFormat, tr } from './i18n';
 import { exerciseGroups, MUSCLE_GROUPS_VERSION } from './muscleGroups';
-import { PROGRESSION_CHECK_METHOD } from './progression';
+import { PROGRESSION_MODEL_VERSION } from './progression';
 import {
   CATALOG_VERSION,
   epley1RM,
@@ -622,7 +621,6 @@ export interface StrengthExportSummary {
   lastStart?: number;
   goal?: string;
   goalTargetDate?: string;
-  focus?: TrainingFocus | null;
 }
 
 /** Description of all files and columns — for people and language models. */
@@ -653,12 +651,6 @@ export function strengthExportReadme(summary: StrengthExportSummary): string {
       ? tr(
           `- Zieldatum: ${summary.goalTargetDate}`,
           `- Target date: ${summary.goalTargetDate}`,
-        )
-      : '',
-    summary.focus
-      ? tr(
-          `- Fokus Krafttraining: ${focusLabel(summary.focus)}`,
-          `- Strength focus: ${focusLabel(summary.focus)}`,
         )
       : '',
   ].filter(Boolean);
@@ -728,7 +720,7 @@ ${motion}
 ## Versionen
 
 - Krafttraining: siehe \`model_version\` und \`catalog_version\` je Einheit (aktueller Katalog \`${CATALOG_VERSION}\`).
-- Auswertung je Einheit \`${STRENGTH_SESSION_VERSION}\`, Puls je Satz \`${STRENGTH_HEART_INSIGHTS_VERSION}\`, Muskelgruppen \`${MUSCLE_GROUPS_VERSION}\`, geschätztes Maximum \`${PROGRESSION_CHECK_METHOD}\`.
+- Auswertung je Einheit \`${STRENGTH_SESSION_VERSION}\`, Puls je Satz \`${STRENGTH_HEART_INSIGHTS_VERSION}\`, Muskelgruppen \`${MUSCLE_GROUPS_VERSION}\`, geschätztes Maximum \`${PROGRESSION_MODEL_VERSION}\`.
 - Puls in \`heart.csv\`: Modell steht in \`sessions.jsonl\` unter \`heart.model_version\`.
 `,
     `# Runback – Strength training export
@@ -781,7 +773,7 @@ ${motion}
 ## Versions
 
 - Strength training: see \`model_version\` and \`catalog_version\` per session (current catalog \`${CATALOG_VERSION}\`).
-- Evaluation per session \`${STRENGTH_SESSION_VERSION}\`, heart rate per set \`${STRENGTH_HEART_INSIGHTS_VERSION}\`, muscle groups \`${MUSCLE_GROUPS_VERSION}\`, estimated max \`${PROGRESSION_CHECK_METHOD}\`.
+- Evaluation per session \`${STRENGTH_SESSION_VERSION}\`, heart rate per set \`${STRENGTH_HEART_INSIGHTS_VERSION}\`, muscle groups \`${MUSCLE_GROUPS_VERSION}\`, estimated max \`${PROGRESSION_MODEL_VERSION}\`.
 - Heart rate in \`heart.csv\`: the model is in \`sessions.jsonl\` under \`heart.model_version\`.
 `,
   );

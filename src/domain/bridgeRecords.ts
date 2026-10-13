@@ -1,4 +1,4 @@
-import type { Run } from './trainingRecords';
+import type { Run, Settings } from './trainingRecords';
 import { applyStrengthEndCorrection } from './endCorrection';
 import { normalizePurpose } from './runTitle';
 import { normalizeIntervalState, normalizeRunTarget } from './runTarget';
@@ -12,6 +12,29 @@ import type { StrongWorkout } from './vendorImports';
  * same records and reads them with the same functions, so the app and the
  * website show the same numbers.
  */
+
+/** Keys of the removed recommendations (Coach) and focus; dropped on read. */
+const RETIRED_SETTINGS = [
+  'experiments',
+  'dismissedRecommendations',
+  'adherence',
+  'postponedUntil',
+  'strengthPostponedUntil',
+  'trainingFocus',
+  'strengthFocus',
+];
+
+/** Saved settings without retired keys, so the next save no longer carries them. */
+export function normalizeSettings(raw: unknown): Settings {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    return {};
+  }
+  const settings: Settings = { ...(raw as Settings) };
+  for (const key of RETIRED_SETTINGS) {
+    delete settings[key];
+  }
+  return settings;
+}
 
 export function normalizeRun(raw: any): Run {
   const feedback = raw.feedback || {};

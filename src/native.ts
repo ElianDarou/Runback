@@ -27,6 +27,7 @@ import { summarize } from './domain/strength';
 import {
   mergeStrengthSessions,
   normalizeRun,
+  normalizeSettings,
   normalizeStrength,
   strengthSessionFromBridge,
 } from './domain/bridgeRecords';
@@ -256,7 +257,7 @@ export const native = {
     return {
       runs: (raw.runs || []).map(normalizeRun),
       recording: raw.recording ? normalizeRun(raw.recording) : null,
-      settings: raw.settings || {},
+      settings: normalizeSettings(raw.settings),
       capabilities: raw.capabilities || {},
     };
   },

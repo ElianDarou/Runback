@@ -70,7 +70,7 @@ export function sqlExamples(tx: Translator): { label: string; sql: string }[] {
 const SCOPE_EN: Record<keyof ServerScope, string> = {
   runs: 'Runs',
   strength: 'Strength training',
-  coach: 'Coach',
+  coach: 'Goals & plans',
   gps: 'GPS routes',
   health: 'Health values',
 };

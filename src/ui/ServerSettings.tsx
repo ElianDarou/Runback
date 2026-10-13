@@ -217,8 +217,8 @@ export function ServerSettings({
           <Disclosure title={tr('Details', 'Details')}>
             <Copy muted>
               {tr(
-                'Das Telefon bleibt das Original. Die Website liest eine Kopie; Pläne und Empfehlungen änderst du in der App.',
-                'The phone stays the original. The website reads a copy; you change plans and recommendations in the app.',
+                'Das Telefon bleibt das Original. Die Website liest eine Kopie; Ziele und Pläne änderst du in der App.',
+                'The phone stays the original. The website reads a copy; you change goals and plans in the app.',
               )}
             </Copy>
             <Copy muted>

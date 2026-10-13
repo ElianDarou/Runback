@@ -1,11 +1,8 @@
-import type { TrainingFocus } from './focus';
 import type {
   GaitPlacement,
   RunSummary,
   RunPurpose,
   Sport,
-  Experiment,
-  Adherence,
 } from './types';
 import type { ScheduleState } from './schedule';
 import type { IntervalState, RunTarget, RunTargetMemory } from './runTarget';
@@ -33,12 +30,9 @@ export interface Settings {
   /** Goal distance in km and goal time in seconds for the running goal (`domain/raceGoal`). */
   goalDistanceKm?: number;
   goalTargetSeconds?: number;
-  trainingFocus?: TrainingFocus | null;
-  /** Strength area: own goal and own focus. */
+  /** Strength area: own goal. */
   strengthGoal?: string;
   strengthGoalTargetDate?: string;
-  strengthFocus?: TrainingFocus | null;
-  strengthPostponedUntil?: number;
   minutes?: number;
   /** No longer read: the run type is asked after the run (`likelyPurpose`). */
   purpose?: RunPurpose;
@@ -64,12 +58,8 @@ export interface Settings {
   /** What the user wants to see and when Runback asks (`domain/features`). */
   features?: FeatureSettings;
   presets?: Preset[];
-  experiments?: Experiment[];
-  dismissedRecommendations?: string[];
   /** Deleted import suggestions; original sessions and saved templates are kept. */
   dismissedStrengthImportTemplateIds?: string[];
-  adherence?: Record<string, Adherence>;
-  postponedUntil?: number;
   /** App language; missing means the device language (`ui/deviceLanguage`). Kotlin reads it for notifications. */
   language?: Language;
   [key: string]: unknown;

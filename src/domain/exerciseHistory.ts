@@ -67,11 +67,7 @@ function trendLabel(verdict: ProgressionVerdict): string {
   }
 }
 
-/**
- * Observation instead of action: the strength progression's reasons partly
- * already state a recommendation ("Try …"). That belongs only in the coach's
- * recommendation, so here we use our own neutral sentences.
- */
+/** Short, neutral sentences per verdict; the app never tells the user to change the load. */
 function trendReason(verdict: ProgressionVerdict): string | undefined {
   switch (verdict) {
     case 'increase':

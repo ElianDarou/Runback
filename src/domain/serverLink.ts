@@ -15,7 +15,7 @@ export const SERVER_SYNC_PROTOCOL = 1;
 export interface ServerScope {
   runs: boolean;
   strength: boolean;
-  /** Goal, focus, recommendations, plans and templates. */
+  /** Goals, plans and templates; the key keeps its old name for the sync protocol. */
   coach: boolean;
   /** Routes as coordinates. Without approval, no coordinate leaves the phone. */
   gps: boolean;
@@ -68,11 +68,8 @@ export const SERVER_SCOPE_OPTIONS: {
   ),
   scopeOption(
     'coach',
-    { de: 'Coach', en: 'Coach' },
-    {
-      de: 'Ziel, Fokus, Empfehlungen und Pläne',
-      en: 'Goal, focus, recommendations and plans',
-    },
+    { de: 'Ziele & Pläne', en: 'Goals & plans' },
+    { de: 'Ziele, Pläne und Vorlagen', en: 'Goals, plans and templates' },
   ),
   scopeOption(
     'gps',

@@ -10,11 +10,7 @@ export type RunPurpose =
  * readable without migration. Labels and rules: sport.ts.
  */
 export type Sport = 'running' | 'cycling';
-/**
- * Area of a recommendation, focus, or goal. Running and strength training are
- * checked on separate data and each have at most one active recommendation.
- * A missing field means running (older records).
- */
+/** Training area of a goal or view. Running and strength training stay separate. */
 export type Area = 'running' | 'strength';
 
 /** Native, bounded derived splits, never a raw sensor stream. */
@@ -235,123 +231,9 @@ export interface PacingAnalysis {
   coefficientOfVariation: number;
   segmentIds: string[];
 }
-export interface Recommendation extends Provenance {
-  priority?: { version: string; focusLabel: string; weight: number };
-  id: string;
-  kind: 'calmer_start';
-  area?: 'running';
-  title: string;
-  action: string;
-  reason: string;
-  purpose: 'easy' | 'long';
-  goal: string;
-  criteria: ExperimentCriteria;
-}
-export interface ExperimentCriteria {
-  method: 'pacing-fade-v2';
-  /** Triggering run plus comparable earlier runs; the baseline is their median. */
-  baselineRunIds: string[];
-  /** Median late pace fade of the comparison runs, in percent. */
-  baselineFadePercent: number;
-  /** Level of the sign test fixed in advance (two-sided). */
-  signTestAlpha: number;
-  baselineDurationSeconds: number;
-  baselineDistanceMeters: number;
-  baselineContext?: RunSummary['context'];
-  openingPaceSecondsPerKm: number;
-  openingPaceTolerancePercent: number;
-  outcome: 'late_pace_fade_percent';
-  minimumRelevantChangePercentPoints: number;
-  durationTolerancePercent: number;
-  distanceTolerancePercent: number;
-  minimumObservations: number;
-  minimumDays: number;
-  reviewAfterRuns: number;
-  maxDays: number;
-  exclusions: string[];
-  stopConditions: string[];
-}
-/** Recommendation in the strength area: the load of one exercise. */
-export interface StrengthCriteria {
-  method: 'strength-e1rm-v2';
-  exerciseId: string;
-  baselineSessionIds: string[];
-  /** Median of the best working e1RM of the comparison sessions, in kg. */
-  baselineE1RM: number;
-  targetMinKg: number;
-  targetMaxKg: number;
-  targetReps: number;
-  outcome: 'best_working_e1rm_percent';
-  minimumRelevantChangePercent: number;
-  /** Level of the sign test fixed in advance (two-sided). */
-  signTestAlpha: number;
-  minimumObservations: number;
-  reviewAfterSessions: number;
-  maxDays: number;
-  exclusions: string[];
-  stopConditions: string[];
-}
-export interface StrengthRecommendation extends Provenance {
-  priority?: { version: string; focusLabel: string; weight: number };
-  id: string;
-  kind: 'strength_load';
-  area: 'strength';
-  title: string;
-  action: string;
-  reason: string;
-  goal: string;
-  exerciseId: string;
-  exerciseName: string;
-  direction: 'increase' | 'reduce' | 'plateau';
-  /** Primary regions of the exercise; decides whether it affects running results. */
-  regions: string[];
-  criteria: StrengthCriteria;
-}
-export type AnyRecommendation = Recommendation | StrengthRecommendation;
-export type ExperimentStatus = 'active' | 'paused' | 'completed' | 'aborted';
-export interface Experiment<R extends AnyRecommendation = AnyRecommendation> {
-  id: string;
-  recommendation: R;
-  acceptedAt: number;
-  status: ExperimentStatus;
-  history: { at: number; status: ExperimentStatus; reason: string }[];
-}
-export type Adherence = 'yes' | 'no' | 'unknown';
-export interface ExperimentEvaluation extends Provenance {
-  verdict:
-    | 'improved'
-    | 'worsened'
-    | 'no_relevant_effect'
-    | 'insufficient_evidence'
-    | 'not_implemented';
-  summary: string;
-  eligibleRunIds: string[];
-  excluded: { runId: string; reason: string }[];
-  adherence: {
-    runId: string;
-    value: Adherence;
-    source: 'reported' | 'derived' | 'unknown';
-  }[];
-  changePercentPoints?: number;
-  observedRange?: [number, number];
-  /** Sign test against the relevance threshold; ties do not count. */
-  signTest?: {
-    positives: number;
-    negatives: number;
-    ties: number;
-    pValue: number;
-    alpha: number;
-  };
-  causalClaim: false;
-}
 export interface RunAnalysis extends Provenance {
   classification: string;
-  focus: string;
-  nextAction: string;
-  state: 'recommendation' | 'maintain' | 'insufficient' | 'active';
   quality: QualityReport;
   effort: EffortEstimate;
   pacing?: PacingAnalysis;
-  recommendation?: Recommendation;
-  question?: { id: string; text: string; reason: string };
 }

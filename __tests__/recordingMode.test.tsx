@@ -504,10 +504,15 @@ it('previews a next-run pace and a race goal without changing persisted settings
   stored.runs = ['a', 'b', 'c'].map(id =>
     finished({ id, distanceMeters: 5000, durationSeconds: 1500 }),
   );
+  const openGoalTimes = async () => {
+    await tap('Heute');
+    await tap('Einstellungen');
+    await tap('Alle Funktionen');
+    await tapText('Vorhaben je Bereich');
+    await tapText('Zielzeiten');
+  };
   await mount();
-  await tap('Coach');
-  await tapText('Ziele & Fokus');
-  await tapText('Zielzeiten');
+  await openGoalTimes();
   await act(async () => {
     tree.root.findByType(DistanceTimes).props.onChoose(5, 1500);
   });
@@ -516,9 +521,7 @@ it('previews a next-run pace and a race goal without changing persisted settings
     node => node.props.accessibilityLabel === 'Zielzeit',
   );
   expect(goalTime.some(node => node.props.value === '25:00')).toBe(true);
-  await tap('Coach');
-  await tapText('Ziele & Fokus');
-  await tapText('Zielzeiten');
+  await openGoalTimes();
   await act(async () => {
     tree.root.findByType(DistanceTimes).props.onNextRun(5, 1500);
   });

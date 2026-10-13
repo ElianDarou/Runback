@@ -9,8 +9,8 @@ import java.net.URI
 object ServerPayload {
     const val PROTOCOL = 1
     val DEFAULT_SCOPE get() = JSONObject().put("runs", true).put("strength", true).put("coach", true).put("gps", false).put("health", false)
-    private val SETTINGS = setOf("goal", "goalTargetDate", "goalDistanceKm", "goalTargetSeconds", "trainingFocus", "strengthGoal",
-        "strengthGoalTargetDate", "strengthFocus", "experiments", "dismissedRecommendations", "adherence", "schedule", "presets", "features")
+    private val SETTINGS = setOf("goal", "goalTargetDate", "goalDistanceKm", "goalTargetSeconds", "strengthGoal",
+        "strengthGoalTargetDate", "schedule", "presets", "features")
     private val PRIVATE = setOf("latitude", "longitude", "lat", "lon", "lng", "geometry", "route", "routePlan", "routePlans", "plannedRoute",
         "startLocation", "endLocation", "location", "coordinates", "weather", "weatherLocation")
     private val SECRETS = Regex(".*(key|token|password|secret|authorization).*", RegexOption.IGNORE_CASE)

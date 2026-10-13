@@ -26,7 +26,7 @@ import org.json.JSONObject
  * (same 64 MB per file / 512 MB expanded / 2.000 entry budget as track imports).
  * High-frequency intraday series are capped and summarized; derived scores
  * (readiness, training status, Body Battery) are stored as display-only context
- * and never feed recommendations.
+ * and never feed analyses.
  */
 object VendorImports {
     /** Bumped whenever import interpretation changes; carried into imported runs. */
@@ -64,7 +64,7 @@ object VendorImports {
         val elevationGainMeters: Double? = null,
         val sourceActivityId: String? = null,
         val sourceActivityType: String? = null,
-        /** Bounded vendor fields kept for inspection; never used by recommendations. */
+        /** Bounded vendor fields kept for inspection; never used by analyses. */
         val details: String? = null,
     )
 

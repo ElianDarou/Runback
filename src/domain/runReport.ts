@@ -12,7 +12,6 @@
  * native; the time course arrives as a bounded aggregate from Kotlin.
  */
 import type {
-  Adherence,
   ElevationSummary,
   MovementPhase,
   MovementState,
@@ -31,12 +30,13 @@ import {
   usesPace,
 } from './sport';
 import { hasRunTarget, runTargetLabel, type RunTarget } from './runTarget';
-import { focusLabel, type TrainingFocus } from './focus';
 import { QUALITY_VERSION } from './analysis';
 import { dateFormat, locale, percentSign, quote, tr } from './i18n';
 
-export const RUN_REPORT_VERSION = 'runback-report-2';
-export const RUN_ANALYSIS_EXPORT_VERSION = 'runback-analysis-1';
+/** 3: no recommendation, next step, focus, or adherence anymore. */
+export const RUN_REPORT_VERSION = 'runback-report-3';
+/** 2: the analysis block carries no state, next step, or recommendation. */
+export const RUN_ANALYSIS_EXPORT_VERSION = 'runback-analysis-2';
 
 export interface ReportRoutePoint {
   latitude: number;
@@ -76,8 +76,6 @@ export interface ReportRun extends RunSummary {
 export interface RunReportContext {
   goal?: string;
   goalTargetDate?: string;
-  focus?: TrainingFocus | null;
-  adherence?: Adherence;
   /** Other runs for weekly volume and context; the run itself may be included. */
   history?: RunSummary[];
 }
@@ -632,7 +630,7 @@ function eventLines(run: ReportRun): string[] {
   });
 }
 
-function impressionLines(run: ReportRun, context?: RunReportContext): string[] {
+function impressionLines(run: ReportRun): string[] {
   const lines: string[] = [];
   if (run.rpe?.legs !== undefined)
     lines.push(`- ${tr('Beine', 'Legs')}: ${run.rpe.legs} ${tr('von 10', 'of 10')}`);
@@ -640,18 +638,6 @@ function impressionLines(run: ReportRun, context?: RunReportContext): string[] {
     lines.push(
       `- ${tr('Atmung', 'Breathing')}: ${run.rpe.breathing} ${tr('von 10', 'of 10')}`,
     );
-  if (context?.adherence) {
-    const adherenceLabel = (
-      {
-        yes: tr('Ja', 'Yes'),
-        no: tr('Nein', 'No'),
-        unknown: tr('Unklar', 'Unclear'),
-      } as const
-    )[context.adherence];
-    lines.push(
-      `- ${tr('Empfehlung ausprobiert', 'Tried the recommendation')}: ${adherenceLabel}`,
-    );
-  }
   if (run.note?.trim())
     lines.push(`- ${tr('Notiz', 'Note')}:\n\n${blockquote(run.note)}`);
   return lines;
@@ -786,7 +772,6 @@ export function dataQualityFor(
 function analysisLines(run: ReportRun, analysis: RunAnalysis): string[] {
   const lines: string[] = [];
   lines.push(`- ${tr('Einordnung', 'Assessment')}: ${analysis.classification}`);
-  lines.push(`- ${tr('Nächster Schritt', 'Next step')}: ${analysis.nextAction}`);
   const dq = dataQualityFor(run, analysis);
   const gpsCoverage =
     dq.gps.coverage !== undefined
@@ -877,18 +862,6 @@ function analysisLines(run: ReportRun, analysis: RunAnalysis): string[] {
       ),
     );
   }
-  if (analysis.recommendation) {
-    const r = analysis.recommendation;
-    lines.push(
-      `- ${tr('Empfehlung', 'Recommendation')} ${quote(r.title)}: ${r.action}`,
-    );
-    lines.push(`  - ${tr('Begründung', 'Reason')}: ${r.reason}`);
-  }
-  if (analysis.question) {
-    lines.push(
-      `- ${tr('Offene Frage der App', 'Open question in the app')}: ${analysis.question.text}`,
-    );
-  }
   lines.push(
     `- ${tr('Modellversion', 'Model version')}: ${analysis.model_version}`,
   );
@@ -915,8 +888,6 @@ function contextLines(run: ReportRun, context?: RunReportContext): string[] {
       : '';
     lines.push(`- ${tr('Ziel', 'Goal')}: ${context.goal.trim()}${until}`);
   }
-  if (context.focus)
-    lines.push(`- ${tr('Fokus', 'Focus')}: ${focusLabel(context.focus)}`);
   const history = historyBefore(run, context);
   const skipped = (context.history || []).filter(
     r => r.id !== run.id && r.startTime < run.startTime && isAccidentalRun(r),
@@ -1224,33 +1195,19 @@ export function buildRunAnalysisExport(input: RunReportInput) {
     analysis: analysis
       ? {
           model_version: analysis.model_version,
-          state: analysis.state,
           classification: analysis.classification,
-          nextAction: analysis.nextAction,
           pacing: analysis.pacing,
           effort: {
             speedIndex: round(analysis.effort.speedIndex, 1),
             unit: analysis.effort.unit,
             uncertainty: analysis.effort.uncertainty,
           },
-          recommendation: analysis.recommendation
-            ? {
-                id: analysis.recommendation.id,
-                kind: analysis.recommendation.kind,
-                title: analysis.recommendation.title,
-                action: analysis.recommendation.action,
-                reason: analysis.recommendation.reason,
-              }
-            : undefined,
-          question: analysis.question?.text,
         }
       : undefined,
     dataQuality: dataQualityFor(run, analysis),
     context: {
       goal: context?.goal?.trim() || undefined,
       goalTargetDate: context?.goalTargetDate,
-      focus: context?.focus ? focusLabel(context.focus) : undefined,
-      adherence: context?.adherence,
       history: historyStats(run, context),
     },
     events: run.events
@@ -1305,28 +1262,15 @@ function machineReadable(input: RunReportInput) {
     analysis: analysis
       ? {
           model_version: analysis.model_version,
-          state: analysis.state,
           classification: analysis.classification,
-          nextAction: analysis.nextAction,
           effort: analysis.effort,
           pacing: analysis.pacing,
-          recommendation: analysis.recommendation
-            ? {
-                id: analysis.recommendation.id,
-                kind: analysis.recommendation.kind,
-                title: analysis.recommendation.title,
-                action: analysis.recommendation.action,
-                reason: analysis.recommendation.reason,
-              }
-            : undefined,
         }
       : undefined,
     context: context
       ? {
           goal: context.goal?.trim() || undefined,
           goalTargetDate: context.goalTargetDate,
-          focus: context.focus ? focusLabel(context.focus) : undefined,
-          adherence: context.adherence,
           history: historyStats(run, context),
         }
       : undefined,
@@ -1358,7 +1302,7 @@ export function buildRunReport(input: RunReportInput): string {
     )}`,
   );
 
-  const impression = impressionLines(run, context);
+  const impression = impressionLines(run);
   if (impression.length)
     parts.push(`## ${words.feelingLabel}\n\n${impression.join('\n')}`);
 

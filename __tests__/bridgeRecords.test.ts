@@ -1,12 +1,28 @@
 import {
   mergeStrengthSessions,
   normalizeRun,
+  normalizeSettings,
   normalizeStrength,
   strengthSessionFromBridge,
 } from '../src/domain/bridgeRecords';
 import { strengthSession } from './fixtures/strengthSessions';
 
 describe('Records for app and website', () => {
+  it('drops retired recommendation keys from saved settings', () => {
+    expect(
+      normalizeSettings({
+        goal: '10 km',
+        experiments: [{ id: 'e1' }],
+        dismissedRecommendations: ['r1'],
+        adherence: { r1: 'yes' },
+        postponedUntil: 1,
+        strengthPostponedUntil: 2,
+        trainingFocus: { kind: 'speed' },
+        strengthFocus: null,
+      }),
+    ).toEqual({ goal: '10 km' });
+    expect(normalizeSettings(null)).toEqual({});
+  });
   it('reads native names and keeps origin and model version', () => {
     const run = normalizeRun({
       id: 'r1',

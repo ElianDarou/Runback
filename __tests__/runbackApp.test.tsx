@@ -1,6 +1,6 @@
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { Alert, BackHandler, Text, TextInput } from 'react-native';
+import { BackHandler, Text, TextInput } from 'react-native';
 
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
@@ -74,7 +74,7 @@ import {
   Sheet,
   SwitchRow,
 } from '../src/ui/components';
-import { acceptRecommendation, analyzeRun } from '../src/domain';
+import { analyzeRun } from '../src/domain';
 import {
   buildRunReport,
   buildRunAnalysisExport,
@@ -87,15 +87,6 @@ import { parseStrongCsvPreview } from '../src/domain/vendorImports';
 import { importedStrengthSession } from '../src/domain/strengthImports';
 
 const DAY = 86400000;
-/** Two comparable earlier runs: only the median of several runs supports a recommendation. */
-const previousRuns = (base: RunSummary): RunSummary[] =>
-  [1, 2].map(index => ({
-    ...base,
-    id: `${base.id}-prev-${index}`,
-    startTime: base.startTime - index * 7 * DAY,
-    endTime: base.startTime - index * 7 * DAY + (base.endTime - base.startTime),
-  }));
-
 function textContent(node: TestRenderer.ReactTestInstance): string {
   return node.children
     .map(child =>
@@ -220,8 +211,7 @@ describe('Today', () => {
     expect(text).not.toContain('Minuten eingeplant');
     // No arrow that promises an expansion (Design Language § 8).
     expect(text).not.toContain('⌄');
-    // Focus, goal and templates have their place in Coach and Plan.
-    expect(text).not.toContain('Dein Fokus');
+    // Goals and templates have their place under All features and in Plan.
     expect(text).not.toContain('Dein Ziel');
     expect(text).not.toContain('Laufvorlagen');
     // The run type is chosen only at the moment of starting.
@@ -294,7 +284,6 @@ describe('History', () => {
       await act(async () => row.props.onPress());
     };
     try {
-      await tap(tree, 'Verlauf');
       await tap(tree, 'Statistik');
       await tap(tree, 'Bestwerte, 12,0 km');
       await pressRow('Längster Lauf');
@@ -340,222 +329,45 @@ describe('History', () => {
   });
 });
 
-describe('Focus', () => {
-  it.each(['active', 'paused'] as const)(
-    'shows a read-only follow-up when %s, including missing comparison data and real alternatives',
-    async status => {
-      const baseline = {
-        id: 'deleted',
-        startTime: 30 * DAY,
-        endTime: 30 * DAY + 1320000,
-        durationSeconds: 1320,
-        distanceMeters: 2000,
-        purpose: 'easy' as const,
-        source: 'test',
-        status: 'complete',
-        segments: [300, 300, 360, 360].map((durationSeconds, index) => ({
-          id: String(index),
-          durationSeconds,
-          distanceMeters: 500,
-          gradePercent: 0,
-        })),
-      };
-      const accepted = {
-        ...acceptRecommendation(
-          analyzeRun(baseline, undefined, previousRuns(baseline))
-            .recommendation!,
-          30 * DAY + 2000000,
-        ),
-        status,
-      };
-      const before = JSON.stringify(accepted);
-      // An old long run counts as easy now; the later recommendation differs
-      // from the active one by its volume.
-      const later = {
-        ...baseline,
-        id: 'later',
-        startTime: 60 * DAY,
-        endTime: 60 * DAY + 2640000,
-        durationSeconds: 2640,
-        distanceMeters: 4000,
-        purpose: 'long' as const,
-        segments: baseline.segments.map(segment => ({
-          ...segment,
-          durationSeconds: segment.durationSeconds * 2,
-          distanceMeters: segment.distanceMeters * 2,
-        })),
-      };
-      jest.mocked(native.state).mockResolvedValueOnce({
-        runs: [
-          later,
-          ...previousRuns(later),
-          { ...later, id: 'incomplete', segments: [] },
-        ],
-        recording: null,
-        settings: { onboardedAt: 1, minutes: 30, experiments: [accepted] },
-        capabilities: {},
-      });
-      let tree!: TestRenderer.ReactTestRenderer;
-      await act(async () => {
-        tree = TestRenderer.create(<RunbackApp />);
-      });
-      try {
-        // Today shows the recommendation compactly with its state; Coach carries the rest.
-        expect(screenText(tree)).toContain(accepted.recommendation.action);
-        expect(screenText(tree)).toContain(
-          status === 'paused' ? 'Pausiert' : 'Aktiv',
-        );
-        expect(screenText(tree)).not.toContain('Danach vorgesehen');
-        await tapText(tree, accepted.recommendation.action);
-        expect(screenText(tree)).toContain('Danach vorgesehen');
-        expect(screenText(tree)).not.toContain('Empfehlung annehmen');
-        expect(screenText(tree)).not.toContain('Empfehlung abschließen');
-        await tap(tree, 'Details');
-        expect(screenText(tree)).toContain(
-          'Vergleichslauf nicht mehr vorhanden',
-        );
-        expect(screenText(tree)).toContain('Auswahl für danach');
-        expect(screenText(tree)).toContain(
-          'fehlen mindestens vier geeignete Abschnitte',
-        );
-        expect(JSON.stringify(accepted)).toBe(before);
-        await tap(tree, 'Empfehlung verwalten');
-        await tap(tree, 'Empfehlung abschließen');
-        expect(screenText(tree)).toContain('Vorschlag');
-        expect(screenText(tree)).toContain('Empfehlung annehmen');
-        expect(screenText(tree)).not.toContain('Danach vorgesehen');
-        const saved = jest.mocked(native.saveSettings).mock.calls.at(-1)![0];
-        expect(saved.experiments).toHaveLength(1);
-        expect(saved.experiments![0].status).toBe('completed');
-        expect(saved.experiments![0].recommendation).toEqual(
-          accepted.recommendation,
-        );
-      } finally {
-        await act(async () => {
-          tree.unmount();
-        });
-      }
-    },
-  );
-  it('keeps focus and recommendation independent through editing, removal, pause and completion', async () => {
-    const baseline = {
-      id: 'baseline',
-      startTime: 30 * DAY,
-      endTime: 30 * DAY + 1320000,
-      durationSeconds: 1320,
-      distanceMeters: 2000,
-      purpose: 'easy' as const,
-      source: 'test',
-      status: 'complete',
-      segments: [300, 300, 360, 360].map((durationSeconds, index) => ({
-        id: String(index),
-        distanceMeters: 500,
-        durationSeconds,
-        gradePercent: 0,
-      })),
-    };
-    const accepted = acceptRecommendation(
-      analyzeRun(baseline, undefined, previousRuns(baseline)).recommendation!,
-      30 * DAY + 2000000,
-    );
-    const saved = JSON.stringify(accepted);
+describe('Goals', () => {
+  it('keeps one goal per area under All features, without focus or recommendation', async () => {
     jest.mocked(native.state).mockResolvedValueOnce({
-      runs: [baseline, ...previousRuns(baseline)],
+      runs: [],
       recording: null,
-      settings: {
-        onboardedAt: 1,
-        minutes: 30,
-        goal: 'Halbmarathon im April',
-        experiments: [accepted],
-      },
+      settings: { onboardedAt: 1, goal: '10 km', strengthGoal: 'Klimmzüge' },
       capabilities: {},
     });
-    let tree!: TestRenderer.ReactTestRenderer;
-    await act(async () => {
-      tree = TestRenderer.create(<RunbackApp />);
-    });
-    try {
-      await tap(tree, 'Coach');
-      await tapText(tree, 'Ziele & Fokus');
-      await tapText(tree, 'Noch kein Fokus');
-      await act(async () => {
-        tree.root.findByType(ChipGroup).props.onChange('injury_free');
-      });
-      await tap(tree, 'Fokus speichern');
-      const settings = jest.mocked(native.saveSettings).mock.calls.at(-1)![0];
-      expect(settings.trainingFocus?.kind).toBe('injury_free');
-      expect(JSON.stringify(settings.experiments![0])).toBe(saved);
-      await tap(tree, 'Fokus entfernen');
-      expect(
-        jest.mocked(native.saveSettings).mock.calls.at(-1)![0].trainingFocus,
-      ).toBeNull();
-      expect(
-        JSON.stringify(
-          jest.mocked(native.saveSettings).mock.calls.at(-1)![0]
-            .experiments![0],
-        ),
-      ).toBe(saved);
-      await act(async () => {
-        tree.root.findByType(ChipGroup).props.onChange('habit');
-      });
-      await tap(tree, 'Fokus speichern');
-      const focus = jest.mocked(native.saveSettings).mock.calls.at(-1)![0]
-        .trainingFocus;
-      await tap(tree, 'Zurück');
-      await tapText(tree, 'Halbmarathon im April');
-      await tap(tree, 'Ziel entfernen');
-      expect(
-        jest.mocked(native.saveSettings).mock.calls.at(-1)![0].trainingFocus,
-      ).toEqual(focus);
-      expect(
-        JSON.stringify(
-          jest.mocked(native.saveSettings).mock.calls.at(-1)![0]
-            .experiments![0],
-        ),
-      ).toBe(saved);
-      await tap(tree, 'Heute');
-      await tapText(tree, accepted.recommendation.action);
-      await tap(tree, 'Empfehlung verwalten');
-      await tap(tree, 'Empfehlung pausieren');
-      expect(screenText(tree)).toContain('Pausiert');
-      expect(screenText(tree)).not.toContain('Probiere die Empfehlung aus.');
-      expect(
-        jest.mocked(native.saveSettings).mock.calls.at(-1)![0].trainingFocus,
-      ).toEqual(focus);
-      await tap(tree, 'Empfehlung fortsetzen');
-      await tap(tree, 'Empfehlung abschließen');
-      const completed = jest.mocked(native.saveSettings).mock.calls.at(-1)![0];
-      expect(completed.trainingFocus).toEqual(focus);
-      expect(completed.experiments![0].status).toBe('completed');
-      expect(completed.experiments![0].recommendation).toEqual(
-        accepted.recommendation,
-      );
-      expect(screenText(tree)).toContain('Abgeschlossen');
-      expect(screenText(tree)).not.toContain('Empfehlung annehmen');
-      expect(screenText(tree)).not.toMatch(
-        /Arbeitsthema|nächste Handlung|Intervention|Laufempfehlung|Baseline|inconclusive|Prüfbedingung/,
-      );
-    } finally {
-      await act(async () => {
-        tree.unmount();
-      });
-    }
-  });
-  it('is reachable from Coach and replaces the old wording', async () => {
     const tree = await render();
-    // The focus is the basis of the recommendation and lives in Coach.
-    expect(screenText(tree)).not.toContain('Noch kein Fokus');
-    await tap(tree, 'Coach');
-    await tapText(tree, 'Ziele & Fokus');
-    expect(screenText(tree)).toContain('Noch kein Fokus');
-    await tapText(tree, 'Noch kein Fokus');
+    expect(tabLabels(tree)).toEqual(['Heute', 'Plan', 'Statistik', 'Verlauf']);
+    await tap(tree, 'Einstellungen');
+    await tap(tree, 'Alle Funktionen');
+    await tapText(tree, 'Vorhaben je Bereich');
     const text = screenText(tree);
-
-    expect(text).toContain('Fokus-Art');
-    expect(text).toContain('Eigene Bezeichnung');
-    expect(text).not.toContain('Ergebnis bisher');
-    expect(text).not.toContain('Empfehlung abschließen');
-    expect(text).not.toContain('Eine Änderung. Eine nachvollziehbare Prüfung.');
+    expect(text).toContain('10 km');
+    expect(text).toContain('Klimmzüge');
+    expect(text).not.toContain('Fokus');
+    expect(text).not.toContain('Empfehlung');
+    await tapText(tree, 'Klimmzüge');
+    const input = (label: string) =>
+      tree.root.find(
+        item =>
+          item.props?.label === label &&
+          typeof item.props?.onChangeText === 'function',
+      );
+    await act(async () => {
+      input('Ziel im Krafttraining').props.onChangeText('10 Klimmzüge');
+      input('Zieldatum im Krafttraining').props.onChangeText('01.03.2027');
+    });
+    await tap(tree, 'Ziel speichern');
+    const saved = jest.mocked(native.saveSettings).mock.calls.at(-1)![0];
+    expect(saved.strengthGoal).toBe('10 Klimmzüge');
+    expect(saved.strengthGoalTargetDate).toBe('2027-03-01');
+    expect(saved.goal).toBe('10 km');
+    await tap(tree, 'Zurück');
+    expect(screenText(tree)).toContain('Zielzeiten');
+    await tap(tree, 'Zurück');
+    expect(screenText(tree)).toContain('Aktiv');
+    expect(screenText(tree)).toContain('Alle Funktionen');
     await act(async () => {
       tree.unmount();
     });
@@ -832,27 +644,18 @@ describe('Features', () => {
     expect(text).toContain('Lauf starten');
     expect(text).not.toContain('Krafttraining starten');
     expect(text).not.toContain('Diese Woche im Plan ansehen');
-    expect(tabLabels(tree)).toEqual(['Heute', 'Coach', 'Verlauf']);
-    await tap(tree, 'Coach');
-    // Without strength there is no area switch, and without a key there is no chat.
-    expect(screenText(tree)).not.toContain('Trainingschat');
-    expect(
-      tree.root.findAll(item => item.props?.accessibilityLabel === 'Bereich'),
-    ).toHaveLength(0);
+    expect(tabLabels(tree)).toEqual(['Heute', 'Statistik', 'Verlauf']);
     await act(async () => {
       tree.unmount();
     });
   });
 
-  it('shows the strength coach and the strength start alone without running', async () => {
+  it('shows the strength start alone without running', async () => {
     withFeatures({ areas: { running: false, strength: true } });
     const tree = await render();
     const text = screenText(tree);
     expect(text).toContain('Krafttraining starten');
     expect(text).not.toContain('Lauf starten');
-    await tap(tree, 'Coach');
-    expect(screenText(tree)).toContain('Erstes Training starten');
-    expect(screenText(tree)).not.toContain('aufgezeichneter Lauf');
     await act(async () => {
       tree.unmount();
     });
@@ -883,43 +686,8 @@ describe('Features', () => {
     });
   });
 
-  it('shows recommendations on request only in Coach', async () => {
-    const baseline = {
-      id: 'base',
-      startTime: 30 * DAY,
-      endTime: 30 * DAY + 1320000,
-      durationSeconds: 1320,
-      distanceMeters: 2000,
-      purpose: 'easy' as const,
-      source: 'test',
-      status: 'complete',
-      segments: [300, 300, 360, 360].map((durationSeconds, index) => ({
-        id: String(index),
-        durationSeconds,
-        distanceMeters: 500,
-        gradePercent: 0,
-      })),
-    };
-    jest.mocked(native.state).mockResolvedValueOnce({
-      runs: [baseline, ...previousRuns(baseline)],
-      recording: null,
-      settings: {
-        onboardedAt: 1,
-        features: { recommendations: { running: 'on_request' } },
-      } as any,
-      capabilities: {},
-    });
-    const tree = await render();
-    expect(screenText(tree)).not.toContain('Vorschlag');
-    await tap(tree, 'Coach');
-    expect(screenText(tree)).toContain('Empfehlung annehmen');
-    await act(async () => {
-      tree.unmount();
-    });
-  });
-
   it('fills free slots with statistics and templates and keeps features without a tab reachable', async () => {
-    withFeatures({ planning: { enabled: false }, coach: { enabled: false } });
+    withFeatures({ planning: { enabled: false }, navigation: { tabs: [] } });
     const tree = await render();
     expect(tabLabels(tree)).toEqual(['Heute', 'Verlauf']);
     await tap(tree, 'Einstellungen');
@@ -959,8 +727,8 @@ describe('Features', () => {
     expect(tabLabels(tree)).not.toContain('Muskelkater');
     await tap(tree, 'Einstellungen');
     await tap(tree, 'Alle Funktionen');
-    await tapText(tree, 'Ziele & Fokus');
-    expect(screenText(tree)).toContain('Noch kein Fokus');
+    await tapText(tree, 'Vorhaben je Bereich');
+    expect(screenText(tree)).toContain('Kein Ziel gesetzt');
     await act(async () => tree.unmount());
   });
 
@@ -974,13 +742,13 @@ describe('Features', () => {
     await act(async () =>
       tree.root
         .findAllByType(CheckRow)
-        .find(row => row.props.title === 'Statistik')!
+        .find(row => row.props.title === 'Vorlagen')!
         .props.onToggle(true),
     );
-    expect(tabLabels(tree)).toEqual(['Heute', 'Plan', 'Coach', 'Verlauf']);
-    await tapText(tree, 'Coach ersetzen');
     expect(tabLabels(tree)).toEqual(['Heute', 'Plan', 'Statistik', 'Verlauf']);
-    expect(settingsSaved().features?.coach.enabled).toBe(true);
+    await tapText(tree, 'Statistik ersetzen');
+    expect(tabLabels(tree)).toEqual(['Heute', 'Plan', 'Vorlagen', 'Verlauf']);
+    expect(settingsSaved().features?.statistics.enabled).toBe(true);
     const saved = settingsSaved();
     await act(async () => tree.unmount());
     withFeatures(saved.features);
@@ -988,77 +756,10 @@ describe('Features', () => {
     expect(tabLabels(restarted)).toEqual([
       'Heute',
       'Plan',
-      'Statistik',
+      'Vorlagen',
       'Verlauf',
     ]);
-    await tap(restarted, 'Einstellungen');
-    await tap(restarted, 'Alle Funktionen');
-    await tapText(restarted, 'Coach');
-    expect(screenText(restarted)).toContain('Noch keine Empfehlung');
     await act(async () => restarted.unmount());
-  });
-
-  it('pauses Coach without data loss and without automatic resume', async () => {
-    const baseline: RunSummary = {
-      id: 'base',
-      startTime: 30 * DAY,
-      endTime: 30 * DAY + 1320000,
-      durationSeconds: 1320,
-      distanceMeters: 2000,
-      purpose: 'easy',
-      source: 'test',
-      status: 'complete',
-      segments: [300, 300, 360, 360].map((durationSeconds, index) => ({
-        id: String(index),
-        durationSeconds,
-        distanceMeters: 500,
-        gradePercent: 0,
-      })),
-    };
-    const accepted = acceptRecommendation(
-      analyzeRun(baseline, undefined, previousRuns(baseline)).recommendation!,
-      30 * DAY + 2000000,
-    );
-    jest.mocked(native.state).mockResolvedValueOnce({
-      runs: [baseline, ...previousRuns(baseline)],
-      recording: null,
-      settings: {
-        onboardedAt: 1,
-        experiments: [accepted],
-        trainingFocus: { kind: 'endurance', label: 'Weiter laufen' },
-        goal: '10 km',
-      },
-      capabilities: {},
-    } as any);
-    const tree = await render();
-    const alert = jest
-      .spyOn(Alert, 'alert')
-      .mockImplementation((_title, _message, buttons) =>
-        buttons?.find(button => button.text === 'Ausblenden')?.onPress?.(),
-      );
-    try {
-      await tap(tree, 'Einstellungen');
-      await tapText(tree, 'Funktionen');
-      await flip(tree, 'Coach');
-      expect(settingsSaved().experiments?.[0].status).toBe('paused');
-      expect(settingsSaved().experiments?.[0].recommendation).toEqual(
-        accepted.recommendation,
-      );
-      expect(settingsSaved().goal).toBe('10 km');
-      expect(tabLabels(tree)).not.toContain('Coach');
-      expect(screenText(tree)).toContain('Schalte ein');
-      await flip(tree, 'Coach');
-      expect(settingsSaved().experiments?.[0].status).toBe('paused');
-      expect(tabLabels(tree)).not.toContain('Coach');
-      await tap(tree, 'Heute');
-      await tap(tree, 'Einstellungen');
-      await tap(tree, 'Alle Funktionen');
-      await tapText(tree, 'Coach');
-      expect(screenText(tree)).toContain('Pausiert');
-    } finally {
-      alert.mockRestore();
-      await act(async () => tree.unmount());
-    }
   });
 
   it('removes switched-off statistics and templates also from history and the training start', async () => {
@@ -1258,10 +959,7 @@ describe('Export run reports together', () => {
     });
     const expectedInput = {
       run: run('second'),
-      analysis: analyzeRun(run('second'), undefined, [
-        run('first'),
-        run('second'),
-      ]),
+      analysis: analyzeRun(run('second')),
       timeline: { rows: [], stepSeconds: 60 },
       context: { history: [run('first'), run('second')] },
     };
@@ -1484,7 +1182,7 @@ describe('Adding run type later', () => {
     });
     const tree = await render();
     activeTree = tree;
-    await tap(tree, 'Coach');
+    await tap(tree, 'Verlauf');
     expect(screenText(tree)).toContain('Bei 2 Läufen fehlt die Laufart.');
     await tap(tree, 'Laufart nachtragen');
     expect(screenText(tree)).toContain('Noch 2 Läufe ohne Laufart');
@@ -1503,6 +1201,24 @@ describe('Adding run type later', () => {
     expect(screenText(tree)).toContain('1 Lauf bleibt ohne Laufart.');
   });
 
+  it('hides the backlog while the running area is switched off', async () => {
+    jest.mocked(native.state).mockImplementation(() =>
+      Promise.resolve({
+        runs: [run('neu', 2, 'unknown')],
+        recording: null,
+        settings: {
+          onboardedAt: 1,
+          features: { areas: { running: false, strength: true } },
+        },
+        capabilities: {},
+      } as any),
+    );
+    const tree = await render();
+    activeTree = tree;
+    await tap(tree, 'Verlauf');
+    expect(screenText(tree)).not.toContain('Laufart nachtragen');
+  });
+
   it('stays on the run when saving fails', async () => {
     jest.mocked(native.state).mockImplementation(() =>
       Promise.resolve({
@@ -1517,7 +1233,7 @@ describe('Adding run type later', () => {
       .mockRejectedValueOnce(new Error('Speicher voll.'));
     const tree = await render();
     activeTree = tree;
-    await tap(tree, 'Coach');
+    await tap(tree, 'Verlauf');
     await tap(tree, 'Laufart nachtragen');
     const chips = tree.root
       .findAllByType(ChipGroup)
@@ -1580,7 +1296,12 @@ describe('Strength history after import', () => {
       );
       await tap(tree, 'Verlauf');
       expect(screenText(tree)).toContain('Import Push');
-      await tap(tree, 'Statistik');
+      await act(async () =>
+        tree.root
+          .findAllByType(Segmented)
+          .find(item => item.props.label === 'Ansicht')!
+          .props.onChange('stats'),
+      );
       expect(screenText(tree)).toContain('Bankdrücken');
       expect(screenText(tree)).not.toContain('Noch keine Läufe');
     } finally {

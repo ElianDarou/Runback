@@ -12,21 +12,58 @@ import {
   title,
 } from './ui';
 import { counted, date, decimal, numberFormat } from './format';
+import type { Translator } from './i18n';
 import { loadObject } from '../records';
 import { catalogExercise } from '../../../src/domain/catalog';
 
-/** Only appointments and templates already saved; the server creates no plan. */
+function goalLine(
+  tx: Translator,
+  goal: unknown,
+  targetDate: unknown,
+): string | null {
+  if (typeof goal !== 'string' || !goal.trim()) return null;
+  const dateText =
+    typeof targetDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(targetDate)
+      ? tx.t(
+          ` · bis ${date(tx, new Date(`${targetDate}T12:00:00`).getTime())}`,
+          ` · until ${date(tx, new Date(`${targetDate}T12:00:00`).getTime())}`,
+        )
+      : '';
+  return `${goal.trim()}${dateText}`;
+}
+
+/** Goals, appointments and templates already saved; the server creates no plan. */
 export function planPage(ctx: PageContext) {
   const { tx } = ctx;
   const settings = ctx.data.settings;
+  const runningGoal = goalLine(tx, settings?.goal, settings?.goalTargetDate);
+  const strengthGoal = goalLine(
+    tx,
+    settings?.strengthGoal,
+    settings?.strengthGoalTargetDate,
+  );
+  const goals =
+    runningGoal || strengthGoal
+      ? section(
+          tx.t('Ziele', 'Goals'),
+          html`${runningGoal
+            ? row({ title: tx.t('Laufen', 'Running'), subtitle: runningGoal })
+            : null}${strengthGoal
+            ? row({
+                title: tx.t('Krafttraining', 'Strength training'),
+                subtitle: strengthGoal,
+              })
+            : null}`,
+        )
+      : null;
   const sessions = settings?.schedule?.sessions ?? [];
   const templates = loadObject(ctx.store, 'templates')?.templates;
   const appointments = !settings
     ? emptyState(
         tx.t('Noch kein Plan übertragen', 'No plan transferred yet'),
         tx.t(
-          'Gib in der App „Coach“ für deinen Server frei.',
-          'Share “Coach” with your server in the app.',
+          'Gib in der App „Ziele & Pläne“ für deinen Server frei.',
+          'Share “Goals & plans” with your server in the app.',
         ),
       )
     : !sessions.length
@@ -124,7 +161,7 @@ export function planPage(ctx: PageContext) {
     },
     html`${title(
       tx.t('Plan', 'Plan'),
-    )}${appointments}${strengthTemplates}${presets}${copy(
+    )}${goals}${appointments}${strengthTemplates}${presets}${copy(
       tx.t('Ändere deinen Plan in der App.', 'Change your plan in the app.'),
       true,
     )}`,
