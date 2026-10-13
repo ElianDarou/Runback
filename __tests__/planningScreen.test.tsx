@@ -352,7 +352,7 @@ describe('PlanningScreen', () => {
         node.props.accessibilityLabel ===
         'Einheit Nur geplanter Lauf, Dienstag, 11. März',
     );
-    expect(textContent(linked)).toContain('Lauf · 30 min · Erledigt');
+    expect(textContent(linked)).toContain('Lauf · Erledigt · 5,00 km · 30:00');
     expect(textContent(dateOnly)).toContain('Lauf · 30 min · Geplant');
     unmount(tree);
   });
@@ -392,6 +392,62 @@ describe('PlanningScreen', () => {
     expect(saved.map(session => session.purpose)).toEqual(['easy', 'long']);
     // 9.5 km × 1.1 = 10.5 km at 6:00 /km ≈ 63 min → 65 min, above the usual budget.
     expect(saved[1].minutes).toBe(65);
+    unmount(tree);
+  });
+
+  it('shows unplanned workouts on their day next to the plan', () => {
+    const tree = renderPlanning(
+      emptySchedule({
+        sessions: [
+          plannedSession({
+            id: 'linked',
+            title: 'Geplanter Lauf',
+            activityId: 'planned-run',
+          }),
+          plannedSession({
+            id: 'open',
+            title: 'Offener Lauf',
+            date: '2025-03-14',
+          }),
+        ],
+      }),
+      {
+        now: localAt('2025-03-12', 12),
+        runs: [
+          completedRun('planned-run', '2025-03-10'),
+          completedRun('free-run', '2025-03-11'),
+        ],
+      },
+    );
+    const text = screenText(tree);
+    expect(text).toContain('Ohne Plan');
+    // Two recorded runs, one of two planned sessions done, 10 km in total.
+    expect(text).toContain('1 von 2 geplanten Einheiten erledigt');
+    expect(text).toContain('10,0');
+    expect(text).toContain('1:00 h');
+    expect(text).not.toContain('Ohne Plan trainiert');
+    unmount(tree);
+  });
+
+  it('shows done and planned markers in the month and the chosen day below', async () => {
+    const tree = renderPlanning(
+      emptySchedule({
+        sessions: [
+          plannedSession({ id: 'later', title: 'Später', date: '2025-03-20' }),
+        ],
+      }),
+      {
+        now: localAt('2025-03-12', 12),
+        runs: [completedRun('free-run', '2025-03-11')],
+      },
+    );
+    await press(tree, 'Monat');
+    expect(screenText(tree)).toContain('März 2025');
+    await press(tree, 'Donnerstag, 20. März, 1 Einheit');
+    expect(screenText(tree)).toContain('Donnerstag, 20. März');
+    expect(screenText(tree)).toContain('Später');
+    await press(tree, 'Dienstag, 11. März, 1 Einheit');
+    expect(screenText(tree)).toContain('Ohne Plan');
     unmount(tree);
   });
 

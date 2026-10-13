@@ -188,6 +188,8 @@ export interface FeatureSettings {
     restVibration: boolean;
     /** Short, short, long as a sound, phone only. */
     restSound: boolean;
+    /** Spoken "Rest is over" with the next exercise and set, phone only. */
+    restVoice: boolean;
     defaultRestSeconds: number;
     rir: boolean;
     templateOfDay: boolean;
@@ -252,6 +254,7 @@ export const DEFAULT_FEATURES: FeatureSettings = {
     restTimer: true,
     restVibration: true,
     restSound: false,
+    restVoice: false,
     defaultRestSeconds: 120,
     rir: true,
     templateOfDay: true,
@@ -383,6 +386,7 @@ export function normalizeFeatures(
       restTimer: bool(strength.restTimer, d.strength.restTimer),
       restVibration: bool(strength.restVibration, d.strength.restVibration),
       restSound: bool(strength.restSound, d.strength.restSound),
+      restVoice: bool(strength.restVoice, d.strength.restVoice),
       defaultRestSeconds:
         Number.isInteger(restSeconds) &&
         restSeconds >= MIN_REST_SECONDS &&

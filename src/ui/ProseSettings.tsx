@@ -45,7 +45,7 @@ export function ProseSettings() {
     }
   };
   return (
-    <Section title={tr('OpenRouter & Chat', 'OpenRouter & chat')}>
+    <Section title="OpenRouter">
       <Copy muted>
         {tr(
           'Hier verbindest du deinen eigenen OpenRouter-Schlüssel. Im Trainingschat kannst du Fragen stellen und lokale Trainingsdaten einbeziehen. Alle Auswertungen rechnet Runback weiterhin lokal.',

@@ -552,6 +552,9 @@ class RecordingService : Service(), SensorEventListener, LocationListener {
         val text = announcer.onProgress(session.optDouble("distanceMeters", Double.NaN),
             session.optDouble("elapsedMs", Double.NaN) / 1000.0, now, heart,
             now - latestGuidanceGpsAt in 0..10_000L) ?: return
+        // Felt even when music drowns the voice; one short double pulse, unlike goal cues.
+        if (announcer.vibrate) getSystemService(Vibrator::class.java)
+            ?.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 80, 100, 80), -1))
         if (routeSpeechReady && routeSpeech?.isSpeaking != true) {
             mainHandler.post {
                 routeSpeech?.speak(text, TextToSpeech.QUEUE_ADD, "runback-progress")
@@ -1021,6 +1024,11 @@ class RecordingService : Service(), SensorEventListener, LocationListener {
         @Volatile var musicSink: ((JSONObject?) -> Unit)? = null
         @Volatile private var activeService: RecordingService? = null
         fun hasLiveService(): Boolean = activeService != null
+        /** Voice or rate changed in the settings: the next cue already uses them. */
+        fun reloadSpeech() {
+            val service = activeService ?: return
+            service.mainHandler.post { service.routeSpeech?.reload() }
+        }
         /** The new target pace applies to the cues from now on; it is already saved. */
         fun changeTargetPace(runId: String, secondsPerKm: Double) {
             activeService?.worker?.post {

@@ -37,8 +37,15 @@ it('saves progress announcements from settings apart from the goal', async () =>
       />,
     );
   });
+  const switchRow = (title: string) =>
+    tree.root
+      .findAllByType(SwitchRow)
+      .find(item => item.props.title === title)!;
   await act(async () => {
-    tree.root.findByType(SwitchRow).props.onChange(true);
+    switchRow('Zwischenstände ansagen').props.onChange(true);
+  });
+  await act(async () => {
+    switchRow('Dabei kurz vibrieren').props.onChange(true);
   });
   await act(async () => {
     tree.root
@@ -67,6 +74,7 @@ it('saves progress announcements from settings apart from the goal', async () =>
       trigger: 'time',
       interval: 10,
       heartRate: true,
+      vibrate: true,
     }),
   });
   onSave.mockClear();

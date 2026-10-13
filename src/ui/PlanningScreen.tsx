@@ -18,9 +18,21 @@ import {
 import type { Run } from '../native';
 import {
   displaySessionName,
+  summarize,
   type StrengthSession,
   type WorkoutTemplate,
 } from '../domain/strength';
+import {
+  linkedActivity,
+  planEntriesByDate,
+  planStatus,
+  planSummary,
+  type PlanActivity,
+  type PlanEntry,
+  type PlanStatus,
+  type PlanSummary,
+} from '../domain/planView';
+import { isRun, sportNoun } from '../domain/sport';
 import type { RunPurpose } from '../domain/types';
 import { RUN_PURPOSES, runTitle } from '../domain/runTitle';
 import { buildUpWeek } from '../domain/buildUp';
@@ -47,6 +59,7 @@ import {
   type WeekSuggestion,
 } from '../domain/schedule';
 import {
+  Badge,
   Button,
   Card,
   ChipGroup,
@@ -55,9 +68,11 @@ import {
   Field,
   Input,
   Notice,
+  Progress,
   Row,
   Section,
   Segmented,
+  Stat,
   Title,
   ToggleChips,
   color,
@@ -65,7 +80,13 @@ import {
   space,
   type as typography,
 } from './components';
-import { dateFormat, getLanguage, tr } from '../domain/i18n';
+import {
+  dateFormat,
+  fixed,
+  getLanguage,
+  numberFormat,
+  tr,
+} from '../domain/i18n';
 
 export type { ScheduleState, ScheduledSession } from '../domain/schedule';
 
@@ -82,6 +103,8 @@ export interface PlanningScreenProps {
   onManageTemplates?: () => void;
   /** Opens the route planner. Without it, there is no entry point. */
   onOpenRoutePlanner?: () => void;
+  /** Opens a recorded run or strength session. */
+  onOpenActivity?: (kind: 'run' | 'strength', id: string) => void;
   busy?: boolean;
   /** Offer "suggest week". People who plan on their own hide it. */
   showSuggest?: boolean;
@@ -93,7 +116,6 @@ export interface PlanningScreenProps {
 
 type ViewMode = 'week' | 'month';
 type PlanningScope = 'week' | 'routine';
-type ActivityStatus = 'planned' | 'skipped' | 'started' | 'done';
 
 interface SessionDraft {
   id?: string;
@@ -254,10 +276,6 @@ function formatMinutes(value: number): string {
   return `${Math.max(0, Math.round(value))} min`;
 }
 
-function formatActivityDate(value: number): string {
-  return dateLabel(localDateFrom(value));
-}
-
 function cloneState(state: ScheduleState): ScheduleState {
   return {
     version: state.version,
@@ -308,41 +326,7 @@ function scheduleSignature(state: ScheduleState): string {
   });
 }
 
-function actualSessionStatus(
-  session: ScheduledSession,
-  runs: Run[],
-  strengthSessions: StrengthSession[],
-): ActivityStatus {
-  if (session.status === 'skipped') return 'skipped';
-  if (!session.activityId) return 'planned';
-
-  if (session.kind === 'run') {
-    const run = runs.find(
-      candidate =>
-        candidate.id === session.activityId ||
-        candidate.canonicalId === session.activityId,
-    );
-    if (!run) return 'planned';
-    const runStatus = String(run.status || '').toLowerCase();
-    const finished =
-      run.endTime > run.startTime &&
-      ['completed', 'finished', 'complete', 'done', 'imported'].includes(
-        runStatus,
-      );
-    return finished ? 'done' : 'started';
-  }
-
-  const strength = strengthSessions.find(
-    candidate => candidate.id === session.activityId,
-  );
-  if (!strength) return 'planned';
-  return strength.status === 'finished' &&
-    (strength.endTime ?? 0) > strength.startTime
-    ? 'done'
-    : 'started';
-}
-
-function statusLabel(status: ActivityStatus): string {
+function statusLabel(status: PlanStatus): string {
   switch (status) {
     case 'done':
       return tr('Erledigt', 'Done');
@@ -397,22 +381,92 @@ function inMonth(value: Date, month: Date): boolean {
   );
 }
 
-function actualIdMatches(
-  activityId: string | undefined,
-  id: string,
-  canonicalId?: string,
-) {
-  return Boolean(
-    activityId && (activityId === id || activityId === canonicalId),
-  );
+function runActivity(run: Run): PlanActivity {
+  const status = String(run.status || '').toLowerCase();
+  return {
+    id: run.id,
+    canonicalId: run.canonicalId,
+    kind: 'run',
+    sport: run.sport,
+    startTime: run.startTime,
+    title: runTitle(run),
+    finished:
+      run.endTime > run.startTime &&
+      ['completed', 'finished', 'complete', 'done', 'imported'].includes(
+        status,
+      ),
+    durationSeconds: run.durationSeconds > 0 ? run.durationSeconds : undefined,
+    distanceMeters: run.distanceMeters > 0 ? run.distanceMeters : undefined,
+    runningMeters:
+      isRun(run) && run.distanceMeters > 0 ? run.distanceMeters : undefined,
+  };
 }
 
-function actualIsFinishedRun(run: Run): boolean {
-  const status = String(run.status || '').toLowerCase();
-  return (
-    run.endTime > run.startTime &&
-    ['completed', 'finished', 'complete', 'done', 'imported'].includes(status)
-  );
+function strengthActivity(session: StrengthSession): PlanActivity {
+  const ended = (session.endTime ?? 0) > session.startTime;
+  return {
+    id: session.id,
+    kind: 'strength',
+    startTime: session.startTime,
+    title:
+      displaySessionName(session.name) ||
+      tr('Krafttraining', 'Strength training'),
+    finished: session.status === 'finished' && ended,
+    durationSeconds: ended
+      ? Math.round((session.endTime! - session.startTime) / 1000)
+      : undefined,
+    sets: summarize(session).completedSets,
+  };
+}
+
+/** "28:14" or "1:02:05"; unknown stays "–". */
+function clock(seconds: number | undefined): string {
+  if (seconds === undefined || !Number.isFinite(seconds)) return '–';
+  const total = Math.max(0, Math.round(seconds));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor(total / 60) % 60;
+  const rest = String(total % 60).padStart(2, '0');
+  return hours
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${rest}`
+    : `${minutes}:${rest}`;
+}
+
+/** Hours and minutes for period totals: "4:35 h" or "45 min". */
+function totalTime(seconds: number | undefined): string {
+  if (seconds === undefined) return '–';
+  const minutes = Math.round(seconds / 60);
+  return minutes < 60
+    ? `${minutes} min`
+    : `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')} h`;
+}
+
+function kilometers(meters: number): string {
+  return numberFormat({
+    minimumFractionDigits: meters < 100_000 ? 1 : 0,
+    maximumFractionDigits: meters < 100_000 ? 1 : 0,
+  }).format(meters / 1000);
+}
+
+/** What was measured: "5,02 km · 28:14" or "14 Sätze · 46:10". */
+function activityMeta(activity: PlanActivity): string {
+  const parts: string[] = [];
+  if (activity.kind === 'run' && activity.distanceMeters !== undefined)
+    parts.push(`${fixed(activity.distanceMeters / 1000, 2)} km`);
+  if (activity.kind === 'strength' && activity.sets !== undefined)
+    parts.push(
+      activity.sets === 1
+        ? tr('1 Satz', '1 set')
+        : tr(`${activity.sets} Sätze`, `${activity.sets} sets`),
+    );
+  if (activity.durationSeconds !== undefined)
+    parts.push(clock(activity.durationSeconds));
+  return parts.join(' · ');
+}
+
+function activityKindLabel(activity: PlanActivity): string {
+  return activity.kind === 'run'
+    ? sportNoun(activity.sport)
+    : tr('Kraft', 'Strength');
 }
 
 /**
@@ -469,6 +523,7 @@ export function PlanningScreen({
   onDevelopment,
   onManageTemplates,
   onOpenRoutePlanner,
+  onOpenActivity,
   busy = false,
   showSuggest = true,
   showMonth = true,
@@ -538,14 +593,6 @@ export function PlanningScreen({
       ),
     [monthDays],
   );
-  const sessionsByDate = useMemo(() => {
-    const grouped: Record<string, ScheduledSession[]> = {};
-    displayState.sessions.forEach(session => {
-      grouped[session.date] = grouped[session.date] ?? [];
-      grouped[session.date].push(session);
-    });
-    return grouped;
-  }, [displayState.sessions]);
   const detailsSession = detailsId
     ? displayState.sessions.find(session => session.id === detailsId) ?? null
     : null;
@@ -565,36 +612,30 @@ export function PlanningScreen({
     [displayState.availability, displayState.routine],
   );
 
-  const visibleRange = useMemo(() => {
-    if (view === 'week') return weekDateKeys;
-    return monthDays.filter(day => inMonth(day, monthDate)).map(isoDate);
-  }, [monthDate, monthDays, view, weekDateKeys]);
-
-  const freeRuns = useMemo(() => {
-    const linked = displayState.sessions
-      .map(session => session.activityId)
-      .filter((id): id is string => Boolean(id));
-    return runs
-      .filter(
-        run => !linked.some(id => actualIdMatches(id, run.id, run.canonicalId)),
-      )
-      .filter(run =>
-        visibleRange.includes(isoDate(localDateFrom(run.startTime))),
-      )
-      .sort((a, b) => b.startTime - a.startTime);
-  }, [displayState.sessions, runs, visibleRange]);
-
-  const freeStrength = useMemo(() => {
-    const linked = displayState.sessions
-      .map(session => session.activityId)
-      .filter((id): id is string => Boolean(id));
-    return strengthSessions
-      .filter(session => !linked.includes(session.id))
-      .filter(session =>
-        visibleRange.includes(isoDate(localDateFrom(session.startTime))),
-      )
-      .sort((a, b) => b.startTime - a.startTime);
-  }, [displayState.sessions, strengthSessions, visibleRange]);
+  const language = getLanguage();
+  // Titles depend on the language, so it is part of the memo.
+  const activities = useMemo(
+    () => [
+      ...runs.map(runActivity),
+      ...strengthSessions.map(strengthActivity),
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [runs, strengthSessions, language],
+  );
+  const entriesByDate = useMemo(
+    () => planEntriesByDate(displayState.sessions, activities),
+    [activities, displayState.sessions],
+  );
+  const detailsActivity = detailsSession
+    ? linkedActivity(detailsSession, activities)
+    : undefined;
+  const monthDateKeys = useMemo(
+    () => monthDays.filter(day => inMonth(day, monthDate)).map(isoDate),
+    [monthDate, monthDays],
+  );
+  const [selectedDay, setSelectedDay] = useState(() =>
+    isoDate(localDateFrom(now)),
+  );
 
   const persist = useCallback(
     async (
@@ -1067,22 +1108,102 @@ export function PlanningScreen({
     setMoveWeekStart(mondayOf(localDateFrom(session.date)));
   }, []);
 
-  const summaryMinutes = weekDateKeys.reduce(
-    (total, date) =>
-      total +
-      (sessionsByDate[date] ?? []).reduce(
-        (sum, session) => sum + session.minutes,
-        0,
-      ),
-    0,
-  );
-  const weekSessionCount = weekDateKeys.reduce(
-    (total, date) => total + (sessionsByDate[date] ?? []).length,
-    0,
-  );
+  const weekSummary = planSummary(weekDateKeys, entriesByDate);
+  const monthSummary = planSummary(monthDateKeys, entriesByDate);
+  const shownDay = monthDateKeys.includes(selectedDay)
+    ? selectedDay
+    : monthDateKeys.includes(today)
+    ? today
+    : monthDateKeys[0];
 
-  const renderSession = (session: ScheduledSession) => {
-    const status = actualSessionStatus(session, runs, strengthSessions);
+  const openActivity = onOpenActivity;
+
+  // One marker per entry: filled = recorded, ring = still planned, dash =
+  // skipped. The shape carries the state too, never color alone.
+  const renderMarker = (entry: PlanEntry, size: 'small' | 'large') => {
+    const mark =
+      entry.type === 'unplanned'
+        ? entry.activity.finished
+          ? 'done'
+          : 'started'
+        : entry.status;
+    const large = size === 'large';
+    return (
+      <View
+        style={[
+          large ? styles.marker : styles.dot,
+          mark === 'done' && styles.markerDone,
+          mark === 'started' && styles.markerStarted,
+          mark === 'planned' && styles.markerPlanned,
+          mark === 'skipped' && styles.markerSkipped,
+        ]}
+      >
+        {large && mark === 'done' ? (
+          <Text style={styles.markerCheck}>✓</Text>
+        ) : null}
+        {large && mark === 'skipped' ? (
+          <Text style={styles.markerDash}>–</Text>
+        ) : null}
+      </View>
+    );
+  };
+
+  const renderEntry = (entry: PlanEntry) => {
+    if (entry.type === 'unplanned') {
+      const { activity } = entry;
+      const content = (
+        <>
+          {renderMarker(entry, 'large')}
+          <View style={styles.entryMain}>
+            <Text style={styles.entryTitle} numberOfLines={1}>
+              {activity.title}
+            </Text>
+            <Text style={styles.entryMeta}>
+              {[
+                activityKindLabel(activity),
+                activityMeta(activity),
+                activity.finished ? '' : statusLabel('started'),
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </Text>
+          </View>
+          <Badge muted>{tr('Ohne Plan', 'Unplanned')}</Badge>
+          {openActivity ? <Text style={styles.entryChevron}>›</Text> : null}
+        </>
+      );
+      return openActivity ? (
+        <Pressable
+          key={`${activity.kind}-${activity.id}`}
+          accessibilityRole="button"
+          accessibilityLabel={tr(
+            `${activity.title} ansehen`,
+            `View ${activity.title}`,
+          )}
+          onPress={() => openActivity(activity.kind, activity.id)}
+          style={({ pressed }) => [styles.entry, pressed && styles.pressed]}
+        >
+          {content}
+        </Pressable>
+      ) : (
+        <View key={`${activity.kind}-${activity.id}`} style={styles.entry}>
+          {content}
+        </View>
+      );
+    }
+    const { session, status, activity } = entry;
+    const meta =
+      activity && status !== 'planned'
+        ? [
+            sessionKindLabel(session),
+            statusLabel(status),
+            activityMeta(activity),
+          ]
+        : [
+            sessionKindLabel(session),
+            formatMinutes(session.minutes),
+            statusLabel(status),
+          ];
     return (
       <Pressable
         key={session.id}
@@ -1098,200 +1219,260 @@ export function PlanningScreen({
         accessibilityState={{ disabled: working }}
         disabled={working}
         onPress={() => setDetailsId(session.id)}
-        style={({ pressed }) => [styles.session, pressed && styles.pressed]}
+        style={({ pressed }) => [styles.entry, pressed && styles.pressed]}
       >
-        <View style={styles.sessionMain}>
+        {renderMarker(entry, 'large')}
+        <View style={styles.entryMain}>
           <Text
+            numberOfLines={1}
             style={[
-              styles.sessionTitle,
-              session.status === 'skipped' && styles.struck,
+              styles.entryTitle,
+              status === 'skipped' && styles.struck,
             ]}
           >
             {scheduleTitle(session)}
           </Text>
-          <Text style={styles.sessionMeta}>
-            {sessionKindLabel(session)} · {formatMinutes(session.minutes)} ·{' '}
-            {statusLabel(status)}
+          <Text style={styles.entryMeta}>
+            {meta.filter(Boolean).join(' · ')}
           </Text>
         </View>
-        <Text
-          style={session.locked ? styles.sessionLocked : styles.sessionMark}
-        >
-          {session.locked ? tr('Gesperrt', 'Locked') : '›'}
-        </Text>
+        {session.locked ? (
+          <Badge muted>{tr('Gesperrt', 'Locked')}</Badge>
+        ) : null}
+        <Text style={styles.entryChevron}>›</Text>
       </Pressable>
     );
   };
 
-  const renderDayRow = (date: Date, index: number) => {
+  const addLabel = (date: Date) =>
+    tr(
+      `Einheit am ${weekdayLong()[mondayIndex(date)]} hinzufügen`,
+      `Add workout on ${weekdayLong()[mondayIndex(date)]}`,
+    );
+
+  // Entries of one day; an empty future day is itself the way to add one.
+  const renderDayEntries = (date: Date) => {
     const key = isoDate(date);
-    const sessions = sessionsByDate[key] ?? [];
-    const available = availableMinutes(key, index);
+    const entries = entriesByDate[key] ?? [];
     const past = key < today;
-    // The time budget only shows on days where it says something: routine days
-    // and exceptions set on purpose.
-    const budgetShown =
-      displayState.routine.days.includes(index) ||
-      Object.prototype.hasOwnProperty.call(displayState.availability, key);
-    if (!sessions.length) {
-      return (
+    if (!entries.length) {
+      return past ? (
+        <Text style={styles.emptyDay}>{tr('Kein Training', 'No workout')}</Text>
+      ) : (
         <Pressable
-          key={key}
           accessibilityRole="button"
-          accessibilityLabel={tr(
-            `Einheit am ${weekdayLong()[index]} hinzufügen`,
-            `Add workout on ${weekdayLong()[index]}`,
-          )}
-          accessibilityState={{ disabled: working || past }}
-          disabled={working || past}
+          accessibilityLabel={addLabel(date)}
+          accessibilityState={{ disabled: working }}
+          disabled={working}
           onPress={() => openEditor(undefined, key)}
-          style={({ pressed }) => [
-            styles.emptyDayRow,
-            pressed && styles.pressed,
-          ]}
+          style={({ pressed }) => [styles.addDay, pressed && styles.pressed]}
         >
-          <View style={styles.dayHeadingText}>
-            <Text style={[styles.dayTitle, past && styles.mutedText]}>
-              {fullDateLabel(date)}
-            </Text>
-            {budgetShown && !past ? (
-              <Text style={styles.dayMeta}>
-                {tr(
-                  `${formatMinutes(available)} verfügbar`,
-                  `${formatMinutes(available)} available`,
-                )}
-              </Text>
-            ) : null}
-          </View>
-          {past ? null : <Text style={styles.addText}>+</Text>}
+          <Text style={styles.addDayText}>
+            {tr('+ Einheit planen', '+ Plan a workout')}
+          </Text>
         </Pressable>
       );
     }
     return (
-      <View key={key} style={styles.dayCard}>
-        <View style={styles.dayHeading}>
-          <View style={styles.dayHeadingText}>
-            <Text style={styles.dayTitle}>{fullDateLabel(date)}</Text>
-            {budgetShown && !past ? (
-              <Text style={styles.dayMeta}>
-                {tr(
-                  `${formatMinutes(available)} verfügbar`,
-                  `${formatMinutes(available)} available`,
-                )}
-              </Text>
-            ) : null}
-          </View>
-          {past ? null : (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={tr(
-                `Einheit am ${weekdayLong()[index]} hinzufügen`,
-                `Add workout on ${weekdayLong()[index]}`,
-              )}
-              accessibilityState={{ disabled: working }}
-              disabled={working}
-              onPress={() => openEditor(undefined, key)}
-              style={({ pressed }) => [
-                styles.addButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={styles.addText}>+</Text>
-            </Pressable>
-          )}
+      <>
+        {entries.map(renderEntry)}
+        {past ? null : (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={addLabel(date)}
+            accessibilityState={{ disabled: working }}
+            disabled={working}
+            onPress={() => openEditor(undefined, key)}
+            style={({ pressed }) => [styles.addMore, pressed && styles.pressed]}
+          >
+            <Text style={styles.addDayText}>
+              {tr('+ Weitere Einheit', '+ Another workout')}
+            </Text>
+          </Pressable>
+        )}
+      </>
+    );
+  };
+
+  const renderDayBlock = (date: Date, index: number) => {
+    const key = isoDate(date);
+    const isToday = key === today;
+    const past = key < today;
+    // The time budget only shows on days where it says something: routine days
+    // and exceptions set on purpose.
+    const budgetShown =
+      !past &&
+      (displayState.routine.days.includes(index) ||
+        Object.prototype.hasOwnProperty.call(displayState.availability, key));
+    return (
+      <View
+        key={key}
+        style={[styles.dayBlock, index > 0 && styles.dayDivider]}
+        accessibilityLabel={fullDateLabel(date)}
+      >
+        <View style={styles.dateColumn}>
+          <Text style={[styles.dateWeekday, isToday && styles.todayText]}>
+            {weekdayShort()[index]}
+          </Text>
+          <Text
+            style={[
+              styles.dateNumber,
+              past && styles.mutedText,
+              isToday && styles.todayText,
+            ]}
+          >
+            {date.getDate()}
+          </Text>
+          {isToday ? (
+            <Text style={styles.todayLabel}>{tr('Heute', 'Today')}</Text>
+          ) : null}
         </View>
-        {sessions.map(renderSession)}
+        <View style={styles.dayEntries}>
+          {renderDayEntries(date)}
+          {budgetShown ? (
+            <Text style={styles.budget}>
+              {tr(
+                `${formatMinutes(availableMinutes(key, index))} verfügbar`,
+                `${formatMinutes(availableMinutes(key, index))} available`,
+              )}
+            </Text>
+          ) : null}
+        </View>
       </View>
     );
   };
 
+  // The period at a glance: what was done, what the plan asked for.
+  const renderSummary = (summary: PlanSummary, month: boolean) => (
+    <Card style={styles.summaryCard}>
+      <View style={styles.stats}>
+        <Stat
+          value={String(summary.done)}
+          label={tr('erledigt', 'done')}
+        />
+        <Stat
+          value={totalTime(summary.seconds)}
+          label={tr('Trainingszeit', 'Training time')}
+        />
+        {summary.runningMeters !== undefined ? (
+          <Stat
+            value={kilometers(summary.runningMeters)}
+            label={tr('km gelaufen', 'km run')}
+          />
+        ) : null}
+      </View>
+      {summary.planned ? (
+        <View style={styles.planProgress}>
+          <Text style={styles.planProgressText}>
+            {tr(
+              `${summary.plannedDone} von ${summary.planned} geplanten Einheiten erledigt`,
+              `${summary.plannedDone} of ${summary.planned} planned ${
+                summary.planned === 1 ? 'workout' : 'workouts'
+              } done`,
+            )}
+          </Text>
+          <Progress
+            value={summary.plannedDone / summary.planned}
+            label={tr(
+              month ? 'Plan in diesem Monat' : 'Plan in dieser Woche',
+              month ? 'Plan this month' : 'Plan this week',
+            )}
+          />
+        </View>
+      ) : (
+        <Text style={styles.planProgressText}>
+          {month
+            ? tr('In diesem Monat ist nichts geplant.', 'Nothing planned this month.')
+            : tr('In dieser Woche ist nichts geplant.', 'Nothing planned this week.')}
+        </Text>
+      )}
+    </Card>
+  );
+
   const renderCalendarCell = (date: Date) => {
     const key = isoDate(date);
-    const sessions = sessionsByDate[key] ?? [];
-    const selected = key === today;
+    const entries = entriesByDate[key] ?? [];
+    const isToday = key === today;
+    const selected = key === shownDay;
     const outside = !inMonth(date, monthDate);
     return (
       <Pressable
         key={key}
         accessibilityRole="button"
         accessibilityLabel={`${fullDateLabel(date)}${
-          sessions.length
+          entries.length
             ? tr(
-                `, ${sessions.length} Einheiten`,
-                `, ${sessions.length} ${
-                  sessions.length === 1 ? 'workout' : 'workouts'
+                `, ${entries.length} ${
+                  entries.length === 1 ? 'Einheit' : 'Einheiten'
+                }`,
+                `, ${entries.length} ${
+                  entries.length === 1 ? 'workout' : 'workouts'
                 }`,
               )
             : ''
         }`}
         accessibilityState={{ selected }}
         onPress={() => {
-          setWeekStart(mondayOf(date));
-          setView('week');
+          if (outside) setMonthDate(firstOfMonth(date));
+          setSelectedDay(key);
         }}
         style={({ pressed }) => [
           styles.calendarCell,
           outside && styles.calendarOutside,
-          selected && styles.calendarToday,
+          selected && styles.calendarSelected,
+          isToday && styles.calendarToday,
           pressed && styles.pressed,
         ]}
       >
-        <Text style={[styles.calendarNumber, outside && styles.mutedText]}>
+        <Text
+          style={[
+            styles.calendarNumber,
+            outside && styles.mutedText,
+            isToday && styles.todayText,
+          ]}
+        >
           {date.getDate()}
         </Text>
-        {sessions.slice(0, 3).map(session => (
-          <View
-            key={session.id}
-            style={[
-              styles.calendarDot,
-              session.status === 'skipped' && styles.calendarDotSkipped,
-            ]}
-          />
-        ))}
+        <View style={styles.calendarDots}>
+          {entries.slice(0, 3).map((entry, index) => (
+            <React.Fragment key={index}>
+              {renderMarker(entry, 'small')}
+            </React.Fragment>
+          ))}
+        </View>
+        {entries.length > 3 ? (
+          <Text style={styles.calendarMore}>+{entries.length - 3}</Text>
+        ) : null}
       </Pressable>
     );
   };
 
-  const renderActuals = () => {
-    if (!freeRuns.length && !freeStrength.length) return null;
-    return (
-      <Section title={tr('Ohne Plan trainiert', 'Trained without a plan')}>
-        <Card>
-          {freeRuns.map(run => (
-            <Row
-              key={`run-${run.id}`}
-              title={runTitle(run)}
-              subtitle={`${formatActivityDate(run.startTime)} · ${
-                actualIsFinishedRun(run)
-                  ? statusLabel('done')
-                  : statusLabel('started')
-              }`}
-              trailing={
-                <Text style={styles.activityType}>{tr('Lauf', 'Run')}</Text>
-              }
-            />
-          ))}
-          {freeStrength.map(session => (
-            <Row
-              key={`strength-${session.id}`}
-              title={displaySessionName(session.name)}
-              subtitle={`${formatActivityDate(session.startTime)} · ${
-                session.status === 'finished' &&
-                (session.endTime ?? 0) > session.startTime
-                  ? statusLabel('done')
-                  : statusLabel('started')
-              }`}
-              trailing={
-                <Text style={styles.activityType}>
-                  {tr('Kraft', 'Strength')}
-                </Text>
-              }
-            />
-          ))}
-        </Card>
-      </Section>
-    );
-  };
+  const legend = () => (
+    <View style={styles.legend}>
+      {(
+        [
+          ['done', tr('Erledigt', 'Done')],
+          ['planned', tr('Geplant', 'Planned')],
+          ['skipped', tr('Ausgelassen', 'Skipped')],
+        ] as const
+      ).map(([mark, text]) => (
+        <View key={mark} style={styles.legendItem}>
+          <View
+            style={[
+              styles.dot,
+              mark === 'done' && styles.markerDone,
+              mark === 'planned' && styles.markerPlanned,
+              mark === 'skipped' && styles.markerSkipped,
+            ]}
+          />
+          <Text style={styles.legendText}>{text}</Text>
+        </View>
+      ))}
+    </View>
+  );
+
+  const isCurrentWeek = weekDateKeys.includes(today);
+  const isCurrentMonth = monthDateKeys.includes(today);
 
   return (
     <View style={styles.screen}>
@@ -1358,59 +1539,103 @@ export function PlanningScreen({
         </Notice>
       ) : null}
 
+      {showMonth ? (
+        <Segmented<ViewMode>
+          label={tr('Zeitraum', 'Period')}
+          options={[
+            { value: 'week', label: tr('Woche', 'Week') },
+            { value: 'month', label: tr('Monat', 'Month') },
+          ]}
+          value={view}
+          onChange={next => {
+            if (next === 'month') {
+              setMonthDate(firstOfMonth(weekStart));
+              setSelectedDay(
+                weekDateKeys.includes(today) ? today : weekDateKeys[0],
+              );
+            }
+            setView(next);
+          }}
+        />
+      ) : null}
+
+      <View style={styles.periodNavigation}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={
+            view === 'week' || !showMonth
+              ? tr('Vorherige Woche', 'Previous week')
+              : tr('Vorheriger Monat', 'Previous month')
+          }
+          accessibilityState={{ disabled: working }}
+          disabled={working}
+          onPress={() =>
+            view === 'week' || !showMonth ? navigateWeek(-1) : navigateMonth(-1)
+          }
+          style={({ pressed }) => [styles.navButton, pressed && styles.pressed]}
+        >
+          <Text style={styles.navText}>‹</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={
+            view === 'week' || !showMonth
+              ? tr('Aktuelle Woche', 'Current week')
+              : tr('Aktuellen Monat', 'Current month')
+          }
+          accessibilityState={{ disabled: working }}
+          disabled={working}
+          onPress={jumpToToday}
+          style={styles.periodLabel}
+        >
+          <Text style={styles.periodTitle}>
+            {view === 'week' || !showMonth
+              ? `${dateLabel(weekDates[0])} – ${dateLabel(weekDates[6])}`
+              : monthLabel(monthDate)}
+          </Text>
+          <Text
+            style={
+              (view === 'week' || !showMonth ? isCurrentWeek : isCurrentMonth)
+                ? styles.periodMeta
+                : styles.periodLink
+            }
+          >
+            {view === 'week' || !showMonth
+              ? isCurrentWeek
+                ? tr('Diese Woche', 'This week')
+                : tr('Zurück zu heute', 'Back to today')
+              : isCurrentMonth
+              ? tr('Dieser Monat', 'This month')
+              : tr('Zurück zu heute', 'Back to today')}
+          </Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={
+            view === 'week' || !showMonth
+              ? tr('Nächste Woche', 'Next week')
+              : tr('Nächster Monat', 'Next month')
+          }
+          accessibilityState={{ disabled: working }}
+          disabled={working}
+          onPress={() =>
+            view === 'week' || !showMonth ? navigateWeek(1) : navigateMonth(1)
+          }
+          style={({ pressed }) => [styles.navButton, pressed && styles.pressed]}
+        >
+          <Text style={styles.navText}>›</Text>
+        </Pressable>
+      </View>
+
       {view === 'week' || !showMonth ? (
         <>
-          <View style={styles.periodNavigation}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={tr('Vorherige Woche', 'Previous week')}
-              accessibilityState={{ disabled: working }}
-              disabled={working}
-              onPress={() => navigateWeek(-1)}
-              style={styles.navButton}
-            >
-              <Text style={styles.navText}>‹</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={tr('Aktuelle Woche', 'Current week')}
-              accessibilityState={{ disabled: working }}
-              disabled={working}
-              onPress={jumpToToday}
-              style={styles.periodLabel}
-            >
-              <Text style={styles.periodTitle}>
-                {dateLabel(weekDates[0])} – {dateLabel(weekDates[6])}
-              </Text>
-              <Text style={styles.periodMeta}>
-                {weekSessionCount === 0
-                  ? tr('Nichts geplant', 'Nothing planned')
-                  : `${tr(
-                      weekSessionCount === 1
-                        ? '1 Einheit'
-                        : `${weekSessionCount} Einheiten`,
-                      weekSessionCount === 1
-                        ? '1 workout'
-                        : `${weekSessionCount} workouts`,
-                    )} · ${formatMinutes(summaryMinutes)}`}
-              </Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={tr('Nächste Woche', 'Next week')}
-              accessibilityState={{ disabled: working }}
-              disabled={working}
-              onPress={() => navigateWeek(1)}
-              style={styles.navButton}
-            >
-              <Text style={styles.navText}>›</Text>
-            </Pressable>
-          </View>
-          <Card style={styles.weekCard}>{weekDates.map(renderDayRow)}</Card>
+          {renderSummary(weekSummary, false)}
+          <Card style={styles.agenda}>{weekDates.map(renderDayBlock)}</Card>
+          {legend()}
           {showSuggest ? (
             <Button
               title={tr('Woche vorschlagen lassen', 'Suggest a week')}
-              secondary={Boolean(weekSessionCount)}
+              secondary={Boolean(weekSummary.planned)}
               disabled={working}
               onPress={createProposal}
               label={tr(
@@ -1419,80 +1644,37 @@ export function PlanningScreen({
               )}
             />
           ) : null}
-          {showMonth ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={tr('Monat', 'Month')}
-              accessibilityState={{ disabled: working }}
-              disabled={working}
-              onPress={() => setView('month')}
-              style={({ pressed }) => [
-                styles.monthLink,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={styles.monthLinkText}>
-                {tr('Monat ansehen ›', 'View month ›')}
-              </Text>
-            </Pressable>
-          ) : null}
         </>
       ) : (
-        <Section title={monthLabel(monthDate)}>
-          <View style={styles.periodNavigation}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={tr('Vorheriger Monat', 'Previous month')}
-              accessibilityState={{ disabled: working }}
-              disabled={working}
-              onPress={() => navigateMonth(-1)}
-              style={styles.navButton}
-            >
-              <Text style={styles.navText}>‹</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={tr('Aktuellen Monat', 'Current month')}
-              accessibilityState={{ disabled: working }}
-              disabled={working}
-              onPress={jumpToToday}
-              style={styles.periodLabel}
-            >
-              <Text style={styles.periodTitle}>{tr('Heute', 'Today')}</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={tr('Nächster Monat', 'Next month')}
-              accessibilityState={{ disabled: working }}
-              disabled={working}
-              onPress={() => navigateMonth(1)}
-              style={styles.navButton}
-            >
-              <Text style={styles.navText}>›</Text>
-            </Pressable>
-          </View>
-          <View style={styles.calendarWeekdays}>
-            {weekdayShort().map(day => (
-              <Text key={day} style={styles.calendarWeekday}>
-                {day}
-              </Text>
-            ))}
-          </View>
-          <View style={styles.calendarGrid}>
-            {monthRows.map((row, index) => (
-              <View key={`month-week-${index}`} style={styles.calendarRow}>
-                {row.map(renderCalendarCell)}
-              </View>
-            ))}
-          </View>
-          <Button
-            title={tr('Zurück zur Woche', 'Back to week')}
-            secondary
-            small
-            label={tr('Woche', 'Week')}
-            onPress={() => setView('week')}
-          />
-        </Section>
+        <>
+          {renderSummary(monthSummary, true)}
+          <Card style={styles.calendarCard}>
+            <View style={styles.calendarWeekdays}>
+              {weekdayShort().map(day => (
+                <Text key={day} style={styles.calendarWeekday}>
+                  {day}
+                </Text>
+              ))}
+            </View>
+            <View style={styles.calendarGrid}>
+              {monthRows.map((row, index) => (
+                <View key={`month-week-${index}`} style={styles.calendarRow}>
+                  {row.map(renderCalendarCell)}
+                </View>
+              ))}
+            </View>
+          </Card>
+          {legend()}
+          {shownDay ? (
+            <Section title={fullDateLabel(localDateFrom(shownDay))}>
+              <Card style={styles.agenda}>
+                <View style={styles.dayEntries}>
+                  {renderDayEntries(localDateFrom(shownDay))}
+                </View>
+              </Card>
+            </Section>
+          ) : null}
+        </>
       )}
 
       {undoState ? (
@@ -1507,8 +1689,6 @@ export function PlanningScreen({
           />
         </View>
       ) : null}
-
-      {renderActuals()}
 
       <Section title={tr('Mehr', 'More')}>
         <Row
@@ -1720,12 +1900,33 @@ export function PlanningScreen({
                   {formatMinutes(detailsSession.minutes)}
                 </Text>
                 <Text style={styles.detailStatus}>
-                  {statusLabel(
-                    actualSessionStatus(detailsSession, runs, strengthSessions),
-                  )}
+                  {statusLabel(planStatus(detailsSession, activities))}
                   {detailsSession.locked ? tr(' · Gesperrt', ' · Locked') : ''}
                 </Text>
+                {detailsActivity ? (
+                  <Text style={styles.detailMeta}>
+                    {[
+                      detailsActivity.title,
+                      activityMeta(detailsActivity),
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </Text>
+                ) : null}
                 <View style={styles.modalActions}>
+                  {detailsActivity && onOpenActivity ? (
+                    <Button
+                      title={tr('Aufzeichnung ansehen', 'View recording')}
+                      secondary
+                      onPress={() => {
+                        setDetailsId(null);
+                        onOpenActivity(
+                          detailsActivity.kind,
+                          detailsActivity.id,
+                        );
+                      }}
+                    />
+                  ) : null}
                   <Button
                     title={
                       detailsSession.date === today
@@ -2208,28 +2409,96 @@ export function PlanningScreen({
 
 const styles = StyleSheet.create({
   screen: { gap: space.md },
-  periodMeta: { color: color.muted, ...typography.label, textAlign: 'center' },
-  monthLink: {
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  monthLinkText: { color: color.green, ...typography.label },
-  weekCard: { padding: space.md, gap: space.xs },
-  emptyDayRow: {
-    minHeight: 48,
+  periodLink: { color: color.green, ...typography.label, textAlign: 'center' },
+  summaryCard: { padding: space.md, gap: space.sm },
+  planProgress: { gap: space.xs },
+  planProgressText: { color: color.muted, ...typography.label },
+  agenda: { paddingVertical: space.xxs, paddingHorizontal: space.md },
+  dayBlock: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    gap: space.sm,
+    paddingVertical: space.sm,
   },
-  addText: { color: color.green, fontSize: 26, lineHeight: 30 },
-  addButton: {
-    minWidth: 48,
-    minHeight: 48,
+  dayDivider: { borderTopWidth: 1, borderTopColor: color.line },
+  dateColumn: { width: 44, alignItems: 'center', paddingTop: space.xxs },
+  dateWeekday: { color: color.muted, ...typography.micro },
+  dateNumber: {
+    color: color.text,
+    ...typography.heading,
+    fontVariant: ['tabular-nums'],
+  },
+  todayText: { color: color.green },
+  todayLabel: { color: color.green, ...typography.micro },
+  dayEntries: { flex: 1, gap: space.xxs, justifyContent: 'center' },
+  entry: {
+    minHeight: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+  },
+  entryMain: { flex: 1, gap: 2 },
+  entryTitle: { color: color.text, ...typography.body, fontWeight: '600' },
+  entryMeta: { color: color.muted, ...typography.label },
+  entryChevron: {
+    color: color.muted,
+    fontSize: 22,
+    minWidth: 16,
+    textAlign: 'center',
+  },
+  marker: {
+    width: 24,
+    height: 24,
+    borderRadius: radius.pill,
+    borderWidth: 2,
+    borderColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sessionLocked: { color: color.muted, ...typography.label },
+  dot: {
+    width: space.xs,
+    height: space.xs,
+    borderRadius: radius.pill,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+  },
+  markerDone: { backgroundColor: color.green, borderColor: color.green },
+  markerStarted: { borderColor: color.green },
+  markerPlanned: { borderColor: color.muted },
+  markerSkipped: { borderColor: color.line, backgroundColor: color.line },
+  markerCheck: {
+    color: color.ink,
+    ...typography.micro,
+    fontWeight: '700',
+  },
+  markerDash: { color: color.muted, ...typography.micro },
+  emptyDay: {
+    color: color.muted,
+    ...typography.label,
+    minHeight: 48,
+    textAlignVertical: 'center',
+    paddingTop: space.sm,
+  },
+  addDay: { minHeight: 48, justifyContent: 'center' },
+  addMore: { minHeight: 48, justifyContent: 'center' },
+  addDayText: { color: color.green, ...typography.label },
+  budget: { color: color.muted, ...typography.micro },
+  legend: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: space.md,
+  },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: space.xxs },
+  legendText: { color: color.muted, ...typography.micro },
+  calendarCard: { padding: space.sm, gap: space.xs },
+  calendarSelected: { backgroundColor: color.raised, borderColor: color.line },
+  calendarDots: {
+    flexDirection: 'row',
+    gap: 3,
+    minHeight: space.xs,
+    alignItems: 'center',
+  },
+  calendarMore: { color: color.muted, ...typography.micro },
+  periodMeta: { color: color.muted, ...typography.label, textAlign: 'center' },
   calendarRow: { flexDirection: 'row', gap: space.xxs },
   modalScroll: { maxHeight: '90%', flexGrow: 0 },
   header: {
@@ -2238,7 +2507,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  actionBlock: { marginTop: space.xs },
   periodNavigation: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2273,44 +2541,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   stats: { flexDirection: 'row', gap: space.md, paddingVertical: space.sm },
-  dayCard: {
-    gap: space.xxs,
-    paddingVertical: space.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: color.line,
-  },
-  dayHeading: {
-    minHeight: 48,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  dayHeadingText: { flex: 1, gap: space.xxs },
-  dayTitle: { color: color.text, ...typography.body, fontWeight: '600' },
-  dayMeta: { color: color.muted, ...typography.label },
-  dayCount: {
-    color: color.muted,
-    ...typography.value,
-    fontVariant: ['tabular-nums'],
-  },
-  session: {
-    minHeight: 64,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.sm,
-    paddingVertical: space.xs,
-    borderTopWidth: 1,
-    borderTopColor: color.line,
-  },
-  sessionMain: { flex: 1, gap: space.xxs },
-  sessionTitle: { color: color.text, ...typography.body, fontWeight: '600' },
-  sessionMeta: { color: color.muted, ...typography.label },
-  sessionMark: {
-    color: color.green,
-    fontSize: 24,
-    minWidth: 24,
-    textAlign: 'center',
-  },
   struck: { textDecorationLine: 'line-through', color: color.muted },
   pressed: { opacity: 0.72 },
   calendarWeekdays: { flexDirection: 'row', gap: space.xxs },
@@ -2323,10 +2553,11 @@ const styles = StyleSheet.create({
   calendarGrid: { gap: space.xxs },
   calendarCell: {
     flex: 1,
-    minHeight: 56,
+    minHeight: 52,
     borderRadius: radius.sm,
-    backgroundColor: color.surface,
-    padding: space.xxs,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    paddingVertical: space.xxs,
     alignItems: 'center',
     gap: space.xxs,
   },
@@ -2341,15 +2572,7 @@ const styles = StyleSheet.create({
     ...typography.label,
     fontVariant: ['tabular-nums'],
   },
-  calendarDot: {
-    width: space.xs,
-    height: space.xs,
-    borderRadius: radius.pill,
-    backgroundColor: color.green,
-  },
-  calendarDotSkipped: { backgroundColor: color.muted },
   mutedText: { color: color.muted },
-  activityType: { color: color.muted, ...typography.label },
   undoRow: {
     minHeight: 48,
     flexDirection: 'row',

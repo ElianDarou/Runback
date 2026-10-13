@@ -547,6 +547,77 @@ describe('Template management', () => {
   });
 });
 
+describe('Settings list', () => {
+  it('keeps the chat apart from the calculations and has no setup entry', async () => {
+    const tree = await render();
+    try {
+      await tap(tree, 'Einstellungen');
+      const text = screenText(tree);
+      expect(text).toContain('Rechenweg');
+      expect(text).toContain('Trainingschat');
+      expect(text).not.toContain('Einrichtung erneut öffnen');
+      await tap(tree, 'Rechenweg');
+      expect(screenText(tree)).toContain('Wie Runback rechnet');
+      expect(screenText(tree)).not.toContain('OpenRouter');
+    } finally {
+      await act(async () => tree.unmount());
+    }
+  });
+
+  it('collects voice, running cues, and rest signals under Voice & vibration', async () => {
+    const previous = jest.mocked(nativeCall).getMockImplementation();
+    jest.mocked(nativeCall).mockImplementation(((method: string) =>
+      Promise.resolve(
+        method === 'getSpeechSettings'
+          ? {
+              available: true,
+              voice: null,
+              rate: 1,
+              voices: [
+                { name: 'de-x-a', country: 'Deutschland', network: false },
+                { name: 'de-x-b', country: 'Deutschland', network: true },
+              ],
+            }
+          : {},
+      )) as any);
+    const tree = await render();
+    try {
+      await tap(tree, 'Einstellungen');
+      await tap(tree, 'Stimme & Vibration');
+      const text = screenText(tree);
+      expect(text).toContain('Systemstimme');
+      expect(text).toContain('Stimme 2 · online');
+      expect(text).toContain('Ansagen beim Laufen');
+      expect(text).toContain('Ansage am Pausenende');
+      await act(async () => {
+        tree.root
+          .findAllByType(SwitchRow)
+          .find(row => row.props.title === 'Ansage am Pausenende')!
+          .props.onChange(true);
+      });
+      expect(
+        jest.mocked(native.saveSettings).mock.calls.at(-1)![0],
+      ).toMatchObject({
+        features: expect.objectContaining({
+          strength: expect.objectContaining({ restVoice: true }),
+        }),
+      });
+      await act(async () => {
+        tree.root
+          .findAllByType(ChipGroup)
+          .find(group => group.props.label === 'Sprechtempo')!
+          .props.onChange('1.2');
+      });
+      expect(nativeCall).toHaveBeenCalledWith('setSpeechSettings', null, 1.2);
+      await tap(tree, 'Ansagen beim Laufen');
+      expect(screenText(tree)).toContain('Zwischenstände ansagen');
+    } finally {
+      await act(async () => tree.unmount());
+      jest.mocked(nativeCall).mockImplementation(previous!);
+    }
+  });
+});
+
 describe('Progress announcements', () => {
   const startSheetOpen = (tree: TestRenderer.ReactTestRenderer) =>
     tree.root
@@ -574,7 +645,7 @@ describe('Progress announcements', () => {
 
       await tap(tree, 'Zwischenansagen einstellen');
       expect(startSheetOpen(tree)).toBe(false);
-      expect(screenText(tree)).toContain('Stimme & Vibration');
+      expect(screenText(tree)).toContain('Ansagen beim Laufen');
       const back = backSpy.mock.calls.at(-1)![1];
       await act(async () => {
         expect(back()).toBe(true);
@@ -584,7 +655,7 @@ describe('Progress announcements', () => {
       await tap(tree, 'Zwischenansagen einstellen');
       await tap(tree, 'Speichern');
       expect(startSheetOpen(tree)).toBe(true);
-      expect(screenText(tree)).not.toContain('Stimme & Vibration');
+      expect(screenText(tree)).not.toContain('Ansagen beim Laufen');
     } finally {
       await act(async () => tree.unmount());
       backSpy.mockRestore();

@@ -9,6 +9,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.speech.tts.Voice
 
 /**
  * Tracks which utterances are still queued, so audio focus is held exactly while the voice
@@ -61,6 +62,7 @@ class UtteranceFocus {
  * thread; [stop] works from any thread.
  */
 class SpeechOutput(context: Context) {
+    private val context = context.applicationContext
     private val main = Handler(Looper.getMainLooper())
     private val audio = context.getSystemService(AudioManager::class.java)
     // Navigation guidance plays at media volume, like turn instructions in map apps.
@@ -100,6 +102,7 @@ class SpeechOutput(context: Context) {
             ready = status == TextToSpeech.SUCCESS && engine != null
             if (engine != null && ready) {
                 engine.language = Lang.locale()
+                applyPrefs(engine)
                 engine.setAudioAttributes(attributes)
                 engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String) {}
@@ -111,6 +114,33 @@ class SpeechOutput(context: Context) {
                 })
             }
         }
+    }
+
+    /** Voices the engine offers for the app language, installed ones only. */
+    fun voices(): List<Voice> {
+        val engine = tts ?: return emptyList()
+        if (!ready) return emptyList()
+        return SpeechPrefs.matching(runCatching { engine.voices }.getOrNull().orEmpty(), Lang.locale())
+    }
+
+    /** Re-reads voice and rate, e.g. after the settings changed. Main thread. */
+    fun reload() {
+        val engine = tts ?: return
+        if (!ready) return
+        engine.language = Lang.locale()
+        applyPrefs(engine)
+    }
+
+    // A chosen voice of another language would read German text in English; the
+    // language always wins, so such a choice falls back to the default voice.
+    private fun applyPrefs(engine: TextToSpeech) {
+        val prefs = SpeechPrefs.read(context)
+        engine.setSpeechRate(prefs.rate)
+        val name = prefs.voice ?: return
+        runCatching { engine.voices }.getOrNull()
+            ?.let { SpeechPrefs.matching(it, Lang.locale()) }
+            ?.firstOrNull { it.name == name }
+            ?.let { engine.voice = it }
     }
 
     /** Speaks [text]; returns [TextToSpeech.SUCCESS] or [TextToSpeech.ERROR]. */

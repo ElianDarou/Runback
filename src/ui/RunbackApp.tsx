@@ -156,6 +156,7 @@ import {
   type RunSeries,
 } from '../domain/runSeries';
 import { ProseSettings } from './ProseSettings';
+import { SoundSettings } from './SoundSettings';
 import { analyzeRun, allRegionIds } from '../domain';
 import type { RunAnalysis, RunPurpose, Sport } from '../domain/types';
 import {
@@ -329,8 +330,10 @@ type Page =
   | 'models'
   | 'development'
   | 'chat'
+  | 'chat-settings'
   | 'distance-times'
   | 'run-audio'
+  | 'sound'
   | 'run-target'
   | 'features'
   | 'features-home'
@@ -352,9 +355,12 @@ const PARENT_PAGE: Partial<Record<Page, Page>> = {
   devices: 'settings',
   server: 'settings',
   music: 'features',
-  'run-audio': 'settings',
+  'run-audio': 'sound',
+  sound: 'settings',
   data: 'settings',
   models: 'settings',
+  chat: 'settings',
+  'chat-settings': 'chat',
   features: 'settings',
   'features-home': 'features',
   'features-navigation': 'features',
@@ -710,7 +716,6 @@ export function RunbackApp({
   const busyRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
-  const [setupOpen, setSetupOpen] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   // Today: sport, run type, template, and goal are picked when starting, not
@@ -842,7 +847,7 @@ export function RunbackApp({
   const recording = state.recording;
   const isRecording = Boolean(recording);
   const showOnboarding =
-    loaded && !isRecording && (setupOpen || !settings.onboardedAt);
+    loaded && !isRecording && !settings.onboardedAt;
   const finishedSessions = useMemo(
     () => strengthSessions.filter(session => session.status === 'finished'),
     [strengthSessions],
@@ -4046,14 +4051,14 @@ export function RunbackApp({
           )}
           onPress={() => openPage('all-functions')}
         />
-        {showRunning ? (
+        {showRunning || showStrength ? (
           <Row
             title={tr('Stimme & Vibration', 'Voice & vibration')}
             subtitle={tr(
-              'Ansagen während des Laufs',
-              'Announcements during a run',
+              'Stimme, Ansagen und Signale beim Training',
+              'Voice, announcements, and signals while training',
             )}
-            onPress={() => openPage('run-audio')}
+            onPress={() => openPage('sound')}
           />
         ) : null}
         {features.templates.enabled ? (
@@ -4103,23 +4108,20 @@ export function RunbackApp({
           onPress={() => openPage('data')}
         />
         <Row
-          title={tr(
-            'Rechenweg & Trainingschat',
-            'Calculations & training chat',
-          )}
+          title={tr('Rechenweg', 'Calculations')}
           subtitle={tr(
-            'Grundlagen, Grenzen und optionaler Chat',
-            'Basics, limits, and an optional chat',
+            'Was Runback lokal rechnet und was gesperrt ist',
+            'What Runback calculates locally and what is locked',
           )}
           onPress={() => openPage('models')}
         />
         <Row
-          title={tr('Einrichtung erneut öffnen', 'Open setup again')}
+          title={tr('Trainingschat', 'Training chat')}
           subtitle={tr(
-            'Ziel festlegen und Historie importieren',
-            'Set a goal and import history',
+            'Optional · Fragen zu deinen Daten mit eigenem OpenRouter-Schlüssel',
+            'Optional · ask about your data with your own OpenRouter key',
           )}
-          onPress={() => setSetupOpen(true)}
+          onPress={() => openPage('chat')}
         />
       </View>
     </>
@@ -4880,11 +4882,6 @@ export function RunbackApp({
           </Copy>
         </Disclosure>
       </Section>
-      <ProseSettings />
-      <Button
-        title={tr('Trainingschat öffnen', 'Open training chat')}
-        onPress={() => openPage('chat')}
-      />
     </>
   );
 
@@ -5014,7 +5011,7 @@ export function RunbackApp({
   ) : page === 'templates' ? (
     renderTemplates()
   ) : page === 'chat' ? (
-    <TrainingChat onSettings={() => openPage('models')} />
+    <TrainingChat onSettings={() => openPage('chat-settings')} />
   ) : page === 'goal' ? (
     renderGoal()
   ) : page === 'run-target' || page === 'run-audio' ? (
@@ -5027,7 +5024,7 @@ export function RunbackApp({
         await persistRunTarget(target);
         if (announcements) await persist({ runAnnouncements: announcements });
         if (page === 'run-audio') {
-          setPage(runAudioFromStart ? 'main' : 'settings');
+          setPage(runAudioFromStart ? 'main' : 'sound');
           // Back to the sheet it was opened from, also next to a planned run.
           if (runAudioFromStart) setStartSheet('run');
         } else {
@@ -5035,6 +5032,17 @@ export function RunbackApp({
           if (!todaysScheduledRun) setStartSheet('run');
         }
       }}
+    />
+  ) : page === 'sound' ? (
+    <SoundSettings
+      features={features}
+      showRunning={showRunning}
+      showStrength={showStrength}
+      announcements={runAnnouncements}
+      output={runTarget.output}
+      disabled={busy}
+      onChangeFeatures={changeFeatures}
+      onOpenRunCues={() => openPage('run-audio')}
     />
   ) : page === 'all-functions' ? (
     renderFunctions()
@@ -5093,6 +5101,11 @@ export function RunbackApp({
     renderMuscleMap()
   ) : page === 'models' ? (
     renderModels()
+  ) : page === 'chat-settings' ? (
+    <>
+      <Title>{tr('Trainingschat', 'Training chat')}</Title>
+      <ProseSettings />
+    </>
   ) : tab === 'today' ? (
     recording ? (
       renderRecording()
@@ -5121,6 +5134,9 @@ export function RunbackApp({
         onOpenRoutePlanner && features.recording.routes && showRunning
           ? onOpenRoutePlanner
           : undefined
+      }
+      onOpenActivity={(kind, id) =>
+        kind === 'run' ? openRun(id) : openSessionById(id)
       }
       busy={busy}
       showSuggest={features.planning.suggest}
@@ -5391,7 +5407,6 @@ export function RunbackApp({
             void nativeCall('cancelImport').catch(e => setError(e.message));
           }}
           onDone={() => {
-            setSetupOpen(false);
             setTab('today');
             setPage('main');
           }}
@@ -5588,7 +5603,7 @@ export function RunbackApp({
           </Copy>
         </View>
       ) : isChat ? (
-        <TrainingChat onSettings={() => openPage('models')} />
+        <TrainingChat onSettings={() => openPage('chat-settings')} />
       ) : !selected && page === 'main' && tab === 'routes' ? (
         <RoutePlannerScreen embedded onClose={() => switchTab('today')} />
       ) : isUnits ? (

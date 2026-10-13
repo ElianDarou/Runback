@@ -129,7 +129,7 @@ export function RunTargetScreen({
     target: RunTarget,
     announcements?: RunAnnouncementSettings,
   ) => Promise<void>;
-  /** From settings ("Voice & vibration"): only the cues, not the goal itself. */
+  /** From settings ("Running cues"): only the cues, not the goal itself. */
   settings?: boolean;
   /** Progress announcements, set up only from settings; not part of the goal. */
   announcements?: RunAnnouncementSettings;
@@ -421,7 +421,7 @@ export function RunTargetScreen({
     <>
       <Title>
         {settings
-          ? tr('Stimme & Vibration', 'Voice & vibration')
+          ? tr('Ansagen beim Laufen', 'Running cues')
           : tr('Laufziel', 'Run goal')}
       </Title>
       {settings ? null : (
@@ -684,8 +684,16 @@ export function RunTargetScreen({
           ) : null}
         </Section>
       ) : null}
-      {shownKind !== 'none' || hasGoal ? (
+      {settings || shownKind !== 'none' || hasGoal ? (
         <Section title={tr('Hinweise', 'Cues')}>
+          {settings ? (
+            <Copy muted>
+              {tr(
+                'Gilt für Ziel, Tempo, Puls und Intervalle.',
+                'Applies to goal, pace, heart rate, and intervals.',
+              )}
+            </Copy>
+          ) : null}
           <ChipGroup
             label={tr('Ausgabe der Hinweise', 'Cue output')}
             options={[
@@ -746,6 +754,16 @@ export function RunTargetScreen({
             title={tr('Zwischenstände ansagen', 'Announce progress')}
             value={announcementsOn}
             onChange={setAnnouncementsOn}
+            disabled={busy}
+          />
+          <SwitchRow
+            title={tr('Dabei kurz vibrieren', 'Vibrate briefly with each')}
+            subtitle={tr(
+              'Spürbar, auch wenn die Musik laut ist',
+              'Noticeable even when the music is loud',
+            )}
+            value={announcements.vibrate === true}
+            onChange={vibrate => setAnnouncements({ ...announcements, vibrate })}
             disabled={busy}
           />
           <ChipGroup
