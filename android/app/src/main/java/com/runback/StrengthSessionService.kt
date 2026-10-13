@@ -166,7 +166,11 @@ class StrengthSessionService : Service() {
         val text = if (exercise != null && set != null)
             Lang.tr("Pause vorbei. $exercise, Satz ${set.optInt("number")}.", "Rest is over. $exercise, set ${set.optInt("number")}.")
         else Lang.tr("Pause vorbei.", "Rest is over.")
-        main.postDelayed({ speech?.speak(text, TextToSpeech.QUEUE_ADD, "runback-rest") }, delayMs)
+        // Re-read voice and rate: they may have changed since the session started.
+        main.postDelayed({
+            speech?.reload()
+            speech?.speak(text, TextToSpeech.QUEUE_ADD, "runback-rest")
+        }, delayMs)
     }
 
     /** Vibrates the watch if it shows this session and is connected. */

@@ -50,6 +50,8 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     private val speechWorker = Executors.newSingleThreadExecutor()
     // Created on first use: listing voices and the preview need a ready engine.
     @Volatile private var voicePreview: SpeechOutput? = null
+    // Set on teardown; queued speech work must not create a new engine afterwards.
+    @Volatile private var speechClosed = false
     private val mainHandler = Handler(Looper.getMainLooper())
     private val importer = ActivityImporter(context, store)
     private val health = HealthConnectIntegration(context)
@@ -401,13 +403,10 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         val prefs = SpeechPrefs.read(context)
         val voices = JSONArray()
         speech?.voices()?.forEach { voice ->
-            voices.put(JSONObject()
-                .put("name", voice.name)
-                .put("country", voice.locale.getDisplayCountry(Lang.locale()))
-                .put("network", voice.isNetworkConnectionRequired))
+            voices.put(JSONObject().put("name", voice.name))
         }
         JSONObject().put("available", speech != null).put("voice", prefs.voice ?: JSONObject.NULL)
-            .put("rate", prefs.rate.toDouble()).put("voices", voices)
+            .put("rate", Math.round(prefs.rate * 100) / 100.0).put("voices", voices)
     }
 
     @ReactMethod fun setSpeechSettings(voice: String?, rate: Double, promise: Promise) = speechTask(promise) { speech ->
@@ -420,6 +419,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     @ReactMethod fun previewSpeech(promise: Promise) = speechTask(promise) { speech ->
         check(speech != null) { Lang.tr("Auf diesem Gerät ist keine Sprachausgabe verfügbar.", "No speech output is available on this device.") }
         mainHandler.post {
+            if (speechClosed) return@post
             speech.reload()
             speech.speak(Lang.tr("Kilometer 3. Durchschnitt 5 Minuten 20 Sekunden.", "Kilometer 3. Average 5 minutes 20 seconds."),
                 android.speech.tts.TextToSpeech.QUEUE_FLUSH, "runback-preview")
@@ -430,15 +430,20 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     private fun speechTask(promise: Promise, block: (SpeechOutput?) -> Any?) {
         speechWorker.execute {
             try {
+                check(!speechClosed) { Lang.tr("Die App wurde geschlossen.", "The app was closed.") }
                 var speech = voicePreview
                 if (speech == null) {
                     val created = java.util.concurrent.CountDownLatch(1)
-                    mainHandler.post { voicePreview = voicePreview ?: SpeechOutput(context); created.countDown() }
+                    mainHandler.post {
+                        if (!speechClosed) voicePreview = voicePreview ?: SpeechOutput(context)
+                        created.countDown()
+                    }
                     created.await(2, java.util.concurrent.TimeUnit.SECONDS)
                     speech = voicePreview
                 }
                 val deadline = System.currentTimeMillis() + 4_000L
                 while (speech != null && !speech.ready && System.currentTimeMillis() < deadline) Thread.sleep(100)
+                check(!speechClosed) { Lang.tr("Die App wurde geschlossen.", "The app was closed.") }
                 promise.resolve((block(speech?.takeIf { it.ready }) ?: JSONObject.NULL).toString())
             } catch (error: Exception) {
                 promise.reject("RUNBACK_ERROR", error.message ?: Lang.tr("Vorgang fehlgeschlagen", "Action failed"), error)
@@ -877,7 +882,8 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         }
         worker.shutdown()
         importWorker.shutdown()
-        speechWorker.shutdown()
+        speechClosed = true
+        speechWorker.shutdownNow()
         mainHandler.post { voicePreview?.shutdown(); voicePreview = null }
         super.invalidate()
     }

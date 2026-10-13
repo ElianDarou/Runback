@@ -5118,7 +5118,17 @@ export function RunbackApp({
       onSave={saveSchedule}
       templates={strength.templates}
       runs={runs}
-      strengthSessions={strengthSessions}
+      strengthSessions={
+        // The running session lives apart from the history; Plan shows it as started.
+        strength.active
+          ? [
+              strength.active,
+              ...strengthSessions.filter(
+                session => session.id !== strength.active!.id,
+              ),
+            ]
+          : strengthSessions
+      }
       now={now}
       onStartRun={startScheduled}
       onStartStrength={startScheduled}
@@ -5135,13 +5145,18 @@ export function RunbackApp({
           ? onOpenRoutePlanner
           : undefined
       }
-      onOpenActivity={(kind, id) =>
-        kind === 'run' ? openRun(id) : openSessionById(id)
-      }
+      onOpenActivity={(kind, id) => {
+        if (kind === 'run') openRun(id);
+        else if (id === strength.active?.id) {
+          setNow(Date.now());
+          setWorkoutOpen(true);
+        } else openSessionById(id);
+      }}
       busy={busy}
       showSuggest={features.planning.suggest}
       showMonth={features.planning.month}
       showStrength={showStrength}
+      showRunning={showRunning}
     />
   ) : tab === 'templates' ? (
     renderTemplates()

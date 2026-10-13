@@ -107,42 +107,74 @@ export function planEntriesByDate(
 }
 
 export interface PlanSummary {
-  /** Finished recorded workouts, planned or not. */
+  /** Finished recorded workouts that started in the period, planned or not. */
   done: number;
-  /** Planned sessions that were not skipped. */
+  /** Planned sessions dated in the period that were not skipped. */
   planned: number;
   /** Of those, done through a linked finished activity. */
   plannedDone: number;
-  /** Sum of measured durations of finished workouts; undefined if none is known. */
+  /** Measured durations of finished workouts; undefined if none is known. */
   seconds?: number;
-  /** Running distance; undefined when no run with a distance happened. */
+  /** How many of the `done` workouts have a measured duration. */
+  timed: number;
+  /** Running distance of finished runs; undefined if none is known. */
   runningMeters?: number;
+  /** Finished runs (running only), and how many of them have a distance. */
+  runs: number;
+  measuredRuns: number;
 }
 
+/**
+ * Actual training counts by the day it started; plan progress by the planned
+ * date. A run on March 31 linked to a plan for April 1 is March training and
+ * done April plan. Totals that miss a measurement say so via `timed` and
+ * `measuredRuns` instead of passing as complete.
+ */
 export function planSummary(
   dates: string[],
   byDate: Record<string, PlanEntry[]>,
+  activities: PlanActivity[],
 ): PlanSummary {
-  let done = 0;
+  const inPeriod = new Set(dates);
   let planned = 0;
   let plannedDone = 0;
-  let seconds: number | undefined;
-  let runningMeters: number | undefined;
   dates.forEach(date => {
     (byDate[date] ?? []).forEach(entry => {
-      if (entry.type === 'planned') {
-        if (entry.status === 'skipped') return;
-        planned += 1;
-        if (entry.status === 'done') plannedDone += 1;
-      }
-      const activity = entry.activity;
-      if (!activity?.finished) return;
-      done += 1;
-      if (activity.durationSeconds !== undefined)
-        seconds = (seconds ?? 0) + activity.durationSeconds;
-      if (activity.runningMeters !== undefined)
-        runningMeters = (runningMeters ?? 0) + activity.runningMeters;
+      if (entry.type !== 'planned' || entry.status === 'skipped') return;
+      planned += 1;
+      if (entry.status === 'done') plannedDone += 1;
     });
   });
-  return { done, planned, plannedDone, seconds, runningMeters };
+  let done = 0;
+  let timed = 0;
+  let runs = 0;
+  let measuredRuns = 0;
+  let seconds: number | undefined;
+  let runningMeters: number | undefined;
+  activities.forEach(activity => {
+    if (!activity.finished) return;
+    if (!inPeriod.has(localDateKey(new Date(activity.startTime)))) return;
+    done += 1;
+    if (activity.durationSeconds !== undefined) {
+      timed += 1;
+      seconds = (seconds ?? 0) + activity.durationSeconds;
+    }
+    if (activity.kind === 'run' && activity.sport !== 'cycling') {
+      runs += 1;
+      if (activity.runningMeters !== undefined) {
+        measuredRuns += 1;
+        runningMeters = (runningMeters ?? 0) + activity.runningMeters;
+      }
+    }
+  });
+  return {
+    done,
+    planned,
+    plannedDone,
+    seconds,
+    timed,
+    runningMeters,
+    runs,
+    measuredRuns,
+  };
 }

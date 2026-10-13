@@ -91,39 +91,77 @@ describe('planView', () => {
   });
 
   it('sums only finished workouts and keeps unknown totals unknown', () => {
+    const activities: PlanActivity[] = [
+      run(),
+      run({ id: 'unfinished', finished: false, startTime: at('2025-03-11') }),
+      {
+        id: 'gym',
+        kind: 'strength',
+        startTime: at('2025-03-12'),
+        title: 'Kraft',
+        finished: true,
+        sets: 12,
+      },
+    ];
     const byDate = planEntriesByDate(
       [
         session({ id: 'done', activityId: 'r1' }),
         session({ id: 'open', date: '2025-03-11' }),
         session({ id: 'skipped', date: '2025-03-12', status: 'skipped' }),
       ],
-      [
-        run(),
-        run({ id: 'unfinished', finished: false, startTime: at('2025-03-11') }),
-        {
-          id: 'gym',
-          kind: 'strength',
-          startTime: at('2025-03-12'),
-          title: 'Kraft',
-          finished: true,
-          sets: 12,
-        },
-      ],
+      activities,
     );
     const dates = ['2025-03-10', '2025-03-11', '2025-03-12'];
-    expect(planSummary(dates, byDate)).toEqual({
+    expect(planSummary(dates, byDate, activities)).toEqual({
       done: 2,
       planned: 2,
       plannedDone: 1,
       seconds: 1800,
+      timed: 1,
       runningMeters: 5000,
+      runs: 1,
+      measuredRuns: 1,
     });
     // Strength without a known duration and no run: no invented zero.
-    expect(planSummary(['2025-03-12'], byDate)).toEqual({
+    expect(planSummary(['2025-03-12'], byDate, activities)).toEqual({
       done: 1,
       planned: 0,
       plannedDone: 0,
       seconds: undefined,
+      timed: 0,
+      runningMeters: undefined,
+      runs: 0,
+      measuredRuns: 0,
+    });
+  });
+
+  it('counts training by its start day and plan progress by the planned day', () => {
+    const activities = [run({ startTime: at('2025-03-31', 20) })];
+    const byDate = planEntriesByDate(
+      [session({ date: '2025-04-01', activityId: 'r1' })],
+      activities,
+    );
+    expect(planSummary(['2025-03-31'], byDate, activities)).toMatchObject({
+      done: 1,
+      planned: 0,
+      runningMeters: 5000,
+    });
+    expect(planSummary(['2025-04-01'], byDate, activities)).toMatchObject({
+      done: 0,
+      planned: 1,
+      plannedDone: 1,
+      seconds: undefined,
+    });
+  });
+
+  it('leaves rides out of the running distance', () => {
+    const activities = [
+      run({ sport: 'cycling', runningMeters: undefined, distanceMeters: 20000 }),
+    ];
+    const byDate = planEntriesByDate([], activities);
+    expect(planSummary(['2025-03-10'], byDate, activities)).toMatchObject({
+      done: 1,
+      runs: 0,
       runningMeters: undefined,
     });
   });

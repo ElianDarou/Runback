@@ -9,12 +9,14 @@ import type { RunTargetOutput } from '../domain/runTarget';
 import { tr } from '../domain/i18n';
 import {
   Button,
+  CheckRow,
   ChipGroup,
   Copy,
   Field,
   Notice,
   Row,
   Section,
+  Sheet,
   SwitchRow,
   Title,
 } from './components';
@@ -24,7 +26,7 @@ interface SpeechSettings {
   available: boolean;
   voice: string | null;
   rate: number;
-  voices: { name: string; country: string; network: boolean }[];
+  voices: { name: string }[];
 }
 
 const RATES = [0.85, 1, 1.2] as const;
@@ -70,6 +72,7 @@ export function SoundSettings({
   const [speech, setSpeech] = useState<SpeechSettings | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [choosing, setChoosing] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -93,7 +96,11 @@ export function SoundSettings({
     };
   }, []);
 
-  const saveSpeech = async (voice: string | null, rate: number) => {
+  const saveSpeech = async (
+    voice: string | null,
+    rate: number,
+    sample = false,
+  ) => {
     if (!speech) return;
     const previous = speech;
     setSpeech({ ...speech, voice, rate });
@@ -101,6 +108,8 @@ export function SoundSettings({
     setError('');
     try {
       await nativeCall('setSpeechSettings', voice, rate);
+      // Choosing a voice plays it, so the choice is made by ear.
+      if (sample) await nativeCall('previewSpeech');
     } catch (caught) {
       setSpeech(previous);
       setError(
@@ -136,21 +145,14 @@ export function SoundSettings({
   const patchStrength = (value: Partial<FeatureSettings['strength']>) =>
     onChangeFeatures({ ...features, strength: { ...strength, ...value } });
 
-  // Voices of one country first carry a number; the country only shows where
-  // several are on offer, "needs internet" only where it is true.
-  const countries = new Set(speech?.voices.map(voice => voice.country));
+  // Engine voice names are technical ("de-de-x-deb-local"); a number is enough
+  // because each choice plays a sample.
   const voiceOptions = speech
     ? [
         { value: SYSTEM_VOICE, label: tr('Systemstimme', 'System voice') },
         ...speech.voices.map((voice, index) => ({
           value: voice.name,
-          label: [
-            tr(`Stimme ${index + 1}`, `Voice ${index + 1}`),
-            countries.size > 1 && voice.country ? voice.country : '',
-            voice.network ? tr('online', 'online') : '',
-          ]
-            .filter(Boolean)
-            .join(' · '),
+          label: tr(`Stimme ${index + 1}`, `Voice ${index + 1}`),
         })),
       ]
     : [];
@@ -158,7 +160,9 @@ export function SoundSettings({
     speech?.voice && speech.voices.some(voice => voice.name === speech.voice)
       ? speech.voice
       : SYSTEM_VOICE;
-  const rate = RATES.find(value => value === speech?.rate) ?? 1;
+  // The rate crosses the bridge as a float; match it with a tolerance.
+  const rate =
+    RATES.find(value => Math.abs(value - (speech?.rate ?? 1)) < 0.01) ?? 1;
 
   return (
     <>
@@ -180,17 +184,40 @@ export function SoundSettings({
           </Notice>
         ) : (
           <>
-            <Field label={tr('Stimme für Ansagen', 'Voice for announcements')}>
-              <ChipGroup
-                label={tr('Stimme für Ansagen', 'Voice for announcements')}
-                options={voiceOptions}
-                value={selectedVoice}
-                onChange={value =>
-                  void saveSpeech(value === SYSTEM_VOICE ? null : value, rate)
-                }
-                disabled={busy || disabled}
+            <Row
+              title={tr('Stimme für Ansagen', 'Voice for announcements')}
+              subtitle={
+                voiceOptions.find(option => option.value === selectedVoice)
+                  ?.label
+              }
+              onPress={() => setChoosing(true)}
+              disabled={busy || disabled}
+            />
+            <Sheet
+              visible={choosing}
+              title={tr('Stimme für Ansagen', 'Voice for announcements')}
+              onClose={() => setChoosing(false)}
+            >
+              {voiceOptions.map(option => (
+                <CheckRow
+                  key={option.value}
+                  title={option.label}
+                  checked={option.value === selectedVoice}
+                  onToggle={() =>
+                    void saveSpeech(
+                      option.value === SYSTEM_VOICE ? null : option.value,
+                      rate,
+                      true,
+                    )
+                  }
+                  disabled={busy}
+                />
+              ))}
+              <Button
+                title={tr('Fertig', 'Done')}
+                onPress={() => setChoosing(false)}
               />
-            </Field>
+            </Sheet>
             <Field label={tr('Sprechtempo', 'Speaking rate')}>
               <ChipGroup
                 label={tr('Sprechtempo', 'Speaking rate')}

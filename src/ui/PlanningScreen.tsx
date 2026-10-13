@@ -112,6 +112,8 @@ export interface PlanningScreenProps {
   showMonth?: boolean;
   /** Strength sessions can be planned. Without the strength area, runs only. */
   showStrength?: boolean;
+  /** Without the running area, Plan shows neither runs nor planned runs. */
+  showRunning?: boolean;
 }
 
 type ViewMode = 'week' | 'month';
@@ -411,7 +413,9 @@ function strengthActivity(session: StrengthSession): PlanActivity {
     title:
       displaySessionName(session.name) ||
       tr('Krafttraining', 'Strength training'),
-    finished: session.status === 'finished' && ended,
+    // Imports may lack an end time: finished stays finished, only the
+    // duration is unknown.
+    finished: session.status === 'finished',
     durationSeconds: ended
       ? Math.round((session.endTime! - session.startTime) / 1000)
       : undefined,
@@ -528,6 +532,7 @@ export function PlanningScreen({
   showSuggest = true,
   showMonth = true,
   showStrength = true,
+  showRunning = true,
 }: PlanningScreenProps) {
   const [displayState, setDisplayState] = useState<ScheduleState>(() =>
     cloneState(state),
@@ -614,17 +619,25 @@ export function PlanningScreen({
 
   const language = getLanguage();
   // Titles depend on the language, so it is part of the memo.
+  // Each area shows only its own data; a switched-off area leaves no trace.
   const activities = useMemo(
     () => [
-      ...runs.map(runActivity),
-      ...strengthSessions.map(strengthActivity),
+      ...(showRunning ? runs.map(runActivity) : []),
+      ...(showStrength ? strengthSessions.map(strengthActivity) : []),
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [runs, strengthSessions, language],
+    [runs, strengthSessions, language, showRunning, showStrength],
+  );
+  const shownSessions = useMemo(
+    () =>
+      displayState.sessions.filter(session =>
+        session.kind === 'run' ? showRunning : showStrength,
+      ),
+    [displayState.sessions, showRunning, showStrength],
   );
   const entriesByDate = useMemo(
-    () => planEntriesByDate(displayState.sessions, activities),
-    [activities, displayState.sessions],
+    () => planEntriesByDate(shownSessions, activities),
+    [activities, shownSessions],
   );
   const detailsActivity = detailsSession
     ? linkedActivity(detailsSession, activities)
@@ -1108,8 +1121,8 @@ export function PlanningScreen({
     setMoveWeekStart(mondayOf(localDateFrom(session.date)));
   }, []);
 
-  const weekSummary = planSummary(weekDateKeys, entriesByDate);
-  const monthSummary = planSummary(monthDateKeys, entriesByDate);
+  const weekSummary = planSummary(weekDateKeys, entriesByDate, activities);
+  const monthSummary = planSummary(monthDateKeys, entriesByDate, activities);
   const shownDay = monthDateKeys.includes(selectedDay)
     ? selectedDay
     : monthDateKeys.includes(today)
@@ -1117,6 +1130,10 @@ export function PlanningScreen({
     : monthDateKeys[0];
 
   const openActivity = onOpenActivity;
+  const periodHasPlan =
+    view === 'week' || !showMonth
+      ? weekSummary.planned > 0
+      : monthSummary.planned > 0;
 
   // One marker per entry: filled = recorded, ring = still planned, dash =
   // skipped. The shape carries the state too, never color alone.
@@ -1163,12 +1180,13 @@ export function PlanningScreen({
                 activityKindLabel(activity),
                 activityMeta(activity),
                 activity.finished ? '' : statusLabel('started'),
+                // Only worth saying when the period has a plan to compare with.
+                periodHasPlan ? tr('ohne Plan', 'unplanned') : '',
               ]
                 .filter(Boolean)
                 .join(' · ')}
             </Text>
           </View>
-          <Badge muted>{tr('Ohne Plan', 'Unplanned')}</Badge>
           {openActivity ? <Text style={styles.entryChevron}>›</Text> : null}
         </>
       );
@@ -1267,7 +1285,7 @@ export function PlanningScreen({
           onPress={() => openEditor(undefined, key)}
           style={({ pressed }) => [styles.addDay, pressed && styles.pressed]}
         >
-          <Text style={styles.addDayText}>
+          <Text style={styles.addDayMuted}>
             {tr('+ Einheit planen', '+ Plan a workout')}
           </Text>
         </Pressable>
@@ -1352,12 +1370,26 @@ export function PlanningScreen({
         />
         <Stat
           value={totalTime(summary.seconds)}
-          label={tr('Trainingszeit', 'Training time')}
+          label={
+            summary.timed < summary.done
+              ? tr(
+                  `Zeit von ${summary.timed} der ${summary.done}`,
+                  `Time of ${summary.timed} of ${summary.done}`,
+                )
+              : tr('Trainingszeit', 'Training time')
+          }
         />
         {summary.runningMeters !== undefined ? (
           <Stat
             value={kilometers(summary.runningMeters)}
-            label={tr('km gelaufen', 'km run')}
+            label={
+              summary.measuredRuns < summary.runs
+                ? tr(
+                    `km aus ${summary.measuredRuns} von ${summary.runs} Läufen`,
+                    `km from ${summary.measuredRuns} of ${summary.runs} runs`,
+                  )
+                : tr('km gelaufen', 'km run')
+            }
           />
         ) : null}
       </View>
@@ -2420,7 +2452,7 @@ const styles = StyleSheet.create({
     paddingVertical: space.sm,
   },
   dayDivider: { borderTopWidth: 1, borderTopColor: color.line },
-  dateColumn: { width: 44, alignItems: 'center', paddingTop: space.xxs },
+  dateColumn: { width: space.xxl, alignItems: 'center', paddingTop: space.xxs },
   dateWeekday: { color: color.muted, ...typography.micro },
   dateNumber: {
     color: color.text,
@@ -2436,20 +2468,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: space.sm,
   },
-  entryMain: { flex: 1, gap: 2 },
+  entryMain: { flex: 1 },
   entryTitle: { color: color.text, ...typography.body, fontWeight: '600' },
   entryMeta: { color: color.muted, ...typography.label },
-  entryChevron: {
-    color: color.muted,
-    fontSize: 22,
-    minWidth: 16,
-    textAlign: 'center',
-  },
+  entryChevron: { color: color.muted, ...typography.heading },
   marker: {
-    width: 24,
-    height: 24,
+    width: space.lg,
+    height: space.lg,
     borderRadius: radius.pill,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
@@ -2458,7 +2485,7 @@ const styles = StyleSheet.create({
     width: space.xs,
     height: space.xs,
     borderRadius: radius.pill,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: 'transparent',
   },
   markerDone: { backgroundColor: color.green, borderColor: color.green },
@@ -2481,6 +2508,7 @@ const styles = StyleSheet.create({
   addDay: { minHeight: 48, justifyContent: 'center' },
   addMore: { minHeight: 48, justifyContent: 'center' },
   addDayText: { color: color.green, ...typography.label },
+  addDayMuted: { color: color.muted, ...typography.label },
   budget: { color: color.muted, ...typography.micro },
   legend: {
     flexDirection: 'row',
@@ -2493,7 +2521,7 @@ const styles = StyleSheet.create({
   calendarSelected: { backgroundColor: color.raised, borderColor: color.line },
   calendarDots: {
     flexDirection: 'row',
-    gap: 3,
+    gap: space.xxs,
     minHeight: space.xs,
     alignItems: 'center',
   },

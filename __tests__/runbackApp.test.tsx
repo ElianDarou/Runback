@@ -574,8 +574,8 @@ describe('Settings list', () => {
               voice: null,
               rate: 1,
               voices: [
-                { name: 'de-x-a', country: 'Deutschland', network: false },
-                { name: 'de-x-b', country: 'Deutschland', network: true },
+                { name: 'de-x-a' },
+                { name: 'de-x-b' },
               ],
             }
           : {},
@@ -586,7 +586,15 @@ describe('Settings list', () => {
       await tap(tree, 'Stimme & Vibration');
       const text = screenText(tree);
       expect(text).toContain('Systemstimme');
-      expect(text).toContain('Stimme 2 · online');
+      await tap(tree, 'Stimme für Ansagen');
+      await act(async () => {
+        tree.root
+          .findAllByType(CheckRow)
+          .find(row => row.props.title === 'Stimme 2')!
+          .props.onToggle(true);
+      });
+      expect(nativeCall).toHaveBeenCalledWith('setSpeechSettings', 'de-x-b', 1);
+      expect(nativeCall).toHaveBeenCalledWith('previewSpeech');
       expect(text).toContain('Ansagen beim Laufen');
       expect(text).toContain('Ansage am Pausenende');
       await act(async () => {
@@ -608,7 +616,11 @@ describe('Settings list', () => {
           .find(group => group.props.label === 'Sprechtempo')!
           .props.onChange('1.2');
       });
-      expect(nativeCall).toHaveBeenCalledWith('setSpeechSettings', null, 1.2);
+      expect(nativeCall).toHaveBeenCalledWith(
+        'setSpeechSettings',
+        'de-x-b',
+        1.2,
+      );
       await tap(tree, 'Ansagen beim Laufen');
       expect(screenText(tree)).toContain('Zwischenstände ansagen');
     } finally {

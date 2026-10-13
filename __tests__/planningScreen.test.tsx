@@ -420,7 +420,7 @@ describe('PlanningScreen', () => {
       },
     );
     const text = screenText(tree);
-    expect(text).toContain('Ohne Plan');
+    expect(text).toContain('Lauf · 5,00 km · 30:00 · ohne Plan');
     // Two recorded runs, one of two planned sessions done, 10 km in total.
     expect(text).toContain('1 von 2 geplanten Einheiten erledigt');
     expect(text).toContain('10,0');
@@ -447,7 +447,54 @@ describe('PlanningScreen', () => {
     expect(screenText(tree)).toContain('Donnerstag, 20. März');
     expect(screenText(tree)).toContain('Später');
     await press(tree, 'Dienstag, 11. März, 1 Einheit');
-    expect(screenText(tree)).toContain('Ohne Plan');
+    expect(screenText(tree)).toContain('ohne Plan');
+    unmount(tree);
+  });
+
+  it('shows nothing of a switched-off area and says when a total is partial', () => {
+    const strengthSession = {
+      id: 'gym',
+      kind: 'strength' as const,
+      name: 'Beine',
+      startTime: localAt('2025-03-11', 18),
+      status: 'finished' as const,
+      exercises: [],
+      currentExercise: 0,
+      modelVersion: 'test',
+      catalogVersion: 'test',
+    };
+    const base: PlanningScreenProps = {
+      state: emptySchedule({
+        sessions: [
+          plannedSession({
+            id: 'strength-plan',
+            kind: 'strength',
+            title: 'Kraftplan',
+            date: '2025-03-13',
+          }),
+        ],
+      }),
+      onSave: jest.fn<Promise<void>, [ScheduleState]>(),
+      templates: [],
+      runs: [completedRun('run', '2025-03-10')],
+      strengthSessions: [strengthSession],
+      now: localAt('2025-03-12', 12),
+      onStartRun: jest.fn<Promise<void>, [ScheduledSession]>(),
+      onStartStrength: jest.fn<Promise<void>, [ScheduledSession]>(),
+    };
+    let tree!: TestRenderer.ReactTestRenderer;
+    act(() => {
+      tree = TestRenderer.create(<PlanningScreen {...base} />);
+    });
+    // The imported strength session has no end time: done, duration unknown.
+    expect(screenText(tree)).toContain('Zeit von 1 der 2');
+    expect(screenText(tree)).toContain('Kraftplan');
+    act(() => {
+      tree.update(<PlanningScreen {...base} showStrength={false} />);
+    });
+    expect(screenText(tree)).not.toContain('Kraftplan');
+    expect(screenText(tree)).not.toContain('Beine');
+    expect(screenText(tree)).toContain('Trainingszeit');
     unmount(tree);
   });
 

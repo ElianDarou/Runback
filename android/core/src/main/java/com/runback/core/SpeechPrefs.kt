@@ -30,9 +30,17 @@ object SpeechPrefs {
             .apply()
     }
 
-    /** Installed voices of the language, offline first, then by name: a stable order. */
-    fun matching(voices: Collection<Voice>, locale: Locale): List<Voice> = voices
-        .filter { it.locale.language == locale.language }
-        .filter { TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED !in (it.features ?: emptySet<String>()) }
-        .sortedWith(compareBy<Voice>({ it.isNetworkConnectionRequired }, { it.locale.country != locale.country }, { it.name }))
+    /**
+     * Installed offline voices of the language, by name for a stable order. Network
+     * voices are left out: outdoors without signal they would fall silent or switch.
+     * When the app's region has voices of its own, only those remain; engines ship
+     * dozens of regional variants that sound alike.
+     */
+    fun matching(voices: Collection<Voice>, locale: Locale): List<Voice> {
+        val offline = voices
+            .filter { it.locale.language == locale.language && !it.isNetworkConnectionRequired }
+            .filter { TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED !in (it.features ?: emptySet<String>()) }
+        val regional = offline.filter { it.locale.country == locale.country }
+        return (regional.ifEmpty { offline }).sortedBy { it.name }
+    }
 }
