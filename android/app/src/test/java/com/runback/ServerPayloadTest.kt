@@ -23,7 +23,7 @@ class ServerPayloadTest {
     }
     @Test fun settingsUsePositiveListAndNeverInventMissingFields() {
         val clean = ServerPayload.clean(JSONObject("""{"goal":"5 km","openRouterKey":"secret","prose":{"key":"secret"},"schedule":{"sessions":[]},"experiments":[]}"""), gps = false, settings = true)
-        assertEquals("5 km", clean.getString("goal")); assertTrue(clean.has("schedule")); assertTrue(clean.has("experiments"))
+        assertEquals("5 km", clean.getString("goal")); assertTrue(clean.has("schedule")); assertFalse(clean.has("experiments"))
         assertFalse(clean.has("openRouterKey")); assertFalse(clean.has("prose")); assertFalse(clean.has("goalTargetDate"))
         assertFalse(ServerPayload.DEFAULT_SCOPE.getBoolean("gps")); assertFalse(ServerPayload.DEFAULT_SCOPE.getBoolean("health"))
     }

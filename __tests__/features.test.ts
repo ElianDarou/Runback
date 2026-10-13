@@ -8,8 +8,6 @@ import {
   availableHomeSections,
   enabledSports,
   normalizeFeatures,
-  recommendationsShown,
-  recommendationsSuggested,
   shouldPromptSoreness,
   visibleHomeSections,
   visibleTabs,
@@ -104,32 +102,16 @@ describe('Derivations', () => {
       areas: { running: true, strength: false },
       planning: { enabled: false },
       soreness: { enabled: false },
-      recommendations: { running: 'off', strength: 'suggest' },
     });
-    expect(visibleTabs(f)).toEqual(['today', 'coach', 'history']);
+    expect(visibleTabs(f)).toEqual(['today', 'statistics', 'history']);
     expect(availableHomeSections(f)).toEqual(['goal', 'recent']);
     expect(visibleHomeSections(f)).toEqual(availableHomeSections(f));
-    expect(recommendationsShown(f, 'running')).toBe(false);
-    expect(recommendationsShown(f, 'strength')).toBe(false);
     // Goal progress belongs to running: without the area the block disappears.
     expect(
       availableHomeSections(
         normalizeFeatures({ areas: { running: false, strength: true } }),
       ),
     ).not.toContain('goal');
-  });
-
-  it('distinguishes suggesting from on request only', () => {
-    const f = normalizeFeatures({
-      recommendations: { running: 'on_request' },
-    });
-    expect(recommendationsShown(f, 'running')).toBe(true);
-    expect(recommendationsSuggested(f, 'running')).toBe(false);
-    expect(visibleHomeSections(f)).toContain('recommendation');
-    const quiet = normalizeFeatures({
-      recommendations: { running: 'on_request', strength: 'off' },
-    });
-    expect(visibleHomeSections(quiet)).not.toContain('recommendation');
   });
 
   it('respects the selection of the Today blocks', () => {
@@ -251,14 +233,28 @@ describe('Features and navigation v2', () => {
       version: 1,
       planning: { enabled: false },
       recording: { routes: false },
-      recommendations: { running: 'off' },
     });
     expect(f.version).toBe(FEATURES_VERSION);
-    expect(f.coach.enabled).toBe(true);
     expect(f.planning.enabled).toBe(false);
     expect(f.recording.routes).toBe(false);
-    expect(f.recommendations.running).toBe('off');
-    expect(visibleTabs(f)).toEqual(['today', 'coach', 'history']);
+    expect(visibleTabs(f)).toEqual(['today', 'statistics', 'history']);
+  });
+  it('drops the removed Coach and puts Statistics in its pinned slot', () => {
+    const f = normalizeFeatures({
+      version: 3,
+      coach: { enabled: true },
+      recommendations: { running: 'suggest', strength: 'off' },
+      home: { sections: ['week', 'recommendation', 'recent'] },
+      navigation: { tabs: ['plan', 'coach'] },
+    });
+    expect(f).not.toHaveProperty('coach');
+    expect(f).not.toHaveProperty('recommendations');
+    expect(f.home.sections).toEqual(['week', 'recent']);
+    expect(f.navigation.tabs).toEqual(['plan', 'statistics']);
+    expect(
+      normalizeFeatures({ navigation: { tabs: ['statistics', 'coach'] } })
+        .navigation.tabs,
+    ).toEqual(['statistics']);
   });
   it('normalizes slots without losing their order', () => {
     const f = normalizeFeatures({
@@ -274,13 +270,13 @@ describe('Features and navigation v2', () => {
   });
   it('separates active features from their slots and leaves empty slots free', () => {
     const f = withFeature(
-      withFeature(normalizeFeatures(undefined), 'coach', false),
+      withFeature(normalizeFeatures(undefined), 'statistics', false),
       'planning',
       false,
     );
     expect(visibleTabs(f)).toEqual(['today', 'history']);
-    const enabled = withFeature(f, 'coach', true);
-    expect(enabled.coach.enabled).toBe(true);
+    const enabled = withFeature(f, 'statistics', true);
+    expect(enabled.statistics.enabled).toBe(true);
     expect(visibleTabs(enabled)).toEqual(['today', 'history']);
     const pinned = withNavigation(enabled, ['statistics', 'routes']);
     expect(visibleTabs(pinned)).toEqual([
@@ -291,22 +287,9 @@ describe('Features and navigation v2', () => {
     ]);
     expect(withNavigation(pinned, []).statistics.enabled).toBe(true);
   });
-  it('keeps goals, focus modes and saved display options without Coach', () => {
-    const f = withFeature(normalizeFeatures(undefined), 'coach', false);
-    expect(recommendationsShown(f, 'running')).toBe(false);
-    expect(recommendationsShown(f, 'strength')).toBe(false);
-    expect(recommendationsSuggested(f, 'running')).toBe(false);
-    expect(availableHomeSections(f)).not.toContain('recommendation');
-    expect(availableHomeSections(f)).toContain('goal');
-    expect(f.recommendations.running).toBe('suggest');
-    expect(withFeature(f, 'coach', true).recommendations.running).toBe(
-      'suggest',
-    );
-  });
-  it('lets templates be used without planning and statistics without Coach', () => {
+  it('lets templates be used without planning', () => {
     const f = normalizeFeatures({
       planning: { enabled: false },
-      coach: { enabled: false },
     });
     expect(availableTabs(f)).toEqual([
       'statistics',
@@ -329,16 +312,15 @@ describe('Features and navigation v2', () => {
         'soreness',
         'templates',
         'templates',
-        'coach',
         'plan',
       ]).navigation.tabs,
-    ).toEqual(['templates', 'coach']);
+    ).toEqual(['templates', 'plan']);
     expect(featureEnabled(f, 'routes')).toBe(false);
   });
   it('hides goal progress only via its independent goal switch', () => {
     const f = withFeature(normalizeFeatures(undefined), 'goals', false);
     expect(availableHomeSections(f)).not.toContain('goal');
-    expect(recommendationsShown(f, 'running')).toBe(true);
+    expect(availableHomeSections(f)).toContain('week');
   });
 });
 

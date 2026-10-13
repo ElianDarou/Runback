@@ -87,7 +87,7 @@ describe('Sync', () => {
       ['r2', 'r1'],
     );
     assert.equal(data.strength[0].id, 's1');
-    assert.equal(data.experiments.length, 1);
+    assert.equal(data.settings?.goal, '5 km unter 22 Minuten');
     assert.ok(data.lastCompleteAt);
   });
 
@@ -142,13 +142,13 @@ describe('Sync', () => {
       { ...session },
       { completed_sets: 4, avg_heart_rate: 112 },
     );
-    const recommendation = store.db
-      .prepare('SELECT area, status, title FROM v1_recommendations')
-      .get() as Record<string, unknown>;
-    assert.deepEqual(
-      { ...recommendation },
-      { area: 'running', status: 'active', title: 'Ruhiger starten' },
-    );
+    // Schema 4 dropped the recommendations table and its view.
+    const recommendations = store.db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE name IN ('recommendations', 'v1_recommendations')",
+      )
+      .all();
+    assert.equal(recommendations.length, 0);
   });
 
   it('deletes what the phone no longer has and reloads what changed', async () => {

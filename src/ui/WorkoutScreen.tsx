@@ -450,8 +450,7 @@ function ProgressionNote({
             'Der Verlauf ist noch nicht belastbar einzuschätzen.',
             "The trend can't be assessed reliably yet.",
           )
-      : // Observation only: an action ("increase", "reduce") exists only as a
-      // recommendation in the Coach (ground rules 3 and 15).
+      : // Observation only: the app never tells the user to change the load.
       assessment.verdict === 'increase'
       ? tr('Der Verlauf zeigt nach oben.', 'The trend is going up.')
       : assessment.verdict === 'reduce'
@@ -698,10 +697,8 @@ export function WorkoutScreen({
     if (!current || !currentProgress.done || !sessions?.length) {
       return null;
     }
-    return assessExerciseProgression(sessions, current.exerciseId, {
-      nextSessionAt: now,
-    });
-  }, [current, currentProgress.done, now, sessions]);
+    return assessExerciseProgression(sessions, current.exerciseId);
+  }, [current, currentProgress.done, sessions]);
 
   return (
     <View style={styles.screen}>

@@ -113,13 +113,9 @@ export function openApi(version: string) {
       '/wellness': list('Health values (v1_wellness)', [
         query('kind', 'Kind of value'),
       ]),
-      '/recommendations': list('Recommendations (v1_recommendations)', [
-        query('area', 'running oder strength'),
-        query('status', 'active …'),
-      ]),
       '/plan': get('Saved appointments and templates from the app'),
       '/soreness': get('Reported soreness from the app'),
-      '/coach': get('Goal, focus and recommendations per area'),
+      '/goals': get('Goal and target date per area'),
       '/stats/running': get('Running statistics, as in the app', [range]),
       '/stats/strength': get('Strength statistics, as in the app', [range]),
       '/sql': {

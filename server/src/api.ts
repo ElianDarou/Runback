@@ -161,12 +161,6 @@ export function apiRead(
       filters: { kind: 'kind' },
     });
   }
-  if (path === '/recommendations') {
-    return listView(store, 'v1_recommendations', url, {
-      time: 'accepted_utc',
-      filters: { area: 'area', status: 'status' },
-    });
-  }
   if (path === '/plan')
     return {
       schedule: data.settings?.schedule ?? null,
@@ -175,20 +169,17 @@ export function apiRead(
     };
   if (path === '/soreness')
     return loadObject(store, 'soreness') ?? { reports: [] };
-  if (path === '/coach') {
+  if (path === '/goals') {
     const settings = data.settings;
     return {
       running: {
         goal: settings?.goal ?? null,
         goalTargetDate: settings?.goalTargetDate ?? null,
-        focus: settings?.trainingFocus ?? null,
       },
       strength: {
         goal: settings?.strengthGoal ?? null,
         goalTargetDate: settings?.strengthGoalTargetDate ?? null,
-        focus: settings?.strengthFocus ?? null,
       },
-      experiments: data.experiments,
     };
   }
   if (path === '/stats/running') {

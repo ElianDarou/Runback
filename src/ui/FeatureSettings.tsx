@@ -11,14 +11,12 @@ import {
   type FeatureId,
   type OptionalTab,
   AFTER_RUN_OPTIONS,
-  RECOMMENDATION_MODES,
   RECORDING_PRIMARIES,
   REST_SECONDS_OPTIONS,
   SORENESS_PROMPTS,
   STATS_MODULES,
   afterRunLabel,
   homeSectionLabel,
-  recommendationModeLabel,
   recordingPrimaryLabel,
   sorenessPromptLabel,
   statsModuleLabel,
@@ -355,7 +353,7 @@ export function FeatureSettings({
           )}
         </Copy>
         <Section title={tr('Training begleiten', 'Support training')}>
-          {functionRows(['coach', 'planning', 'goals', 'music'])}
+          {functionRows(['planning', 'goals', 'music'])}
         </Section>
         <Section title={tr('Auswerten und vorbereiten', 'Analyze and prepare')}>
           {functionRows(['statistics', 'routes', 'templates', 'soreness'])}
@@ -519,80 +517,6 @@ export function FeatureSettings({
         </Section>
       ) : null}
       <>
-        {screen === 'coach' && features.coach.enabled ? (
-          <Disclosure
-            defaultOpen
-            title={tr('Empfehlungen', 'Recommendations')}
-            subtitle={[
-              running
-                ? tr(
-                    `Laufen: ${recommendationModeLabel(features.recommendations.running)}`,
-                    `Running: ${recommendationModeLabel(features.recommendations.running)}`,
-                  )
-                : '',
-              strength
-                ? tr(
-                    `Kraft: ${recommendationModeLabel(features.recommendations.strength)}`,
-                    `Strength: ${recommendationModeLabel(features.recommendations.strength)}`,
-                  )
-                : '',
-            ]
-              .filter(Boolean)
-              .join(' · ')}
-          >
-            {running ? (
-              <Field label={tr('Laufen', 'Running')}>
-                <ChipGroup
-                  label={tr('Empfehlungen fürs Laufen', 'Recommendations for running')}
-                  options={RECOMMENDATION_MODES.map(value => ({
-                    value,
-                    label: recommendationModeLabel(value),
-                  }))}
-                  value={features.recommendations.running}
-                  onChange={mode => patch('recommendations', { running: mode })}
-                  disabled={disabled}
-                />
-              </Field>
-            ) : null}
-            {strength ? (
-              <Field label={tr('Krafttraining', 'Strength training')}>
-                <ChipGroup
-                  label={tr(
-                    'Empfehlungen fürs Krafttraining',
-                    'Recommendations for strength training',
-                  )}
-                  options={RECOMMENDATION_MODES.map(value => ({
-                    value,
-                    label: recommendationModeLabel(value),
-                  }))}
-                  value={features.recommendations.strength}
-                  onChange={mode =>
-                    patch('recommendations', { strength: mode })
-                  }
-                  disabled={disabled}
-                />
-              </Field>
-            ) : null}
-            <Row
-              title={tr('„Danach vorgesehen“ anzeigen', 'Show “Up next”')}
-              subtitle={tr(
-                'Die wartende nächste Empfehlung',
-                'The next recommendation waiting',
-              )}
-              trailing={toggle(
-                tr('„Danach vorgesehen“ anzeigen', 'Show “Up next”'),
-                features.recommendations.showQueued,
-                value => patch('recommendations', { showQueued: value }),
-              )}
-            />
-            <Copy muted>
-              {tr(
-                'Nur auf Nachfrage: Die Empfehlung steht im Coach, nicht auf Heute. Aus: Eine laufende Empfehlung wird pausiert, nicht abgebrochen.',
-                'Only on request: the recommendation is in Coach, not on Today. Off: a running recommendation is paused, not cancelled.',
-              )}
-            </Copy>
-          </Disclosure>
-        ) : null}
         {screen === 'recording' && recordsSomething ? (
           <Disclosure
             defaultOpen
@@ -792,8 +716,8 @@ export function FeatureSettings({
       {screen === 'goals' && features.goals.enabled ? (
         <Copy muted>
           {tr(
-            'Wähle Ziel und Fokus je Bereich unter Alle Funktionen.',
-            'Choose goal and focus per area under All features.',
+            'Wähle das Ziel je Bereich unter Alle Funktionen.',
+            'Choose the goal per area under All features.',
           )}
         </Copy>
       ) : null}

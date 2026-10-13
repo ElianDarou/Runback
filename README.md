@@ -25,53 +25,42 @@ The default is the device language.
 - **Health Connect** read and (per run, explicitly) write.
 - **BLE sensors** for heart rate and running cadence.
 - **Weather** only once enabled, via Open-Meteo.
-- **OpenRouter** optional with your own key, for phrasing and the training chat. The chat
-  reads, it writes nothing and decides nothing.
+- **OpenRouter** optional with your own key, for the training chat. The chat reads, it
+  writes nothing and decides nothing.
 - **Own server** optional, self-hosted, with a read-only copy of shared data — see
   [server/README.md](server/README.md).
 
 ## What you see in the app
 
 **Today** and **History** are fixed tabs. Up to two more active features
-can be pinned to the bar: Plan, Coach, Statistics, Routes,
+can be pinned to the bar: Plan, Statistics, Routes,
 Templates, or Soreness. Everything else is under **All features**.
 
 - **Today** — What do I do now? A week strip, today’s workout as a card with a start
   button (sport, purpose, template, and pace/heart rate target in the start sheet),
-  reporting soreness, the current recommendation (if active), and the latest workouts.
+  goal progress, reporting soreness, and the latest workouts.
 - **History** — What have I done? Workouts grouped by week with totals. Detail view with
-  map, metrics, next step, feeling, and splits.
+  map, metrics, insights, feeling, and splits.
 - **Plan** — What do I do this week? Week calendar, add a workout, have a week suggested,
   month as a jump marker.
-- **Coach** (optional) — What am I working on? The recommendation per area with its state
-  and progress, earlier recommendations, How Runback calculates.
-  **Goal & focus** remain reachable even without the Coach.
+- **Statistics** — How am I developing? Runs and strength training over weeks, personal
+  bests, consistency, and body values.
 - **Settings** (gear icon in the header) — Features and navigation, All features,
   Devices & connections (watch, BLE, Health Connect, weather), Own server, Your data
-  (import, export, backup, delete), AI phrasing & training chat, setup. Language is here too.
+  (import, export, backup, delete), Calculations & training chat, setup. Language is here too.
 
 Under **Features** you choose what Runback shows and when it asks: areas
 (running, strength training, cycling), soreness and how often it is asked (by default after
-strength training), the blocks on Today, recommendations (suggest, Coach only, off),
-display during recording, the rest timer, and more. Under **Navigation** you choose the tabs.
+strength training), the blocks on Today, display during recording, the rest timer, and more. Under **Navigation** you choose the tabs.
 What is switched off disappears from the app; data is kept.
 
-## Goal, focus, recommendation (optional)
+## Goals (optional)
 
-Running and strength training are separate areas. Each has its own goal, its own focus,
-and its own recommendation; if you only do one, you see nothing of the other.
-
-- A **goal** is optional and may have a date.
-- A **focus** (endurance, getting faster, staying injury-free, habit, fitness) is an
-  ongoing theme. It is never evaluated.
-- A **recommendation** is the one concrete thing per area that you try. You accept it, it runs,
-  and afterward Runback says whether it helped, whether it did not, or whether it is not clear
-  yet. If a recommendation touches both areas (“less leg load before the long run”), there is
-  no second one in the meantime.
-
-After a run, Runback shows three things: how the run fits its purpose, where the current
-recommendation stands, and what you can do next — including “keep going as you are”.
-Details, data basis, and uncertainty are under “Details”.
+Running and strength training are separate areas, each with its own optional goal and date;
+if you only do one, you see nothing of the other. A running goal with distance and time feeds
+goal times, build-up, and taper. Runback gives no training recommendations: after a run it
+shows what the data contains, compared with your earlier runs. Details, data basis, and
+uncertainty are under “Details”.
 
 ## Installation
 

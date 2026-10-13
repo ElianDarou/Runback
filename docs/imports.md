@@ -56,7 +56,7 @@ Password-protected ZIPs are not supported — extract them first.
 - **Runs without a track** remain summaries: time and distance for simple pace
   statements, no map, no invented samples.
 - **Resting heart rate, HRV, sleep, weight, steps, VO2max** are pure display
-  context. They do not justify a recommendation, a score, or a plan change.
+  context. They do not justify a score or a plan change.
 - **Strength training** (sets, weight, reps, RPE) appears as strength sessions.
   Strong does not export a session; Runback assumes **kg**.
   Strong stores no set times, only the start and “Finish workout”. If the duration

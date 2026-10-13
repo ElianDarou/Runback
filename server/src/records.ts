@@ -1,5 +1,4 @@
 import type { RoutePoint, Run, Settings } from '../../src/domain/trainingRecords';
-import { recommendationArea } from '../../src/domain/areas';
 import {
   mergeStrengthSessions,
   normalizeRun,
@@ -14,7 +13,6 @@ import {
   readStrengthHeartSummaries,
   type StrengthHeartSummary,
 } from '../../src/domain/strengthHeart';
-import type { Experiment } from '../../src/domain/types';
 import type { Store } from './db';
 
 /**
@@ -41,7 +39,6 @@ export interface Dataset {
   strength: StrengthSession[];
   heart: Record<string, StrengthHeartSummary>;
   settings: Settings | null;
-  experiments: Experiment[];
   wellness: WellnessRow[];
   /** What the phone shared at the last sync; `null` before the first one. */
   scope: ServerScope | null;
@@ -111,11 +108,6 @@ export function loadDataset(store: Store): Dataset {
     Number.MAX_SAFE_INTEGER,
   ).filter(session => session.status !== 'active');
   const settings = loadObject(store, 'settings') as Settings | null;
-  const experiments = Array.isArray(settings?.experiments)
-    ? (settings!.experiments as Experiment[]).filter(
-        entry => entry && typeof entry.id === 'string' && entry.recommendation,
-      )
-    : [];
   const scopeRaw = store.meta('scope');
   const dataset: Dataset = {
     revision,
@@ -123,7 +115,6 @@ export function loadDataset(store: Store): Dataset {
     strength,
     heart: readStrengthHeartSummaries(loadObject(store, 'strengthHeart')),
     settings,
-    experiments,
     wellness: bodies(store, 'wellness')
       .map(readWellness)
       .filter((row): row is WellnessRow => row !== null)
@@ -161,7 +152,6 @@ export function rebuildDerived(store: Store) {
     'strength_sets',
     'strength_sessions',
     'wellness',
-    'recommendations',
   ].forEach(table => db.prepare(`DELETE FROM ${table}`).run());
 
   const insertRun = db.prepare(
@@ -263,22 +253,4 @@ export function rebuildDerived(store: Store) {
       row.source,
     ),
   );
-
-  const insertRecommendation = db.prepare(
-    `INSERT OR REPLACE INTO recommendations(id, area, kind, title, action, status, accepted_ms,
-      model_version) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
-  );
-  data.experiments.forEach(experiment => {
-    const recommendation = experiment.recommendation;
-    insertRecommendation.run(
-      experiment.id,
-      recommendationArea(recommendation),
-      recommendation.kind,
-      recommendation.title,
-      recommendation.action,
-      experiment.status,
-      experiment.acceptedAt,
-      recommendation.model_version ?? null,
-    );
-  });
 }

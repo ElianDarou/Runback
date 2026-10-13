@@ -101,33 +101,7 @@ export function bridgeStrength(id: string, startTime: number) {
 export const SETTINGS = {
   goal: '5 km unter 22 Minuten',
   goalTargetDate: '2026-12-01',
-  trainingFocus: {
-    version: 'focus-v1',
-    kind: 'speed',
-    label: 'Schneller werden',
-  },
-  experiments: [
-    {
-      id: 'exp-1',
-      acceptedAt: NOW - 5 * DAY,
-      status: 'active',
-      history: [],
-      recommendation: {
-        id: 'rec-1',
-        kind: 'calmer_start',
-        area: 'running',
-        title: 'Ruhiger starten',
-        action: 'Starte die ersten 2 km ruhiger.',
-        reason: 'Du wirst auf dem letzten Kilometer deutlich langsamer.',
-        purpose: 'easy',
-        goal: 'Der Tempoabfall am Ende wird kleiner.',
-        model_version: 'pacing-fade-v2',
-        inputSources: [],
-        segmentIds: [],
-        criteria: {},
-      },
-    },
-  ],
+  strengthGoal: 'Bankdrücken 80 kg',
 };
 
 export function objects(): { key: string; body: unknown }[] {

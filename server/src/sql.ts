@@ -42,7 +42,7 @@ try {
   const backing = {
     v1_runs: ['runs'], v1_strength_sessions: ['strength_sessions'],
     v1_strength_sets: ['strength_sets', 'strength_sessions'], v1_wellness: ['wellness'],
-    v1_recommendations: ['recommendations'], v1_documents: ['objects'],
+    v1_documents: ['objects'],
   };
   db.prepare("SELECT value FROM json_each('[]')").all();
   db.prepare("SELECT value FROM json_tree('[]')").all();

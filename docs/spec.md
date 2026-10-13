@@ -11,8 +11,9 @@ and honestly shows what the data contains: pace, heart rate, splits, running for
 sets, muscles, and comparisons with earlier workouts.
 
 Core promise: your data stays complete, traceable, and with you. Every number has
-a source; what is unknown stays visibly unknown. Goals, plans, and recommendations
-are optional features built on that data.
+a source; what is unknown stays visibly unknown. Goals and plans are optional
+features built on that data. Runback gives no training recommendations; it shows
+what happened and leaves the decision to the user.
 
 ## Mindset
 
@@ -20,9 +21,9 @@ are optional features built on that data.
   user. A better run can be due to the tip — or to sleep, the weather, or a
   randomly bad run before it. “Not clear yet” is therefore the normal case, and
   “more of an impression” is preferred over a precise number without a basis.
-- **The user decides.** The app suggests, the user accepts. Plans are user
+- **The user decides.** Runback shows, the user acts. Plans and goals are user
   artifacts; the app does not rewrite them on its own.
-- **Everything is optional.** Recording works without a goal, focus, plan, setup,
+- **Everything is optional.** Recording works without a goal, plan, setup,
   account, or internet. Every feature can be turned off, and when it is off it
   produces neither hints nor empty areas.
 - **Narrow output, arbitrary internal complexity.** One statement per surface,
@@ -36,18 +37,18 @@ Violating one is a bug, not a trade-off.
    are kept separately alongside it.
 2. **Every number has a trail.** Derivations carry the model version and sources.
    Recalculation is only promised if the source data is still there.
-3. **Check first, then recommend.** A recommendation names the action, the purpose,
-   and, in advance, the rule “How will we know it helped?”. Neutral observations
-   need no check.
-4. **Keeping things as they are is allowed.** “Keep as is”, “no recommendation
-   needed”, and “not assessable yet” are three different, justified results. The
-   absence of evidence for a change is not evidence of stagnation: “stable” needs a
-   narrow interval, otherwise it says “not clear yet”.
+3. **Show, don't prescribe.** Runback describes what the data shows and gives no
+   training recommendations. Where it suggests something (a run type, an end time,
+   a week or plan change), it names the basis, and the suggestion takes effect only
+   when the user applies it.
+4. **“Not clear yet” is a result.** The absence of evidence for a change is not
+   evidence of stagnation: “stable” needs a narrow interval, otherwise it says
+   “not clear yet”.
 5. **Uncertainty stays visible.** No invented intervals, no invented substitute
    values. Measurement, user input, and estimate are distinguishable.
 6. **Rules decide, language explains.** An LLM may phrase things and answer
-   questions, but it may not produce a recommendation, assessment, or data change.
-   Same inputs → same decision.
+   questions, but it may not produce an assessment or a data change.
+   Same inputs → same result.
 7. **A gap stays a gap.** Missing data only limits the statement that needs it.
    Good data stays usable.
 8. **The bridge stays lean.** Raw samples stay native. JS sees aggregates and
@@ -63,17 +64,16 @@ Violating one is a bug, not a trade-off.
     account.
 11. **The training purpose wins.** A better metric is not a success if the actual
     training is given up for it.
-12. **Fix it in advance, stay honest afterward.** Comparison runs, target value, and
-    check rule are fixed before the start and are not made to fit afterward. The
-    comparison baseline is the median of several matching workouts, never a single
-    outlier; the check rule states in advance how many observations a judgment must
-    rest on.
-13. **Three questions, three answers.** Follow-through, result, and cause stay
-    separate. A difference is not proof of causation.
-14. **Recommendations stay calm.** New data, a late RPE entry, or a focus change
-    does not trigger a change of topic.
-15. **One area, one recommendation.** Never two in the same area, and never a second
-    one that could distort the check of the first.
+12. **Compare honestly.** A comparison names its baseline, rests on the median of
+    several matching workouts rather than a single outlier, and is not made to fit
+    afterward.
+13. **Execution, result, cause.** Whether a plan was carried out, what changed, and
+    why stay separate. A difference is not proof of causation.
+14. **Stay calm.** A new workout or a late RPE entry changes numbers, not the topic:
+    no new prompt and no plan change because of one workout.
+15. **Areas stay separate.** Running and strength training each have their own goal
+    and are evaluated on their own data (runs, or sets and soreness). Anyone who
+    uses only one area sees nothing of the other.
 
 ## Technical quantities
 
@@ -94,73 +94,12 @@ Kept separate and never mixed:
 Exercise catalog, muscle regions, models, and matrix are versioned data; their
 version goes into every derivation.
 
-## Recommendations (optional)
+## Goals (optional)
 
-When enabled, Runback gives at most one justified, actionable, and checkable
-recommendation per area, then later checks honestly whether it was carried out
-and whether it helped. **No recommendation is a full result.** A new run is not
-a reason for a new tip; keeping things as they are is a recommendation.
-
-### Two areas
-
-**Running** and **Strength training** are separate areas with their own goal, their
-own focus, and their own recommendation. They are checked against separate data
-(runs, or sets and soreness), so they hardly interfere with each other in the
-analysis. Anyone who uses only one area sees nothing of the other.
-
-- At most **one active recommendation per area**, so never more than two.
-- A recommendation that touches both areas (“reduce leg load before the long run”)
-  takes **both slots**.
-- **Coupling lock:** Before the second recommendation is suggested, Runback checks
-  whether its action class can influence the target of the first (more leg volume
-  → running pace). If so, it does not appear in parallel but as “Up next”.
-- On “Today”, the recommendation is for the workout that is being started right
-  now. Never both stacked on top of each other.
-
-Unlocked action classes: Running “calmer start”, Strength training “load of an
-exercise”. More metrics do not have to create more classes.
-
-### The three levels
-
-For each area:
-
-| Level | Meaning |
-|---|---|
-| **Goal** | Optional plan, possibly with a date. May end. A date makes build-up and tapering predictable. |
-| **Focus** | Ongoing theme without an end date, at most one active per area. Is **never evaluated**. A goal may suggest a focus. |
-| **Recommendation** | At most one concrete action per area, which is checked. States: Suggestion → Accepted → Active / Paused → Completed / Cancelled. |
-
-The three levels are independently optional. Changing the focus does not end a
-running recommendation; ending a goal does not delete the focus.
-
-The focus has two fields: the **focus type** from a short, versioned list per area
-(it drives prioritization), and a **custom label** as free text (shown in the UI,
-not evaluated). With a goal, Runback suggests a focus type; without a goal, Runback
-does not guess — the user chooses themselves or leaves it empty. A very broad focus
-(“get fitter”) is treated like “no focus”; then data quality and actionability decide.
-
-Old and new terms refer to the same object: “work topic”, “next action”, and
-“intervention” are today called recommendation. Not “running recommendation” —
-strength training belongs to it too. Not “change” — keeping things as they are is
-a recommendation.
-
-### Prioritization
-
-Deterministic, no learning profile:
-
-- A versioned **relevance matrix** gives each action class a fixed weight per focus
-  type. Same inputs → same order.
-- A focus can **block** classes, not just downgrade them (“stay injury-free” blocks
-  volume increases).
-- A goal with a date filters hard by **calendar**: no technique build-up in the last
-  three weeks, no tapering more than twelve weeks before.
-- After that, the following counts: higher weight, better data quality, better
-  actionability, smaller effort.
-- Under “Details” are also the **discarded alternatives** with reasons. If a
-  recommendation is running, the next one may appear as “Up next” without changing
-  the active check.
-- The weights are editorial. In the UI this is called “How Runback prioritizes”,
-  never “calculated for you”.
+Each area has at most one goal, optionally with a date. A running goal with a
+distance and a time feeds goal times, build-up, and taper; a date makes them
+predictable. A goal is never judged: next to it, Runback shows only the estimate
+from actual runs.
 
 ## Scope
 
@@ -186,7 +125,7 @@ Deterministic, no learning profile:
 
 iOS · mandatory cloud/accounts · synchronization from the server back into the app ·
 social features · segment matching/ghost run ·
-sensor plugin system · ACWR recommendations · paid
-mandatory services · medical diagnoses · universal whole-body readiness or
+sensor plugin system · training recommendations or a coach · ACWR recommendations ·
+paid mandatory services · medical diagnoses · universal whole-body readiness or
 injury-risk score · fully automatic plan change without confirmation ·
-guaranteed recommendation after every run · equating estimate with measurement.
+equating estimate with measurement.

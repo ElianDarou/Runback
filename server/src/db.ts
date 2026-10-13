@@ -5,15 +5,16 @@ import { DatabaseSync } from 'node:sqlite';
  * and unchanged. Everything else is derived from it and may be rebuilt at any
  * time:
  *
- * - `runs`, `strength_sessions`, `strength_sets`, `wellness`,
- *   `recommendations` are flat tables for SQL and export.
+ * - `runs`, `strength_sessions`, `strength_sets`, `wellness` are flat tables
+ *   for SQL and export. Schema 4 dropped `recommendations` and its view with
+ *   the app's recommendations.
  * - `v1_*` are the promised views. Internal tables may change with a migration;
  *   the views stay stable until there is a `v2_*`.
  *
  * Unknown values stay `NULL`, never `0`.
  */
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 /** Version of the flat tables; goes into every row of the views. */
 export const DERIVED_VERSION = 'server-rows-v1';
 
@@ -172,6 +173,7 @@ const MIGRATIONS: string[] = [
   `CREATE VIEW v1_documents AS SELECT key, kind, hash, body,
     strftime('%Y-%m-%dT%H:%M:%fZ', updated_at / 1000.0, 'unixepoch') AS updated_utc,
     '${DERIVED_VERSION}' AS row_version FROM objects;`,
+  `DROP VIEW v1_recommendations; DROP TABLE recommendations;`,
 ];
 
 /** Views that the API and the website offer as promised. */
@@ -180,7 +182,6 @@ export const PUBLIC_VIEWS = [
   'v1_strength_sessions',
   'v1_strength_sets',
   'v1_wellness',
-  'v1_recommendations',
   'v1_documents',
 ] as const;
 export type PublicView = (typeof PUBLIC_VIEWS)[number];

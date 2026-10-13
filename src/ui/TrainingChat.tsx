@@ -44,7 +44,7 @@ type ProseSettings = {
 const suggestions = () => [
   tr('Was steht diese Woche an?', "What's on this week?"),
   tr('Wie war mein letzter Lauf?', 'How was my last run?'),
-  tr('Erkläre meine Empfehlung', 'Explain my recommendation'),
+  tr('Wie entwickelt sich mein Training?', 'How is my training developing?'),
 ];
 
 /**

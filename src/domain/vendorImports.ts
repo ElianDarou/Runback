@@ -308,7 +308,7 @@ const VENDOR_INFOS_DE: VendorInfo[] = [
       {
         label: 'Puls, HRV (Schlaf), SpO2, Stress',
         why: 'Erholungs- und Belastungskontext.',
-        howUsed: 'Nur Anzeige, keine Scores als Empfehlungsgrundlage.',
+        howUsed: 'Nur Anzeige, Scores fließen in keine Auswertung.',
       },
       {
         label: 'Schlaf (Score, Effizienz, Phasen 40001–40004)',
@@ -755,7 +755,7 @@ const VENDOR_INFOS_EN: VendorInfo[] = [
       {
         label: 'Heart rate, HRV (sleep), SpO2, stress',
         why: 'Recovery and load context.',
-        howUsed: 'Display only; no scores as a basis for recommendations.',
+        howUsed: 'Display only; scores feed no analysis.',
       },
       {
         label: 'Sleep (score, efficiency, stages 40001–40004)',

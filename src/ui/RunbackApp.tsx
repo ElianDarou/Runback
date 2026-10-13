@@ -5,7 +5,7 @@ import {
   serverStateLabel,
   type ServerLinkStatus,
 } from '../domain/serverLink';
-import { exerciseDisplayName, nativeDisplayNames } from '../domain/catalog';
+import { nativeDisplayNames } from '../domain/catalog';
 import React, {
   memo,
   useCallback,
@@ -36,23 +36,12 @@ import {
   isLanguage,
   numberFormat,
   parseDecimal,
-  percentSign,
   setLanguage,
   tr,
   type Language,
 } from '../domain/i18n';
 import { deviceLanguage } from './deviceLanguage';
-import { FocusEditor } from './FocusEditor';
-import { focusLabel } from '../domain/focus';
-import { selectRecommendations } from '../domain/recommendationSelection';
-import { selectStrengthRecommendation } from '../domain/strengthRecommendation';
-import {
-  activeExperimentFor,
-  areaLabel,
-  isRunRecommendation,
-  isStrengthRecommendation,
-  recommendationArea,
-} from '../domain/areas';
+import { StrengthGoalEditor } from './StrengthGoalEditor';
 import { Onboarding } from './Onboarding';
 import { Statistics, readStatisticsView } from './Statistics';
 import type { StatsRecord } from '../domain/statisticsView';
@@ -166,26 +155,9 @@ import {
   splitRange,
   type RunSeries,
 } from '../domain/runSeries';
-import { ProseSettings, ProseExplanation } from './ProseSettings';
-import {
-  acceptRecommendation,
-  analyzeRun,
-  allRegionIds,
-  evaluateAnyExperiment,
-  evaluateExperiment,
-  transitionExperiment,
-} from '../domain';
-import type {
-  AnyRecommendation,
-  Experiment,
-  ExperimentEvaluation,
-  ExperimentStatus,
-  Recommendation,
-  RunAnalysis,
-  RunPurpose,
-  Sport,
-  StrengthRecommendation,
-} from '../domain/types';
+import { ProseSettings } from './ProseSettings';
+import { analyzeRun, allRegionIds } from '../domain';
+import type { RunAnalysis, RunPurpose, Sport } from '../domain/types';
 import {
   SPORTS,
   isRun,
@@ -235,8 +207,6 @@ import {
   type FeatureId,
   enabledSports,
   normalizeFeatures,
-  recommendationsShown,
-  recommendationsSuggested,
   shouldPromptSoreness,
   visibleHomeSections,
   visibleTabs,
@@ -244,7 +214,6 @@ import {
   type FeatureSettings as Features,
 } from '../domain/features';
 import {
-  Badge,
   Button,
   Card,
   ChipGroup,
@@ -255,7 +224,6 @@ import {
   Icon,
   Input,
   Notice,
-  Progress,
   Route,
   RouteOpenActions,
   Row,
@@ -343,8 +311,7 @@ const initial: AppState = {
 };
 type Page =
   | 'main'
-  | 'focus-running'
-  | 'focus-strength'
+  | 'strength-goal'
   | 'goal'
   | 'session'
   | 'exercise'
@@ -394,8 +361,7 @@ const PARENT_PAGE: Partial<Record<Page, Page>> = {
   'features-detail': 'features',
   'all-functions': 'settings',
   goal: 'goals',
-  'focus-running': 'goals',
-  'focus-strength': 'goals',
+  'strength-goal': 'goals',
   'vendor-import': 'data',
   imports: 'data',
 };
@@ -706,7 +672,7 @@ export function RunbackApp({
   const [page, setPage] = useState<Page>('main');
   const [featureDetail, setFeatureDetail] = useState<
     FeatureId | 'recording' | 'strength'
-  >('coach');
+  >('planning');
   const [selected, setSelected] = useState<Run | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<StatsRecord | null>(
     null,
@@ -750,7 +716,6 @@ export function RunbackApp({
   // kept on the page. The sheet remembers its kind.
   const [startSheet, setStartSheet] = useState<StartKind | null>(null);
   const [startTemplateId, setStartTemplateId] = useState<string | null>(null);
-  const [coachArea, setCoachArea] = useState<'running' | 'strength'>('running');
   // Add run types afterwards: one run at a time; skipped ones stay open.
   const [purposeSheet, setPurposeSheet] = useState(false);
   // The question after a run: the user's pick before OK, and runs already
@@ -779,10 +744,6 @@ export function RunbackApp({
   );
   const [importBatchesError, setImportBatchesError] = useState('');
   const [moreDetails, setMoreDetails] = useState(false);
-  const [criteriaOpen, setCriteriaOpen] = useState(false);
-  const [pastRecommendationOpen, setPastRecommendationOpen] = useState<
-    string | null
-  >(null);
   const [goalInput, setGoalInput] = useState('');
   const [goalStartInput, setGoalStartInput] = useState('');
   const [goalTargetInput, setGoalTargetInput] = useState('');
@@ -819,8 +780,6 @@ export function RunbackApp({
   const [splitIndex, setSplitIndex] = useState<number | null>(null);
   // Whether the strength history has loaded (or was detected as unavailable).
   const [strengthHistorySettled, setStrengthHistorySettled] = useState(false);
-  // Offer the training chat only with a configured OpenRouter connection.
-  const [proseReady, setProseReady] = useState(false);
   const sorenessPromptShown = useRef(false);
   const strengthRef = useRef(strength);
   strengthRef.current = strength;
@@ -836,9 +795,6 @@ export function RunbackApp({
   const homeSections = useMemo(() => visibleHomeSections(features), [features]);
   const showRunning = features.areas.running;
   const showStrength = features.areas.strength;
-  const runRecs = recommendationsShown(features, 'running');
-  const strengthRecs = recommendationsShown(features, 'strength');
-  const runRecsSuggested = recommendationsSuggested(features, 'running');
   const sports = enabledSports(features);
   const schedule = useMemo(
     () =>
@@ -853,7 +809,7 @@ export function RunbackApp({
   const runs = state.runs;
   // Only runs carry this pace analysis and kilometers; rides sit alongside them.
   const runningRuns = useMemo(() => runs.filter(isRun), [runs]);
-  // Goal progress: estimate from actual runs, separate from any recommendation.
+  // Goal progress: estimate from actual runs.
   const racePrediction = useMemo(
     () =>
       predictRace({
@@ -886,22 +842,6 @@ export function RunbackApp({
   const isRecording = Boolean(recording);
   const showOnboarding =
     loaded && !isRecording && (setupOpen || !settings.onboardedAt);
-  // At most one open recommendation per area; both share the list.
-  const experiment = activeExperimentFor(settings.experiments, 'running');
-  const strengthExperiment = activeExperimentFor(
-    settings.experiments,
-    'strength',
-  );
-  const analyses = useMemo(
-    () =>
-      (runRecs ? runningRuns : []).map(run => ({
-        run,
-        analysis: analyzeRun(run, experiment, runningRuns),
-      })),
-    // `tr` reads the module-level language, so the text recomputes via this dependency.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [runningRuns, experiment, runRecs, language],
-  );
   const finishedSessions = useMemo(
     () => strengthSessions.filter(session => session.status === 'finished'),
     [strengthSessions],
@@ -946,78 +886,6 @@ export function RunbackApp({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [visibleUnits, todayKey, language],
   );
-  const selection = useMemo(
-    () =>
-      selectRecommendations(runRecs ? runningRuns : [], {
-        active: experiment,
-        otherActive: strengthExperiment ? [strengthExperiment] : [],
-        experiments: settings.experiments,
-        dismissed: settings.dismissedRecommendations,
-        postponedUntil: settings.postponedUntil,
-        focus: settings.trainingFocus,
-        targetDate: settings.goalTargetDate || schedule.goal?.targetDate,
-        today: localDateKey(now),
-        now,
-      }),
-    // `tr` reads the module-level language, so the text recomputes via this dependency.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [
-      runningRuns,
-      runRecs,
-      experiment,
-      strengthExperiment,
-      settings.experiments,
-      settings.dismissedRecommendations,
-      settings.postponedUntil,
-      settings.trainingFocus,
-      settings.goalTargetDate,
-      schedule.goal?.targetDate,
-      now,
-      language,
-    ],
-  );
-  const candidate = experiment || !runRecs ? undefined : selection.selected;
-  const queued =
-    experiment && runRecs && features.recommendations.showQueued
-      ? selection.selected
-      : undefined;
-  const strengthSelection = useMemo(
-    () =>
-      selectStrengthRecommendation(strengthRecs ? finishedSessions : [], {
-        active: strengthExperiment,
-        otherActive: experiment ? [experiment] : [],
-        experiments: settings.experiments,
-        dismissed: settings.dismissedRecommendations,
-        postponedUntil: settings.strengthPostponedUntil as number | undefined,
-        focus: settings.strengthFocus,
-        targetDate: settings.strengthGoalTargetDate,
-        today: localDateKey(now),
-        now,
-      }),
-    // `tr` reads the module-level language, so the text recomputes via this dependency.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [
-      finishedSessions,
-      strengthRecs,
-      strengthExperiment,
-      experiment,
-      settings.experiments,
-      settings.dismissedRecommendations,
-      settings.strengthPostponedUntil,
-      settings.strengthFocus,
-      settings.strengthGoalTargetDate,
-      now,
-      language,
-    ],
-  );
-  const strengthCandidate =
-    strengthExperiment || !strengthRecs
-      ? undefined
-      : strengthSelection.selected;
-  const strengthQueued =
-    strengthExperiment && strengthRecs && features.recommendations.showQueued
-      ? strengthSelection.selected
-      : undefined;
   // A deselected sport falls back to the first allowed one.
   const chosenSport = normalizeSport(settings.sport);
   const sport = sports.includes(chosenSport)
@@ -1180,8 +1048,6 @@ export function RunbackApp({
       context: {
         goal: current.settings.goal,
         goalTargetDate: current.settings.goalTargetDate,
-        focus: current.settings.trainingFocus,
-        adherence: current.settings.adherence?.[run.id],
         history: sameSport,
       },
     };
@@ -1210,11 +1076,7 @@ export function RunbackApp({
             ),
           );
           const run = await native.run(id);
-          const analysis = analyzeRun(
-            run,
-            activeExperimentFor(current.settings.experiments, 'running'),
-            current.runs.filter(isRun),
-          );
+          const analysis = analyzeRun(run);
           const { names, input } = await prepareRunExport(
             run,
             analysis,
@@ -1315,7 +1177,6 @@ export function RunbackApp({
         lastStart: undefined as number | undefined,
         goal: settings.strengthGoal,
         goalTargetDate: settings.strengthGoalTargetDate,
-        focus: settings.strengthFocus,
       };
       const archive = await native.beginExportArchive('runback-krafttraining');
       try {
@@ -1460,14 +1321,6 @@ export function RunbackApp({
       if (timer) clearTimeout(timer);
     };
   }, [selectedSessionId, selectedSession?.endTime]);
-  const loadProseReady = useCallback(() => {
-    void nativeCall<{ enabled?: boolean; hasKey?: boolean }>('getProseSettings')
-      .then(value => setProseReady(Boolean(value?.enabled && value?.hasKey)))
-      .catch(() => setProseReady(false));
-  }, []);
-  useEffect(() => {
-    loadProseReady();
-  }, [loadProseReady]);
   // The prompt appears at most once per session, and only if the setting asks
   // for it (`shouldPromptSoreness`).
   useEffect(() => {
@@ -1787,11 +1640,6 @@ export function RunbackApp({
     setError('');
     setMessage('');
   };
-  const openCoach = (area: 'running' | 'strength') => {
-    setCoachArea(area);
-    setCriteriaOpen(false);
-    switchTab('coach');
-  };
   // One level back: from strength training depth to where the user came from,
   // otherwise to the fixed parent page.
   const leavePage = () => {
@@ -1862,54 +1710,15 @@ export function RunbackApp({
       setFeelingOnly(false);
       return;
     }
-    if (page === 'models' || page === 'devices') {
-      loadProseReady();
-    }
     leavePage();
   };
   const changeFeatures = (next: Features) => {
-    const at = Date.now();
-    const stopsRunning =
-      recommendationsShown(features, 'running') &&
-      !recommendationsShown(next, 'running');
-    const stopsStrength =
-      recommendationsShown(features, 'strength') &&
-      !recommendationsShown(next, 'strength');
-    const pausing: string[] = [];
-    if (stopsRunning && experiment?.status === 'active') {
-      pausing.push(experiment.id);
-    }
-    if (stopsStrength && strengthExperiment?.status === 'active') {
-      pausing.push(strengthExperiment.id);
-    }
-    const apply = () => {
-      const patch: Partial<Settings> = { features: next };
-      if (pausing.length) {
-        // The reason is stored in the experiment history, so it stays German.
-        patch.experiments = settings.experiments?.map(item =>
-          pausing.includes(item.id)
-            ? transitionExperiment(
-                item,
-                'paused',
-                at,
-                tr('Funktion abgeschaltet', 'Feature turned off'),
-              )
-            : item,
-        );
-      }
-      save(patch);
-    };
+    const apply = () => save({ features: next });
     const warnings = [
       features.areas.strength && !next.areas.strength && strength.active
         ? tr(
             'Ein Krafttraining läuft gerade; es bleibt gespeichert.',
             'A strength session is running; it stays saved.',
-          )
-        : '',
-      pausing.length
-        ? tr(
-            'Die laufende Empfehlung wird pausiert, nicht abgebrochen.',
-            'The running recommendation is paused, not cancelled.',
           )
         : '',
     ].filter(Boolean);
@@ -2368,41 +2177,6 @@ export function RunbackApp({
       await refresh();
     });
   };
-  const accept = (recommendation: AnyRecommendation) => {
-    void action(async () => {
-      const area = recommendationArea(recommendation);
-      const next = acceptRecommendation(
-        recommendation,
-        Date.now(),
-        area === 'running' ? experiment : strengthExperiment,
-      );
-      await persist({ experiments: [...(settings.experiments || []), next] });
-      setSelected(null);
-      openCoach(area);
-    });
-  };
-  const changeExperiment = (
-    status: ExperimentStatus,
-    target: Experiment | undefined = experiment,
-  ) => {
-    if (!target) {
-      return;
-    }
-    void action(async () => {
-      const updated = transitionExperiment(
-        target,
-        status,
-        Date.now(),
-        // Stored in the experiment history in the language of the moment.
-        tr('Vom Nutzer geändert', 'Changed by you'),
-      );
-      await persist({
-        experiments: settings.experiments?.map(e =>
-          e.id === updated.id ? updated : e,
-        ),
-      });
-    });
-  };
   const beginImport = (stayOnPage: boolean) => {
     void action(async () => {
       pendingScheduleLink.current = null;
@@ -2505,7 +2279,7 @@ export function RunbackApp({
   // at all instead of showing wrong numbers (Spec T-1).
   const snapshot =
     selected && isRun(selected)
-      ? analyzeRun(selected, experiment, runningRuns)
+      ? analyzeRun(selected)
       : null;
   // The comparison with recent runs colors the tiles above; like the analysis,
   // it applies only to runs.
@@ -2574,9 +2348,9 @@ export function RunbackApp({
   };
 
   // Start page: one question — what do I do now? The answer is a card with one
-  // button. Below it only what counts today: the running recommendation, a
-  // body check, the last two sessions. Focus, goal, templates, and the map have
-  // their place in Coach, Plan, and History.
+  // button. Below it only what counts today: the week, the goal, a body check,
+  // the last two sessions. Templates and the map have their place in Plan and
+  // History.
   const startPlannedRun = () => {
     if (todaysScheduledRun) {
       void startScheduled(todaysScheduledRun).catch(e => setError(e.message));
@@ -2602,120 +2376,6 @@ export function RunbackApp({
         }}
       />
     ) : null;
-  const shortVerdict = (verdict: string | undefined) =>
-    verdict === 'improved'
-      ? tr('hat geholfen', 'helped')
-      : verdict === 'worsened'
-      ? tr('eher nicht geholfen', 'rather did not help')
-      : verdict === 'no_relevant_effect'
-      ? tr('kein Unterschied', 'no difference')
-      : verdict === 'not_implemented'
-      ? tr('noch nicht ausprobiert', 'not tried yet')
-      : tr('noch nicht klar', 'not clear yet');
-  const runEvaluation =
-    experiment && runRecs
-      ? evaluateExperiment(experiment, runningRuns, settings.adherence)
-      : null;
-  const strengthEvaluation =
-    strengthExperiment && strengthRecs
-      ? evaluateAnyExperiment(
-          strengthExperiment,
-          runningRuns,
-          strengthSessions,
-          settings.adherence,
-        )
-      : null;
-  /** Compact card per area: state, progress; one tap leads to Coach. */
-  const recommendationCard = (area: 'running' | 'strength') => {
-    if (!recommendationsSuggested(features, area)) {
-      return null;
-    }
-    const active = area === 'running' ? experiment : strengthExperiment;
-    const evaluation = area === 'running' ? runEvaluation : strengthEvaluation;
-    const proposal = area === 'running' ? candidate : strengthCandidate;
-    const areaWord =
-      area === 'running' ? tr('Läufen', 'runs') : tr('Einheiten', 'sessions');
-    if (active && evaluation) {
-      const minimum = active.recommendation.criteria.minimumObservations;
-      const done = evaluation.eligibleRunIds.length;
-      return (
-        <Pressable
-          key={area}
-          accessibilityRole="button"
-          accessibilityLabel={tr(
-            `Empfehlung ${areaLabel(area)}: ${active.recommendation.action}`,
-            `Recommendation ${areaLabel(area)}: ${
-              active.recommendation.action
-            }`,
-          )}
-          onPress={() => openCoach(area)}
-          style={({ pressed }) => [
-            styles.recommendationCard,
-            pressed && styles.pressed,
-          ]}
-        >
-          <View style={styles.recommendationHead}>
-            <Text style={styles.recommendationTitle}>
-              {active.recommendation.action}
-            </Text>
-            <Text style={styles.arrow}>›</Text>
-          </View>
-          <View style={styles.recommendationMeta}>
-            <Badge muted={active.status === 'paused'}>
-              {active.status === 'paused'
-                ? tr('Pausiert', 'Paused')
-                : tr('Aktiv', 'Active')}
-            </Badge>
-            <Text style={styles.muted}>
-              {areaLabel(area)} ·{' '}
-              {tr(
-                `${done} von ${minimum} ${areaWord}`,
-                `${done} of ${minimum} ${areaWord}`,
-              )}{' '}
-              · {shortVerdict(evaluation.verdict)}
-            </Text>
-          </View>
-          <Progress
-            value={minimum ? done / minimum : 0}
-            label={tr(
-              `${done} von ${minimum} geeigneten ${areaWord}`,
-              `${done} of ${minimum} suitable ${areaWord}`,
-            )}
-          />
-        </Pressable>
-      );
-    }
-    if (proposal) {
-      return (
-        <Pressable
-          key={area}
-          accessibilityRole="button"
-          accessibilityLabel={tr(
-            `Vorschlag ${areaLabel(area)}: ${proposal.action}`,
-            `Suggestion ${areaLabel(area)}: ${proposal.action}`,
-          )}
-          onPress={() => openCoach(area)}
-          style={({ pressed }) => [
-            styles.recommendationCard,
-            pressed && styles.pressed,
-          ]}
-        >
-          <View style={styles.recommendationHead}>
-            <Text style={styles.recommendationTitle}>{proposal.action}</Text>
-            <Text style={styles.arrow}>›</Text>
-          </View>
-          <View style={styles.recommendationMeta}>
-            <Badge>{tr('Vorschlag', 'Suggestion')}</Badge>
-            <Text style={styles.muted}>
-              {areaLabel(area)} ·{' '}
-              {tr('Prüfe, ob er zu dir passt.', 'Check whether it fits you.')}
-            </Text>
-          </View>
-        </Pressable>
-      );
-    }
-    return null;
-  };
   const reportedToday = sorenessReports.some(
     report => localDateKey(report.at) === todayKey,
   );
@@ -2973,13 +2633,6 @@ export function RunbackApp({
       </Card>
     );
   };
-  // Today shows the recommendation for the session that is up next — never both
-  // stacked (Spec "Two areas"). If it is missing, the other area's is shown.
-  const heroArea: 'running' | 'strength' =
-    strength.active ||
-    (!todaysScheduledRun && (todaysScheduledStrength || todaysTemplate))
-      ? 'strength'
-      : 'running';
   const renderHome = () => (
     <>
       <Title>{tr('Heute', 'Today')}</Title>
@@ -2998,10 +2651,6 @@ export function RunbackApp({
           onPress={() => openPage('features')}
         />
       ) : null}
-      {homeSections.includes('recommendation')
-        ? recommendationCard(heroArea) ??
-          recommendationCard(heroArea === 'running' ? 'strength' : 'running')
-        : null}
       {homeSections.includes('goal') &&
       showRunning &&
       racePrediction.status !== 'no_goal' ? (
@@ -3329,7 +2978,7 @@ export function RunbackApp({
   );
 
   // Plus and minus change only the target of this run; the saved default for
-  // the next run stays as the user chose it in Coach.
+  // the next run stays as the user chose it.
   const changeTargetPace = (direction: 1 | -1) => {
     void action(async () => {
       const target = stateRef.current.recording?.target;
@@ -3495,13 +3144,6 @@ export function RunbackApp({
             )}
           </Copy>
         ) : null}
-        {experiment?.status === 'active' &&
-        runRecsSuggested &&
-        isRun(recording) ? (
-          <Section title={tr('Für diesen Lauf', 'For this run')}>
-            <Copy>{experiment.recommendation.action}</Copy>
-          </Section>
-        ) : null}
         <View style={styles.recordingActions}>
           <Button
             title={
@@ -3533,1023 +3175,50 @@ export function RunbackApp({
     );
   };
 
-  // Test criteria stay traceable, but sit behind a switch: the page shows the
-  // action, not the method.
-  const renderCriteria = (recommendation: Recommendation, accepted = false) => (
-    <>
-      <Copy>
-        {tr(
-          'Woran erkennen wir, dass es geholfen hat?',
-          'How will we know it helped?',
-        )}
-      </Copy>
-      <Copy muted>{recommendation.goal}</Copy>
-      <Copy muted>
-        {accepted
-          ? tr(
-              'Vor dem Start festgelegt. Ein Fokuswechsel ändert diese Regeln nicht.',
-              'Set before the start. A focus change does not alter these rules.',
-            )
-          : tr(
-              'Bei der Annahme werden diese Regeln festgeschrieben.',
-              'Accepting locks in these rules.',
-            )}
-      </Copy>
-      <Copy muted>
-        {tr('Ab', 'From')} {recommendation.criteria.minimumObservations}{' '}
-        {tr('geeigneten Läufen über', 'suitable runs over')}{' '}
-        {recommendation.criteria.minimumDays}{' '}
-        {tr(
-          'Tage · Vorzeichentest: häufiger als zufällig mindestens',
-          'days · sign test: more often than chance, at least',
-        )}{' '}
-        {recommendation.criteria.minimumRelevantChangePercentPoints}{' '}
-        {tr(
-          'Prozentpunkte weniger Tempoabfall als der Median der Vergleichsläufe (',
-          'percentage points less pace fade than the median of the comparison runs (',
-        )}
-        {number(recommendation.criteria.baselineFadePercent, 1)}
-        {percentSign()})
-      </Copy>
-      {recommendation.criteria.exclusions.map((text, i) => (
-        <Copy muted key={i}>
-          {text}
-        </Copy>
-      ))}
-      <Row
-        title={tr('Modellversion', 'Model version')}
-        subtitle={recommendation.model_version}
-      />
-      <Copy muted>
-        {tr(
-          `Wenn nach ${recommendation.criteria.maxDays} Tagen noch zu wenig vergleichbare Läufe vorliegen, entscheide neu, wie du weitertrainieren möchtest.`,
-          `If there are still too few comparable runs after ${recommendation.criteria.maxDays} days, decide again how you want to keep training.`,
-        )}
-      </Copy>
-      <Section title={tr('Vergleichsläufe', 'Comparison runs')}>
-        <Copy muted>
-          {tr(
-            'Die Basis ist der Median dieser Läufe, nicht ein einzelner Ausreißer.',
-            'The baseline is the median of these runs, not a single outlier.',
-          )}
-        </Copy>
-        {recommendation.criteria.baselineRunIds.map(id => {
-          const run = runningRuns.find(item => item.id === id);
-          return (
-            <Row
-              key={id}
-              title={
-                run
-                  ? runTitle(run)
-                  : tr(
-                      'Vergleichslauf nicht mehr vorhanden',
-                      'Comparison run no longer exists',
-                    )
-              }
-              subtitle={run ? date(run.startTime) : undefined}
-            />
-          );
-        })}
-      </Section>
-      <Section title={tr('So priorisiert Runback', 'How Runback prioritizes')}>
-        {recommendation.priority ? (
-          <Row
-            title={recommendation.priority.focusLabel}
-            subtitle={tr(
-              `${recommendation.priority.version} · redaktionelles Gewicht ${recommendation.priority.weight}`,
-              `${recommendation.priority.version} · editorial weight ${recommendation.priority.weight}`,
-            )}
-          />
-        ) : (
-          <Copy muted>
-            {tr(
-              'Für diese ältere Empfehlung wurde keine Fokus-Priorisierung gespeichert.',
-              'No focus prioritization was saved for this older recommendation.',
-            )}
-          </Copy>
-        )}
-        <Copy muted>
-          {tr(
-            'Die Auswahlregeln sind redaktionell festgelegt. Sie lernen keine Vorlieben aus deinen Läufen.',
-            'The selection rules are set by the editors. They do not learn preferences from your runs.',
-          )}
-        </Copy>
-        <Copy muted>
-          {tr(
-            'Derzeit ist nur der ruhigere Start als überprüfbare Empfehlung verfügbar. Pulsverlauf und Schrittfrequenz liefern noch keine eigenen Empfehlungen.',
-            'Currently only the easier start is available as a testable recommendation. Heart rate trace and stride rate do not yet produce their own recommendations.',
-          )}
-        </Copy>
-      </Section>
-    </>
-  );
-
-  const storedRunTitle = (id: string) => {
-    const run = runningRuns.find(item => item.id === id);
-    return run
-      ? runTitle(run)
-      : tr('Lauf nicht mehr vorhanden', 'Run no longer exists');
-  };
-  // Same reason, same line: 28 runs without a run type is one finding.
-  const groupedAlternatives = () => {
-    const groups = new Map<
-      string,
-      { key: string; title: string; reason: string; runIds: string[] }
-    >();
-    selection.alternatives.forEach(item => {
-      const title =
-        item.recommendation?.title || tr('Starteinteilung', 'Pacing plan');
-      const key = `${title}\u0000${item.reason}`;
-      const group = groups.get(key) ?? {
-        key,
-        title,
-        reason: item.reason,
-        runIds: [],
-      };
-      group.runIds.push(item.runId);
-      groups.set(key, group);
-    });
-    return [...groups.values()];
-  };
-  const renderAlternatives = () => (
-    <Section
-      title={
-        experiment
-          ? tr('Auswahl für danach', 'Up next')
-          : tr('Andere geprüfte Möglichkeiten', 'Other options checked')
-      }
-    >
-      {selection.alternatives.length ? (
-        groupedAlternatives().map(group => (
-          <Row
-            key={group.key}
-            title={`${group.title} · ${
-              group.runIds.length === 1
-                ? storedRunTitle(group.runIds[0])
-                : counted(
-                    group.runIds.length,
-                    tr('Lauf', 'run'),
-                    tr('Läufe', 'runs'),
-                  )
-            }`}
-            subtitle={group.reason}
-          />
-        ))
-      ) : (
-        <Copy muted>
-          {tr(
-            'Keine weitere Möglichkeit aus den vorhandenen Daten geprüft.',
-            'No further option was checked against the existing data.',
-          )}
-        </Copy>
-      )}
-    </Section>
-  );
-  // Strength training has its own recommendation page: the same three questions,
-  // the same states, but checked on sessions and sets instead of runs.
-  const sessionTitle = (id: string) => {
-    const session = strengthSessions.find(item => item.id === id);
-    return session
-      ? `${displaySessionName(session.name)} · ${date(session.startTime)}`
-      : tr('Einheit nicht mehr vorhanden', 'Session no longer exists');
-  };
-  const renderStrengthCriteria = (
-    recommendation: StrengthRecommendation,
-    accepted = false,
-  ) => (
-    <>
-      <Copy>
-        {tr(
-          'Woran erkennen wir, dass es geholfen hat?',
-          'How will we know it helped?',
-        )}
-      </Copy>
-      <Copy muted>{recommendation.goal}</Copy>
-      <Copy muted>
-        {accepted
-          ? tr(
-              'Vor dem Start festgelegt. Ein Fokuswechsel ändert diese Regeln nicht.',
-              'Set before the start. A focus change does not alter these rules.',
-            )
-          : tr(
-              'Bei der Annahme werden diese Regeln festgeschrieben.',
-              'Accepting locks in these rules.',
-            )}
-      </Copy>
-      <Copy muted>
-        {tr('Ab', 'From')} {recommendation.criteria.minimumObservations}{' '}
-        {tr('passenden Einheiten', 'suitable sessions')} ·{' '}
-        {tr('Zielbereich', 'Target range')}{' '}
-        {number(recommendation.criteria.targetMinKg, 1)}–
-        {number(recommendation.criteria.targetMaxKg, 1)} kg ×{' '}
-        {recommendation.criteria.targetReps} ·{' '}
-        {tr(
-          'Vorzeichentest: häufiger als zufällig mindestens',
-          'sign test: more often than chance, at least',
-        )}{' '}
-        {recommendation.criteria.minimumRelevantChangePercent}
-        {percentSign()}{' '}
-        {tr(
-          'über dem Median der Vergleichseinheiten',
-          'above the median of the comparison sessions',
-        )}
-      </Copy>
-      {recommendation.criteria.exclusions.map((text, i) => (
-        <Copy muted key={i}>
-          {text}
-        </Copy>
-      ))}
-      {recommendation.criteria.stopConditions.map((text, i) => (
-        <Copy muted key={`stop-${i}`}>
-          {text}
-        </Copy>
-      ))}
-      <Row
-        title={tr('Modellversion', 'Model version')}
-        subtitle={recommendation.model_version}
-      />
-      <Copy muted>
-        {tr(
-          `Wenn nach ${recommendation.criteria.maxDays} Tagen noch zu wenig passende Einheiten vorliegen, entscheide neu.`,
-          `If there are still too few suitable sessions after ${recommendation.criteria.maxDays} days, decide again.`,
-        )}
-      </Copy>
-      <Section title={tr('Vergleichseinheiten', 'Comparison sessions')}>
-        {recommendation.criteria.baselineSessionIds.map(id => (
-          <Row key={id} title={sessionTitle(id)} />
-        ))}
-      </Section>
-      <Section title={tr('So priorisiert Runback', 'How Runback prioritizes')}>
-        {recommendation.priority ? (
-          <Row
-            title={recommendation.priority.focusLabel}
-            subtitle={tr(
-              `${recommendation.priority.version} · redaktionelles Gewicht ${recommendation.priority.weight}`,
-              `${recommendation.priority.version} · editorial weight ${recommendation.priority.weight}`,
-            )}
-          />
-        ) : null}
-        <Copy muted>
-          {tr(
-            'Die Auswahlregeln sind redaktionell festgelegt. Sie lernen keine Vorlieben aus deinen Einheiten. Derzeit ist nur die Last einer Übung als überprüfbare Empfehlung verfügbar.',
-            'The selection rules are set by the editors. They do not learn preferences from your sessions. Currently only the load of one exercise is available as a testable recommendation.',
-          )}
-        </Copy>
-      </Section>
-    </>
-  );
-  const renderStrengthAlternatives = () => (
-    <Section
-      title={
-        strengthExperiment
-          ? tr('Auswahl für danach', 'Up next')
-          : tr('Andere geprüfte Möglichkeiten', 'Other options checked')
-      }
-    >
-      {strengthSelection.alternatives.length ? (
-        strengthSelection.alternatives.map(item => (
-          <Row
-            key={item.exerciseId}
-            title={exerciseDisplayName(item.exerciseId, item.exerciseName)}
-            subtitle={item.reason}
-          />
-        ))
-      ) : (
-        <Copy muted>
-          {tr(
-            'Keine weitere Möglichkeit aus den vorhandenen Einheiten geprüft.',
-            'No further option was checked against the existing sessions.',
-          )}
-        </Copy>
-      )}
-    </Section>
-  );
-  // Coach: the one recommendation per area as a state card — label, progress,
-  // two questions. Details and management are collapsed so the recommendation
-  // itself stays the largest area. Below it the basis (focus, goal) and the ways
-  // to ask questions.
-  const manageButtons = (target: Experiment) => (
-    <>
-      <Button
-        secondary
-        small
-        disabled={busy}
-        title={
-          target.status === 'paused'
-            ? tr('Empfehlung fortsetzen', 'Resume recommendation')
-            : tr('Empfehlung pausieren', 'Pause recommendation')
-        }
-        onPress={() =>
-          changeExperiment(
-            target.status === 'paused' ? 'active' : 'paused',
-            target,
-          )
-        }
-      />
-      <Button
-        secondary
-        small
-        title={tr('Empfehlung abschließen', 'Complete recommendation')}
-        disabled={busy}
-        onPress={() => changeExperiment('completed', target)}
-      />
-      <Button
-        danger
-        small
-        title={tr('Empfehlung abbrechen', 'Cancel recommendation')}
-        disabled={busy}
-        onPress={() =>
-          Alert.alert(
-            tr('Empfehlung abbrechen?', 'Cancel recommendation?'),
-            tr(
-              'Die bisherige Prüfung bleibt gespeichert.',
-              'The test so far stays saved.',
-            ),
-            [
-              { text: tr('Zurück', 'Back'), style: 'cancel' },
-              {
-                text: tr('Abbrechen', 'Cancel'),
-                onPress: () => changeExperiment('aborted', target),
-              },
-            ],
-          )
-        }
-      />
-    </>
-  );
-  const activeCard = (
-    target: Experiment,
-    evaluation: ExperimentEvaluation,
-    triedText: string,
-    resultTitle: string,
-    resultText: string,
-    causeText: string,
-    unitWord: string,
-  ) => {
-    const minimum = target.recommendation.criteria.minimumObservations;
-    const done = evaluation.eligibleRunIds.length;
-    return (
-      <Card style={styles.coachCard}>
-        <View style={styles.recommendationMeta}>
-          <Text style={styles.heroLabel}>
-            {tr('Deine Empfehlung', 'Your recommendation')}
-          </Text>
-          <Badge muted={target.status === 'paused'}>
-            {target.status === 'paused'
-              ? tr('Pausiert', 'Paused')
-              : tr(
-                  `Aktiv seit ${date(target.acceptedAt)}`,
-                  `Active since ${date(target.acceptedAt)}`,
-                )}
-          </Badge>
-        </View>
-        <Text style={styles.cardTitle}>{target.recommendation.action}</Text>
-        <Progress
-          value={minimum ? done / minimum : 0}
-          label={tr(
-            `${done} von ${minimum} geeigneten ${unitWord}`,
-            `${done} of ${minimum} suitable ${unitWord}`,
-          )}
-        />
-        <Copy muted>
-          {tr(
-            `${done} von ${minimum} geeigneten ${unitWord}`,
-            `${done} of ${minimum} suitable ${unitWord}`,
-          )}{' '}
-          · {tr('Ergebnis', 'Result')} {shortVerdict(evaluation.verdict)}
-        </Copy>
-        <Row title={tr('Ausprobiert?', 'Tried it?')} subtitle={triedText} />
-        <Row title={resultTitle} subtitle={resultText} />
-        <Copy muted>{causeText}</Copy>
-      </Card>
-    );
-  };
-  const proposalCard = (
-    proposal: AnyRecommendation,
-    onPostpone: () => void,
-  ) => (
-    <Card style={styles.coachCard}>
-      <View style={styles.recommendationMeta}>
-        <Text style={styles.heroLabel}>
-          {tr('Neuer Vorschlag', 'New suggestion')}
-        </Text>
-        <Badge>{tr('Vorschlag', 'Suggestion')}</Badge>
-      </View>
-      <Text style={styles.cardTitle}>{proposal.action}</Text>
-      <Copy muted>{proposal.reason}</Copy>
-      <Button
-        title={tr('Empfehlung annehmen', 'Accept recommendation')}
-        onPress={() => accept(proposal)}
-        disabled={busy}
-      />
-      <View style={styles.choiceRow}>
-        <View style={styles.flex}>
-          <Button
-            secondary
-            small
-            title={tr('Später entscheiden', 'Decide later')}
-            disabled={busy}
-            onPress={onPostpone}
-          />
-        </View>
-        <View style={styles.flex}>
-          <Button
-            secondary
-            small
-            title={tr('Vorschlag ablehnen', 'Decline')}
-            disabled={busy}
-            onPress={() =>
-              save({
-                dismissedRecommendations: [
-                  ...(settings.dismissedRecommendations || []),
-                  proposal.id,
-                ],
-              })
-            }
-          />
-        </View>
-      </View>
-    </Card>
-  );
-  const renderRunningCoach = () => {
-    const evaluation = runEvaluation;
-    const withoutPurpose = runningRuns.filter(purposeMissing).length;
-    const needsPurpose = withoutPurpose > 0;
-    const maintaining = analyses[0]?.analysis.state === 'maintain';
-    const postponed = Boolean(
-      settings.postponedUntil && settings.postponedUntil > now,
-    );
-    const missing = postponed
-      ? tr(
-          'Du hast den Vorschlag auf morgen verschoben.',
-          'You postponed the suggestion to tomorrow.',
-        )
-      : maintaining
-      ? analyses[0].analysis.focus
-      : !runningRuns.length
-      ? tr(
-          'Dafür fehlt noch ein aufgezeichneter Lauf.',
-          'A recorded run is still needed for this.',
-        )
-      : needsPurpose
-      ? tr(
-          `Bei ${counted(withoutPurpose, 'Lauf', 'Läufen')} fehlt die Laufart.`,
-          `The run type is missing for ${counted(
-            withoutPurpose,
-            'run',
-            'runs',
-          )}.`,
-        )
-      : tr(
-          'Vorschläge entstehen aus ruhigen und langen Runden mit mindestens vier gleichmäßigen Abschnitten ab 500 m.',
-          'Suggestions come from easy and long runs with at least four even splits of 500 m or more.',
-        );
-    const past = (settings.experiments || []).filter(
-      (e): e is Experiment<Recommendation> =>
-        (e.status === 'completed' || e.status === 'aborted') &&
-        isRunRecommendation(e.recommendation),
-    );
-    return (
-      <>
-        {runRecs ? (
-          <>
-            {experiment && evaluation ? (
-              <>
-                {activeCard(
-                  experiment,
-                  evaluation,
-                  evaluation.adherence.some(item => item.value === 'yes')
-                    ? tr('Ja, in passenden Läufen.', 'Yes, in suitable runs.')
-                    : evaluation.verdict === 'not_implemented'
-                    ? tr(
-                        'Du hast es bisher nicht probiert.',
-                        'You have not tried it yet.',
-                      )
-                    : tr('Noch nicht klar.', 'Not clear yet.'),
-                  tr('Gleichmäßiger gelaufen?', 'Ran more evenly?'),
-                  evaluation.verdict === 'improved'
-                    ? tr(
-                        'Ja, häufiger als zufällig. Über Tempo oder Fitness sagt das nichts.',
-                        'Yes, more often than chance. This says nothing about pace or fitness.',
-                      )
-                    : evaluation.verdict === 'worsened'
-                    ? tr(
-                        'Nein, du hast zum Ende häufiger mehr Tempo verloren.',
-                        'No, more often you lost more pace toward the end.',
-                      )
-                    : evaluation.verdict === 'no_relevant_effect'
-                    ? tr(
-                        'Kein spürbarer Unterschied.',
-                        'No noticeable difference.',
-                      )
-                    : tr('Noch nicht klar.', 'Not clear yet.'),
-                  tr(
-                    'Ob es an der Empfehlung lag, bleibt offen. Wetter und Tagesform können mitwirken.',
-                    'Whether the recommendation was the cause stays open. Weather and form on the day can play a part.',
-                  ),
-                  tr('Läufen', 'runs'),
-                )}
-                {queued ? (
-                  <Row
-                    title={tr('Danach vorgesehen', 'Up next')}
-                    subtitle={tr(
-                      `${queued.action} · Vorschau, wird nach Abschluss geprüft`,
-                      `${queued.action} · Preview, checked after completion`,
-                    )}
-                  />
-                ) : null}
-                <Disclosure
-                  title={tr('Details', 'Details')}
-                  subtitle={tr(
-                    'Prüfregeln, Vergleichsläufe, ausgeschlossene Läufe',
-                    'Test rules, comparison runs, excluded runs',
-                  )}
-                  open={criteriaOpen}
-                  onToggle={setCriteriaOpen}
-                >
-                  <Copy muted>{evaluation.summary}</Copy>
-                  {renderCriteria(experiment.recommendation, true)}
-                  {evaluation.excluded.map(item => (
-                    <Row
-                      key={item.runId}
-                      title={storedRunTitle(item.runId)}
-                      subtitle={item.reason}
-                    />
-                  ))}
-                  {queued ? (
-                    <Section
-                      title={tr(
-                        'Grundlage der Vorschau',
-                        'Basis of the preview',
-                      )}
-                    >
-                      <Copy muted>{queued.reason}</Copy>
-                      {renderCriteria(queued)}
-                    </Section>
-                  ) : null}
-                  {renderAlternatives()}
-                </Disclosure>
-                <Disclosure
-                  title={tr('Empfehlung verwalten', 'Manage recommendation')}
-                  subtitle={tr(
-                    'Pausieren, abschließen, abbrechen',
-                    'Pause, complete, cancel',
-                  )}
-                >
-                  {manageButtons(experiment)}
-                </Disclosure>
-              </>
-            ) : candidate ? (
-              <>
-                {proposalCard(candidate, () =>
-                  save({ postponedUntil: Date.now() + DAY }),
-                )}
-                <Disclosure
-                  title={tr('Details', 'Details')}
-                  subtitle={tr(
-                    'Woran wir erkennen, ob es hilft',
-                    'How we tell whether it helps',
-                  )}
-                  open={criteriaOpen}
-                  onToggle={setCriteriaOpen}
-                >
-                  {renderCriteria(candidate)}
-                  {renderAlternatives()}
-                </Disclosure>
-              </>
-            ) : (
-              <>
-                <EmptyState
-                  title={
-                    postponed
-                      ? tr(
-                          'Entscheide morgen in Ruhe.',
-                          'Decide calmly tomorrow.',
-                        )
-                      : maintaining
-                      ? tr(
-                          'Behalte deine Einteilung bei.',
-                          'Keep your plan as it is.',
-                        )
-                      : tr('Noch keine Empfehlung', 'No recommendation yet')
-                  }
-                  copy={missing}
-                  action={
-                    postponed
-                      ? {
-                          title: tr(
-                            'Vorschlag jetzt ansehen',
-                            'See the suggestion now',
-                          ),
-                          onPress: () => save({ postponedUntil: 0 }),
-                        }
-                      : runningRuns.length
-                      ? needsPurpose
-                        ? {
-                            title: tr('Laufart nachtragen', 'Add run type'),
-                            onPress: () => {
-                              setPurposeSkipped([]);
-                              setPurposeSheet(true);
-                            },
-                          }
-                        : {
-                            title: tr('Einheiten ansehen', 'View workouts'),
-                            onPress: () => switchTab('history'),
-                          }
-                      : {
-                          title: tr('Ersten Lauf starten', 'Start first run'),
-                          onPress: () => switchTab('today'),
-                        }
-                  }
-                />
-                {selection.alternatives.length ? (
-                  <Disclosure
-                    title={tr('Details', 'Details')}
-                    subtitle={tr(
-                      'Andere geprüfte Möglichkeiten',
-                      'Other options checked',
-                    )}
-                    open={criteriaOpen}
-                    onToggle={setCriteriaOpen}
-                  >
-                    {renderAlternatives()}
-                  </Disclosure>
-                ) : null}
-              </>
-            )}
-          </>
-        ) : (
-          <Copy muted>
-            {tr(
-              'Empfehlungen für diesen Bereich sind aus.',
-              'Recommendations for this area are off.',
-            )}
-          </Copy>
-        )}
-        {features.goals.enabled ? (
-          <Section title={tr('Grundlage', 'Basis')}>
-            <Row
-              title={tr('Ziele & Fokus', 'Goals & focus')}
-              onPress={() => openPage('goals')}
-            />
-          </Section>
-        ) : null}
-        {runRecs && past.length ? (
-          <Section
-            title={tr('Frühere Empfehlungen', 'Earlier recommendations')}
-          >
-            {past.map(e => (
-              <Card key={e.id}>
-                <Copy>{e.recommendation.action}</Copy>
-                <Copy muted>{`${
-                  e.status === 'completed'
-                    ? tr('Abgeschlossen', 'Completed')
-                    : tr('Abgebrochen', 'Cancelled')
-                } · ${
-                  evaluateExperiment(e, runningRuns, settings.adherence).summary
-                }`}</Copy>
-                <Button
-                  secondary
-                  small
-                  title={
-                    pastRecommendationOpen === e.id
-                      ? tr(
-                          'Gespeicherte Details ausblenden',
-                          'Hide saved details',
-                        )
-                      : tr('Gespeicherte Details ansehen', 'View saved details')
-                  }
-                  onPress={() =>
-                    setPastRecommendationOpen(
-                      pastRecommendationOpen === e.id ? null : e.id,
-                    )
-                  }
-                />
-                {pastRecommendationOpen === e.id
-                  ? renderCriteria(e.recommendation, true)
-                  : null}
-              </Card>
-            ))}
-          </Section>
-        ) : null}
-      </>
-    );
-  };
-  const renderStrengthCoach = () => {
-    const evaluation = strengthEvaluation;
-    const postponed = Boolean(
-      settings.strengthPostponedUntil && settings.strengthPostponedUntil > now,
-    );
-    const past = (settings.experiments || []).filter(
-      (e): e is Experiment<StrengthRecommendation> =>
-        (e.status === 'completed' || e.status === 'aborted') &&
-        isStrengthRecommendation(e.recommendation),
-    );
-    return (
-      <>
-        {strengthRecs ? (
-          <>
-            {strengthExperiment && evaluation ? (
-              <>
-                {activeCard(
-                  strengthExperiment,
-                  evaluation,
-                  evaluation.adherence.some(item => item.value === 'yes')
-                    ? tr(
-                        'Ja, in passenden Einheiten.',
-                        'Yes, in suitable sessions.',
-                      )
-                    : evaluation.verdict === 'not_implemented'
-                    ? tr(
-                        'Du hast es bisher nicht probiert.',
-                        'You have not tried it yet.',
-                      )
-                    : tr('Noch nicht klar.', 'Not clear yet.'),
-                  tr('Besser geworden?', 'Got better?'),
-                  evaluation.verdict === 'improved'
-                    ? tr(
-                        'Dein bestes Arbeitsgewicht lag häufiger als zufällig darüber.',
-                        'Your best working weight was above that more often than chance.',
-                      )
-                    : evaluation.verdict === 'worsened'
-                    ? tr(
-                        'Dein bestes Arbeitsgewicht lag häufiger als zufällig darunter.',
-                        'Your best working weight was below that more often than chance.',
-                      )
-                    : evaluation.verdict === 'no_relevant_effect'
-                    ? tr(
-                        'Kein spürbarer Unterschied.',
-                        'No noticeable difference.',
-                      )
-                    : tr('Noch nicht klar.', 'Not clear yet.'),
-                  tr(
-                    'Ob es an der Empfehlung lag, bleibt offen. Schlaf, Muskelkater und Tagesform können mitwirken.',
-                    'Whether the recommendation was the cause stays open. Sleep, soreness, and form on the day can play a part.',
-                  ),
-                  tr('Einheiten', 'sessions'),
-                )}
-                {strengthQueued ? (
-                  <Row
-                    title={tr('Danach vorgesehen', 'Up next')}
-                    subtitle={tr(
-                      `${strengthQueued.action} · Vorschau, wird nach Abschluss geprüft`,
-                      `${strengthQueued.action} · Preview, checked after completion`,
-                    )}
-                  />
-                ) : null}
-                <Disclosure
-                  title={tr('Details', 'Details')}
-                  subtitle={tr(
-                    'Prüfregeln, Vergleichseinheiten, ausgeschlossene Einheiten',
-                    'Test rules, comparison sessions, excluded sessions',
-                  )}
-                  open={criteriaOpen}
-                  onToggle={setCriteriaOpen}
-                >
-                  <Copy muted>{evaluation.summary}</Copy>
-                  {renderStrengthCriteria(
-                    strengthExperiment.recommendation,
-                    true,
-                  )}
-                  {evaluation.excluded.map(item => (
-                    <Row
-                      key={item.runId}
-                      title={sessionTitle(item.runId)}
-                      subtitle={item.reason}
-                    />
-                  ))}
-                  {strengthQueued ? (
-                    <Section
-                      title={tr(
-                        'Grundlage der Vorschau',
-                        'Basis of the preview',
-                      )}
-                    >
-                      <Copy muted>{strengthQueued.reason}</Copy>
-                    </Section>
-                  ) : null}
-                  {renderStrengthAlternatives()}
-                </Disclosure>
-                <Disclosure
-                  title={tr('Empfehlung verwalten', 'Manage recommendation')}
-                  subtitle={tr(
-                    'Pausieren, abschließen, abbrechen',
-                    'Pause, complete, cancel',
-                  )}
-                >
-                  {manageButtons(strengthExperiment)}
-                </Disclosure>
-              </>
-            ) : strengthCandidate ? (
-              <>
-                {proposalCard(strengthCandidate, () =>
-                  save({ strengthPostponedUntil: Date.now() + DAY }),
-                )}
-                <Disclosure
-                  title={tr('Details', 'Details')}
-                  subtitle={tr(
-                    'Woran wir erkennen, ob es hilft',
-                    'How we tell whether it helps',
-                  )}
-                  open={criteriaOpen}
-                  onToggle={setCriteriaOpen}
-                >
-                  {renderStrengthCriteria(strengthCandidate)}
-                  {renderStrengthAlternatives()}
-                </Disclosure>
-              </>
-            ) : (
-              <>
-                <EmptyState
-                  title={
-                    postponed
-                      ? tr(
-                          'Entscheide morgen in Ruhe.',
-                          'Decide calmly tomorrow.',
-                        )
-                      : tr('Noch keine Empfehlung', 'No recommendation yet')
-                  }
-                  copy={
-                    postponed
-                      ? tr(
-                          'Du hast den Vorschlag auf morgen verschoben.',
-                          'You postponed the suggestion to tomorrow.',
-                        )
-                      : tr(
-                          'Dafür braucht eine Übung mindestens drei Einheiten mit Arbeitssätzen.',
-                          'An exercise needs at least three sessions with working sets for this.',
-                        )
-                  }
-                  action={
-                    postponed
-                      ? {
-                          title: tr(
-                            'Vorschlag jetzt ansehen',
-                            'See the suggestion now',
-                          ),
-                          onPress: () => save({ strengthPostponedUntil: 0 }),
-                        }
-                      : finishedSessions.length
-                      ? {
-                          title: tr('Einheiten ansehen', 'View workouts'),
-                          onPress: () => switchTab('history'),
-                        }
-                      : {
-                          title: tr(
-                            'Erstes Training starten',
-                            'Start first session',
-                          ),
-                          onPress: () => switchTab('today'),
-                        }
-                  }
-                />
-                {strengthSelection.alternatives.length ? (
-                  <Disclosure
-                    title={tr('Details', 'Details')}
-                    subtitle={tr(
-                      'Andere geprüfte Möglichkeiten',
-                      'Other options checked',
-                    )}
-                    open={criteriaOpen}
-                    onToggle={setCriteriaOpen}
-                  >
-                    {renderStrengthAlternatives()}
-                  </Disclosure>
-                ) : null}
-              </>
-            )}
-          </>
-        ) : (
-          <Copy muted>
-            {tr(
-              'Empfehlungen für diesen Bereich sind aus.',
-              'Recommendations for this area are off.',
-            )}
-          </Copy>
-        )}
-        {features.goals.enabled ? (
-          <Section title={tr('Grundlage', 'Basis')}>
-            <Row
-              title={tr('Ziele & Fokus', 'Goals & focus')}
-              onPress={() => openPage('goals')}
-            />
-          </Section>
-        ) : null}
-        {strengthRecs && past.length ? (
-          <Section
-            title={tr('Frühere Empfehlungen', 'Earlier recommendations')}
-          >
-            {past.map(e => (
-              <Card key={e.id}>
-                <Copy>{e.recommendation.action}</Copy>
-                <Copy muted>{`${
-                  e.status === 'completed'
-                    ? tr('Abgeschlossen', 'Completed')
-                    : tr('Abgebrochen', 'Cancelled')
-                } · ${
-                  evaluateAnyExperiment(
-                    e,
-                    runningRuns,
-                    strengthSessions,
-                    settings.adherence,
-                  ).summary
-                }`}</Copy>
-                <Button
-                  secondary
-                  small
-                  title={
-                    pastRecommendationOpen === e.id
-                      ? tr(
-                          'Gespeicherte Details ausblenden',
-                          'Hide saved details',
-                        )
-                      : tr('Gespeicherte Details ansehen', 'View saved details')
-                  }
-                  onPress={() =>
-                    setPastRecommendationOpen(
-                      pastRecommendationOpen === e.id ? null : e.id,
-                    )
-                  }
-                />
-                {pastRecommendationOpen === e.id
-                  ? renderStrengthCriteria(e.recommendation, true)
-                  : null}
-              </Card>
-            ))}
-          </Section>
-        ) : null}
-      </>
-    );
-  };
   const renderGoals = () => (
     <>
-      <Title>{tr('Ziele & Fokus', 'Goals & focus')}</Title>
-      {showRunning && showStrength ? (
-        <Segmented
-          label={tr('Bereich', 'Area')}
-          options={[
-            { value: 'running', label: areaLabel('running') },
-            { value: 'strength', label: areaLabel('strength') },
-          ]}
-          value={coachArea}
-          onChange={setCoachArea}
-        />
+      <Title>{tr('Ziele', 'Goals')}</Title>
+      {showRunning ? (
+        <Section title={tr('Laufen', 'Running')}>
+          <Row
+            title={tr('Ziel', 'Goal')}
+            subtitle={
+              racePrediction.status === 'estimated' &&
+              racePrediction.predictedSeconds !== undefined
+                ? tr(
+                    `${racePrediction.goal} · etwa ${formatGoalTime(
+                      racePrediction.predictedSeconds,
+                    )} geschätzt`,
+                    `${racePrediction.goal} · about ${formatGoalTime(
+                      racePrediction.predictedSeconds,
+                    )} estimated`,
+                  )
+                : settings.goal ||
+                  schedule.goal?.name ||
+                  tr('Kein Ziel gesetzt', 'No goal set')
+            }
+            onPress={() => openPage('goal')}
+          />
+          <Row
+            title={tr('Zielzeiten', 'Goal times')}
+            subtitle={tr(
+              'Geschätzte Zeiten von 1 km bis Marathon',
+              'Estimated times from 1 km to marathon',
+            )}
+            onPress={() => openPage('distance-times')}
+          />
+        </Section>
       ) : null}
-      {showRunning && (coachArea === 'running' || !showStrength) ? (
-        <>
-          <Section title={tr('Laufen', 'Running')}>
-            <Row
-              title={tr('Fokus', 'Focus')}
-              subtitle={focusLabel(settings.trainingFocus)}
-              onPress={() => openPage('focus-running')}
-            />
-            <Row
-              title={tr('Ziel', 'Goal')}
-              subtitle={
-                racePrediction.status === 'estimated' &&
-                racePrediction.predictedSeconds !== undefined
-                  ? tr(
-                      `${racePrediction.goal} · etwa ${formatGoalTime(
-                        racePrediction.predictedSeconds,
-                      )} geschätzt`,
-                      `${racePrediction.goal} · about ${formatGoalTime(
-                        racePrediction.predictedSeconds,
-                      )} estimated`,
-                    )
-                  : settings.goal ||
-                    schedule.goal?.name ||
-                    tr('Kein Ziel gesetzt', 'No goal set')
-              }
-              onPress={() => openPage('goal')}
-            />
-            <Row
-              title={tr('Zielzeiten', 'Goal times')}
-              subtitle={tr(
-                'Geschätzte Zeiten von 1 km bis Marathon',
-                'Estimated times from 1 km to marathon',
-              )}
-              onPress={() => openPage('distance-times')}
-            />
-          </Section>
-        </>
-      ) : null}
-      {showStrength && (coachArea === 'strength' || !showRunning) ? (
-        <>
-          <Section title={tr('Krafttraining', 'Strength training')}>
-            <Row
-              title={tr('Fokus', 'Focus')}
-              subtitle={focusLabel(settings.strengthFocus)}
-              onPress={() => openPage('focus-strength')}
-            />
-            <Row
-              title={tr('Ziel', 'Goal')}
-              subtitle={
-                settings.strengthGoal || tr('Kein Ziel gesetzt', 'No goal set')
-              }
-              onPress={() => openPage('focus-strength')}
-            />
-          </Section>
-        </>
+      {showStrength ? (
+        <Section title={tr('Krafttraining', 'Strength training')}>
+          <Row
+            title={tr('Ziel', 'Goal')}
+            subtitle={
+              settings.strengthGoal || tr('Kein Ziel gesetzt', 'No goal set')
+            }
+            onPress={() => openPage('strength-goal')}
+          />
+        </Section>
       ) : null}
     </>
   );
@@ -4599,57 +3268,6 @@ export function RunbackApp({
       </Section>
     </>
   );
-  // Strength training shows its coach only once it is used — and
-  // not at all if the area is deselected. Without running, it stands alone.
-  const showStrengthArea =
-    showStrength &&
-    (!showRunning ||
-      Boolean(
-        finishedSessions.length || strengthExperiment || settings.strengthFocus,
-      ));
-  const renderCoach = () => (
-    <>
-      <Title>Coach</Title>
-      {showStrengthArea && showRunning ? (
-        <Segmented
-          label={tr('Bereich', 'Area')}
-          options={[
-            { value: 'running', label: areaLabel('running') },
-            { value: 'strength', label: areaLabel('strength') },
-          ]}
-          value={coachArea}
-          onChange={area => {
-            setCriteriaOpen(false);
-            setCoachArea(area);
-          }}
-        />
-      ) : null}
-      {(coachArea === 'strength' || !showRunning) && showStrengthArea
-        ? renderStrengthCoach()
-        : renderRunningCoach()}
-      <Section title={tr('Fragen', 'Questions')}>
-        {proseReady ? (
-          <Row
-            title={tr('Trainingschat', 'Training chat')}
-            subtitle={tr(
-              'Fragen zu deinen Einheiten stellen',
-              'Ask questions about your sessions',
-            )}
-            onPress={() => openPage('chat')}
-          />
-        ) : null}
-        <Row
-          title={tr('Wie Runback rechnet', 'How Runback calculates')}
-          subtitle={tr(
-            'Grundlagen, Grenzen und gesperrte Modelle',
-            'Basics, limits, and locked models',
-          )}
-          onPress={() => openPage('models')}
-        />
-      </Section>
-    </>
-  );
-
   const renderRpe = (field: 'legs' | 'breathing', label: string) => (
     <View style={styles.rpeGroup}>
       <Text style={styles.fieldLabel}>
@@ -5122,65 +3740,6 @@ export function RunbackApp({
             }}
           />
         ) : null}
-        {/* If only the run type is missing, the question above is already the next step. */}
-        {snapshot &&
-        runRecs &&
-        !(askPurpose && !snapshot.recommendation && !experiment) ? (
-          <Card style={styles.nextStepCard}>
-            <Text style={styles.heroLabel}>
-              {tr('Nächster Schritt', 'Next step')}
-            </Text>
-            <Copy>{snapshot.nextAction}</Copy>
-            {snapshot.recommendation && !experiment && runRecs ? (
-              <Button
-                title={tr('Empfehlung ansehen', 'View recommendation')}
-                onPress={() => {
-                  setSelected(null);
-                  openCoach('running');
-                }}
-              />
-            ) : null}
-            {experiment &&
-            runRecs &&
-            selected.startTime > experiment.acceptedAt ? (
-              <>
-                <Copy muted>
-                  {tr(
-                    'Hast du die Empfehlung ausprobiert?',
-                    'Did you try the recommendation?',
-                  )}
-                </Copy>
-                <View style={styles.choiceRow}>
-                  {(
-                    [
-                      { value: 'yes', label: tr('Ja', 'Yes') },
-                      { value: 'no', label: tr('Nein', 'No') },
-                      { value: 'unknown', label: tr('Unklar', 'Unclear') },
-                    ] as const
-                  ).map(option => (
-                    <View key={option.value} style={styles.flex}>
-                      <Button
-                        small
-                        secondary={
-                          settings.adherence?.[selected.id] !== option.value
-                        }
-                        title={option.label}
-                        onPress={() =>
-                          save({
-                            adherence: {
-                              ...settings.adherence,
-                              [selected.id]: option.value,
-                            },
-                          })
-                        }
-                      />
-                    </View>
-                  ))}
-                </View>
-              </>
-            ) : null}
-          </Card>
-        ) : null}
         <Disclosure
           title={selectedWords.feelingLabel}
           subtitle={
@@ -5369,7 +3928,6 @@ export function RunbackApp({
                 ))}
               </Section>
             ) : null}
-            {snapshot ? <ProseExplanation analysis={snapshot} /> : null}
             <RunIntegrations
               id={selected.id}
               weatherEnabled={Boolean(settings.weatherEnabled)}
@@ -5545,12 +4103,12 @@ export function RunbackApp({
         />
         <Row
           title={tr(
-            'KI-Formulierung & Trainingschat',
-            'AI wording & training chat',
+            'Rechenweg & Trainingschat',
+            'Calculations & training chat',
           )}
           subtitle={tr(
-            'Optional, mit eigenem OpenRouter-Schlüssel',
-            'Optional, with your own OpenRouter key',
+            'Grundlagen, Grenzen und optionaler Chat',
+            'Basics, limits, and an optional chat',
           )}
           onPress={() => openPage('models')}
         />
@@ -5714,8 +4272,8 @@ export function RunbackApp({
               if (goalPhaseInput.trim() && !startDate) {
                 throw new Error(
                   tr(
-                    'Trage für deinen Schwerpunkt auch den Planbeginn ein.',
-                    'Also enter a plan start for your focus.',
+                    'Trage für deine Trainingsphase auch den Planbeginn ein.',
+                    'Also enter a plan start for your training phase.',
                   ),
                 );
               }
@@ -5794,8 +4352,8 @@ export function RunbackApp({
                 setGoalTimeInput('');
                 setMessage(
                   tr(
-                    'Ziel entfernt. Dein Fokus bleibt bestehen.',
-                    'Goal removed. Your focus stays.',
+                    'Ziel entfernt.',
+                    'Goal removed.',
                   ),
                 );
               });
@@ -6315,21 +4873,11 @@ export function RunbackApp({
           ))}
           <Copy muted>
             {tr(
-              'Für persönliche Empfehlungen fehlen geeignete Daten und eine unabhängige Modellprüfung.',
-              'Personal recommendations lack suitable data and an independent model check.',
+              'Für diese Modelle fehlen geeignete Daten und eine unabhängige Modellprüfung.',
+              'These models lack suitable data and an independent model check.',
             )}
           </Copy>
         </Disclosure>
-      </Section>
-      <Section
-        title={tr('Erklärungen ohne Cloud', 'Explanations without cloud')}
-      >
-        <Copy muted>
-          {tr(
-            'Die lokalen Regeln entscheiden. Ein Sprachmodell ist optional und formuliert nur.',
-            'The local rules decide. A language model is optional and only phrases.',
-          )}
-        </Copy>
       </Section>
       <ProseSettings />
       <Button
@@ -6454,25 +5002,13 @@ export function RunbackApp({
     />
   ) : page === 'session' ? (
     renderSession()
-  ) : page === 'focus-running' ? (
-    <FocusEditor
-      area="running"
-      focus={settings.trainingFocus}
-      goal={settings.goal || schedule.goal?.name || ''}
-      persist={trainingFocus => persist({ trainingFocus })}
-    />
-  ) : page === 'focus-strength' ? (
-    <FocusEditor
-      area="strength"
-      focus={settings.strengthFocus}
+  ) : page === 'strength-goal' ? (
+    <StrengthGoalEditor
       goal={settings.strengthGoal || ''}
-      persist={strengthFocus => persist({ strengthFocus })}
-      goalEditor={{
-        value: settings.strengthGoal || '',
-        targetDate: settings.strengthGoalTargetDate || '',
-        persist: (strengthGoal, strengthGoalTargetDate) =>
-          persist({ strengthGoal, strengthGoalTargetDate }),
-      }}
+      targetDate={settings.strengthGoalTargetDate || ''}
+      persist={(strengthGoal, strengthGoalTargetDate) =>
+        persist({ strengthGoal, strengthGoalTargetDate })
+      }
     />
   ) : page === 'templates' ? (
     renderTemplates()
@@ -6617,7 +5153,7 @@ export function RunbackApp({
         </Notice>
       ) : null}
     </>
-  ) : tab === 'routes' ? null : tab === 'history' || tab === 'statistics' ? (
+  ) : tab === 'routes' ? null : (
     <>
       <Title>{tabLabel(tab)}</Title>
       {tab === 'history' && features.statistics.enabled ? (
@@ -6667,8 +5203,6 @@ export function RunbackApp({
         </Section>
       ) : null}
     </>
-  ) : (
-    renderCoach()
   );
   if (sorenessOpen && !workoutOpen && !showOnboarding && !recording) {
     return (
@@ -7122,6 +5656,27 @@ export function RunbackApp({
                   onChange={setUnitFilter}
                 />
               ) : null}
+              {purposeOpen.length && exportSelection === null ? (
+                <Row
+                  title={tr('Laufart nachtragen', 'Add run type')}
+                  subtitle={tr(
+                    `Bei ${counted(
+                      purposeOpen.length,
+                      'Lauf',
+                      'Läufen',
+                    )} fehlt die Laufart.`,
+                    `The run type is missing for ${counted(
+                      purposeOpen.length,
+                      'run',
+                      'runs',
+                    )}.`,
+                  )}
+                  onPress={() => {
+                    setPurposeSkipped([]);
+                    setPurposeSheet(true);
+                  }}
+                />
+              ) : null}
               {exportSelection !== null ? (
                 <Card>
                   <Copy>
@@ -7294,7 +5849,6 @@ const styles = StyleSheet.create({
     paddingBottom: space.xl,
     flexGrow: 1,
   },
-  cardTitle: { color: color.text, ...type.heading },
   settingsButton: {
     minWidth: 48,
     minHeight: 48,
@@ -7311,33 +5865,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
   },
   heroTitle: { color: color.text, ...type.title, letterSpacing: -0.4 },
-  coachCard: { marginTop: space.xs },
-  nextStepCard: { backgroundColor: color.greenSoft, gap: space.sm },
-  recommendationCard: {
-    backgroundColor: color.surface,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: color.green,
-    padding: space.md,
-    gap: space.xs,
-  },
-  recommendationHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.xs,
-  },
-  recommendationTitle: {
-    flex: 1,
-    color: color.text,
-    ...type.body,
-    fontWeight: '600',
-  },
-  recommendationMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: space.xs,
-  },
   weekStrip: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -7490,8 +6017,6 @@ const styles = StyleSheet.create({
     minHeight: 52,
   },
   note: { minHeight: 96, textAlignVertical: 'top' },
-  choiceRow: { flexDirection: 'row', gap: space.xxs },
-  flex: { flex: 1 },
   day: {
     flex: 1,
     minHeight: 48,

@@ -248,18 +248,11 @@ describe('strength export', () => {
       firstStart: START - 7 * 24 * 60 * MINUTE,
       lastStart: START,
       goal: '100 kg Bankdrücken',
-      focus: {
-        version: 'focus-v1',
-        kind: 'strength',
-        label: 'Stärker werden',
-        area: 'strength',
-      },
     });
     expect(readme).toContain(STRENGTH_EXPORT_VERSION);
     expect(readme).toContain('2 Einheiten, 12 Sätze, 1 Einheiten mit Puls');
     expect(readme).toContain('(7 Tage)');
     expect(readme).toContain('Ziel Krafttraining: 100 kg Bankdrücken');
-    expect(readme).toContain('Fokus Krafttraining: Stärker werden');
     expect(readme).toContain('Importe (z. B. Strong) fehlen');
     // Counter unknown: the folder is mentioned without inventing a number.
     expect(readme).toContain(

@@ -1,7 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, Switch, TextInput } from 'react-native';
 import { nativeCall } from '../native';
-import type { RunAnalysis } from '../domain/types';
 import { Button, Copy, Row, Section, color } from './components';
 import { tr } from '../domain/i18n';
 
@@ -49,8 +48,8 @@ export function ProseSettings() {
     <Section title={tr('OpenRouter & Chat', 'OpenRouter & chat')}>
       <Copy muted>
         {tr(
-          'Hier verbindest du deinen eigenen OpenRouter-Schlüssel. Im Trainingschat kannst du Fragen stellen und lokale Trainingsdaten einbeziehen. Die Laufanalyse und Empfehlungen werden weiterhin unabhängig lokal berechnet.',
-          'Connect your own OpenRouter key here. In the training chat, you can ask questions and include local training data. Run analysis and recommendations are still calculated locally, independently.',
+          'Hier verbindest du deinen eigenen OpenRouter-Schlüssel. Im Trainingschat kannst du Fragen stellen und lokale Trainingsdaten einbeziehen. Alle Auswertungen rechnet Runback weiterhin lokal.',
+          'Connect your own OpenRouter key here. In the training chat, you can ask questions and include local training data. Runback still calculates every analysis locally.',
         )}
       </Copy>
       <Row
@@ -143,84 +142,11 @@ export function ProseSettings() {
           }}
         />
       ) : null}
-      <Button
-        secondary
-        small
-        title={tr('Textcache leeren', 'Clear text cache')}
-        disabled={busy}
-        onPress={() => {
-          void act(async () => {
-            await nativeCall('clearProseCache');
-            setMessage(tr('Textcache geleert.', 'Text cache cleared.'));
-          });
-        }}
-      />
       {message ? <Copy>{message}</Copy> : null}
     </Section>
   );
 }
 
-export function ProseExplanation({ analysis }: { analysis: RunAnalysis }) {
-  const [text, setText] = useState('');
-  const [busy, setBusy] = useState(false);
-  const input = JSON.stringify(analysis);
-  const latest = useRef(input);
-  latest.current = input;
-  useEffect(() => {
-    setText('');
-  }, [input]);
-  return (
-    <Section title={tr('Alternative Darstellung', 'Alternative view')}>
-      <Button
-        secondary
-        title={tr('Aussagen kompakt darstellen', 'Show statements compactly')}
-        disabled={busy}
-        onPress={() => {
-          setBusy(true);
-          const requested = input;
-          nativeCall<any>('requestProse', requested)
-            .then(result => {
-              if (latest.current !== requested) {
-                return;
-              }
-              if (
-                result.classification !== analysis.classification ||
-                result.focus !== analysis.focus ||
-                result.nextAction !== analysis.nextAction
-              ) {
-                setText(
-                  tr(
-                    'Die ursprüngliche Einordnung bleibt gültig.',
-                    'The original classification still stands.',
-                  ),
-                );
-                return;
-              }
-              setText(
-                result.text +
-                  (result.source === 'template'
-                    ? tr(
-                        '\n\nLokale Textvorlage; kein externer Text verwendet.',
-                        '\n\nLocal text template; no external text used.',
-                      )
-                    : tr(
-                        '\n\nDarstellung aus unveränderten Engine-Aussagen.',
-                        '\n\nPresentation of unchanged engine statements.',
-                      )),
-              );
-            })
-            .catch(error => {
-              if (latest.current === requested) {
-                setText(error.message);
-              }
-            })
-            .finally(() => setBusy(false));
-        }}
-      />
-      {text ? <Copy>{text}</Copy> : null}
-    </Section>
-  );
-}
 const styles = StyleSheet.create({
   input: {
     borderWidth: 1,

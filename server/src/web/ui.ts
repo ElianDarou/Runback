@@ -8,12 +8,11 @@ import type { Translator } from './i18n';
  * is a link, actions are forms.
  */
 
-export type TabId = 'plan' | 'history' | 'statistics' | 'coach' | 'data';
+export type TabId = 'plan' | 'history' | 'statistics' | 'data';
 const TABS: { id: TabId; href: string }[] = [
   { id: 'history', href: '/history' },
   { id: 'statistics', href: '/statistics' },
   { id: 'plan', href: '/plan' },
-  { id: 'coach', href: '/coach' },
   { id: 'data', href: '/data' },
 ];
 
@@ -25,8 +24,6 @@ export const tabName = (tx: Translator, id: TabId): string => {
       return tx.t('Statistik', 'Statistics');
     case 'plan':
       return tx.t('Plan', 'Plan');
-    case 'coach':
-      return tx.t('Coach', 'Coach');
     case 'data':
       return tx.t('Daten', 'Data');
   }

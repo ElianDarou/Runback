@@ -14,8 +14,11 @@ import type { SorenessReport } from './sorenessInput';
  * Missing or broken values fall back to the default, never to an error. The
  * default matches the app's earlier behavior, with one exception: after
  * soreness, Runback now asks after strength training instead of daily.
+ *
+ * v4: the Coach and its recommendations are gone; a pinned Coach tab becomes
+ * Statistics.
  */
-export const FEATURES_VERSION = 3 as const;
+export const FEATURES_VERSION = 4 as const;
 
 export type SorenessPrompt =
   | 'never'
@@ -23,13 +26,7 @@ export type SorenessPrompt =
   | 'daily'
   | 'training_days'
   | 'weekly';
-export type RecommendationMode = 'suggest' | 'on_request' | 'off';
-export type HomeSection =
-  | 'week'
-  | 'recommendation'
-  | 'goal'
-  | 'body'
-  | 'recent';
+export type HomeSection = 'week' | 'goal' | 'body' | 'recent';
 export type RecordingMetric = 'distance' | 'pace' | 'heartRate' | 'target';
 export type RecordingPrimary = 'duration' | 'distance' | 'heartRate';
 export type AfterRun = 'detail' | 'feeling' | 'home';
@@ -37,16 +34,19 @@ export type StatsModule = 'distribution' | 'records' | 'consistency' | 'body';
 export type Area = 'running' | 'strength';
 export type OptionalTab =
   | 'plan'
-  | 'coach'
   | 'statistics'
   | 'routes'
   | 'templates'
   | 'soreness';
 export type Tab = 'today' | 'history' | OptionalTab;
-/** Tab ids before the English rename; saved navigation still carries them. */
+/**
+ * Tab ids before the English rename and the removed Coach; saved navigation
+ * still carries them.
+ */
 const LEGACY_TABS: Record<string, OptionalTab> = {
   Plan: 'plan',
-  Coach: 'coach',
+  Coach: 'statistics',
+  coach: 'statistics',
   Statistik: 'statistics',
   Routen: 'routes',
   Vorlagen: 'templates',
@@ -54,7 +54,6 @@ const LEGACY_TABS: Record<string, OptionalTab> = {
 };
 export type FeatureId =
   | 'planning'
-  | 'coach'
   | 'statistics'
   | 'routes'
   | 'templates'
@@ -72,19 +71,6 @@ export const FEATURE_CATALOG: readonly {
   readonly tab?: OptionalTab;
 }[] = [
   {
-    id: 'coach',
-    get title() {
-      return tr('Coach', 'Coach');
-    },
-    get description() {
-      return tr(
-        'Empfehlungen und ihre Prüfung',
-        'Recommendations and how they are checked',
-      );
-    },
-    tab: 'coach',
-  },
-  {
     id: 'planning',
     get title() {
       return tr('Planung', 'Planning');
@@ -97,7 +83,7 @@ export const FEATURE_CATALOG: readonly {
   {
     id: 'goals',
     get title() {
-      return tr('Ziele & Fokus', 'Goals & focus');
+      return tr('Ziele', 'Goals');
     },
     get description() {
       return tr('Vorhaben je Bereich festlegen', 'Set goals for each area');
@@ -167,7 +153,6 @@ export const FEATURE_CATALOG: readonly {
 ];
 const OPTIONAL_TABS: OptionalTab[] = [
   'plan',
-  'coach',
   'statistics',
   'routes',
   'templates',
@@ -185,17 +170,11 @@ export interface FeatureSettings {
     voice: boolean;
   };
   home: { sections: HomeSection[] };
-  coach: { enabled: boolean };
   goals: { enabled: boolean };
   music: { enabled: boolean };
   templates: { enabled: boolean };
   navigation: { tabs: OptionalTab[] };
   planning: { enabled: boolean; suggest: boolean; month: boolean };
-  recommendations: {
-    running: RecommendationMode;
-    strength: RecommendationMode;
-    showQueued: boolean;
-  };
   recording: {
     metrics: RecordingMetric[];
     primary: RecordingPrimary;
@@ -218,7 +197,6 @@ export interface FeatureSettings {
 
 export const HOME_SECTIONS: HomeSection[] = [
   'week',
-  'recommendation',
   'goal',
   'body',
   'recent',
@@ -242,11 +220,6 @@ export const SORENESS_PROMPTS: SorenessPrompt[] = [
   'training_days',
   'weekly',
 ];
-export const RECOMMENDATION_MODES: RecommendationMode[] = [
-  'suggest',
-  'on_request',
-  'off',
-];
 export const AFTER_RUN_OPTIONS: AfterRun[] = ['detail', 'feeling', 'home'];
 export const RECORDING_PRIMARIES: RecordingPrimary[] = [
   'duration',
@@ -264,16 +237,10 @@ export const DEFAULT_FEATURES: FeatureSettings = {
   soreness: { enabled: true, prompt: 'after_strength', map: true, voice: true },
   home: { sections: [...HOME_SECTIONS] },
   planning: { enabled: true, suggest: true, month: true },
-  coach: { enabled: true },
   goals: { enabled: true },
   music: { enabled: false },
   templates: { enabled: true },
-  navigation: { tabs: ['plan', 'coach'] },
-  recommendations: {
-    running: 'suggest',
-    strength: 'suggest',
-    showQueued: true,
-  },
+  navigation: { tabs: ['plan', 'statistics'] },
   recording: {
     metrics: ['distance', 'pace', 'target'],
     primary: 'duration',
@@ -330,12 +297,10 @@ export function normalizeFeatures(
       soreness: { ...d.soreness },
       home: { sections: [...d.home.sections] },
       planning: { ...d.planning },
-      coach: { ...d.coach },
       goals: { ...d.goals },
       music: { ...d.music },
       templates: { ...d.templates },
       navigation: { tabs: [...d.navigation.tabs] },
-      recommendations: { ...d.recommendations },
       recording: {
         ...d.recording,
         metrics: RECORDING_METRICS.filter(item => metrics.includes(item)),
@@ -349,16 +314,12 @@ export function normalizeFeatures(
   const soreness = isRecord(raw.soreness) ? raw.soreness : {};
   const home = isRecord(raw.home) ? raw.home : {};
   const planning = isRecord(raw.planning) ? raw.planning : {};
-  const recommendations = isRecord(raw.recommendations)
-    ? raw.recommendations
-    : {};
   const recording = isRecord(raw.recording) ? raw.recording : {};
   const strength = isRecord(raw.strength) ? raw.strength : {};
   const statistics = isRecord(raw.statistics) ? raw.statistics : {};
   const running = bool(areas.running, d.areas.running);
   const strengthArea = bool(areas.strength, d.areas.strength);
   const restSeconds = Number(strength.defaultRestSeconds);
-  const coach = isRecord(raw.coach) ? raw.coach : {};
   const goals = isRecord(raw.goals) ? raw.goals : {};
   const music = isRecord(raw.music) ? raw.music : {};
   const templates = isRecord(raw.templates) ? raw.templates : {};
@@ -381,7 +342,6 @@ export function normalizeFeatures(
         ? { running, strength: strengthArea }
         : { ...d.areas },
     sports: { cycling: bool(sports.cycling, d.sports.cycling) },
-    coach: { enabled: bool(coach.enabled, d.coach.enabled) },
     goals: { enabled: bool(goals.enabled, d.goals.enabled) },
     music: { enabled: bool(music.enabled, d.music.enabled) },
     templates: { enabled: bool(templates.enabled, d.templates.enabled) },
@@ -399,22 +359,6 @@ export function normalizeFeatures(
       enabled: bool(planning.enabled, d.planning.enabled),
       suggest: bool(planning.suggest, d.planning.suggest),
       month: bool(planning.month, d.planning.month),
-    },
-    recommendations: {
-      running: oneOf(
-        recommendations.running,
-        RECOMMENDATION_MODES,
-        d.recommendations.running,
-      ),
-      strength: oneOf(
-        recommendations.strength,
-        RECOMMENDATION_MODES,
-        d.recommendations.strength,
-      ),
-      showQueued: bool(
-        recommendations.showQueued,
-        d.recommendations.showQueued,
-      ),
     },
     recording: {
       metrics: subset(
@@ -532,8 +476,6 @@ export function tabLabel(tab: Tab): string {
       return tr('Verlauf', 'History');
     case 'plan':
       return tr('Plan', 'Plan');
-    case 'coach':
-      return tr('Coach', 'Coach');
     case 'statistics':
       return tr('Statistik', 'Statistics');
     case 'routes':
@@ -566,30 +508,6 @@ export function withNavigation(
   };
 }
 
-/** Whether a recommendation for this area is calculated and shown at all. */
-export function recommendationsShown(
-  features: FeatureSettings,
-  area: Area,
-): boolean {
-  return (
-    features.coach.enabled &&
-    features.areas[area] &&
-    features.recommendations[area] !== 'off'
-  );
-}
-
-/** Whether the recommendation for this area appears unasked on Today and after the workout. */
-export function recommendationsSuggested(
-  features: FeatureSettings,
-  area: Area,
-): boolean {
-  return (
-    features.coach.enabled &&
-    features.areas[area] &&
-    features.recommendations[area] === 'suggest'
-  );
-}
-
 /**
  * Blocks on Today that the user has ticked and whose feature is on.
  * A switched-off feature takes its block along — it then also drops out of
@@ -606,11 +524,6 @@ export function availableHomeSections(
         return features.soreness.enabled;
       case 'goal':
         return features.areas.running && features.goals.enabled;
-      case 'recommendation':
-        return (
-          recommendationsSuggested(features, 'running') ||
-          recommendationsSuggested(features, 'strength')
-        );
       default:
         return true;
     }
@@ -709,17 +622,6 @@ export function sorenessPromptLabel(value: SorenessPrompt): string {
       return tr('Einmal pro Woche', 'Once a week');
   }
 }
-/** Option label for a recommendation mode, in the active language. */
-export function recommendationModeLabel(value: RecommendationMode): string {
-  switch (value) {
-    case 'suggest':
-      return tr('Vorschlagen', 'Suggest');
-    case 'on_request':
-      return tr('Nur auf Nachfrage', 'Only on request');
-    case 'off':
-      return tr('Aus', 'Off');
-  }
-}
 /** Option label for what happens after a recording, in the active language. */
 export function afterRunLabel(value: AfterRun): string {
   switch (value) {
@@ -736,8 +638,6 @@ export function homeSectionLabel(value: HomeSection): string {
   switch (value) {
     case 'week':
       return tr('Wochenleiste', 'Week bar');
-    case 'recommendation':
-      return tr('Empfehlung', 'Recommendation');
     case 'goal':
       return tr('Zielnähe', 'Goal progress');
     case 'body':

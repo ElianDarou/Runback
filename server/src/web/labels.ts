@@ -1,11 +1,5 @@
 import { metricLabel, type SeriesMetric } from '../../../src/domain/runSeries';
 import { purposeLabel } from '../../../src/domain/runTitle';
-import {
-  focusLabel,
-  focusTypeLabel,
-  type FocusKind,
-  type TrainingFocus,
-} from '../../../src/domain/focus';
 import { normalizeSport, sportLabel } from '../../../src/domain/sport';
 import type { RunPurpose, Sport } from '../../../src/domain/types';
 import type { Translator } from './i18n';
@@ -47,24 +41,6 @@ const PURPOSE_EN: Record<RunPurpose, string> = {
 
 export const purposeName = (tx: Translator, value: RunPurpose | undefined) =>
   tx.t(purposeLabel(value), (value && PURPOSE_EN[value]) || 'Run');
-
-const FOCUS_EN: Partial<Record<FocusKind, string>> = {
-  endurance: 'Build endurance',
-  speed: 'Get faster',
-  injury_free: 'Stay injury-free',
-  habit: 'Build a habit',
-  fitness: 'General fitness',
-  strength: 'Get stronger',
-  muscle: 'Build muscle',
-};
-
-/** The focus as the user sees it: their own label, else the type name. */
-export function focusName(tx: Translator, focus: TrainingFocus): string {
-  if (tx.lang === 'de') return focusLabel(focus);
-  return (
-    focus.label || FOCUS_EN[focus.kind] || focusTypeLabel(focus.kind) || ''
-  );
-}
 
 const RANGE_EN: Record<string, string> = {
   '4w': '4 weeks',

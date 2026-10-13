@@ -1,7 +1,7 @@
 # Own Runback server
 
 One person, one phone, one read-only website. The phone sends a shared copy;
-the server changes no training data, plans or recommendations. Raw samples,
+the server changes no training data or plans. Raw samples,
 original files and access keys stay on the phone. The server is therefore not
 a complete app backup.
 
@@ -70,12 +70,13 @@ curl -H 'Authorization: Bearer YOUR_TOKEN' -H 'Content-Type: application/json' \
 ```
 
 SQL allows only read queries on `v1_runs`, `v1_strength_sessions`,
-`v1_strength_sets`, `v1_wellness`, `v1_recommendations` and `v1_documents`. The
+`v1_strength_sets`, `v1_wellness` and `v1_documents`. The
 document view contains the shared content, including plans, templates and
 soreness reports; you can evaluate it with `json_extract` and `json_each`.
 Credentials and internal tables are blocked. Queries end after five seconds and
 return at most 5,000 rows. Every view returns `row_version`. New models do not
-change assessments or recommendation rules that were already transferred.
+change assessments that were already transferred. Schema 4 removed
+`v1_recommendations` together with the app's recommendations.
 
 The website offers CSV, JSONL and a SQLite download without credentials. For
 your own tools, use the API or this download copy instead of opening the live
@@ -96,4 +97,4 @@ npm run build
 ```
 
 The website uses the app's design tokens and its versioned evaluation logic for
-statistics. It shows recommendations from the app and creates no new ones.
+statistics. It shows the app's goals and plans and creates no new ones.

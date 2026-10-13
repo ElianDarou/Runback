@@ -9,31 +9,16 @@ product. Code names are identifiers and stay as they are.
 | Heute | Today | `today` | Tab: the start screen for the next workout. |
 | Verlauf | History | `history` | Tab: past workouts. |
 | Plan | Plan | `plan` | Tab: planning (optional feature). |
-| Coach | Coach | `coach` | Tab: recommendations and checks (optional feature). |
 | Statistik | Statistics | `statistics` | Tab: statistics (optional feature). |
 | Routen | Routes | `routes` | Tab: routes (optional feature). |
 | Vorlagen | Templates | `templates` | Tab: workout templates (optional feature). |
 | Muskelkater | Soreness | `soreness` | Tab: reported soreness (optional feature). |
-| Bereich | Area | `Area` | Running or strength training. Each area has its own goal, its own focus, and its own recommendation. |
-| Ziel | Goal | `goal`, `targetDate` | Optional plan per area, possibly with a date. May end. |
+| Bereich | Area | `Area` | Running or strength training. Each area has its own goal and is evaluated on its own data. |
+| Ziel | Goal | `goal`, `targetDate`, `strengthGoal` | Optional plan per area, possibly with a date. May end. Never judged. |
+| Ziele | Goals | `goals` | Page under All features with the goal of each area. |
 | Zielstrecke / Zielzeit | Goal distance / Goal time | `distanceKm`, `targetSeconds` | Race distance and target time for the running goal. The distance may come from the goal text (“Halbmarathon”). |
 | Zielnähe | Goal progress | `RacePrediction.progress` | Ring 0–100 %: the smaller of “longest run against build-up distance” and “goal time against estimated time”. Estimate by Riegel from an actual run, never a measurement. |
 | Aufbau | Build-up | `buildUpWeek` | Weekly suggestion with a race goal: one long run per week, at most 10 % more, recovery week, taper, race on the goal date. |
-| Fokus-Art | Focus type | `FocusKind` | Short, versioned list per area (Running: Endurance, Faster, Injury-free, Habit, Fitness · Strength: Stronger, Muscle, Injury-free, Habit, Fitness). |
-| Eigene Bezeichnung | Custom label | `TrainingFocus.label` | The user’s free text for the focus. Shown, not evaluated. |
-| Fokus | Focus | `TrainingFocus` | Ongoing theme without an end date, at most one per area, never evaluated. |
-| Empfehlung | Recommendation | `AnyRecommendation` → `Experiment` | The one concrete thing per area that is being tried or deliberately kept as is. |
-| Danach vorgesehen | Up next | — | Next recommendation that waits because the active one is still running or the coupling lock applies. |
-| Kopplungssperre | Coupling lock | `couplingGate` | Prevents a second recommendation that could distort the check of the first. |
-| Vorschlag / Angenommen | Suggestion / Accepted | `proposed` / `accepted` | Recommendation before / after the user’s consent. |
-| Aktiv / Pausiert / Abgeschlossen / Abgebrochen | Active / Paused / Completed / Cancelled | `ExperimentStatus` | Visible states of an accepted recommendation. |
-| Vergleichsläufe | Comparison runs | `baselineRunIds` | Several earlier matching runs; their median is the baseline, never a single outlier. |
-| Häufiger als zufällig | More often than chance | `signTest` | Check fixed in advance: more runs or workouts better than worse than chance alone would explain. |
-| Gleichmäßiger | More even | `late_pace_fade_percent` | Result of pacing: less late pace drop-off. No statement about pace or fitness. |
-| Woran erkennen wir, dass es geholfen hat? | “How will we know it helped?” | `ExperimentCriteria` | The check rule of a recommendation, fixed before the start. |
-| Umsetzung | Follow-through | `Adherence` | Whether the recommendation was actually followed. |
-| Ergebnis | Result | `ExperimentEvaluation` | What was observed in follow-up runs, regardless of cause. |
-| Ursache | Cause | — | The cautious question of whether the recommendation caused the result. Usually open. |
 | Noch nicht klar | Not clear yet | `inconclusive` | Honest verdict when the data is not enough either way. |
 | Stabil | Stable | `PlateauStatus` `stable` | Strength trend that demonstrably stays narrowly around zero. “Not clear yet” is not a plateau. |
 | Trainingstag | Training day | `collapseToDays` | Two workouts on the same day count once in the strength trend. |
@@ -66,8 +51,6 @@ product. Code names are identifiers and stay as they are.
 | Geschätztes Maximum | Estimated max | `epley1RM`, `BestSet.e1rm` | One-rep max by Epley from a working set with a load of up to twelve reps. Estimate, not a measurement. |
 | Steigt · Stabil · Fällt · Noch nicht klar | Rising · Stable · Falling · Not clear yet | `exerciseTrend` | Direction of an exercise from the strength trend (`progression.ts`), translated as a label. |
 | Übungsverlauf | Exercise history | `exerciseHistory` | All sessions of an exercise with best set, volume, and personal bests. |
-| Relevanzmatrix | Relevance matrix | `prioritization.ts` | Versioned weights per focus type and action class. |
-| Handlungsklasse | Action class | `ActionClass` | Kind of recommendation, e.g. start discipline (`calmer_start`), load of an exercise (`strength_load`). |
 | Einheit | Workout | `StrengthSession` / `RunSummary` | Training session of any kind, with time, run type, and origin. |
 | Satz | Set | `PlannedSet` / `LoggedSet` | Smallest strength unit: exercise, reps/duration, load, rest. |
 | Plan | Plan | `WorkoutTemplate` | Template made of workout slots. Suggestion, not a commitment. |
@@ -118,9 +101,10 @@ product. Code names are identifiers and stay as they are.
 | Eigener Server | Own server | `ServerLink` | Optional self-hosted server with a read-only copy of the shared data; the phone remains the original. |
 | Abgleich | Sync | `serverSync` | Transfers changes from the phone to the server; training remains possible without a connection. |
 
-**No longer used:** Arbeitsthema, nächste Handlung, Intervention, Laufempfehlung,
-Änderung (→ Empfehlung) · Prüfbedingung, Erfolgskriterium (→ “How will we know it
-helped?”) · Baseline (→ Vergleichsläufe) · inconclusive (→ Noch nicht klar) ·
+**No longer used:** Coach, Empfehlung, Fokus, Danach vorgesehen, Kopplungssperre,
+Umsetzung, Handlungsklasse, Relevanzmatrix (removed with the recommendations; Runback
+gives no training recommendations) · Arbeitsthema, nächste Handlung, Intervention,
+Laufempfehlung · inconclusive (→ Noch nicht klar) ·
 Invariante (→ Grundregel) · Gesamtumfang (→ Belastung; was only distance in another
 unit) · Plateau as “no proof” (→ stable only with proof) · Standard deviation of
 freshness (→ Grobe Spanne) · Zweck, Trainingszweck, Lang, Wettkampf as run type
@@ -128,6 +112,5 @@ freshness (→ Grobe Spanne) · Zweck, Trainingszweck, Lang, Wettkampf as run ty
 Schnell, Intervalle, Noch offen) · Laufvorlage (→ Laufziel; the last choice stays
 preselected) · Laufen nach (→ Wonach).
 
-**In one sentence:** A goal can suggest a focus; the focus helps choose a
-recommendation. Only the recommendation is checked for follow-through, result, and
-cause — at most one per area.
+**In one sentence:** Runback shows what the data contains; goals and plans are the
+user's, and every suggestion is a preview until the user applies it.

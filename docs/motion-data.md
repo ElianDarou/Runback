@@ -3,12 +3,12 @@
 During a strength session, Runback can record the watch’s movements and note when
 you tick off sets in the app. For some exercises the watch detects the set itself and
 counts the reps (see below). The number only counts once you confirm or correct it; apart
-from that, nothing from the movements flows into analyses, freshness, or recommendations.
+from that, nothing from the movements flows into analyses or freshness.
 An estimate never replaces an input.
 
 Independently of this, the watch measures your **heart rate** during strength training
 (on by default). It arrives on the phone in the same file and appears on the session’s
-detail page and in the statistics — but in no recommendation.
+detail page and in the statistics.
 
 ## Recording
 

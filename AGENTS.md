@@ -3,7 +3,7 @@
 Runback is a local Android training app (React Native + Kotlin) for running
 and strength training, with a Wear OS companion. It records workouts, imports
 history from other apps, and honestly shows what the data contains and what is
-missing. Recommendations are optional, with **at most one** per area.
+missing. It gives no training recommendations; the user decides.
 
 Read before making changes:
 
@@ -17,7 +17,7 @@ Read before making changes:
 ## Structure
 
 - `src/domain/` — pure TypeScript logic, versioned, without UI and without
-  native calls. This is where analyses, recommendations, freshness, and planning are computed.
+  native calls. This is where analyses, freshness, and planning are computed.
 - `src/ui/` — screens and building blocks. `RunbackApp.tsx` is the entry point.
 - `src/native.ts` — the only bridge to Kotlin.
 - `android/core` — SQLite, foreground service, sensors; shared by phone and watch.
@@ -43,12 +43,12 @@ Read before making changes:
   no invented intervals. Missing data only limits the statement that needs it.
 - **The bridge stays lean.** Raw samples stay in Kotlin; JS receives aggregates
   and bounded display data.
-- **Keep areas separate.** Goal, focus, and recommendation always belong to one
-  area (`areas.ts`). Build nothing that allows a second recommendation in the
-  same area or bypasses the coupling lock. New kinds of recommendation extend
-  `AnyRecommendation` and get their own selection and check.
+- **Keep areas separate.** A goal always belongs to one area (`areas.ts`), and
+  each area is evaluated on its own data.
+- **Observe, don't prescribe.** No training recommendations or coaching. New
+  analyses describe what the data shows.
 - **The user decides.** Suggestions are previews until they apply them. Nothing
-  changes plans, recommendations, or data without the user’s action.
+  changes plans, goals, or data without the user’s action.
 - **UI text in both languages.** UI text exists in German and English via
   `tr(de, en)` (TypeScript) / `Lang.tr(de, en)` (Kotlin). No user-facing text is
   evaluated at module load, because the language can change at runtime. Numbers

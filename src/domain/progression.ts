@@ -1,15 +1,15 @@
 import { exactLowerRank, finite, median, robustScale } from './inference';
 import { isSetCompleted, epley1RM, type LoggedSet, type StrengthSession } from './strength';
-import { fixed, tr } from './i18n';
+import { tr } from './i18n';
 
 /**
  * v2: exact Kendall distribution instead of the normal approximation for small
  * n, direction only from five training days, plateau as an equivalence test,
  * relevance threshold 4 % instead of 2 % (test-retest spread of 1RM ≈ 2–3 %).
  */
-export const PROGRESSION_MODEL_VERSION = 'strength-progression-v3';
-// v3 also counts imported actual sets without a tick-off time; the check rule stays the same.
-export const PROGRESSION_CHECK_METHOD = 'strength-e1rm-v2';
+// v3 also counts imported actual sets without a tick-off time.
+// v4: observation only; no load suggestion or check criterion.
+export const PROGRESSION_MODEL_VERSION = 'strength-progression-v4';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAY_MS;
 const PLATEAU_MS = 4 * WEEK_MS;
@@ -447,32 +447,7 @@ export function assessPlateau(
 }
 
 export interface ProgressionOptions {
-  nextSessionAt?: number;
-  targetReps?: number;
-  targetRir?: number;
-  regionFreshness?: number | null;
   confidenceLevel?: number;
-}
-
-export interface TargetRange {
-  minKg: number;
-  targetKg: number;
-  maxKg: number;
-  reps: number;
-  targetPercentOfE1RM: number;
-  estimatedE1RM: number;
-  freshnessFactor: number;
-  stepCapApplied: boolean;
-}
-
-export interface ProgressionCheckCriterion {
-  method: typeof PROGRESSION_CHECK_METHOD;
-  baselineSessionIds: string[];
-  /** Stored German value ("best working e1RM"); kept so saved assessments stay valid. */
-  outcome: 'bestes Arbeits-e1RM';
-  minimumRelevantChangePercent: number;
-  reviewAfterSessions: number;
-  check: string;
 }
 
 export type ProgressionVerdict =
@@ -481,15 +456,6 @@ export type ProgressionVerdict =
   | 'plateau'
   | 'keep_going'
   | 'not_assessable';
-
-export interface ProgressionSuggestion {
-  kind: 'strength_load';
-  verdict: Exclude<ProgressionVerdict, 'not_assessable'>;
-  reason: string;
-  targetRange: TargetRange;
-  expectedEffort: { rir: number; text: string };
-  checkCriterion: ProgressionCheckCriterion;
-}
 
 export interface ProgressionAssessment {
   model_version: string;
@@ -501,115 +467,10 @@ export interface ProgressionAssessment {
   plateau: PlateauAssessment;
   cusum: CusumAnalysis | null;
   verdict: ProgressionVerdict;
-  suggestion: ProgressionSuggestion | null;
   reason: string;
 }
 
-function roundWeight(value: number): number {
-  return Math.round(value * 100) / 100;
-}
-
-function makeSuggestion(
-  verdict: Exclude<ProgressionVerdict, 'not_assessable'>,
-  reason: string,
-  series: E1RMPoint[],
-  trend: TheilSenTrend,
-  options: ProgressionOptions,
-): ProgressionSuggestion {
-  const targetReps = Math.min(
-    30,
-    Math.max(
-      1,
-      Math.round(finite(options.targetReps) ? options.targetReps : 5),
-    ),
-  );
-  const targetRir = Math.min(
-    5,
-    Math.max(0, finite(options.targetRir) ? options.targetRir : 2),
-  );
-  const nextAt =
-    finite(options.nextSessionAt) && options.nextSessionAt >= trend.lastAt
-      ? options.nextSessionAt
-      : trend.lastAt;
-  const estimatedE1RM = Math.max(0.01, trend.predictAt(nextAt));
-  const targetPercentOfE1RM = 1 / (1 + (targetReps + targetRir) / 30);
-  const freshness = finite(options.regionFreshness)
-    ? Math.min(100, Math.max(0, options.regionFreshness as number))
-    : null;
-  const freshnessFactor =
-    freshness === null ? 1 : 0.92 + 0.08 * (freshness / 100);
-  const rawTarget = estimatedE1RM * targetPercentOfE1RM * freshnessFactor;
-  const previous = series[series.length - 1].weightKg;
-  const lowerCap = previous * 0.95;
-  const upperCap = previous * 1.05;
-  // The verdict and the suggested target must point in the same direction.
-  // Freshness can therefore hold an increase at the previous load, but it can
-  // never turn an increase into an unlabelled reduction (or vice versa).
-  const directionalTarget =
-    verdict === 'increase'
-      ? Math.max(previous, rawTarget)
-      : verdict === 'reduce'
-      ? Math.min(previous, rawTarget)
-      : rawTarget;
-  const targetKg = Math.min(upperCap, Math.max(lowerCap, directionalTarget));
-  const stepCapApplied = Math.abs(targetKg - rawTarget) > 0.000001;
-  const minKg =
-    verdict === 'increase'
-      ? Math.max(previous, Math.max(lowerCap, targetKg * 0.975))
-      : Math.min(targetKg, Math.max(lowerCap, targetKg * 0.975));
-  const maxKg =
-    verdict === 'reduce'
-      ? Math.min(
-          previous,
-          Math.max(targetKg, Math.min(upperCap, targetKg * 1.025)),
-        )
-      : Math.max(targetKg, Math.min(upperCap, targetKg * 1.025));
-  const freshnessText =
-    freshness === null
-      ? tr(
-          'Die Frische ist unbekannt; deshalb wird keine Frischemodulation behauptet.',
-          'Freshness is unknown, so no freshness adjustment is claimed.',
-        )
-      : tr(
-          `Die Frischemodulation bleibt mit ${fixed(freshnessFactor * 100 - 100, 1)} % unter der 8-%-Grenze.`,
-          `The freshness adjustment stays at ${fixed(freshnessFactor * 100 - 100, 1)}%, below the 8% limit.`,
-        );
-  return {
-    kind: 'strength_load',
-    verdict,
-    reason: `${reason} ${freshnessText}`,
-    targetRange: {
-      minKg: roundWeight(minKg),
-      targetKg: roundWeight(targetKg),
-      maxKg: roundWeight(maxKg),
-      reps: targetReps,
-      targetPercentOfE1RM,
-      estimatedE1RM,
-      freshnessFactor,
-      stepCapApplied,
-    },
-    expectedEffort: {
-      rir: targetRir,
-      text: tr(
-        `Ziel sind etwa ${targetRir} Wiederholungen im Tank (RIR); die Ausführung bleibt maßgeblich.`,
-        `Aim for about ${targetRir} ${targetRir === 1 ? 'rep' : 'reps'} in reserve (RIR); execution still decides.`,
-      ),
-    },
-    checkCriterion: {
-      method: PROGRESSION_CHECK_METHOD,
-      baselineSessionIds: series.slice(-3).map(point => point.sessionId),
-      outcome: 'bestes Arbeits-e1RM',
-      minimumRelevantChangePercent: MINIMUM_RELEVANT_CHANGE_PERCENT,
-      reviewAfterSessions: 3,
-      check: tr(
-        'Ab sechs umgesetzten Einheiten per Vorzeichentest prüfen, ob das beste Arbeits-e1RM häufiger als zufällig mindestens 4 % über dem Median der Vergleichseinheiten liegt; die Ausführung bleibt maßgeblich.',
-        'From six completed sessions, use a sign test to check whether the best working e1RM is at least 4% above the median of the comparison sessions more often than chance; execution still decides.',
-      ),
-    },
-  };
-}
-
-/** One decision for exactly one recommendation: the load of this exercise. */
+/** Observed direction of one exercise's estimated max; never an instruction. */
 export function assessExerciseProgression(
   sessions: StrengthSession[],
   exerciseId: string,
@@ -639,7 +500,6 @@ export function assessExerciseProgression(
       plateau: emptyPlateau,
       cusum: null,
       verdict: 'not_assessable',
-      suggestion: null,
       reason: tr(
         `Noch nicht klar: Erst ab ${MINIMUM_SESSIONS_FOR_DIRECTION} Trainingstagen mit geeigneten Arbeitssätzen trägt der Verlauf eine Richtung; es ${
           missing === 1 ? 'fehlt noch einer' : `fehlen noch ${missing}`
@@ -662,7 +522,6 @@ export function assessExerciseProgression(
       plateau: emptyPlateau,
       cusum: null,
       verdict: 'not_assessable',
-      suggestion: null,
       reason: tr(
         'Noch nicht klar: Aus diesen Einheiten lässt sich kein Steigungsintervall auf dem gewählten Niveau bilden.',
         'Not clear yet: these sessions cannot form a slope interval at the chosen level.',
@@ -682,13 +541,13 @@ export function assessExerciseProgression(
   const reason =
     verdict === 'increase'
       ? tr(
-          'Dein Leistungsverlauf spricht für eine kleine Steigerung. Probiere sie aus und prüfe, wie die nächsten Einheiten laufen.',
-          'Your performance trend points to a small increase. Try it and check how the next sessions go.',
+          'Dein geschätztes Maximum steigt über die letzten Einheiten.',
+          'Your estimated max is rising over the last sessions.',
         )
       : verdict === 'reduce'
       ? tr(
-          'Dein Leistungsverlauf fällt ab. Die Empfehlung ist, etwas weniger Gewicht auszuprobieren.',
-          'Your performance trend is falling. The suggestion is to try a little less weight.',
+          'Dein geschätztes Maximum fällt über die letzten Einheiten.',
+          'Your estimated max is falling over the last sessions.',
         )
       : verdict === 'plateau'
       ? tr(
@@ -696,8 +555,8 @@ export function assessExerciseProgression(
           'Your performance has been demonstrably stable for at least four weeks; the slope interval sits tightly around zero.',
         )
       : tr(
-          'Noch nicht klar: Der Verlauf lässt sowohl eine Änderung als auch Stillstand zu. Behalte dein Training vorerst bei.',
-          'Not clear yet: the trend allows both a change and a plateau. Keep your training as it is for now.',
+          'Noch nicht klar: Der Verlauf lässt sowohl eine Änderung als auch Stillstand zu.',
+          'Not clear yet: the trend allows both a change and a plateau.',
         );
   return {
     model_version: PROGRESSION_MODEL_VERSION,
@@ -709,38 +568,8 @@ export function assessExerciseProgression(
     plateau,
     cusum,
     verdict,
-    suggestion: makeSuggestion(verdict, reason, series, trend, options),
     reason,
   };
-}
-
-export function suggestNextSession(
-  series: E1RMPoint[],
-  trend: TheilSenTrend,
-  verdict: Exclude<ProgressionVerdict, 'not_assessable'>,
-  options: ProgressionOptions = {},
-): ProgressionSuggestion {
-  const reason =
-    verdict === 'increase'
-      ? tr(
-          'Dein Leistungsverlauf spricht dafür, etwas mehr Gewicht auszuprobieren.',
-          'Your performance trend suggests trying a little more weight.',
-        )
-      : verdict === 'reduce'
-      ? tr(
-          'Dein Leistungsverlauf spricht dafür, etwas weniger Gewicht auszuprobieren.',
-          'Your performance trend suggests trying a little less weight.',
-        )
-      : verdict === 'plateau'
-      ? tr(
-          'Seit mindestens vier Wochen ist deine Leistung nachweislich stabil.',
-          'Your performance has been demonstrably stable for at least four weeks.',
-        )
-      : tr(
-          'Für eine neue Empfehlung ist der Verlauf noch zu unklar. Behalte dein Training vorerst bei.',
-          'The trend is still too unclear for a new recommendation. Keep your training as it is for now.',
-        );
-  return makeSuggestion(verdict, reason, series, trend, options);
 }
 
 export const e1rmSeries = buildE1RMSeries;
