@@ -18,7 +18,8 @@ export const SCHEMA_VERSION = 4;
 /** Version of the flat tables; goes into every row of the views. */
 export const DERIVED_VERSION = 'server-rows-v1';
 
-const MIGRATIONS: string[] = [
+/** Exported for upgrade tests; never edit an applied entry, append a new one. */
+export const MIGRATIONS: string[] = [
   `
   CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
   CREATE TABLE objects(

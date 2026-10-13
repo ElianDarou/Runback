@@ -363,6 +363,11 @@ describe('Goals', () => {
     expect(saved.strengthGoal).toBe('10 Klimmzüge');
     expect(saved.strengthGoalTargetDate).toBe('2027-03-01');
     expect(saved.goal).toBe('10 km');
+    await tap(tree, 'Zurück');
+    expect(screenText(tree)).toContain('Zielzeiten');
+    await tap(tree, 'Zurück');
+    expect(screenText(tree)).toContain('Aktiv');
+    expect(screenText(tree)).toContain('Alle Funktionen');
     await act(async () => {
       tree.unmount();
     });
@@ -1194,6 +1199,24 @@ describe('Adding run type later', () => {
     expect(screenText(tree)).toContain('Noch 1 Lauf ohne Laufart');
     await tap(tree, 'Überspringen');
     expect(screenText(tree)).toContain('1 Lauf bleibt ohne Laufart.');
+  });
+
+  it('hides the backlog while the running area is switched off', async () => {
+    jest.mocked(native.state).mockImplementation(() =>
+      Promise.resolve({
+        runs: [run('neu', 2, 'unknown')],
+        recording: null,
+        settings: {
+          onboardedAt: 1,
+          features: { areas: { running: false, strength: true } },
+        },
+        capabilities: {},
+      } as any),
+    );
+    const tree = await render();
+    activeTree = tree;
+    await tap(tree, 'Verlauf');
+    expect(screenText(tree)).not.toContain('Laufart nachtragen');
   });
 
   it('stays on the run when saving fails', async () => {

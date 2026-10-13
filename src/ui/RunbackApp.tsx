@@ -360,6 +360,7 @@ const PARENT_PAGE: Partial<Record<Page, Page>> = {
   'features-navigation': 'features',
   'features-detail': 'features',
   'all-functions': 'settings',
+  goals: 'all-functions',
   goal: 'goals',
   'strength-goal': 'goals',
   'vendor-import': 'data',
@@ -2876,8 +2877,8 @@ export function RunbackApp({
 
   // Add run types afterwards: one run per step, newest first. Moving on happens
   // only once the choice is saved; skipped ones stay open and are named at the
-  // end.
-  const purposeOpen = runningRuns.filter(purposeMissing);
+  // end. Hidden while the running area is switched off.
+  const purposeOpen = showRunning ? runningRuns.filter(purposeMissing) : [];
   const purposeQueue = purposeOpen.filter(
     run => !purposeSkipped.includes(run.id),
   );
