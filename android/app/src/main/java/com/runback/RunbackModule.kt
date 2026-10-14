@@ -28,8 +28,7 @@ import com.runback.core.SpeechOutput
 import com.runback.core.SpeechPrefs
 import com.runback.imports.ActivityImporter
 import com.runback.integrations.HealthConnectIntegration
-import com.runback.integrations.TrainingChat
-import com.runback.integrations.OpenRouterProse
+import com.runback.integrations.RemovedChat
 import com.runback.integrations.WeatherIntegration
 import com.google.android.gms.tasks.Tasks
 import com.google.android.gms.wearable.Wearable
@@ -44,7 +43,6 @@ import java.util.UUID
 class RunbackModule(private val context: ReactApplicationContext) : ReactContextBaseJavaModule(context) {
     private val store = RunStore(context)
     private val worker = Executors.newSingleThreadExecutor()
-    private val aiWorker = Executors.newSingleThreadExecutor()
     private val musicWorker = Executors.newSingleThreadExecutor()
     private val importWorker = Executors.newSingleThreadExecutor()
     private val speechWorker = Executors.newSingleThreadExecutor()
@@ -55,8 +53,6 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     private val mainHandler = Handler(Looper.getMainLooper())
     private val importer = ActivityImporter(context, store)
     private val health = HealthConnectIntegration(context)
-    private val prose = OpenRouterProse(context)
-    private val chat = TrainingChat(store, prose)
     private var pending: Pair<Promise, (Int, Intent?) -> Unit>? = null
     private var speechRecognizer: SpeechRecognizer? = null
     private var speechPromise: Promise? = null
@@ -64,6 +60,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     private val exportArchives = mutableMapOf<String, ExportArchive>()
 
     init {
+        worker.execute { RemovedChat.clean(context, store) }
         StrengthWorkout.listener = { session ->
             if (context.hasActiveReactInstance()) {
                 context.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
@@ -191,7 +188,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     @ReactMethod fun clearAllData(promise: Promise) = task(promise) {
         check(store.active() == null) { Lang.tr("Beende zuerst die laufende Aufzeichnung.", "Finish the running recording first.") }
         MusicController.get(context).disconnect()
-        importer.cancel(); chat.resetData { store.clearAllData() }; MotionSessions.deleteFiles(context); state()
+        importer.cancel(); store.clearAllData(); MotionSessions.deleteFiles(context); state()
     }
     @ReactMethod fun deleteAllData(promise: Promise) = clearAllData(promise)
 
@@ -451,23 +448,6 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         }
     }
 
-    @ReactMethod fun getProseSettings(promise: Promise) = task(promise) { prose.settings() }
-    @ReactMethod fun configureProse(enabled: Boolean, model: String, apiKey: String?, promise: Promise) = task(promise) {
-        prose.configure(enabled, model, apiKey)
-    }
-    @ReactMethod fun clearProseKey(promise: Promise) = task(promise) { prose.clearKey() }
-
-    private fun aiTask(promise: Promise, block: () -> Any?) {
-        aiWorker.execute {
-            try { promise.resolve((block() ?: JSONObject.NULL).toString()) }
-            catch (error: Exception) { promise.reject("CHAT_ERROR", error.message ?: Lang.tr("KI-Anfrage fehlgeschlagen", "AI request failed"), error) }
-        }
-    }
-    @ReactMethod fun getChatHistory(promise: Promise) = aiTask(promise) { chat.history() }
-    @ReactMethod fun clearChatHistory(promise: Promise) = aiTask(promise) { chat.clear() }
-    @ReactMethod fun setChatTrainingAccess(includeTraining: Boolean, promise: Promise) = aiTask(promise) { chat.clear(includeTraining) }
-    @ReactMethod fun sendChat(text: String, includeTraining: Boolean, promise: Promise) = aiTask(promise) { chat.send(text, includeTraining) }
-
     private fun recording(action: String, purpose: String, promise: Promise, sport: String = "running", routePlanId: String? = null, target: String? = null) {
         if (action == RecordingService.START && !granted(Manifest.permission.ACCESS_FINE_LOCATION)) {
             promise.reject("LOCATION_PERMISSION", Lang.tr("Für die Aufzeichnung bitte den genauen Standort erlauben.", "Allow precise location to record.")); return
@@ -624,7 +604,9 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
             if (code != Activity.RESULT_OK || uri == null) promise.resolve("{\"cancelled\":true}")
             else task(promise) {
                 check(store.active() == null) { Lang.tr("Beende zuerst die Aufzeichnung.", "Finish the recording first.") }
-                val restored = chat.resetData { context.contentResolver.openInputStream(uri)!!.use(store::restore) }
+                val restored = context.contentResolver.openInputStream(uri)!!.use(store::restore)
+                // An older backup may still carry the chat history.
+                RemovedChat.clean(context, store)
                 MusicController.get(context).resetConnection()
                 restored
             }
@@ -871,9 +853,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         }
         pending?.first?.reject("APP_CLOSED", Lang.tr("Die App wurde geschlossen.", "The app was closed."))
         pending = null
-        chat.resetData {}
         musicWorker.shutdown()
-        aiWorker.shutdown()
         worker.execute {
             analysisArchives.values.forEach { runCatching { it.discard() } }
             analysisArchives.clear()

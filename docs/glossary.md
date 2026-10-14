@@ -8,21 +8,24 @@ product. Code names are identifiers and stay as they are.
 | --- | --- | --- | --- |
 | Heute | Today | `today` | Tab: the start screen for the next workout. |
 | Verlauf | History | `history` | Tab: past workouts. |
-| Plan | Plan | `plan` | Tab: planning (optional feature). Week or month with done and planned workouts side by side. |
-| Erledigt · Gestartet · Geplant · Ausgelassen | Done · Started · Planned · Skipped | `PlanStatus` | State of a planned workout in Plan. Done only through a linked, finished recording, never from the date. |
-| Ohne Plan | Unplanned | `planEntriesByDate` | A recorded workout that no planned workout links to; Plan shows it on the day it started. |
+| Plan | Plan | `plan` | Tab: planning (optional feature). One page without scrolling: the month (or the week) with a symbol per planned and done workout. |
+| Geplant · Läuft · Erledigt | Planned · In progress · Done | `MarkState` | State of a workout in Plan: gray outlined, green outlined, green on a green surface. Done only through a recording of the same kind on that day (a strength template first by a session of that template), never from the date. |
+| Ohne Plan | Unplanned | `dayEntries` | A recorded workout no planned workout of its day matched; Plan shows it on the day it started. |
+| Wochenplan | Weekly plan | `runDays`, `WorkoutTemplate.days`, `weeklyHistory` | Settings page: which workouts repeat on which weekdays (runs, and each strength template on its own days). Past days keep the weekly plan that was in effect then. |
+| Geänderter Tag | Changed day | `changedDays`, `setDayPlan` | A day edited in Plan: it keeps exactly its own workouts, the weekly plan no longer applies to it. “Wie jede Woche” / “As every week” undoes it. Only today and later. |
+| Symbol | Symbol | `TemplateIcon`, `WorkoutIcon` | Calendar symbol of a workout: fixed for runs and rides, chosen per strength template from one icon set (Tabler Icons). |
+| Mehr / weniger als üblich | More / less than usual | `compareWithUsual` | Workouts, time, and km of the shown week or month against the median of the up to six periods before (a running period day for day); ▲ green, ▼ red, from three earlier periods with recordings. |
 | Rechenweg | Calculations | `models` | Settings page: what Runback calculates locally and which models are locked. |
-| Trainingschat | Training chat | `TrainingChat`, Kotlin `OpenRouterProse` | Optional read-only chat about your data with your own OpenRouter key. Describes, gives no recommendations, changes nothing. |
 | Statistik | Statistics | `statistics` | Tab: statistics (optional feature). |
 | Routen | Routes | `routes` | Tab: routes (optional feature). |
 | Vorlagen | Templates | `templates` | Tab: workout templates (optional feature). |
 | Muskelkater | Soreness | `soreness` | Tab: reported soreness (optional feature). |
 | Bereich | Area | `Area` | Running or strength training. Each area has its own goal and is evaluated on its own data. |
-| Ziel | Goal | `goal`, `targetDate`, `strengthGoal` | Optional plan per area, possibly with a date. May end. Never judged. |
-| Ziele | Goals | `goals` | Page under All features with the goal of each area. |
+| Ziel | Goal | `goal`, `targetDate`, `strengthGoal`, `strengthGoalTarget` | Optional plan per area, possibly with a date. May end. Never judged. |
+| Entwicklung | Progress | feature `goals`, tab `development`, `DevelopmentScreen` | Optional feature with the goal of each area, how close it is, and the last four weeks against the four before. Running and strength training apart. |
+| Kraftziel | Strength goal | `StrengthTarget`, `strengthGoalProgress` | Load for one exercise at a number of reps. Zielnähe is the heaviest working set with at least those reps in the last 12 weeks against the target load: measured, not estimated. |
 | Zielstrecke / Zielzeit | Goal distance / Goal time | `distanceKm`, `targetSeconds` | Race distance and target time for the running goal. The distance may come from the goal text (“Halbmarathon”). |
 | Zielnähe | Goal progress | `RacePrediction.progress` | Ring 0–100 %: the smaller of “longest run against build-up distance” and “goal time against estimated time”. Estimate by Riegel from an actual run, never a measurement. |
-| Aufbau | Build-up | `buildUpWeek` | Weekly suggestion with a race goal: one long run per week, at most 10 % more, recovery week, taper, race on the goal date. |
 | Noch nicht klar | Not clear yet | `inconclusive` | Honest verdict when the data is not enough either way. |
 | Stabil | Stable | `PlateauStatus` `stable` | Strength trend that demonstrably stays narrowly around zero. “Not clear yet” is not a plateau. |
 | Trainingstag | Training day | `collapseToDays` | Two workouts on the same day count once in the strength trend. |
@@ -108,7 +111,10 @@ product. Code names are identifiers and stay as they are.
 | Eigener Server | Own server | `ServerLink` | Optional self-hosted server with a read-only copy of the shared data; the phone remains the original. |
 | Abgleich | Sync | `serverSync` | Transfers changes from the phone to the server; training remains possible without a connection. |
 
-**No longer used:** Coach, Empfehlung, Fokus, Danach vorgesehen, Kopplungssperre,
+**No longer used:** Trainingschat, OpenRouter (removed; nothing goes to a language model) ·
+Woche vorschlagen, Aufbau, Zeit & Rhythmus, Verfügbarkeit, Gesperrt, Verknüpft (the plan
+tracks no time anymore; done is read from the day's recordings) · Ziele as a page
+(→ Entwicklung) · Coach, Empfehlung, Fokus, Danach vorgesehen, Kopplungssperre,
 Umsetzung, Handlungsklasse, Relevanzmatrix (removed with the recommendations; Runback
 gives no training recommendations) · Arbeitsthema, nächste Handlung, Intervention,
 Laufempfehlung · inconclusive (→ Noch nicht klar) ·

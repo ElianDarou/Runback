@@ -1,6 +1,5 @@
 import {
   buildReport,
-  fromStructured,
   normalizeText,
   parseSoreness,
 } from '../src/domain/sorenessInput';
@@ -57,7 +56,9 @@ describe('Soreness input', () => {
       proposals: [{ regionId: 'quad_r', value: 5 }],
       questions: [],
     });
-    expect(parseSoreness('I think my left calf is a little strong')).toMatchObject({
+    expect(
+      parseSoreness('I think my left calf is a little strong'),
+    ).toMatchObject({
       proposals: [{ regionId: 'calf_gastroc_l', value: 8 }],
       questions: [],
     });
@@ -75,15 +76,6 @@ describe('Soreness input', () => {
     expect(parseSoreness('left calf three').lexiconVersion).toBe(
       'soreness-lexicon-v2',
     );
-  });
-
-  it('discards unknown structured regions instead of inventing them', () => {
-    const result = fromStructured([
-      { region: 'quad_l', value: 4 },
-      { region: 'mysteriöser Muskel', value: 9 },
-    ]);
-    expect(result.proposals).toEqual([{ regionId: 'quad_l', value: 4 }]);
-    expect(result.questions[0].kind).toBe('unknown');
   });
 
   it('filters invalid regions when saving and limits values', () => {
@@ -124,23 +116,6 @@ describe('Soreness capture parsing', () => {
       { regionId: 'biceps_l', value: 3 },
       { regionId: 'biceps_r', value: 5 },
     ]);
-  });
-
-  it('does not accept an unknown structured region', () => {
-    const result = fromStructured([
-      { region: 'mysterious muscle', side: 'l', value: 4 },
-    ]);
-    expect(result.proposals).toEqual([]);
-    expect(result.questions[0]).toMatchObject({
-      kind: 'unknown',
-      candidates: [],
-    });
-  });
-
-  it('does not treat an empty structured value as zero', () => {
-    const result = fromStructured([{ region: 'biceps_l', value: ' ' }]);
-    expect(result.proposals).toEqual([]);
-    expect(result.questions[0]).toMatchObject({ kind: 'intensity' });
   });
 
   it('writes reports in canonical region order regardless of object insertion order', () => {

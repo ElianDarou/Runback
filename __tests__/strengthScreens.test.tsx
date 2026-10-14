@@ -3,6 +3,7 @@ import ReactTestRenderer from 'react-test-renderer';
 import { Statistics, defaultStatisticsView } from '../src/ui/Statistics';
 import { StrengthSessionDetail } from '../src/ui/StrengthSessionDetail';
 import { ExerciseDetail } from '../src/ui/ExerciseDetail';
+import { predictRace } from '../src/domain/raceGoal';
 import { DevelopmentScreen } from '../src/ui/DevelopmentScreen';
 import type { Run } from '../src/native';
 import type { StrengthHeart } from '../src/domain/strengthHeart';
@@ -73,17 +74,33 @@ const create = (element: React.ReactElement) => {
 describe('Statistics · Area', () => {
   it('shows a pure import history and opens its session without native recording', () => {
     const workout = parseStrongCsvPreview(
-      `Date;Workout Name;Exercise Name;Set Order;Weight (kg);Reps\n${NOW - DAY};Push;Bench Press (Barbell);1;80;8`,
+      `Date;Workout Name;Exercise Name;Set Order;Weight (kg);Reps\n${
+        NOW - DAY
+      };Push;Bench Press (Barbell);1;80;8`,
     ).workouts[0];
     const session = importedStrengthSession(workout);
     const onOpenSession = jest.fn();
-    const tree = create(<Statistics runs={[]} sessions={[session]} onOpenSession={onOpenSession} />);
+    const tree = create(
+      <Statistics
+        runs={[]}
+        sessions={[session]}
+        onOpenSession={onOpenSession}
+      />,
+    );
     expect(texts(tree)).toContain('"Übungen"');
     expect(texts(tree)).not.toContain('Noch keine Läufe');
-    const row = tree.root.findAllByType(Row).find(node => node.props.title === 'Push')!;
+    const row = tree.root
+      .findAllByType(Row)
+      .find(node => node.props.title === 'Push')!;
     ReactTestRenderer.act(() => row.props.onPress());
     expect(onOpenSession).toHaveBeenCalledWith(session.id);
-    const detail = create(<StrengthSessionDetail session={session} history={[session]} heartSummaries={{}} />);
+    const detail = create(
+      <StrengthSessionDetail
+        session={session}
+        history={[session]}
+        heartSummaries={{}}
+      />,
+    );
     expect(texts(detail)).toContain('Importiert aus Strong');
     expect(texts(detail)).toContain('80 kg × 8');
     expect(texts(detail)).toContain('"–"');
@@ -92,9 +109,25 @@ describe('Statistics · Area', () => {
       sets: workout.sets.map(set => ({ ...set, weight: null })),
     });
     const development = create(
-      <DevelopmentScreen runs={[]} sessions={[withoutLoad]} goal="" now={NOW} onEditGoal={jest.fn()} />,
+      <DevelopmentScreen
+        runs={[]}
+        sessions={[withoutLoad]}
+        now={NOW}
+        showRunning={false}
+        showStrength
+        prediction={predictRace({ goal: '', runs: [], now: NOW })}
+        onEditGoal={jest.fn()}
+        onDistanceTimes={jest.fn()}
+        strengthGoal=""
+        strengthGoalTargetDate=""
+        onEditStrengthGoal={jest.fn()}
+      />,
     );
-    expect(development.root.findAllByType(Stat).find(node => node.props.label === 'kg bewegt')?.props.value).toBe('–');
+    expect(
+      development.root
+        .findAllByType(Stat)
+        .find(node => node.props.label === 'kg bewegt')?.props.value,
+    ).toBe('–');
   });
 
   it('selects the area at the top when both have data', () => {
@@ -318,10 +351,22 @@ describe('Session names on display', () => {
     const session = strengthSession(
       'session-default-name',
       NOW - DAY,
-      [['barbell_bench_press', 'Bankdrücken', [{ weightKg: 80, reps: 8, at: 2 }]]],
+      [
+        [
+          'barbell_bench_press',
+          'Bankdrücken',
+          [{ weightKg: 80, reps: 8, at: 2 }],
+        ],
+      ],
       { name: 'Krafttraining' },
     );
-    const tree = create(<StrengthSessionDetail session={session} history={[session]} heartSummaries={{}} />);
+    const tree = create(
+      <StrengthSessionDetail
+        session={session}
+        history={[session]}
+        heartSummaries={{}}
+      />,
+    );
     expect(texts(tree)).toContain('"Strength training"');
     expect(texts(tree)).not.toContain('"Krafttraining"');
     expect(session.name).toBe('Krafttraining');

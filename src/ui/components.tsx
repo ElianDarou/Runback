@@ -33,6 +33,13 @@ import {
 } from 'react-native-safe-area-context';
 import type { RoutePoint } from '../native';
 import { percentSign, tr } from '../domain/i18n';
+import {
+  TEMPLATE_ICONS,
+  iconLabel,
+  type TemplateIcon,
+  type TrainingIcon,
+} from '../domain/trainingIcons';
+import { ICON_PATHS } from './iconPaths';
 
 /**
  * Shared building blocks for the whole interface. The binding rules for use,
@@ -620,6 +627,58 @@ export function ToggleChips<T extends string>({
   );
 }
 
+/**
+ * Seven weekdays in one row, each a checkbox. For weekly plans, where wrapping
+ * chips would split the week.
+ */
+export function WeekdayChips({
+  labels,
+  values,
+  onToggle,
+  label,
+  disabled = false,
+}: {
+  /** Short names, Monday first. */
+  labels: string[];
+  /** Selected days, 0 (Monday) to 6. */
+  values: number[];
+  onToggle: (day: number) => void;
+  label: string;
+  disabled?: boolean;
+}) {
+  return (
+    <View accessibilityLabel={label} style={s.weekdayChips}>
+      {labels.map((name, day) => {
+        const checked = values.includes(day);
+        return (
+          <Pressable
+            key={name}
+            accessibilityRole="checkbox"
+            accessibilityLabel={name}
+            accessibilityState={{ checked, disabled }}
+            disabled={disabled}
+            onPress={() => onToggle(day)}
+            style={({ pressed }) => [
+              s.chip,
+              s.weekdayChip,
+              checked && s.chipSelected,
+              disabled && s.disabled,
+              pressed && s.pressed,
+            ]}
+          >
+            <Text
+              numberOfLines={1}
+              style={[s.chipText, checked && s.chipTextSelected]}
+            >
+              {name}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 export function Field({
   label,
   hint,
@@ -1131,6 +1190,7 @@ export function Icon({
     settings:
       'M12 15A3 3 0 1 0 12 9A3 3 0 0 0 12 15M19.4 15A1.65 1.65 0 0 0 19.73 16.82L19.79 16.88A2 2 0 1 1 16.96 19.71L16.9 19.65A1.65 1.65 0 0 0 15.08 19.32A1.65 1.65 0 0 0 14.08 20.83V21A2 2 0 1 1 10.08 21V20.91A1.65 1.65 0 0 0 9 19.4A1.65 1.65 0 0 0 7.18 19.73L7.12 19.79A2 2 0 1 1 4.29 16.96L4.35 16.9A1.65 1.65 0 0 0 4.68 15.08A1.65 1.65 0 0 0 3.17 14.08H3A2 2 0 1 1 3 10.08H3.09A1.65 1.65 0 0 0 4.6 9A1.65 1.65 0 0 0 4.27 7.18L4.21 7.12A2 2 0 1 1 7.04 4.29L7.1 4.35A1.65 1.65 0 0 0 8.92 4.68H9A1.65 1.65 0 0 0 10 3.17V3A2 2 0 1 1 14 3V3.09A1.65 1.65 0 0 0 15 4.6A1.65 1.65 0 0 0 16.82 4.27L16.88 4.21A2 2 0 1 1 19.71 7.04L19.65 7.1A1.65 1.65 0 0 0 19.32 8.92V9A1.65 1.65 0 0 0 20.83 10H21A2 2 0 1 1 21 14H20.91A1.65 1.65 0 0 0 19.4 15',
     statistics: 'M4 20V13M10 20V7M16 20V10M3 20H21',
+    development: 'M3 17L9 11L13 15L21 7M15 7H21V13',
     routes: 'M6 20C6 15 18 17 18 11S6 10 6 4M4 4H8M4 20H8',
     templates: 'M6 3H21V19H6ZM3 7V22H17M10 7H17M10 11H17M10 15H14',
     soreness:
@@ -1148,6 +1208,89 @@ export function Icon({
         fill="none"
       />
     </Svg>
+  );
+}
+
+/**
+ * Symbol of a workout. `planned` is gray and only outlined, `done` green on a
+ * green surface, `started` green and outlined: the surface says the same as
+ * the color. `plain` draws just the symbol, e.g. in a picker.
+ */
+export function WorkoutIcon({
+  name,
+  state = 'plain',
+  size = 'medium',
+  selected = false,
+}: {
+  name: TrainingIcon;
+  state?: 'planned' | 'started' | 'done' | 'plain';
+  size?: 'small' | 'medium' | 'large';
+  selected?: boolean;
+}) {
+  // Small fits two per row in a month cell on a 360 dp wide phone.
+  const box = size === 'small' ? 18 : size === 'medium' ? 32 : 44;
+  const glyph = size === 'small' ? 12 : size === 'medium' ? 18 : 24;
+  const stroke =
+    state === 'planned' || (state === 'plain' && !selected)
+      ? color.muted
+      : color.green;
+  return (
+    <View
+      style={[
+        s.workoutIcon,
+        { width: box, height: box, borderRadius: box / 2 },
+        state === 'planned' && s.workoutIconPlanned,
+        state === 'started' && s.workoutIconStarted,
+        state === 'done' && s.workoutIconDone,
+        state === 'plain' && selected && s.workoutIconSelected,
+      ]}
+    >
+      <Svg width={glyph} height={glyph} viewBox="0 0 24 24">
+        {ICON_PATHS[name].map(d => (
+          <Path
+            key={d}
+            d={d}
+            stroke={stroke}
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+          />
+        ))}
+      </Svg>
+    </View>
+  );
+}
+
+/** Grid of template symbols; the chosen one has a green ring and a check state. */
+export function IconPicker({
+  value,
+  onChange,
+  disabled = false,
+}: {
+  value: TemplateIcon;
+  onChange: (icon: TemplateIcon) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <View
+      accessibilityLabel={tr('Symbol wählen', 'Choose symbol')}
+      style={s.iconGrid}
+    >
+      {TEMPLATE_ICONS.map(icon => (
+        <Pressable
+          key={icon}
+          accessibilityRole="radio"
+          accessibilityLabel={iconLabel(icon)}
+          accessibilityState={{ checked: icon === value, disabled }}
+          disabled={disabled}
+          onPress={() => onChange(icon)}
+          style={({ pressed }) => [s.iconChoice, pressed && s.pressed]}
+        >
+          <WorkoutIcon name={icon} size="large" selected={icon === value} />
+        </Pressable>
+      ))}
+    </View>
   );
 }
 
@@ -1929,6 +2072,8 @@ export const s = StyleSheet.create({
     borderColor: color.line,
     backgroundColor: color.surface,
   },
+  weekdayChips: { flexDirection: 'row', gap: space.xxs },
+  weekdayChip: { flex: 1, paddingHorizontal: 0, alignItems: 'center' },
   chipSelected: {
     backgroundColor: color.greenSoft,
     borderColor: color.green,
@@ -2051,6 +2196,29 @@ export const s = StyleSheet.create({
   },
   sheetTitle: { color: color.text, ...type.heading },
   stat: { flex: 1, gap: space.xxs },
+  workoutIcon: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  workoutIconPlanned: { borderColor: color.line },
+  iconGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xxs },
+  iconChoice: {
+    width: 52,
+    height: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  workoutIconStarted: { borderColor: color.green },
+  workoutIconDone: {
+    backgroundColor: color.greenSoft,
+    borderColor: color.greenSoft,
+  },
+  workoutIconSelected: {
+    borderColor: color.green,
+    backgroundColor: color.greenSoft,
+  },
   statValue: {
     color: color.text,
     ...type.value,

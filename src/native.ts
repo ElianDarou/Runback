@@ -1,8 +1,4 @@
-import type {
-  Settings,
-  MotionWrist,
-  Run,
-} from './domain/trainingRecords';
+import type { Settings, MotionWrist, Run } from './domain/trainingRecords';
 import { tr, type Language } from './domain/i18n';
 export type {
   Preset,
@@ -53,10 +49,7 @@ import {
   type ImportBatch,
   type ImportChoice,
 } from './domain/importReview';
-import type {
-  SorenessReport as CapturedSorenessReport,
-  StructuredSorenessItem,
-} from './domain/sorenessInput';
+import type { SorenessReport as CapturedSorenessReport } from './domain/sorenessInput';
 import {
   readStrengthHeart,
   readStrengthHeartSummaries,
@@ -118,7 +111,6 @@ export interface RoutePlannerState {
 }
 export interface SorenessTranscript {
   text: string;
-  structured?: StructuredSorenessItem[];
 }
 export interface AppState {
   runs: Run[];
@@ -164,12 +156,20 @@ export async function routeCall<T = unknown>(
 export const native = {
   musicStatus: () => nativeCall<MusicStatus>('getMusicStatus'),
   configureMusic: (config: MusicConfig, clientId: string, bpmKey: string) =>
-    nativeCall<MusicStatus>('configureMusic', JSON.stringify(config), clientId, bpmKey),
-  cancelMusicAuthorization: () => nativeCall<MusicStatus>('cancelMusicAuthorization'),
+    nativeCall<MusicStatus>(
+      'configureMusic',
+      JSON.stringify(config),
+      clientId,
+      bpmKey,
+    ),
+  cancelMusicAuthorization: () =>
+    nativeCall<MusicStatus>('cancelMusicAuthorization'),
   authorizeMusic: () => nativeCall<MusicStatus>('authorizeMusic'),
-  importMusicPlaylist: (value: string) => nativeCall<MusicStatus>('importMusicPlaylist', value),
+  importMusicPlaylist: (value: string) =>
+    nativeCall<MusicStatus>('importMusicPlaylist', value),
   lookupMusicBpm: () => nativeCall<MusicStatus>('lookupMusicBpm'),
-  setMusicBpm: (uri: string, bpm?: number) => nativeCall<MusicStatus>('setMusicBpm', uri, bpm ?? -1),
+  setMusicBpm: (uri: string, bpm?: number) =>
+    nativeCall<MusicStatus>('setMusicBpm', uri, bpm ?? -1),
   clearMusicBpmKey: () => nativeCall<MusicStatus>('clearMusicBpmKey'),
   disconnectMusic: () => nativeCall<MusicStatus>('disconnectMusic'),
   startMusic: (runId: string) => nativeCall<MusicStatus>('startMusic', runId),

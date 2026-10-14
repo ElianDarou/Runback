@@ -36,7 +36,7 @@ variants — whoever needs something new adds it there.
 ## Navigation
 
 **Today** and **History** remain fixed tabs; up to two more active features
-can be pinned in their own order: **Plan**,
+can be pinned in their own order: **Plan**, **Progress**,
 **Statistics**, **Routes**, **Templates**, or **Soreness**. Free slots stay
 free until the user fills them. Switching a feature off removes its slot; switching
 it on pins nothing automatically.
@@ -45,9 +45,14 @@ The gear icon opens Settings; if an own server is set up,
 a dot appears to its left: green connected, red unreachable. In Settings, **All features** also opens active features that have no tab.
 Under **Features**, the
 user decides what is active; under **Navigation**, what is in the bar.
-**Goals** live under All features. Templates have shared management
-that stays usable even without planning. Devices and data remain in
-Settings.
+**Progress** (Entwicklung) holds the goal of each area and opens under All features
+unless it is pinned. The weekly plan is set in Settings, single days in Plan.
+Templates have shared management that stays usable even without planning.
+Devices and data remain in Settings.
+
+Plan is the one page that does not scroll: the month fills the screen below the
+header, every workout is a small symbol — gray outlined when planned, green on a
+green surface when done — and a day opens in a `Sheet`.
 
 Where running and strength training both appear (Statistics), a
 `Segmented` at the top selects the area — not every section twice.
@@ -96,8 +101,8 @@ Writing rules, German and English alike:
 - Uncertainty in words (“ziemlich sicher” / “fairly sure”, “eher ein Eindruck” /
   “more of an impression”, “noch nicht klar” / “not clear yet”); intervals only under
   “Details”.
-- States as visible labels (`Badge`), e.g. Planned · Linked · Skipped (German:
-  Geplant · Verknüpft · Übersprungen). Progress as a number and `Progress`
+- States as visible labels (`Badge`), e.g. Planned · Done (German:
+  Geplant · Erledigt). Progress as a number and `Progress`
   (“3 of 5 runs” / “3 von 5 Läufen”), not as prose.
 - Verdicts in everyday language: “Not clear yet” / “Noch nicht klar”, “Too few
   comparable runs” / “Zu wenig vergleichbare Läufe”.

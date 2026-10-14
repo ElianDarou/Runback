@@ -1,44 +1,32 @@
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { Text } from 'react-native';
+import { ScrollView, Text } from 'react-native';
 import type { Run } from '../src/native';
 import {
   PlanningScreen,
   type PlanningScreenProps,
 } from '../src/ui/PlanningScreen';
-import type { ScheduleState, ScheduledSession } from '../src/domain/schedule';
+import { WorkoutIcon } from '../src/ui/components';
+import {
+  normalizeSchedule,
+  setDayPlan,
+  type ScheduleState,
+} from '../src/domain/schedule';
+import type { StrengthSession, WorkoutTemplate } from '../src/domain/strength';
 
 const localAt = (date: string, hour = 9, minute = 0): number => {
   const [year, month, day] = date.split('-').map(Number);
   return new Date(year, month - 1, day, hour, minute, 0, 0).getTime();
 };
 
-const emptySchedule = (
-  overrides: Partial<ScheduleState> = {},
-): ScheduleState => ({
-  version: 1,
-  sessions: [],
-  availability: {},
-  routine: { days: [], minutes: 30 },
-  ...overrides,
-});
+// Wednesday, 12 March 2025.
+const NOW = localAt('2025-03-12', 12);
 
-const plannedSession = (
-  overrides: Partial<ScheduledSession> = {},
-): ScheduledSession => ({
-  id: 'session-1',
-  date: '2025-03-10',
-  title: 'Locker Lauf',
-  kind: 'run',
-  minutes: 30,
-  purpose: 'easy',
-  locked: false,
-  status: 'planned',
-  effort: 'easy',
-  ...overrides,
-});
-
-const completedRun = (id: string, date: string): Run => {
+const completedRun = (
+  id: string,
+  date: string,
+  extra: Partial<Run> = {},
+): Run => {
   const startTime = localAt(date, 8);
   return {
     id,
@@ -49,42 +37,63 @@ const completedRun = (id: string, date: string): Run => {
     purpose: 'easy',
     source: 'test',
     status: 'completed',
+    ...extra,
   };
 };
 
-type SaveHandler = jest.Mock<Promise<void>, [ScheduleState]>;
+const template = (
+  id: string,
+  name: string,
+  days: number[],
+  icon?: string,
+): WorkoutTemplate => ({
+  id,
+  name,
+  days,
+  icon,
+  exercises: [],
+  createdAt: 1,
+});
 
-interface RenderOptions {
-  now?: number;
-  runs?: Run[];
-  onSave?: SaveHandler;
-}
+const strengthSession = (
+  id: string,
+  date: string,
+  templateId?: string,
+): StrengthSession => ({
+  id,
+  kind: 'strength',
+  name: 'Pull',
+  templateId,
+  startTime: localAt(date, 18),
+  endTime: localAt(date, 19),
+  status: 'finished',
+  exercises: [],
+  currentExercise: 0,
+  modelVersion: 'strength-v1',
+  catalogVersion: 'catalog-v2',
+});
 
 const renderPlanning = (
-  state: ScheduleState = emptySchedule(),
-  options: RenderOptions = {},
-): TestRenderer.ReactTestRenderer => {
-  const onSave = options.onSave ?? jest.fn<Promise<void>, [ScheduleState]>();
-  onSave.mockResolvedValue(undefined);
+  state: ScheduleState = normalizeSchedule(),
+  extra: Partial<PlanningScreenProps> = {},
+) => {
+  const onSave = jest
+    .fn<Promise<void>, [ScheduleState]>()
+    .mockResolvedValue(undefined);
   const props: PlanningScreenProps = {
     state,
     onSave,
     templates: [],
-    runs: options.runs ?? [],
+    runs: [],
     strengthSessions: [],
-    now: options.now ?? localAt('2025-03-12', 12),
-    onStartRun: jest
-      .fn<Promise<void>, [ScheduledSession]>()
-      .mockResolvedValue(undefined),
-    onStartStrength: jest
-      .fn<Promise<void>, [ScheduledSession]>()
-      .mockResolvedValue(undefined),
+    now: NOW,
+    ...extra,
   };
   let tree!: TestRenderer.ReactTestRenderer;
   act(() => {
     tree = TestRenderer.create(<PlanningScreen {...props} />);
   });
-  return tree;
+  return { tree, onSave, props };
 };
 
 const textContent = (node: TestRenderer.ReactTestInstance): string =>
@@ -96,490 +105,269 @@ const textContent = (node: TestRenderer.ReactTestInstance): string =>
     )
     .join('');
 
-const screenText = (tree: TestRenderer.ReactTestRenderer): string =>
+const screenText = (tree: TestRenderer.ReactTestRenderer) =>
   tree.root.findAllByType(Text).map(textContent).join(' ');
 
-const unmount = (tree: TestRenderer.ReactTestRenderer): void => {
-  act(() => {
-    tree.unmount();
-  });
-};
-
-const findByLabel = (
-  tree: TestRenderer.ReactTestRenderer,
-  label: string,
-): TestRenderer.ReactTestInstance =>
+const byLabel = (tree: TestRenderer.ReactTestRenderer, label: string) =>
   tree.root.find(
     node =>
       node.props.accessibilityLabel === label &&
       typeof node.props.onPress === 'function',
   );
 
-const press = async (
-  tree: TestRenderer.ReactTestRenderer,
-  label: string,
-): Promise<void> => {
-  const node = findByLabel(tree, label);
-  await act(async () => {
-    node.props.onPress();
-    await Promise.resolve();
-    await Promise.resolve();
+const press = (tree: TestRenderer.ReactTestRenderer, label: string) =>
+  act(() => {
+    byLabel(tree, label).props.onPress();
   });
-};
 
-const changeText = async (
-  tree: TestRenderer.ReactTestRenderer,
-  label: string,
-  value: string,
-): Promise<void> => {
-  const input = tree.root.find(
+const dayCell = (tree: TestRenderer.ReactTestRenderer, prefix: string) =>
+  tree.root.find(
     node =>
-      node.props.accessibilityLabel === label &&
-      typeof node.props.onChangeText === 'function',
+      typeof node.props.accessibilityLabel === 'string' &&
+      node.props.accessibilityLabel.startsWith(prefix) &&
+      !node.props.accessibilityLabel.endsWith('schließen') &&
+      typeof node.props.onPress === 'function',
   );
-  await act(async () => {
-    input.props.onChangeText(value);
-  });
-};
 
 describe('PlanningScreen', () => {
-  it('renders March 2025 as seven columns across six complete calendar rows', async () => {
-    const tree = renderPlanning(emptySchedule(), {
-      now: localAt('2025-03-12', 12),
-    });
-
-    await press(tree, 'Monat');
-
-    const weekdayLabels = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
-    const shownWeekdays = tree.root
-      .findAllByType(Text)
-      .map(textContent)
-      .filter(value => weekdayLabels.includes(value));
-    expect(shownWeekdays).toEqual(weekdayLabels);
-
-    const cells = tree.root.findAll(
-      node =>
-        typeof node.type === 'function' &&
-        node.type.name === 'Pressable' &&
-        node.props.accessibilityRole === 'button' &&
-        typeof node.props.accessibilityLabel === 'string' &&
-        /^(Montag|Dienstag|Mittwoch|Donnerstag|Freitag|Samstag|Sonntag), \d+\. /.test(
-          node.props.accessibilityLabel,
-        ),
-    );
-    expect(cells).toHaveLength(42);
-    expect(
-      cells.slice(0, 7).map(node => node.props.accessibilityLabel),
-    ).toEqual([
-      'Montag, 24. Februar',
-      'Dienstag, 25. Februar',
-      'Mittwoch, 26. Februar',
-      'Donnerstag, 27. Februar',
-      'Freitag, 28. Februar',
-      'Samstag, 1. März',
-      'Sonntag, 2. März',
-    ]);
-    expect(cells[41].props.accessibilityLabel).toBe('Sonntag, 6. April');
-    unmount(tree);
-  });
-
-  it('previews a proposed week and saves only after explicit application', async () => {
-    const onSave = jest.fn<Promise<void>, [ScheduleState]>();
-    onSave.mockResolvedValue(undefined);
-    const state = emptySchedule({
-      availability: { '2025-03-10': 30 },
-      routine: { days: [0], minutes: 30 },
-    });
-    const tree = renderPlanning(state, {
-      now: localAt('2025-03-10', 12),
-      onSave,
-    });
-
-    await press(
-      tree,
-      'Trainingswoche aus Rhythmus und Kraftvorlagen vorschlagen',
-    );
-
-    expect(screenText(tree)).toContain('Wochenvorschlag');
-    expect(screenText(tree)).toContain('Vorschlag übernehmen');
-    expect(onSave).not.toHaveBeenCalled();
-
-    await press(tree, 'Vorschlag übernehmen');
-
-    expect(onSave).toHaveBeenCalledTimes(1);
-    expect(onSave.mock.calls[0][0].sessions).toEqual([
-      expect.objectContaining({
-        date: '2025-03-10',
-        origin: 'routine',
-      }),
-    ]);
-    unmount(tree);
-  });
-
-  it('shows and applies a move-only week proposal', async () => {
-    const onSave = jest.fn<Promise<void>, [ScheduleState]>();
-    onSave.mockResolvedValue(undefined);
-    const state = emptySchedule({
-      sessions: [plannedSession({ id: 'move-me', title: 'Flexibler Lauf' })],
-      availability: {
-        '2025-03-10': 0,
-        '2025-03-11': 30,
-      },
-    });
-    const tree = renderPlanning(state, {
-      now: localAt('2025-03-10', 12),
-      onSave,
-    });
-
-    await press(
-      tree,
-      'Trainingswoche aus Rhythmus und Kraftvorlagen vorschlagen',
-    );
-
-    expect(screenText(tree)).toContain('Flexibler Lauf');
-    expect(screenText(tree)).toContain('Vorschlag übernehmen');
-    expect(onSave).not.toHaveBeenCalled();
-
-    await press(tree, 'Vorschlag übernehmen');
-
-    expect(onSave).toHaveBeenCalledTimes(1);
-    expect(onSave.mock.calls[0][0].sessions).toEqual([
-      expect.objectContaining({ id: 'move-me', date: '2025-03-11' }),
-    ]);
-    unmount(tree);
-  });
-
-  it('keeps an editor draft after a failed save and retries the same draft', async () => {
-    const onSave = jest.fn<Promise<void>, [ScheduleState]>();
-    onSave
-      .mockRejectedValueOnce(new Error('Offline'))
-      .mockResolvedValue(undefined);
-    const state = emptySchedule({
-      availability: { '2025-03-10': 30 },
-    });
-    const tree = renderPlanning(state, {
-      now: localAt('2025-03-10', 12),
-      onSave,
-    });
-
-    await press(tree, 'Einheit am Montag hinzufügen');
-    await changeText(tree, 'Name der Einheit', 'Entwurf Intervall');
-    await changeText(tree, 'Dauer in Minuten', '45');
-    await press(tree, 'Speichern');
-
-    expect(screenText(tree)).toContain('Speichern erneut versuchen');
-    expect(screenText(tree)).toContain('Änderung nicht gespeichert. Offline');
-    expect(
-      tree.root.find(
-        node =>
-          node.props.accessibilityLabel === 'Name der Einheit' &&
-          node.props.value === 'Entwurf Intervall',
-      ),
-    ).toBeTruthy();
-
-    await press(tree, 'Erneut speichern');
-
-    expect(onSave).toHaveBeenCalledTimes(2);
-    expect(onSave.mock.calls[1][0]).toEqual(onSave.mock.calls[0][0]);
-    expect(screenText(tree)).toContain('Einheit hinzugefügt.');
-    expect(screenText(tree)).not.toContain('Speichern erneut versuchen');
+  it('opens on the month, without scrolling, with a quiet switch to the week', () => {
+    const { tree } = renderPlanning();
+    expect(screenText(tree)).toContain('März 2025');
+    expect(tree.root.findAllByType(ScrollView)).toHaveLength(0);
+    // 31 days plus the days of the neighboring months in the first and last row.
     expect(
       tree.root.findAll(
-        node => node.props.accessibilityLabel === 'Name der Einheit',
-      ),
-    ).toHaveLength(0);
-    unmount(tree);
-  });
-
-  it('moves a session into next week from the move dialog', async () => {
-    const onSave = jest.fn<Promise<void>, [ScheduleState]>();
-    onSave.mockResolvedValue(undefined);
-    const state = emptySchedule({
-      sessions: [
-        plannedSession({
-          id: 'move-next-week',
-          date: '2025-03-12',
-          title: 'Verschiebbarer Lauf',
-        }),
-      ],
-    });
-    const tree = renderPlanning(state, {
-      now: localAt('2025-03-12', 12),
-      onSave,
-    });
-
-    await press(tree, 'Einheit Verschiebbarer Lauf, Mittwoch, 12. März');
-    await press(tree, 'Einheit verschieben');
-    expect(screenText(tree)).toContain('Einheit verschieben');
-    await press(tree, 'Nächste Woche zum Verschieben');
-    expect(screenText(tree)).toContain('Montag, 17. März');
-    await press(tree, 'Montag, 17. März');
-
-    expect(onSave).toHaveBeenCalledTimes(1);
-    expect(onSave.mock.calls[0][0].sessions).toEqual([
-      expect.objectContaining({ id: 'move-next-week', date: '2025-03-17' }),
-    ]);
-    unmount(tree);
-  });
-
-  it('uses linked actual completion and does not infer completion from the planned date', () => {
-    const state = emptySchedule({
-      sessions: [
-        plannedSession({
-          id: 'linked',
-          title: 'Verknüpfter Lauf',
-          activityId: 'actual-run',
-        }),
-        plannedSession({
-          id: 'date-only',
-          title: 'Nur geplanter Lauf',
-          date: '2025-03-11',
-        }),
-      ],
-    });
-    const tree = renderPlanning(state, {
-      now: localAt('2025-03-12', 12),
-      runs: [completedRun('actual-run', '2025-03-10')],
-    });
-
-    const linked = tree.root.find(
-      node =>
-        node.props.accessibilityLabel ===
-        'Einheit Verknüpfter Lauf, Montag, 10. März',
-    );
-    const dateOnly = tree.root.find(
-      node =>
-        node.props.accessibilityLabel ===
-        'Einheit Nur geplanter Lauf, Dienstag, 11. März',
-    );
-    expect(textContent(linked)).toContain('Lauf · Erledigt · 5,00 km · 30:00');
-    expect(textContent(dateOnly)).toContain('Lauf · 30 min · Geplant');
-    unmount(tree);
-  });
-
-  it('plans the build-up instead of the uniform routine when there is a race goal', async () => {
-    const onSave = jest.fn<Promise<void>, [ScheduleState]>();
-    onSave.mockResolvedValue(undefined);
-    const longRun = (id: string, date: string, km: number): Run => ({
-      ...completedRun(id, date),
-      distanceMeters: km * 1000,
-      durationSeconds: km * 360,
-      endTime: localAt(date, 8) + km * 360 * 1000,
-    });
-    const state = emptySchedule({
-      routine: { days: [1, 5], minutes: 30 },
-      goal: {
-        name: 'Halbmarathon',
-        startDate: '2025-03-03',
-        targetDate: '2025-05-04',
-      },
-    });
-    const tree = renderPlanning(state, {
-      now: localAt('2025-03-10', 12),
-      runs: [longRun('a', '2025-03-01', 9), longRun('b', '2025-03-08', 10)],
-      onSave,
-    });
-
-    await press(
-      tree,
-      'Trainingswoche aus Rhythmus und Kraftvorlagen vorschlagen',
-    );
-    expect(screenText(tree)).toContain('Aufbau zu Halbmarathon');
-    expect(screenText(tree)).toContain('Langer Lauf');
-
-    await press(tree, 'Vorschlag übernehmen');
-    const saved = onSave.mock.calls[0][0].sessions;
-    expect(saved.map(session => session.purpose)).toEqual(['easy', 'long']);
-    // 9.5 km × 1.1 = 10.5 km at 6:00 /km ≈ 63 min → 65 min, above the usual budget.
-    expect(saved[1].minutes).toBe(65);
-    unmount(tree);
-  });
-
-  it('shows unplanned workouts on their day next to the plan', () => {
-    const tree = renderPlanning(
-      emptySchedule({
-        sessions: [
-          plannedSession({
-            id: 'linked',
-            title: 'Geplanter Lauf',
-            activityId: 'planned-run',
-          }),
-          plannedSession({
-            id: 'open',
-            title: 'Offener Lauf',
-            date: '2025-03-14',
-          }),
-        ],
-      }),
-      {
-        now: localAt('2025-03-12', 12),
-        runs: [
-          completedRun('planned-run', '2025-03-10'),
-          completedRun('free-run', '2025-03-11'),
-        ],
-      },
-    );
-    const text = screenText(tree);
-    expect(text).toContain('Lauf · 5,00 km · 30:00 · ohne Plan');
-    // Two recorded runs, one of two planned sessions done, 10 km in total.
-    expect(text).toContain('1 von 2 geplanten Einheiten erledigt');
-    expect(text).toContain('10,00');
-    expect(text).toContain('1:00 h');
-    expect(text).not.toContain('Ohne Plan trainiert');
-    unmount(tree);
-  });
-
-  it('shows done and planned markers in the month and the chosen day below', async () => {
-    const tree = renderPlanning(
-      emptySchedule({
-        sessions: [
-          plannedSession({ id: 'later', title: 'Später', date: '2025-03-20' }),
-        ],
-      }),
-      {
-        now: localAt('2025-03-12', 12),
-        runs: [completedRun('free-run', '2025-03-11')],
-      },
-    );
-    await press(tree, 'Monat');
+        node =>
+          node.props.accessibilityRole === 'button' &&
+          /^\w+, \d+\. März/.test(node.props.accessibilityLabel ?? '') &&
+          typeof node.props.onPress === 'function',
+      ).length,
+    ).toBeGreaterThanOrEqual(31);
+    press(tree, 'Wochenansicht zeigen');
+    expect(screenText(tree)).toContain('10. März – 16. März');
+    press(tree, 'Monatsansicht zeigen');
     expect(screenText(tree)).toContain('März 2025');
-    await press(tree, 'Donnerstag, 20. März, 1 geplant');
-    expect(screenText(tree)).toContain('Donnerstag, 20. März');
-    expect(screenText(tree)).toContain('Später');
-    await press(tree, 'Dienstag, 11. März, 1 erledigt');
-    expect(screenText(tree)).toContain('ohne Plan');
-    unmount(tree);
   });
 
-  it('shows nothing of a switched-off area and says when a total is partial', () => {
-    const strengthSession = {
-      id: 'gym',
-      kind: 'strength' as const,
-      name: 'Beine',
-      startTime: localAt('2025-03-11', 18),
-      status: 'finished' as const,
-      exercises: [],
-      currentExercise: 0,
-      modelVersion: 'test',
-      catalogVersion: 'test',
-    };
-    const base: PlanningScreenProps = {
-      state: emptySchedule({
-        sessions: [
-          plannedSession({
-            id: 'strength-plan',
-            kind: 'strength',
-            title: 'Kraftplan',
-            date: '2025-03-13',
-          }),
-        ],
-      }),
-      onSave: jest.fn<Promise<void>, [ScheduleState]>(),
-      templates: [],
-      runs: [completedRun('run', '2025-03-10')],
-      strengthSessions: [strengthSession],
-      now: localAt('2025-03-12', 12),
-      onStartRun: jest.fn<Promise<void>, [ScheduledSession]>(),
-      onStartStrength: jest.fn<Promise<void>, [ScheduledSession]>(),
-    };
-    let tree!: TestRenderer.ReactTestRenderer;
-    act(() => {
-      tree = TestRenderer.create(<PlanningScreen {...base} />);
+  it('shows the weekly plan gray and turns it green once done', () => {
+    // Past days follow the weekly plan noted for them.
+    const state = normalizeSchedule({
+      runDays: [0],
+      weeklyHistory: [
+        {
+          since: '2025-03-01',
+          run: [0],
+          strength: [{ templateId: 'pull', days: [0, 2] }],
+        },
+      ],
     });
-    // The imported strength session has no end time: done, duration unknown.
-    expect(screenText(tree)).toContain('Zeit von 1 der 2');
-    expect(screenText(tree)).toContain('Kraftplan');
-    act(() => {
-      tree.update(<PlanningScreen {...base} showStrength={false} />);
+    const { tree } = renderPlanning(state, {
+      // Pull on Monday (1) and Wednesday (3), Sunday-based.
+      templates: [template('pull', 'Pull', [1, 3], 'handGrab')],
+      runs: [completedRun('r1', '2025-03-10')],
     });
-    expect(screenText(tree)).not.toContain('Kraftplan');
-    expect(screenText(tree)).not.toContain('Beine');
-    expect(screenText(tree)).toContain('Trainingszeit');
-    unmount(tree);
-  });
-
-  it('plans only switched-on areas', async () => {
-    const tree = renderPlanning(emptySchedule(), {
-      now: localAt('2025-03-12', 12),
-    });
-    act(() => {
-      tree.update(
-        <PlanningScreen
-          state={emptySchedule({ routine: { days: [2, 3], minutes: 30 } })}
-          onSave={jest.fn<Promise<void>, [ScheduleState]>()}
-          templates={[]}
-          runs={[]}
-          strengthSessions={[]}
-          now={localAt('2025-03-12', 12)}
-          onStartRun={jest.fn<Promise<void>, [ScheduledSession]>()}
-          onStartStrength={jest.fn<Promise<void>, [ScheduledSession]>()}
-          showRunning={false}
-        />,
-      );
-    });
-    await press(tree, 'Einheit am Donnerstag hinzufügen');
-    const kind = tree.root.find(
-      node =>
-        node.props.label === 'Art der Einheit' &&
-        Array.isArray(node.props.options),
+    expect(dayCell(tree, 'Montag, 10. März').props.accessibilityLabel).toBe(
+      'Montag, 10. März, Lauf, erledigt, Pull, geplant',
     );
-    expect(kind.props.value).toBe('strength');
-    expect(kind.props.options.map((o: { value: string }) => o.value)).toEqual([
-      'strength',
-    ]);
-    unmount(tree);
+    expect(dayCell(tree, 'Mittwoch, 12. März').props.accessibilityLabel).toBe(
+      'Mittwoch, 12. März, heute, Pull, geplant',
+    );
+    const icons = tree.root.findAllByType(WorkoutIcon);
+    expect(icons.some(icon => icon.props.name === 'handGrab')).toBe(true);
+    expect(
+      icons.some(
+        icon => icon.props.name === 'run' && icon.props.state === 'done',
+      ),
+    ).toBe(true);
   });
 
-  it('names the other day when a workout was trained for a plan of another day', () => {
-    const tree = renderPlanning(
-      emptySchedule({
-        sessions: [
-          plannedSession({
-            id: 'linked',
-            title: 'Donnerstagslauf',
-            date: '2025-03-13',
-            activityId: 'early-run',
-          }),
-        ],
+  it('does not plan past days before the weekly plan was set', () => {
+    const { tree } = renderPlanning(normalizeSchedule({ runDays: [0] }));
+    expect(dayCell(tree, 'Montag, 10. März').props.accessibilityLabel).toBe(
+      'Montag, 10. März',
+    );
+    expect(dayCell(tree, 'Montag, 17. März').props.accessibilityLabel).toBe(
+      'Montag, 17. März, Lauf, geplant',
+    );
+  });
+
+  it('lets a strength session of the template carry out its plan', () => {
+    const state = normalizeSchedule({
+      weeklyHistory: [
+        {
+          since: '2025-03-01',
+          run: [],
+          strength: [{ templateId: 'pull', days: [0] }],
+        },
+      ],
+    });
+    const { tree } = renderPlanning(state, {
+      templates: [template('pull', 'Pull', [1])],
+      strengthSessions: [strengthSession('s1', '2025-03-10', 'pull')],
+    });
+    expect(dayCell(tree, 'Montag, 10. März').props.accessibilityLabel).toBe(
+      'Montag, 10. März, Pull, erledigt',
+    );
+  });
+
+  it('changes one day without touching the weekly plan', async () => {
+    const state = normalizeSchedule({ runDays: [3] });
+    const { tree, onSave } = renderPlanning(state, {
+      templates: [template('push', 'Push', [])],
+    });
+    act(() => dayCell(tree, 'Donnerstag, 13. März').props.onPress());
+    expect(screenText(tree)).toContain(
+      'Eine Änderung gilt nur für diesen Tag.',
+    );
+    await act(async () =>
+      byLabel(tree, 'Lauf an diesem Tag nicht planen').props.onPress(),
+    );
+    expect(onSave).toHaveBeenLastCalledWith(
+      setDayPlan(state, '2025-03-13', [], '2025-03-12'),
+    );
+    await act(async () => byLabel(tree, 'Push planen').props.onPress());
+    const saved = onSave.mock.calls.at(-1)![0];
+    expect(saved.runDays).toEqual([3]);
+    expect(saved.sessions).toEqual([
+      expect.objectContaining({
+        date: '2025-03-13',
+        kind: 'strength',
+        templateId: 'push',
+        title: 'Push',
       }),
-      {
-        now: localAt('2025-03-14', 12),
-        runs: [completedRun('early-run', '2025-03-12')],
-      },
+    ]);
+    // The changed day can follow the weekly plan again.
+    await act(async () =>
+      byLabel(
+        tree,
+        'Wochenplan für diesen Tag wiederherstellen',
+      ).props.onPress(),
+    );
+    expect(onSave.mock.calls.at(-1)![0]).toMatchObject({
+      sessions: [],
+      changedDays: [],
+    });
+  });
+
+  it('keeps the plan of a hidden area when a day is edited', async () => {
+    const state = normalizeSchedule();
+    const { tree, onSave } = renderPlanning(state, {
+      // Pull on Thursday; strength training is switched off.
+      templates: [template('pull', 'Pull', [4])],
+      showStrength: false,
+    });
+    act(() => dayCell(tree, 'Donnerstag, 13. März').props.onPress());
+    await act(async () => byLabel(tree, 'Lauf planen').props.onPress());
+    expect(onSave.mock.calls.at(-1)![0].sessions).toEqual([
+      expect.objectContaining({ kind: 'strength', templateId: 'pull' }),
+      expect.objectContaining({ kind: 'run' }),
+    ]);
+  });
+
+  it('plans a single day without any weekly plan', async () => {
+    const { tree, onSave } = renderPlanning();
+    act(() => dayCell(tree, 'Montag, 17. März').props.onPress());
+    expect(screenText(tree)).toContain('Nichts geplant.');
+    await act(async () => byLabel(tree, 'Lauf planen').props.onPress());
+    expect(onSave.mock.calls.at(-1)![0].sessions).toEqual([
+      expect.objectContaining({ date: '2025-03-17', kind: 'run' }),
+    ]);
+  });
+
+  it('shows past days as what was trained and keeps them read-only', () => {
+    const onOpenActivity = jest.fn();
+    const { tree } = renderPlanning(normalizeSchedule(), {
+      runs: [completedRun('r1', '2025-03-03')],
+      onOpenActivity,
+    });
+    act(() => dayCell(tree, 'Montag, 3. März').props.onPress());
+    const text = screenText(tree);
+    expect(text).toContain('ohne Plan');
+    expect(text).not.toContain('An diesem Tag planen');
+    act(() => {
+      tree.root
+        .find(
+          node =>
+            typeof node.props.accessibilityLabel === 'string' &&
+            node.props.accessibilityLabel.endsWith('ansehen') &&
+            typeof node.props.onPress === 'function',
+        )
+        .props.onPress();
+    });
+    expect(onOpenActivity).toHaveBeenCalledWith('run', 'r1');
+  });
+
+  it('keeps a switched-off area out of the calendar and the choices', () => {
+    const { tree } = renderPlanning(normalizeSchedule({ runDays: [0] }), {
+      runs: [completedRun('r1', '2025-03-10')],
+      templates: [template('pull', 'Pull', [])],
+      showRunning: false,
+    });
+    expect(dayCell(tree, 'Montag, 10. März').props.accessibilityLabel).toBe(
+      'Montag, 10. März',
+    );
+    act(() => dayCell(tree, 'Montag, 17. März').props.onPress());
+    expect(() => byLabel(tree, 'Lauf planen')).toThrow();
+    expect(byLabel(tree, 'Pull planen')).toBeTruthy();
+    expect(screenText(tree)).not.toContain('gelaufen');
+  });
+
+  it('sums the shown period and marks it against the usual amount', () => {
+    // One run in each of the four weeks before, two this week.
+    const runs = [
+      completedRun('a', '2025-03-10'),
+      completedRun('b', '2025-03-11'),
+      ...['2025-03-03', '2025-02-24', '2025-02-17', '2025-02-10'].map(date =>
+        completedRun(`w${date}`, date),
+      ),
+    ];
+    const { tree } = renderPlanning(normalizeSchedule(), { runs });
+    press(tree, 'Wochenansicht zeigen');
+    const workouts = tree.root.find(
+      node =>
+        node.props.accessible === true &&
+        typeof node.props.accessibilityLabel === 'string' &&
+        node.props.accessibilityLabel.includes('Einheiten'),
+    );
+    expect(workouts.props.accessibilityLabel).toBe(
+      '2 Einheiten, mehr als üblich',
     );
     const text = screenText(tree);
-    expect(text).toContain('Lauf · Erledigt · am Mi, 12. Mär.');
-    expect(text).toContain('für den Plan am Do, 13. Mär.');
-    unmount(tree);
+    expect(text).toContain('1:00 h');
+    expect(text).toContain('10,00 km');
+    expect(text).toContain('gegenüber den ersten 3 Tagen der 4 Wochen davor');
   });
 
-  it('offers the route planner as a row, not as a floating button', () => {
-    const onOpenRoutePlanner = jest.fn();
-    const props: PlanningScreenProps = {
-      state: emptySchedule(),
-      onSave: jest.fn<Promise<void>, [ScheduleState]>().mockResolvedValue(undefined),
-      templates: [],
-      runs: [],
-      strengthSessions: [],
-      now: localAt('2025-03-12', 12),
-      onStartRun: jest.fn<Promise<void>, [ScheduledSession]>(),
-      onStartStrength: jest.fn<Promise<void>, [ScheduledSession]>(),
-      onOpenRoutePlanner,
-    };
-    let tree!: TestRenderer.ReactTestRenderer;
-    act(() => {
-      tree = TestRenderer.create(<PlanningScreen {...props} />);
+  it('says when strength sessions are missing instead of comparing', () => {
+    const runs = [
+      completedRun('a', '2025-03-10'),
+      ...['2025-03-03', '2025-02-24', '2025-02-17', '2025-02-10'].map(date =>
+        completedRun(`w${date}`, date),
+      ),
+    ];
+    const { tree } = renderPlanning(normalizeSchedule(), {
+      runs,
+      strengthHistoryAvailable: false,
     });
-    const row = tree.root.find(
-      node =>
-        typeof node.props.onPress === 'function' &&
-        node.props.accessibilityRole === 'button' &&
-        textContent(node).startsWith('Route planen'),
+    press(tree, 'Wochenansicht zeigen');
+    const text = screenText(tree);
+    expect(text).toContain('Krafteinheiten sind gerade nicht geladen');
+    expect(text).not.toContain('▲ ▼');
+    act(() => dayCell(tree, 'Dienstag, 11. März').props.onPress());
+    expect(screenText(tree)).toContain(
+      'Kein Lauf; Krafteinheiten sind nicht geladen.',
     );
-    act(() => {
-      row.props.onPress();
-    });
-    expect(onOpenRoutePlanner).toHaveBeenCalledTimes(1);
-    unmount(tree);
+  });
+
+  it('keeps a failed save visible and shows the saved plan again', async () => {
+    const state = normalizeSchedule();
+    const { tree, onSave } = renderPlanning(state);
+    onSave.mockRejectedValueOnce(new Error('Speicher voll'));
+    act(() => dayCell(tree, 'Montag, 17. März').props.onPress());
+    await act(async () => byLabel(tree, 'Lauf planen').props.onPress());
+    expect(screenText(tree)).toContain('Speicher voll');
+    expect(dayCell(tree, 'Montag, 17. März').props.accessibilityLabel).toBe(
+      'Montag, 17. März',
+    );
   });
 });

@@ -18,7 +18,19 @@ jest.mock('../src/native', () => {
   return {
     nativeCall: jest.fn(() => Promise.resolve({})),
     native: {
-      serverStatus: jest.fn(() => Promise.resolve({ state: 'off', url: null, scope: { runs: true, strength: true, coach: true, gps: false, health: false } })),
+      serverStatus: jest.fn(() =>
+        Promise.resolve({
+          state: 'off',
+          url: null,
+          scope: {
+            runs: true,
+            strength: true,
+            coach: true,
+            gps: false,
+            health: false,
+          },
+        }),
+      ),
       state: jest.fn(() => Promise.resolve(state)),
       beginRunArchive: jest.fn(() => Promise.resolve('archive')),
       appendRunArchive: jest.fn(() => Promise.resolve()),
@@ -171,22 +183,52 @@ const tapText = async (
 
 describe('Today', () => {
   it('shows the server outage at the gear and leaves the training start open', async () => {
-    (native.serverStatus as jest.Mock).mockResolvedValueOnce({ state: 'offline', url: 'http://nas.local:8080', scope: { runs: true, strength: true, coach: true, gps: false, health: false }, lastSuccessAt: null, pending: null });
+    (native.serverStatus as jest.Mock).mockResolvedValueOnce({
+      state: 'offline',
+      url: 'http://nas.local:8080',
+      scope: {
+        runs: true,
+        strength: true,
+        coach: true,
+        gps: false,
+        health: false,
+      },
+      lastSuccessAt: null,
+      pending: null,
+    });
     const tree = await render();
     expect(screenText(tree)).toContain('Lauf starten');
-    const mark = tree.root.findAllByType(Text).find(item => textContent(item) === '●')!;
+    const mark = tree.root
+      .findAllByType(Text)
+      .find(item => textContent(item) === '●')!;
     expect(mark.props.style.color).toBe(color.danger);
     await tap(tree, 'Einstellungen · Server Nicht erreichbar');
     await tap(tree, 'Eigener Server');
     expect(screenText(tree)).toContain('Nicht erreichbar');
-    expect(screenText(tree)).toContain('sobald dein Server wieder erreichbar ist');
+    expect(screenText(tree)).toContain(
+      'sobald dein Server wieder erreichbar ist',
+    );
     await act(async () => tree.unmount());
   });
 
   it('shows a connected server in green next to the gear', async () => {
-    (native.serverStatus as jest.Mock).mockResolvedValueOnce({ state: 'ok', url: 'http://nas.local:8080', scope: { runs: true, strength: true, coach: true, gps: false, health: false }, lastSuccessAt: null, pending: 0 });
+    (native.serverStatus as jest.Mock).mockResolvedValueOnce({
+      state: 'ok',
+      url: 'http://nas.local:8080',
+      scope: {
+        runs: true,
+        strength: true,
+        coach: true,
+        gps: false,
+        health: false,
+      },
+      lastSuccessAt: null,
+      pending: 0,
+    });
     const tree = await render();
-    const mark = tree.root.findAllByType(Text).find(item => textContent(item) === '●')!;
+    const mark = tree.root
+      .findAllByType(Text)
+      .find(item => textContent(item) === '●')!;
     expect(mark.props.style.color).toBe(color.green);
     await tap(tree, 'Einstellungen · Server Aktuell');
     expect(screenText(tree)).toContain('Eigener Server');
@@ -329,7 +371,7 @@ describe('History', () => {
   });
 });
 
-describe('Goals', () => {
+describe('Development', () => {
   it('keeps one goal per area under All features, without focus or recommendation', async () => {
     jest.mocked(native.state).mockResolvedValueOnce({
       runs: [],
@@ -341,13 +383,16 @@ describe('Goals', () => {
     expect(tabLabels(tree)).toEqual(['Heute', 'Plan', 'Statistik', 'Verlauf']);
     await tap(tree, 'Einstellungen');
     await tap(tree, 'Alle Funktionen');
-    await tapText(tree, 'Vorhaben je Bereich');
+    await tapText(tree, 'Ziel je Bereich');
+    expect(screenText(tree)).toContain('10 km');
+    expect(screenText(tree)).not.toContain('Klimmzüge');
+    await tap(tree, 'Krafttraining');
     const text = screenText(tree);
-    expect(text).toContain('10 km');
     expect(text).toContain('Klimmzüge');
+    expect(text).not.toContain('10 km');
     expect(text).not.toContain('Fokus');
     expect(text).not.toContain('Empfehlung');
-    await tapText(tree, 'Klimmzüge');
+    await tapText(tree, 'Ziel bearbeiten');
     const input = (label: string) =>
       tree.root.find(
         item =>
@@ -362,9 +407,12 @@ describe('Goals', () => {
     const saved = jest.mocked(native.saveSettings).mock.calls.at(-1)![0];
     expect(saved.strengthGoal).toBe('10 Klimmzüge');
     expect(saved.strengthGoalTargetDate).toBe('2027-03-01');
+    expect(saved.strengthGoalTarget).toBeUndefined();
     expect(saved.goal).toBe('10 km');
     await tap(tree, 'Zurück');
-    expect(screenText(tree)).toContain('Zielzeiten');
+    // Back on Progress, still on strength training.
+    expect(screenText(tree)).toContain('10 Klimmzüge');
+    expect(screenText(tree)).not.toContain('Zielzeiten');
     await tap(tree, 'Zurück');
     expect(screenText(tree)).toContain('Aktiv');
     expect(screenText(tree)).toContain('Alle Funktionen');
@@ -492,12 +540,12 @@ describe('Template management', () => {
       await tap(tree, 'Zurück');
       expect(screenText(tree)).toContain('Geräte & Verbindungen');
       expect(screenText(tree)).toContain('Vorlagen verwalten');
-      await tap(tree, 'Plan');
+      await tap(tree, 'Wochenplan');
       await tap(tree, 'Vorlagen');
       expect(screenText(tree)).toContain(duplicated[1].name);
       await tap(tree, 'Zurück');
-      expect(screenText(tree)).not.toContain('Geräte & Verbindungen');
-      expect(screenText(tree)).toContain('Vorlagen');
+      expect(screenText(tree)).toContain('Wochenplan');
+      expect(screenText(tree)).toContain('Gilt jede Woche.');
     } finally {
       await act(async () => tree.unmount());
     }
@@ -548,13 +596,14 @@ describe('Template management', () => {
 });
 
 describe('Settings list', () => {
-  it('keeps the chat apart from the calculations and has no setup entry', async () => {
+  it('has calculations and the weekly plan, but no chat and no setup entry', async () => {
     const tree = await render();
     try {
       await tap(tree, 'Einstellungen');
       const text = screenText(tree);
       expect(text).toContain('Rechenweg');
-      expect(text).toContain('Trainingschat');
+      expect(text).toContain('Wochenplan');
+      expect(text).not.toContain('Trainingschat');
       expect(text).not.toContain('Einrichtung erneut öffnen');
       await tap(tree, 'Rechenweg');
       expect(screenText(tree)).toContain('Wie Runback rechnet');
@@ -573,10 +622,7 @@ describe('Settings list', () => {
               available: true,
               voice: null,
               rate: 1,
-              voices: [
-                { name: 'de-x-a' },
-                { name: 'de-x-b' },
-              ],
+              voices: [{ name: 'de-x-a' }, { name: 'de-x-b' }],
             }
           : {},
       )) as any);
@@ -801,7 +847,9 @@ describe('Features', () => {
     await tap(tree, 'Vorlagen');
     expect(screenText(tree)).toContain('Vorlagen');
     expect(
-      tree.root.findAll(item => item.props?.accessibilityLabel === 'Alle Funktionen'),
+      tree.root.findAll(
+        item => item.props?.accessibilityLabel === 'Alle Funktionen',
+      ),
     ).toHaveLength(0);
     await tap(tree, 'Einstellungen');
     await tap(tree, 'Alle Funktionen');
@@ -810,8 +858,8 @@ describe('Features', () => {
     expect(tabLabels(tree)).not.toContain('Muskelkater');
     await tap(tree, 'Einstellungen');
     await tap(tree, 'Alle Funktionen');
-    await tapText(tree, 'Vorhaben je Bereich');
-    expect(screenText(tree)).toContain('Kein Ziel gesetzt');
+    await tapText(tree, 'Ziel je Bereich');
+    expect(screenText(tree)).toContain('Noch kein Ziel festgelegt');
     await act(async () => tree.unmount());
   });
 

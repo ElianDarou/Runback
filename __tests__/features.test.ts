@@ -1,4 +1,5 @@
 import {
+  tabLabel,
   DEFAULT_FEATURES,
   FEATURES_VERSION,
   featureEnabled,
@@ -273,7 +274,12 @@ describe('Features and navigation v2', () => {
       },
     });
     expect(f.navigation.tabs).toEqual(['routes', 'statistics']);
-    expect(visibleTabs(f)).toEqual(['today', 'routes', 'statistics', 'history']);
+    expect(visibleTabs(f)).toEqual([
+      'today',
+      'routes',
+      'statistics',
+      'history',
+    ]);
     expect(
       normalizeFeatures({ navigation: { tabs: [] } }).navigation.tabs,
     ).toEqual([]);
@@ -297,11 +303,21 @@ describe('Features and navigation v2', () => {
     ]);
     expect(withNavigation(pinned, []).statistics.enabled).toBe(true);
   });
+  it('drops the old planning switches and offers Development as a tab', () => {
+    const f = normalizeFeatures({
+      planning: { enabled: true, suggest: false, month: false },
+      navigation: { tabs: ['development', 'plan'] },
+    });
+    expect(f.planning).toEqual({ enabled: true });
+    expect(visibleTabs(f)).toEqual(['today', 'development', 'plan', 'history']);
+    expect(tabLabel('development')).toBe('Entwicklung');
+  });
   it('lets templates be used without planning', () => {
     const f = normalizeFeatures({
       planning: { enabled: false },
     });
     expect(availableTabs(f)).toEqual([
+      'development',
       'statistics',
       'routes',
       'templates',
@@ -333,7 +349,6 @@ describe('Features and navigation v2', () => {
     expect(availableHomeSections(f)).toContain('week');
   });
 });
-
 
 describe('optional music', () => {
   it('stays off for new and existing users and takes no navigation slot', () => {
