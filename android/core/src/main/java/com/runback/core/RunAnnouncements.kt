@@ -14,6 +14,9 @@ class RunAnnouncements private constructor(private val config: JSONObject) {
     private var lastKilometerSeconds: Double? = null
     private var lastTrigger = -1L
 
+    /** Optional, older setups lack it: a short vibration with every announcement. */
+    val vibrate: Boolean get() = config.optBoolean("vibrate", false)
+
     fun onProgress(distance: Double, seconds: Double, now: Long, heartRate: Double?, freshGps: Boolean): String? {
         if (!distance.isFinite() || !seconds.isFinite() || distance < 0 || seconds < 0) return null
         val previous = previousDistance

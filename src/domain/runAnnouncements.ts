@@ -12,6 +12,8 @@ export interface RunAnnouncements {
   lastKilometerPace: boolean;
   averagePace: boolean;
   heartRate: boolean;
+  /** A short vibration with every announcement. Older setups lack it: off. */
+  vibrate?: boolean;
 }
 
 export const NO_RUN_ANNOUNCEMENTS: RunAnnouncements = {
@@ -44,6 +46,8 @@ export function normalizeRunAnnouncements(value: unknown): RunAnnouncements {
     ].every(key => typeof raw[key] === 'boolean')
   )
     return NO_RUN_ANNOUNCEMENTS;
+  if (raw.vibrate !== undefined && typeof raw.vibrate !== 'boolean')
+    return { ...(raw as unknown as RunAnnouncements), vibrate: false };
   return raw as unknown as RunAnnouncements;
 }
 

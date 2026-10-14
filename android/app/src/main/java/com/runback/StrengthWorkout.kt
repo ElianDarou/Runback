@@ -176,8 +176,8 @@ object StrengthWorkout {
         return (0 until sessions.length()).mapNotNull { sessions.optJSONObject(it) }
     }
 
-    /** Rest timer, vibration, and sound from the settings (`features.strength`). */
-    data class Alerts(val restTimer: Boolean, val vibration: Boolean, val sound: Boolean)
+    /** Rest timer, vibration, sound, and spoken note from the settings (`features.strength`). */
+    data class Alerts(val restTimer: Boolean, val vibration: Boolean, val sound: Boolean, val voice: Boolean)
 
     fun alerts(store: RunStore): Alerts {
         val strength = store.settings().optJSONObject("features")?.optJSONObject("strength") ?: JSONObject()
@@ -185,6 +185,7 @@ object StrengthWorkout {
             strength.optBoolean("restTimer", true),
             strength.optBoolean("restVibration", true),
             strength.optBoolean("restSound", false),
+            strength.optBoolean("restVoice", false),
         )
     }
 

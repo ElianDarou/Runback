@@ -352,7 +352,7 @@ describe('PlanningScreen', () => {
         node.props.accessibilityLabel ===
         'Einheit Nur geplanter Lauf, Dienstag, 11. März',
     );
-    expect(textContent(linked)).toContain('Lauf · 30 min · Erledigt');
+    expect(textContent(linked)).toContain('Lauf · Erledigt · 5,00 km · 30:00');
     expect(textContent(dateOnly)).toContain('Lauf · 30 min · Geplant');
     unmount(tree);
   });
@@ -392,6 +392,164 @@ describe('PlanningScreen', () => {
     expect(saved.map(session => session.purpose)).toEqual(['easy', 'long']);
     // 9.5 km × 1.1 = 10.5 km at 6:00 /km ≈ 63 min → 65 min, above the usual budget.
     expect(saved[1].minutes).toBe(65);
+    unmount(tree);
+  });
+
+  it('shows unplanned workouts on their day next to the plan', () => {
+    const tree = renderPlanning(
+      emptySchedule({
+        sessions: [
+          plannedSession({
+            id: 'linked',
+            title: 'Geplanter Lauf',
+            activityId: 'planned-run',
+          }),
+          plannedSession({
+            id: 'open',
+            title: 'Offener Lauf',
+            date: '2025-03-14',
+          }),
+        ],
+      }),
+      {
+        now: localAt('2025-03-12', 12),
+        runs: [
+          completedRun('planned-run', '2025-03-10'),
+          completedRun('free-run', '2025-03-11'),
+        ],
+      },
+    );
+    const text = screenText(tree);
+    expect(text).toContain('Lauf · 5,00 km · 30:00 · ohne Plan');
+    // Two recorded runs, one of two planned sessions done, 10 km in total.
+    expect(text).toContain('1 von 2 geplanten Einheiten erledigt');
+    expect(text).toContain('10,00');
+    expect(text).toContain('1:00 h');
+    expect(text).not.toContain('Ohne Plan trainiert');
+    unmount(tree);
+  });
+
+  it('shows done and planned markers in the month and the chosen day below', async () => {
+    const tree = renderPlanning(
+      emptySchedule({
+        sessions: [
+          plannedSession({ id: 'later', title: 'Später', date: '2025-03-20' }),
+        ],
+      }),
+      {
+        now: localAt('2025-03-12', 12),
+        runs: [completedRun('free-run', '2025-03-11')],
+      },
+    );
+    await press(tree, 'Monat');
+    expect(screenText(tree)).toContain('März 2025');
+    await press(tree, 'Donnerstag, 20. März, 1 geplant');
+    expect(screenText(tree)).toContain('Donnerstag, 20. März');
+    expect(screenText(tree)).toContain('Später');
+    await press(tree, 'Dienstag, 11. März, 1 erledigt');
+    expect(screenText(tree)).toContain('ohne Plan');
+    unmount(tree);
+  });
+
+  it('shows nothing of a switched-off area and says when a total is partial', () => {
+    const strengthSession = {
+      id: 'gym',
+      kind: 'strength' as const,
+      name: 'Beine',
+      startTime: localAt('2025-03-11', 18),
+      status: 'finished' as const,
+      exercises: [],
+      currentExercise: 0,
+      modelVersion: 'test',
+      catalogVersion: 'test',
+    };
+    const base: PlanningScreenProps = {
+      state: emptySchedule({
+        sessions: [
+          plannedSession({
+            id: 'strength-plan',
+            kind: 'strength',
+            title: 'Kraftplan',
+            date: '2025-03-13',
+          }),
+        ],
+      }),
+      onSave: jest.fn<Promise<void>, [ScheduleState]>(),
+      templates: [],
+      runs: [completedRun('run', '2025-03-10')],
+      strengthSessions: [strengthSession],
+      now: localAt('2025-03-12', 12),
+      onStartRun: jest.fn<Promise<void>, [ScheduledSession]>(),
+      onStartStrength: jest.fn<Promise<void>, [ScheduledSession]>(),
+    };
+    let tree!: TestRenderer.ReactTestRenderer;
+    act(() => {
+      tree = TestRenderer.create(<PlanningScreen {...base} />);
+    });
+    // The imported strength session has no end time: done, duration unknown.
+    expect(screenText(tree)).toContain('Zeit von 1 der 2');
+    expect(screenText(tree)).toContain('Kraftplan');
+    act(() => {
+      tree.update(<PlanningScreen {...base} showStrength={false} />);
+    });
+    expect(screenText(tree)).not.toContain('Kraftplan');
+    expect(screenText(tree)).not.toContain('Beine');
+    expect(screenText(tree)).toContain('Trainingszeit');
+    unmount(tree);
+  });
+
+  it('plans only switched-on areas', async () => {
+    const tree = renderPlanning(emptySchedule(), {
+      now: localAt('2025-03-12', 12),
+    });
+    act(() => {
+      tree.update(
+        <PlanningScreen
+          state={emptySchedule({ routine: { days: [2, 3], minutes: 30 } })}
+          onSave={jest.fn<Promise<void>, [ScheduleState]>()}
+          templates={[]}
+          runs={[]}
+          strengthSessions={[]}
+          now={localAt('2025-03-12', 12)}
+          onStartRun={jest.fn<Promise<void>, [ScheduledSession]>()}
+          onStartStrength={jest.fn<Promise<void>, [ScheduledSession]>()}
+          showRunning={false}
+        />,
+      );
+    });
+    await press(tree, 'Einheit am Donnerstag hinzufügen');
+    const kind = tree.root.find(
+      node =>
+        node.props.label === 'Art der Einheit' &&
+        Array.isArray(node.props.options),
+    );
+    expect(kind.props.value).toBe('strength');
+    expect(kind.props.options.map((o: { value: string }) => o.value)).toEqual([
+      'strength',
+    ]);
+    unmount(tree);
+  });
+
+  it('names the other day when a workout was trained for a plan of another day', () => {
+    const tree = renderPlanning(
+      emptySchedule({
+        sessions: [
+          plannedSession({
+            id: 'linked',
+            title: 'Donnerstagslauf',
+            date: '2025-03-13',
+            activityId: 'early-run',
+          }),
+        ],
+      }),
+      {
+        now: localAt('2025-03-14', 12),
+        runs: [completedRun('early-run', '2025-03-12')],
+      },
+    );
+    const text = screenText(tree);
+    expect(text).toContain('Lauf · Erledigt · am Mi, 12. Mär.');
+    expect(text).toContain('für den Plan am Do, 13. Mär.');
     unmount(tree);
   });
 

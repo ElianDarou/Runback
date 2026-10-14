@@ -135,3 +135,13 @@ it('names the announcement interval in both languages', () => {
   ).toBe('Every 10 minutes');
   setLanguage('de');
 });
+it('keeps the optional vibration and drops a broken value', () => {
+  const setup = { ...DEFAULT_RUN_ANNOUNCEMENTS, vibrate: true };
+  expect(normalizeRunAnnouncements(setup).vibrate).toBe(true);
+  expect(normalizeRunAnnouncements(DEFAULT_RUN_ANNOUNCEMENTS).vibrate).toBe(
+    undefined,
+  );
+  expect(
+    normalizeRunAnnouncements({ ...setup, vibrate: 'ja' }),
+  ).toMatchObject({ trigger: 'distance', vibrate: false });
+});

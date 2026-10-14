@@ -609,8 +609,8 @@ export function FeatureSettings({
             <Row
               title={tr('Pausentimer', 'Rest timer')}
               subtitle={tr(
-                'Balken nach jedem bestätigten Satz',
-                'Bar after each confirmed set',
+                'Balken nach jedem Satz · Signale unter Stimme & Vibration',
+                'Bar after each set · signals under Voice & vibration',
               )}
               trailing={toggle(
                 tr('Pausentimer', 'Rest timer'),
@@ -618,34 +618,6 @@ export function FeatureSettings({
                 value => patch('strength', { restTimer: value }),
               )}
             />
-            {features.strength.restTimer ? (
-              <>
-                <Row
-                  title={tr('Vibration am Pausenende', 'Vibration at rest end')}
-                  subtitle={tr(
-                    'Kurz, kurz, lang — auf der Uhr, sonst am Handy',
-                    'Short, short, long — on the watch, otherwise on the phone',
-                  )}
-                  trailing={toggle(
-                    tr('Vibration am Pausenende', 'Vibration at rest end'),
-                    features.strength.restVibration,
-                    value => patch('strength', { restVibration: value }),
-                  )}
-                />
-                <Row
-                  title={tr('Ton am Pausenende', 'Sound at rest end')}
-                  subtitle={tr(
-                    'Kurz, kurz, lang am Handy',
-                    'Short, short, long on the phone',
-                  )}
-                  trailing={toggle(
-                    tr('Ton am Pausenende', 'Sound at rest end'),
-                    features.strength.restSound,
-                    value => patch('strength', { restSound: value }),
-                  )}
-                />
-              </>
-            ) : null}
             <Field label={tr('Standardpause für neue Sätze', 'Default rest for new sets')}>
               <ChipGroup
                 label={tr('Standardpause für neue Sätze', 'Default rest for new sets')}

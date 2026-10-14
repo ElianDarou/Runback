@@ -8,7 +8,11 @@ product. Code names are identifiers and stay as they are.
 | --- | --- | --- | --- |
 | Heute | Today | `today` | Tab: the start screen for the next workout. |
 | Verlauf | History | `history` | Tab: past workouts. |
-| Plan | Plan | `plan` | Tab: planning (optional feature). |
+| Plan | Plan | `plan` | Tab: planning (optional feature). Week or month with done and planned workouts side by side. |
+| Erledigt · Gestartet · Geplant · Ausgelassen | Done · Started · Planned · Skipped | `PlanStatus` | State of a planned workout in Plan. Done only through a linked, finished recording, never from the date. |
+| Ohne Plan | Unplanned | `planEntriesByDate` | A recorded workout that no planned workout links to; Plan shows it on the day it started. |
+| Rechenweg | Calculations | `models` | Settings page: what Runback calculates locally and which models are locked. |
+| Trainingschat | Training chat | `TrainingChat`, Kotlin `OpenRouterProse` | Optional read-only chat about your data with your own OpenRouter key. Describes, gives no recommendations, changes nothing. |
 | Statistik | Statistics | `statistics` | Tab: statistics (optional feature). |
 | Routen | Routes | `routes` | Tab: routes (optional feature). |
 | Vorlagen | Templates | `templates` | Tab: workout templates (optional feature). |
@@ -29,7 +33,10 @@ product. Code names are identifiers and stay as they are.
 | Laufziel | Run goal | `RunTarget` (version 3) | Goal of one run, chosen in the start sheet with the last choice preselected: Wie weit / How far (Offen, Strecke, Zeit; `goal`) and Wonach / Run by (Nur tracken, Tempo, Puls, Intervalle; `kind`). Not the goal of an area. |
 | Intervalle (Laufziel) | Intervals (run goal) | `IntervalPlan`, Kotlin `RunIntervals` | Optional warm-up, then work stretches by time or distance with a rest between them. A distance stretch ends only on measured distance. |
 | Ansagen zum Ziel | Goal announcements | Kotlin `RunGoalCues` | Halfway, almost there (1 km, or 5 or 1 minutes), goal reached. With a pace to hold also ahead of or behind the plan; without measured distance that part stays silent. |
-| Zwischenansagen | Progress announcements | `RunAnnouncementSettings`, Kotlin `RunAnnouncements` | Spoken progress every few kilometers or minutes (kilometer mark, distance, pace, heart rate). Not part of the run goal: switched in the start sheet, set up under Voice & vibration. While on, they replace a route's own progress cues. |
+| Zwischenansagen | Progress announcements | `RunAnnouncementSettings`, Kotlin `RunAnnouncements` | Spoken progress every few kilometers or minutes (kilometer mark, distance, pace, heart rate). Not part of the run goal: switched in the start sheet, set up under Voice & vibration › Running cues. While on, they replace a route's own progress cues; optionally each one also vibrates briefly (`vibrate`). |
+| Stimme & Vibration | Voice & vibration | `SoundSettings`, Kotlin `SpeechPrefs` | Settings page for everything the app says or vibrates: voice and speaking rate for all spoken cues (stored on the device, not in backups), Running cues, and the signals at the end of a rest. |
+| Ansagen beim Laufen | Running cues | `RunTargetScreen` with `settings` | Cue output (vibration, voice, or both) for goal, pace, heart rate, and intervals, plus progress announcements. Also opened from the start sheet. |
+| Ansage am Pausenende | Announcement at rest end | `restVoice`, Kotlin `StrengthSessionService.announce` | Optional spoken “Rest is over” with the next exercise and set, phone only, next to vibration and sound. |
 | Sportart | Sport | `Sport` | `running`, `cycling`; if the field is missing, running applies. |
 | Effort | Effort | `EffortEstimate` | Modeled external demand of a run. Not a fitness or fatigue value. |
 | Tempoindex | Pace index | `EffortEstimate` | Simple pace measure relative to 3 m/s. Not performance, not a score. |

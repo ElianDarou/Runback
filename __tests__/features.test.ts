@@ -41,6 +41,16 @@ describe('normalizeFeatures', () => {
     ).toBe(false);
   });
 
+  it('speaks the rest end only when switched on', () => {
+    expect(normalizeFeatures(undefined).strength.restVoice).toBe(false);
+    expect(
+      normalizeFeatures({ strength: { restVoice: true } }).strength.restVoice,
+    ).toBe(true);
+    expect(
+      normalizeFeatures({ strength: { restVoice: 'ja' } }).strength.restVoice,
+    ).toBe(false);
+  });
+
   it('returns the default for missing or broken input', () => {
     expect(normalizeFeatures(undefined)).toEqual(DEFAULT_FEATURES);
     expect(normalizeFeatures('unsinn')).toEqual(DEFAULT_FEATURES);

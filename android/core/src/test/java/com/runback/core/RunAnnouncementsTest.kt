@@ -30,6 +30,11 @@ class RunAnnouncementsTest {
         assertEquals("Puls 150.", pulse.onProgress(100.0, 60.0, 1_060_000, 150.0, false))
     }
 
+    @Test fun vibrationIsOptionalAndOffForOlderSetups() {
+        assertFalse(RunAnnouncements.fromJson(config())!!.vibrate)
+        assertTrue(RunAnnouncements.fromJson(config().put("vibrate", true))!!.vibrate)
+    }
+
     @Test fun timeDoesNotCountPausedWallTimeAndMissedMarksAreNotQueued() {
         val announcer = RunAnnouncements.fromJson(config("time", 10.0))!!
         assertNull(announcer.onProgress(0.0, 0.0, 1000, null, false))

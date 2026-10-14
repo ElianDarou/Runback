@@ -1101,6 +1101,11 @@ export interface SuggestWeekOptions {
   includeRoutine?: boolean;
   /** Existing future, flexible sessions are reflowed by default. */
   reflowExisting?: boolean;
+  /**
+   * Kinds of the switched-on areas. Sessions of other kinds are neither
+   * proposed nor moved; they stay exactly where they are. All kinds by default.
+   */
+  kinds?: ScheduleKind[];
   today?: LocalDateInput;
 }
 
@@ -1477,9 +1482,15 @@ export function suggestWeek(
       (options.kind === 'strength' ? options.days : undefined) ??
       templateDaysAll,
   );
+  const allows = (kind: ScheduleKind) =>
+    !options.kinds || options.kinds.includes(kind);
   const requests = [
-    ...makeRunRequests(state, weekStart, options, runDays),
-    ...makeStrengthRequests(state, weekStart, options, strengthDays),
+    ...(allows('run')
+      ? makeRunRequests(state, weekStart, options, runDays)
+      : []),
+    ...(allows('strength')
+      ? makeStrengthRequests(state, weekStart, options, strengthDays)
+      : []),
   ];
   const originalPlanned = existingSessions.filter(session => session.status === 'planned');
   let workingState = cloneState(state);
@@ -1492,7 +1503,8 @@ export function suggestWeek(
           !isBefore(session.date, today) &&
           !session.locked &&
           !session.activityId &&
-          session.origin !== 'fixed',
+          session.origin !== 'fixed' &&
+          allows(session.kind),
       )
       .filter(session => !usableAvailabilityFor(
         state,

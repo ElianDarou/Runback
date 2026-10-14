@@ -24,6 +24,8 @@ import com.runback.core.RunStore
 import com.runback.core.RecordingService
 import com.runback.core.BleSensors
 import com.runback.core.Lang
+import com.runback.core.SpeechOutput
+import com.runback.core.SpeechPrefs
 import com.runback.imports.ActivityImporter
 import com.runback.integrations.HealthConnectIntegration
 import com.runback.integrations.TrainingChat
@@ -45,6 +47,11 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     private val aiWorker = Executors.newSingleThreadExecutor()
     private val musicWorker = Executors.newSingleThreadExecutor()
     private val importWorker = Executors.newSingleThreadExecutor()
+    private val speechWorker = Executors.newSingleThreadExecutor()
+    // Created on first use: listing voices and the preview need a ready engine.
+    @Volatile private var voicePreview: SpeechOutput? = null
+    // Set on teardown; queued speech work must not create a new engine afterwards.
+    @Volatile private var speechClosed = false
     private val mainHandler = Handler(Looper.getMainLooper())
     private val importer = ActivityImporter(context, store)
     private val health = HealthConnectIntegration(context)
@@ -389,6 +396,59 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         speechRecognizer?.cancel()
         speechRecognizer?.destroy()
         speechRecognizer = null
+    }
+
+    /** Engine voices for the app language plus the stored choice. Waits briefly for the engine. */
+    @ReactMethod fun getSpeechSettings(promise: Promise) = speechTask(promise) { speech ->
+        val prefs = SpeechPrefs.read(context)
+        val voices = JSONArray()
+        speech?.voices()?.forEach { voice ->
+            voices.put(JSONObject().put("name", voice.name))
+        }
+        JSONObject().put("available", speech != null).put("voice", prefs.voice ?: JSONObject.NULL)
+            .put("rate", Math.round(prefs.rate * 100) / 100.0).put("voices", voices)
+    }
+
+    @ReactMethod fun setSpeechSettings(voice: String?, rate: Double, promise: Promise) = speechTask(promise) { speech ->
+        SpeechPrefs.write(context, voice, rate.toFloat())
+        speech?.let { mainHandler.post { it.reload() } }
+        RecordingService.reloadSpeech()
+        null
+    }
+
+    @ReactMethod fun previewSpeech(promise: Promise) = speechTask(promise) { speech ->
+        check(speech != null) { Lang.tr("Auf diesem Gerät ist keine Sprachausgabe verfügbar.", "No speech output is available on this device.") }
+        mainHandler.post {
+            if (speechClosed) return@post
+            speech.reload()
+            speech.speak(Lang.tr("Kilometer 3. Durchschnitt 5 Minuten 20 Sekunden.", "Kilometer 3. Average 5 minutes 20 seconds."),
+                android.speech.tts.TextToSpeech.QUEUE_FLUSH, "runback-preview")
+        }
+        null
+    }
+
+    private fun speechTask(promise: Promise, block: (SpeechOutput?) -> Any?) {
+        speechWorker.execute {
+            try {
+                check(!speechClosed) { Lang.tr("Die App wurde geschlossen.", "The app was closed.") }
+                var speech = voicePreview
+                if (speech == null) {
+                    val created = java.util.concurrent.CountDownLatch(1)
+                    mainHandler.post {
+                        if (!speechClosed) voicePreview = voicePreview ?: SpeechOutput(context)
+                        created.countDown()
+                    }
+                    created.await(2, java.util.concurrent.TimeUnit.SECONDS)
+                    speech = voicePreview
+                }
+                val deadline = System.currentTimeMillis() + 4_000L
+                while (speech != null && !speech.ready && System.currentTimeMillis() < deadline) Thread.sleep(100)
+                check(!speechClosed) { Lang.tr("Die App wurde geschlossen.", "The app was closed.") }
+                promise.resolve((block(speech?.takeIf { it.ready }) ?: JSONObject.NULL).toString())
+            } catch (error: Exception) {
+                promise.reject("RUNBACK_ERROR", error.message ?: Lang.tr("Vorgang fehlgeschlagen", "Action failed"), error)
+            }
+        }
     }
 
     @ReactMethod fun getProseSettings(promise: Promise) = task(promise) { prose.settings() }
@@ -822,6 +882,9 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         }
         worker.shutdown()
         importWorker.shutdown()
+        speechClosed = true
+        speechWorker.shutdownNow()
+        mainHandler.post { voicePreview?.shutdown(); voicePreview = null }
         super.invalidate()
     }
     companion object { private const val DOCUMENT_REQUEST = 8241; private const val PERMISSION_REQUEST = 8242 }

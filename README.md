@@ -41,13 +41,14 @@ Templates, or Soreness. Everything else is under **All features**.
   goal progress, reporting soreness, and the latest workouts.
 - **History** — What have I done? Workouts grouped by week with totals. Detail view with
   map, metrics, insights, feeling, and splits.
-- **Plan** — What do I do this week? Week calendar, add a workout, have a week suggested,
-  month as a jump marker.
+- **Plan** — What is planned and what did I do? Week or month at a glance: done
+  workouts and planned ones side by side, add a workout, have a week suggested.
 - **Statistics** — How am I developing? Runs and strength training over weeks, personal
   bests, consistency, and body values.
 - **Settings** (gear icon in the header) — Features and navigation, All features,
+  Voice & vibration (announcements, voice, cues while running and at the end of a rest),
   Devices & connections (watch, BLE, Health Connect, weather), Own server, Your data
-  (import, export, backup, delete), Calculations & training chat, setup. Language is here too.
+  (import, export, backup, delete), Calculations, Training chat. Language is here too.
 
 Under **Features** you choose what Runback shows and when it asks: areas
 (running, strength training, cycling), soreness and how often it is asked (by default after

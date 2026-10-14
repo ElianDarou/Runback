@@ -62,7 +62,7 @@ class OpenRouterProse(context: Context) {
     /** A single completion, on the dedicated AI worker. Never log request bodies or keys. */
     fun complete(messages: JSONArray, tools: JSONArray?, finalAnswer: Boolean = false): JSONObject {
         val snapshot = synchronized(lock) {
-            check(prefs.getBoolean("enabled", false)) { Lang.tr("Aktiviere OpenRouter unter Einstellungen → Rechenweg & Trainingschat.", "Turn on OpenRouter under Settings → Calculations & training chat.") }
+            check(prefs.getBoolean("enabled", false)) { Lang.tr("Aktiviere OpenRouter unter Einstellungen → Trainingschat → OpenRouter-Einstellungen.", "Turn on OpenRouter under Settings → Training chat → OpenRouter settings.") }
             val key = decryptKey() ?: error(Lang.tr("Bitte hinterlege deinen OpenRouter API-Schlüssel.", "Add your OpenRouter API key."))
             Snapshot(key, prefs.getString("model", DEFAULT_MODEL) ?: DEFAULT_MODEL, 4096, revision)
         }

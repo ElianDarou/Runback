@@ -18,10 +18,12 @@ import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
+import android.os.Looper
 import android.os.PowerManager
 import android.os.VibrationAttributes
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.speech.tts.TextToSpeech
 import android.util.Log
 import com.google.android.gms.tasks.Tasks
 import com.google.android.gms.wearable.Wearable
@@ -29,6 +31,7 @@ import com.runback.core.DisplayNames
 import com.runback.core.Lang
 import com.runback.core.RestCue
 import com.runback.core.RunStore
+import com.runback.core.SpeechOutput
 import com.runback.core.StrengthLive
 import com.runback.core.WearProtocol
 import org.json.JSONObject
@@ -39,7 +42,7 @@ import java.util.concurrent.TimeUnit
  * Runs while a strength session is active: keeps the notification with
  * "Mark set done", "Pause" and "Skip", and wakes the phone when the rest ends.
  * Then the watch vibrates if it shows the session and is connected, otherwise
- * the phone; a sound only comes from the phone (settings).
+ * the phone; a sound and a spoken note only come from the phone (settings).
  */
 class StrengthSessionService : Service() {
     private lateinit var thread: HandlerThread
@@ -48,8 +51,14 @@ class StrengthSessionService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var foreground = false
     private var scheduledRestEnd: Long? = null
+    private val main = Handler(Looper.getMainLooper())
+    // Created with the service so the engine is ready when the first rest ends.
+    private var speech: SpeechOutput? = null
 
     private val restDone = Runnable { onRestEnd() }
+    private val restSpeech = Runnable { announceRestEnd() }
+    // Session and rest end the pending spoken note belongs to; worker thread only.
+    private var restSpeechFor: Pair<String, Long>? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -64,6 +73,7 @@ class StrengthSessionService : Service() {
         )
         wakeLock = getSystemService(PowerManager::class.java)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Runback:StrengthRest").apply { setReferenceCounted(false) }
+        speech = SpeechOutput(this)
         instance = this
     }
 
@@ -132,7 +142,7 @@ class StrengthSessionService : Service() {
             val key = "${session.optString("id")}:$endsAt"
             if (store.getDocument(ALERTED)?.optString("key") == key) return
             store.putDocument(ALERTED, JSONObject().put("key", key).put("at", System.currentTimeMillis()))
-            alert(session.optString("id"))
+            alert(session, endsAt)
             StrengthWorkout.republish(this)
         } catch (error: Exception) {
             Log.w(TAG, "Could not report the rest end", error)
@@ -143,11 +153,42 @@ class StrengthSessionService : Service() {
         }
     }
 
-    private fun alert(sessionId: String) {
+    private fun alert(session: JSONObject, endsAt: Long) {
         val settings = StrengthWorkout.alerts(store)
         if (!settings.restTimer) return
         if (settings.sound) alertSound()
-        if (settings.vibration && !alertWatch(sessionId)) vibrate()
+        if (settings.voice) {
+            restSpeechFor = session.optString("id") to endsAt
+            worker.removeCallbacks(restSpeech)
+            // After the sound, so the two don't overlap.
+            worker.postDelayed(restSpeech, if (settings.sound) RestCue.DURATION_MS + 200L else 0L)
+        }
+        if (settings.vibration && !alertWatch(session.optString("id"))) vibrate()
+    }
+
+    /**
+     * "Rest is over. Bench press, set 2." Read from the stored session when it
+     * is spoken: a set ticked or a rest skipped in the meantime would make an
+     * earlier text name the wrong set, so then nothing is said.
+     */
+    private fun announceRestEnd() {
+        val (sessionId, endsAt) = restSpeechFor ?: return
+        restSpeechFor = null
+        if (!StrengthWorkout.alerts(store).voice) return
+        val session = store.getDocument(ACTIVE)
+            ?.takeIf { it.optString("id") == sessionId && it.optString("status") == "active" } ?: return
+        if (StrengthLive.restEndsAt(session) != endsAt) return
+        val mirror = StrengthWorkout.mirror(store, session, System.currentTimeMillis())
+        val exercise = mirror.optJSONObject("exercise")?.optString("name")?.takeIf { it.isNotBlank() }?.let { DisplayNames.exercise(it) }
+        val set = mirror.optJSONObject("set")
+        val text = if (exercise != null && set != null)
+            Lang.tr("Pause vorbei. $exercise, Satz ${set.optInt("number")}.", "Rest is over. $exercise, set ${set.optInt("number")}.")
+        else Lang.tr("Pause vorbei.", "Rest is over.")
+        // Re-read voice and rate: they may have changed since the session started.
+        main.post {
+            speech?.reload()
+            speech?.speak(text, TextToSpeech.QUEUE_ADD, "runback-rest")
+        }
     }
 
     /** Vibrates the watch if it shows this session and is connected. */
@@ -264,6 +305,8 @@ class StrengthSessionService : Service() {
     private fun stop() {
         if (instance === this) instance = null
         worker.removeCallbacks(restDone)
+        worker.removeCallbacks(restSpeech)
+        restSpeechFor = null
         scheduledRestEnd = null
         wakeLock?.let { if (it.isHeld) it.release() }
         if (foreground) stopForeground(STOP_FOREGROUND_REMOVE)
@@ -274,6 +317,10 @@ class StrengthSessionService : Service() {
     override fun onDestroy() {
         if (instance === this) instance = null
         worker.removeCallbacks(restDone)
+        worker.removeCallbacks(restSpeech)
+        main.removeCallbacksAndMessages(null)
+        speech?.shutdown()
+        speech = null
         wakeLock?.let { if (it.isHeld) it.release() }
         thread.quitSafely()
         super.onDestroy()
