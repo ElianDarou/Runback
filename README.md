@@ -91,12 +91,19 @@ Node 20.19+ or 22, JDK 17/21, Android SDK 36, NDK 27.1.12297006.
 
 ```sh
 npm ci
-npm run typecheck
-npm test -- --runInBand
-cd android && ./gradlew :core:testDebugUnitTest :app:lintRelease :wear:lintRelease :app:assembleRelease :wear:assembleRelease
+npm run check
+# Include native tests and Android lint when changing Kotlin or Android resources.
+npm run check -- --android
+# Build standalone APKs separately.
+cd android && bash ./gradlew :app:assembleRelease :wear:assembleRelease
 ```
 
-Windows: `gradlew.bat`. CI checks the app and the server depending on the
+`check` runs ESLint, tooling tests, TypeScript and Jest, stopping on the first
+failure. Jest uses `Europe/Berlin`, matching CI. For native checks, set
+`ANDROID_HOME` (or `ANDROID_SDK_ROOT`) to your SDK, or set `sdk.dir` in the ignored
+`android/local.properties`; Java must be on PATH or selected through `JAVA_HOME`.
+The runner resolves the repository and Android directories itself. Windows uses
+`gradlew.bat`. CI checks the app and the server depending on the
 changed files; shared logic, dependencies and CI changes check both. Pure
 website and docs changes build no APKs. For app changes on `main`, CI publishes
 a prerelease and reuses the identical, successful PR build where possible

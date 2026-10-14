@@ -984,10 +984,8 @@ export function RunbackApp() {
         busyRef.current = false;
         setBusy(false);
       }
-      // `tr` reads the module-level language, so the text recomputes via this dependency.
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     },
-    [language],
+    [],
   );
   const persist = useCallback(async (patch: Partial<Settings>) => {
     const updated = { ...stateRef.current.settings, ...patch };
@@ -1028,10 +1026,8 @@ export function RunbackApp() {
           ),
         );
       await Linking.openURL(url);
-      // `tr` reads the module-level language, so the text recomputes via this dependency.
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     },
-    [language],
+    [],
   );
 
   const openCoMaps = useCallback(async (points: RouteCoordinate[]) => {
