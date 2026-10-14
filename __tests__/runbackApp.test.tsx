@@ -410,7 +410,9 @@ describe('Development', () => {
     expect(saved.strengthGoalTarget).toBeUndefined();
     expect(saved.goal).toBe('10 km');
     await tap(tree, 'Zurück');
-    expect(screenText(tree)).toContain('Zielzeiten');
+    // Back on Progress, still on strength training.
+    expect(screenText(tree)).toContain('10 Klimmzüge');
+    expect(screenText(tree)).not.toContain('Zielzeiten');
     await tap(tree, 'Zurück');
     expect(screenText(tree)).toContain('Aktiv');
     expect(screenText(tree)).toContain('Alle Funktionen');

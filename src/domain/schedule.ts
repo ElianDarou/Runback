@@ -365,19 +365,29 @@ export function weekdayOf(date: ScheduleDate): number {
   return mondayDay(inputToDate(date).getDay());
 }
 
-/** The weekly plan as it is set right now. */
+/**
+ * The weekly plan as it is set right now. Without loaded templates
+ * (`undefined`), the strength part is not known and stays as last noted, so a
+ * change of the run days can still be noted.
+ */
 export function currentWeekly(
   state: ScheduleState,
-  templates: Pick<WorkoutTemplate, 'id' | 'days'>[],
+  templates: Pick<WorkoutTemplate, 'id' | 'days'>[] | undefined,
 ): WeeklyPlan {
+  const last = state.weeklyHistory[state.weeklyHistory.length - 1];
   return {
     run: [...state.runDays],
     strength: templates
-      .map(template => ({
-        templateId: template.id,
-        days: sortDays(template.days.map(mondayDay)),
-      }))
-      .filter(entry => entry.days.length),
+      ? templates
+          .map(template => ({
+            templateId: template.id,
+            days: sortDays(template.days.map(mondayDay)),
+          }))
+          .filter(entry => entry.days.length)
+      : (last?.strength ?? []).map(entry => ({
+          templateId: entry.templateId,
+          days: [...entry.days],
+        })),
   };
 }
 

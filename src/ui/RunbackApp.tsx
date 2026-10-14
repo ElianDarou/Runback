@@ -732,6 +732,11 @@ export function RunbackApp() {
   const [purposeSkipped, setPurposeSkipped] = useState<string[]>([]);
   const [historyView, setHistoryView] = useState<HistoryView>('units');
   const [templatesParent, setTemplatesParent] = useState<Page>('main');
+  // Strength templates read from the phone; until then their days are unknown.
+  const [templatesLoaded, setTemplatesLoaded] = useState(false);
+  const [developmentArea, setDevelopmentArea] = useState<
+    'running' | 'strength'
+  >('running');
   // "Voice & vibration" also opens from the start sheet and returns there.
   const [runAudioFromStart, setRunAudioFromStart] = useState(false);
   const [note, setNote] = useState('');
@@ -925,8 +930,17 @@ export function RunbackApp() {
     setPickerOpen(false);
     setWorkoutOpen(false);
     setSorenessOpen(false);
+    setTemplatesLoaded(false);
+    // Templates count on their own: the weekly plan needs them even when the
+    // session history does not load.
+    const strengthRead = native.strength().then(value => {
+      strengthRef.current = value;
+      setStrength(value);
+      setTemplatesLoaded(true);
+      return value;
+    });
     const [nextStrength, nextSessions, nextReports] = await Promise.all([
-      native.strength(),
+      strengthRead,
       native.strengthSessions(500),
       native.sorenessReports(),
     ]);
@@ -1245,6 +1259,7 @@ export function RunbackApp() {
       .strength()
       .then(next => {
         setStrength(next);
+        setTemplatesLoaded(true);
         if (next.active) {
           setSorenessOpen(false);
           setWorkoutOpen(true);
@@ -1882,34 +1897,42 @@ export function RunbackApp() {
     setStrength(current => ({ ...current, templates: next }));
     void native.saveStrengthTemplates(next).catch(e => setError(e.message));
   };
-  // Plan for a day: the weekly plan or the day's own entries, of the shown areas.
+  // The whole weekly plan, also of a hidden area: Plan filters for display,
+  // but a day edit must keep what the other area had planned.
   const planWeekly = useMemo(
-    () => currentWeekly(schedule, showStrength ? strength.templates : []),
-    [schedule, strength.templates, showStrength],
+    () =>
+      currentWeekly(schedule, templatesLoaded ? strength.templates : undefined),
+    [schedule, strength.templates, templatesLoaded],
   );
-  // Past days keep the weekly plan of their time: a change is noted from today
-  // on. Only with the templates loaded, otherwise their days would be missing.
-  const weeklyNoted = useRef('');
+  // Past days keep the weekly plan of their time: every schedule save notes a
+  // change from today on, and so does this effect after a template change.
+  const withWeekly = (next: ScheduleState): ScheduleState =>
+    recordWeekly(
+      next,
+      currentWeekly(next, templatesLoaded ? strength.templates : undefined),
+      localDateKey(),
+    );
   useEffect(() => {
-    if (!loaded || !strengthHistoryAvailable || !features.planning.enabled)
+    // A save on its way already carries the note; this one would race it.
+    if (
+      !loaded ||
+      !features.planning.enabled ||
+      busy ||
+      settingsWritePending.current
+    )
       return;
     const latest = normalizeSchedule(stateRef.current.settings.schedule);
     const next = recordWeekly(
       latest,
-      currentWeekly(latest, strength.templates),
+      currentWeekly(latest, templatesLoaded ? strength.templates : undefined),
       todayKey,
     );
-    if (next === latest) return;
-    const key = JSON.stringify(next.weeklyHistory);
-    if (weeklyNoted.current === key) return;
-    weeklyNoted.current = key;
-    persist({ schedule: next }).catch(() => {
-      weeklyNoted.current = '';
-    });
+    if (next !== latest) persist({ schedule: next }).catch(() => {});
   }, [
     persist,
     loaded,
-    strengthHistoryAvailable,
+    busy,
+    templatesLoaded,
     features.planning.enabled,
     schedule,
     strength.templates,
@@ -2047,7 +2070,11 @@ export function RunbackApp() {
   };
   const saveSchedule = (next: ScheduleState) =>
     planningAction(async () => {
-      await persist({ schedule: normalizeSchedule(next) });
+      await persist({
+        schedule: features.planning.enabled
+          ? withWeekly(normalizeSchedule(next))
+          : normalizeSchedule(next),
+      });
     });
   const stop = () => {
     const stopWords = sportWords(recording?.sport);
@@ -3082,6 +3109,8 @@ export function RunbackApp() {
       strengthTarget={normalizeStrengthTarget(settings.strengthGoalTarget)}
       onEditStrengthGoal={() => openPage('strength-goal')}
       strengthHistoryAvailable={strengthHistoryAvailable}
+      area={showRunning ? developmentArea : 'strength'}
+      onAreaChange={setDevelopmentArea}
     />
   );
   // Plan fills the screen below the header; it does not scroll.
@@ -3113,6 +3142,7 @@ export function RunbackApp() {
       busy={busy}
       showStrength={showStrength}
       showRunning={showRunning}
+      templatesLoaded={templatesLoaded}
     />
   );
   const openFunction = (id: FeatureId) => {

@@ -1,15 +1,16 @@
 import { isWorkingSet } from './muscleGroups';
-import type { StrengthSession } from './strength';
+import type { LoadKind, StrengthSession } from './strength';
 
 /**
  * How close the strength goal is: a target load for an exercise at a number
- * of reps, e.g. 100 kg squat × 5. Measured, not estimated: the heaviest
+ * of reps, e.g. 100 kg squat × 5, or 20 kg extra on pull-ups. Measured, not estimated: the heaviest
  * working set of that exercise with at least the target reps in the recent
  * weeks, against the target load. No one-rep-max estimate, no forecast.
  */
 export const STRENGTH_GOAL_VERSION = 'strength-goal-v1';
 /** Only recent sets say how close the goal is now. */
 export const STRENGTH_GOAL_WINDOW_DAYS = 84;
+const LIFTED: (LoadKind | undefined)[] = ['kg', 'bodyweight_plus'];
 
 export interface StrengthTarget {
   exerciseId: string;
@@ -73,6 +74,9 @@ export function strengthGoalProgress(
       exercise.sets.forEach(set => {
         if (!isWorkingSet(set)) return;
         sets += 1;
+        // Only lifted load compares with the target: an assisted set's kilos
+        // help, and bodyweight or unknown sets carry no load in kg.
+        if (!LIFTED.includes(set.planned?.loadKind)) return;
         const kg = set.actualWeightKg;
         const reps = set.actualReps;
         if (

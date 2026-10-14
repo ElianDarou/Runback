@@ -280,6 +280,12 @@ describe('DevelopmentScreen', () => {
           {...screenProps(localAt('2025-03-10', 12))}
           showRunning={false}
           strengthHistoryAvailable={false}
+          strengthTarget={{
+            exerciseId: 'squat',
+            name: 'Kniebeuge',
+            kg: 100,
+            reps: 5,
+          }}
         />,
       );
     });
@@ -288,6 +294,8 @@ describe('DevelopmentScreen', () => {
     expect(tree.root.findAllByType(ScrollView)).toHaveLength(0);
     expect(text).toContain('Kraft-Historie momentan nicht verfügbar.');
     expect(text).toContain('Krafttraining ist momentan nicht geladen.');
+    // Unknown is not "not trained".
+    expect(text).not.toContain('kam in den letzten 12 Wochen nicht vor');
     expect(text).not.toContain(
       'Keine abgeschlossenen Krafttrainings mit bestätigten Werten.',
     );

@@ -73,6 +73,8 @@ export interface PlanningScreenProps {
   showStrength?: boolean;
   /** Without the running area, Plan shows neither runs nor planned runs. */
   showRunning?: boolean;
+  /** False until the templates are read; their weekly days are unknown then. */
+  templatesLoaded?: boolean;
 }
 
 type ViewMode = 'week' | 'month';
@@ -226,6 +228,7 @@ export function PlanningScreen({
   busy = false,
   showStrength = true,
   showRunning = true,
+  templatesLoaded = true,
 }: PlanningScreenProps) {
   const today = localDateKey(new Date(now));
   const [shown, setShown] = useState<ScheduleState>(state);
@@ -255,8 +258,10 @@ export function PlanningScreen({
   );
   const byDate = useMemo(() => activitiesByDate(activities), [activities]);
   const weekly = useMemo(
-    () => currentWeekly(shown, showStrength ? templates : []),
-    [shown, templates, showStrength],
+    // The whole weekly plan, also of a hidden area: the display filters, but a
+    // day edit keeps what the other area had planned.
+    () => currentWeekly(shown, templatesLoaded ? templates : undefined),
+    [shown, templates, templatesLoaded],
   );
   const templateById = useMemo(
     () => new Map(templates.map(template => [template.id, template])),
@@ -965,6 +970,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: 'transparent',
+    // Many workouts on one day must not spill into the next week.
+    overflow: 'hidden',
   },
   cellOutside: { opacity: 0.45 },
   cellToday: { borderColor: color.green, borderRadius: radius.sm },
@@ -974,6 +981,7 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   cellIcons: {
+    alignSelf: 'stretch',
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',

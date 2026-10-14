@@ -627,6 +627,58 @@ export function ToggleChips<T extends string>({
   );
 }
 
+/**
+ * Seven weekdays in one row, each a checkbox. For weekly plans, where wrapping
+ * chips would split the week.
+ */
+export function WeekdayChips({
+  labels,
+  values,
+  onToggle,
+  label,
+  disabled = false,
+}: {
+  /** Short names, Monday first. */
+  labels: string[];
+  /** Selected days, 0 (Monday) to 6. */
+  values: number[];
+  onToggle: (day: number) => void;
+  label: string;
+  disabled?: boolean;
+}) {
+  return (
+    <View accessibilityLabel={label} style={s.weekdayChips}>
+      {labels.map((name, day) => {
+        const checked = values.includes(day);
+        return (
+          <Pressable
+            key={name}
+            accessibilityRole="checkbox"
+            accessibilityLabel={name}
+            accessibilityState={{ checked, disabled }}
+            disabled={disabled}
+            onPress={() => onToggle(day)}
+            style={({ pressed }) => [
+              s.chip,
+              s.weekdayChip,
+              checked && s.chipSelected,
+              disabled && s.disabled,
+              pressed && s.pressed,
+            ]}
+          >
+            <Text
+              numberOfLines={1}
+              style={[s.chipText, checked && s.chipTextSelected]}
+            >
+              {name}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 export function Field({
   label,
   hint,
@@ -2019,6 +2071,8 @@ export const s = StyleSheet.create({
     borderColor: color.line,
     backgroundColor: color.surface,
   },
+  weekdayChips: { flexDirection: 'row', gap: space.xxs },
+  weekdayChip: { flex: 1, paddingHorizontal: 0, alignItems: 'center' },
   chipSelected: {
     backgroundColor: color.greenSoft,
     borderColor: color.green,

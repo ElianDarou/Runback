@@ -12,21 +12,18 @@ import {
   Section,
   Sheet,
   Title,
-  ToggleChips,
+  WeekdayChips,
   WorkoutIcon,
   color,
   space,
   type as typography,
 } from './components';
 
-type Day = '0' | '1' | '2' | '3' | '4' | '5' | '6';
-
 // Monday first; labels are read per call because the language can change.
-const dayOptions = (): { value: Day; label: string }[] =>
-  (getLanguage() === 'en'
+const dayLabels = () =>
+  getLanguage() === 'en'
     ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-    : ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
-  ).map((label, index) => ({ value: String(index) as Day, label }));
+    : ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
 const toggled = (days: number[], day: number) =>
   days.includes(day) ? days.filter(item => item !== day) : [...days, day];
@@ -83,13 +80,13 @@ export function PlanSettings({
               <WorkoutIcon name="run" />
               <Text style={styles.itemTitle}>{tr('Lauf', 'Run')}</Text>
             </View>
-            <ToggleChips<Day>
+            <WeekdayChips
               label={tr('Wochentage für Läufe', 'Weekdays for runs')}
-              options={dayOptions()}
-              values={schedule.runDays.map(day => String(day) as Day)}
+              labels={dayLabels()}
+              values={schedule.runDays}
               onToggle={day =>
                 onSaveSchedule(
-                  setRunDays(schedule, toggled(schedule.runDays, Number(day))),
+                  setRunDays(schedule, toggled(schedule.runDays, day)),
                 )
               }
               disabled={disabled}
@@ -123,17 +120,17 @@ export function PlanSettings({
                     {template.name}
                   </Text>
                 </View>
-                <ToggleChips<Day>
+                <WeekdayChips
                   label={tr(
                     `Wochentage für ${template.name}`,
                     `Weekdays for ${template.name}`,
                   )}
-                  options={dayOptions()}
-                  values={days.map(day => String(day) as Day)}
+                  labels={dayLabels()}
+                  values={days}
                   onToggle={day =>
                     updateTemplate(template.id, {
                       // Templates count weekdays from Sunday, as `Date.getDay`.
-                      days: toggled(days, Number(day))
+                      days: toggled(days, day)
                         .map(monday => (monday + 1) % 7)
                         .sort((a, b) => a - b),
                     })

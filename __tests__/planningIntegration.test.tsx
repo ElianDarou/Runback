@@ -232,6 +232,15 @@ it('plans a template on its weekdays and notes the weekly plan from today on', a
   ]);
 });
 
+it('notes changed run days even when the strength history does not load', async () => {
+  (native.strengthSessions as jest.Mock).mockRejectedValueOnce(new Error('db'));
+  stored.settings.schedule = normalizeSchedule({ runDays: [2] });
+  await mount();
+  expect(stored.settings.schedule?.weeklyHistory).toEqual([
+    { since: localDateKey(), run: [2], strength: [] },
+  ]);
+});
+
 it('takes a weekly workout off Today when the day was changed', async () => {
   (native.strength as jest.Mock).mockResolvedValue({
     templates: [

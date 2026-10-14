@@ -249,6 +249,21 @@ describe('PlanningScreen', () => {
     });
   });
 
+  it('keeps the plan of a hidden area when a day is edited', async () => {
+    const state = normalizeSchedule();
+    const { tree, onSave } = renderPlanning(state, {
+      // Pull on Thursday; strength training is switched off.
+      templates: [template('pull', 'Pull', [4])],
+      showStrength: false,
+    });
+    act(() => dayCell(tree, 'Donnerstag, 13. März').props.onPress());
+    await act(async () => byLabel(tree, 'Lauf planen').props.onPress());
+    expect(onSave.mock.calls.at(-1)![0].sessions).toEqual([
+      expect.objectContaining({ kind: 'strength', templateId: 'pull' }),
+      expect.objectContaining({ kind: 'run' }),
+    ]);
+  });
+
   it('plans a single day without any weekly plan', async () => {
     const { tree, onSave } = renderPlanning();
     act(() => dayCell(tree, 'Montag, 17. März').props.onPress());

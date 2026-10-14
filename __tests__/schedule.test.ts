@@ -108,6 +108,18 @@ describe('weekly plan', () => {
     });
   });
 
+  it('keeps the noted strength days while the templates are not loaded', () => {
+    const noted = recordWeekly(
+      empty(),
+      { run: [0], strength: [{ templateId: 'pull', days: [3] }] },
+      MONDAY,
+    );
+    expect(currentWeekly(setRunDays(noted, [2]), undefined)).toEqual({
+      run: [2],
+      strength: [{ templateId: 'pull', days: [3] }],
+    });
+  });
+
   it('plans each weekday from the weekly plan', () => {
     const state = setRunDays(empty(), [1]);
     const weekly = currentWeekly(state, [pull, push]);

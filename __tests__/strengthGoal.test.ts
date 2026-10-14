@@ -75,6 +75,25 @@ describe('strength goal', () => {
     });
   });
 
+  it('compares only lifted load, not assistance', () => {
+    const pullUps = { exerciseId: 'squat', name: 'Klimmzug', kg: 40, reps: 5 };
+    const assisted = set(60, 5, {
+      planned: { kind: 'normal', loadKind: 'assisted', reps: 5 },
+    });
+    const bodyweight = set(0, 8, {
+      planned: { kind: 'normal', loadKind: 'bodyweight', reps: 8 },
+    });
+    expect(
+      strengthGoalProgress(pullUps, [session([assisted, bodyweight])], NOW),
+    ).toMatchObject({ status: 'none', reached: false, sets: 2 });
+    const extra = set(20, 5, {
+      planned: { kind: 'normal', loadKind: 'bodyweight_plus', reps: 5 },
+    });
+    expect(
+      strengthGoalProgress(pullUps, [session([assisted, extra])], NOW),
+    ).toMatchObject({ status: 'observed', share: 0.5 });
+  });
+
   it('counts only recent sets and says when none fits', () => {
     const old = session([set(110, 5)], STRENGTH_GOAL_WINDOW_DAYS + 1);
     expect(strengthGoalProgress(target, [old], NOW)).toMatchObject({

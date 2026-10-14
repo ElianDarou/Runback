@@ -140,7 +140,9 @@ function StrengthGoalCard({
   sessions,
   now,
   onEdit,
+  available,
 }: {
+  available: boolean;
   target?: StrengthTarget;
   goal: string;
   targetDate: string;
@@ -148,9 +150,11 @@ function StrengthGoalCard({
   now: number;
   onEdit: () => void;
 }) {
-  const progress = target
-    ? strengthGoalProgress(target, sessions, now)
-    : undefined;
+  // Without loaded sessions, how close the goal is stays unknown.
+  const progress =
+    target && available
+      ? strengthGoalProgress(target, sessions, now)
+      : undefined;
   const targetText = target
     ? `${exerciseDisplayName(target.exerciseId, target.name)} · ${formatKg(
         target.kg,
@@ -223,7 +227,14 @@ function StrengthGoalCard({
             'Choose an exercise and load to see how close you are.',
           )}
         </Copy>
-      ) : null}
+      ) : (
+        <Copy muted>
+          {tr(
+            'Krafttraining ist momentan nicht geladen.',
+            'Strength training is not loaded right now.',
+          )}
+        </Copy>
+      )}
       <Button
         secondary
         title={tr('Ziel bearbeiten', 'Edit goal')}
@@ -373,6 +384,9 @@ export interface DevelopmentScreenProps {
   onEditStrengthGoal: () => void;
   /** False when the native history query failed, rather than returned no rows. */
   strengthHistoryAvailable?: boolean;
+  /** Shown area, kept by the caller so it stays after editing a goal. */
+  area?: 'running' | 'strength';
+  onAreaChange?: (area: 'running' | 'strength') => void;
 }
 
 /**
@@ -393,10 +407,17 @@ export function DevelopmentScreen({
   strengthTarget,
   onEditStrengthGoal,
   strengthHistoryAvailable = true,
+  area: keptArea,
+  onAreaChange,
 }: DevelopmentScreenProps) {
-  const [area, setArea] = useState<'running' | 'strength'>(
+  const [ownArea, setOwnArea] = useState<'running' | 'strength'>(
     showRunning ? 'running' : 'strength',
   );
+  const area = keptArea ?? ownArea;
+  const setArea = (next: 'running' | 'strength') => {
+    setOwnArea(next);
+    onAreaChange?.(next);
+  };
   const facts = useMemo(
     () => buildDevelopmentFacts({ runs, sessions, now }),
     [now, runs, sessions],
@@ -473,6 +494,7 @@ export function DevelopmentScreen({
               sessions={sessions}
               now={now}
               onEdit={onEditStrengthGoal}
+              available={strengthHistoryAvailable}
             />
           </Section>
           <Section title={tr('Tatsächliches Training', 'Actual training')}>
