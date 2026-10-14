@@ -17,8 +17,10 @@ import type { SorenessReport } from './sorenessInput';
  *
  * v4: the Coach and its recommendations are gone; a pinned Coach tab becomes
  * Statistics.
+ * v5: Planning has no week suggestion and no month switch anymore; Goals is
+ * shown as Development and can be pinned as a tab.
  */
-export const FEATURES_VERSION = 4 as const;
+export const FEATURES_VERSION = 5 as const;
 
 export type SorenessPrompt =
   | 'never'
@@ -34,6 +36,7 @@ export type StatsModule = 'distribution' | 'records' | 'consistency' | 'body';
 export type Area = 'running' | 'strength';
 export type OptionalTab =
   | 'plan'
+  | 'development'
   | 'statistics'
   | 'routes'
   | 'templates'
@@ -76,18 +79,25 @@ export const FEATURE_CATALOG: readonly {
       return tr('Planung', 'Planning');
     },
     get description() {
-      return tr('Woche und Monat planen', 'Plan the week and the month');
+      return tr(
+        'Wochenplan und einzelne Tage planen',
+        'Plan your week and single days',
+      );
     },
     tab: 'plan',
   },
   {
     id: 'goals',
     get title() {
-      return tr('Ziele', 'Goals');
+      return tr('Entwicklung', 'Progress');
     },
     get description() {
-      return tr('Vorhaben je Bereich festlegen', 'Set goals for each area');
+      return tr(
+        'Ziel je Bereich und wie nah du dran bist',
+        'A goal per area and how close you are',
+      );
     },
+    tab: 'development',
   },
   {
     id: 'statistics',
@@ -121,10 +131,7 @@ export const FEATURE_CATALOG: readonly {
       return tr('Vorlagen', 'Templates');
     },
     get description() {
-      return tr(
-        'Krafttraining vorbereiten',
-        'Prepare strength workouts',
-      );
+      return tr('Krafttraining vorbereiten', 'Prepare strength workouts');
     },
     tab: 'templates',
   },
@@ -153,6 +160,7 @@ export const FEATURE_CATALOG: readonly {
 ];
 const OPTIONAL_TABS: OptionalTab[] = [
   'plan',
+  'development',
   'statistics',
   'routes',
   'templates',
@@ -174,7 +182,7 @@ export interface FeatureSettings {
   music: { enabled: boolean };
   templates: { enabled: boolean };
   navigation: { tabs: OptionalTab[] };
-  planning: { enabled: boolean; suggest: boolean; month: boolean };
+  planning: { enabled: boolean };
   recording: {
     metrics: RecordingMetric[];
     primary: RecordingPrimary;
@@ -197,12 +205,7 @@ export interface FeatureSettings {
   statistics: { enabled: boolean; modules: StatsModule[] };
 }
 
-export const HOME_SECTIONS: HomeSection[] = [
-  'week',
-  'goal',
-  'body',
-  'recent',
-];
+export const HOME_SECTIONS: HomeSection[] = ['week', 'goal', 'body', 'recent'];
 export const RECORDING_METRICS: RecordingMetric[] = [
   'distance',
   'pace',
@@ -238,7 +241,7 @@ export const DEFAULT_FEATURES: FeatureSettings = {
   sports: { cycling: true },
   soreness: { enabled: true, prompt: 'after_strength', map: true, voice: true },
   home: { sections: [...HOME_SECTIONS] },
-  planning: { enabled: true, suggest: true, month: true },
+  planning: { enabled: true },
   goals: { enabled: true },
   music: { enabled: false },
   templates: { enabled: true },
@@ -358,11 +361,7 @@ export function normalizeFeatures(
     home: {
       sections: subset(home.sections, HOME_SECTIONS, d.home.sections),
     },
-    planning: {
-      enabled: bool(planning.enabled, d.planning.enabled),
-      suggest: bool(planning.suggest, d.planning.suggest),
-      month: bool(planning.month, d.planning.month),
-    },
+    planning: { enabled: bool(planning.enabled, d.planning.enabled) },
     recording: {
       metrics: subset(
         recording.metrics,
@@ -480,6 +479,8 @@ export function tabLabel(tab: Tab): string {
       return tr('Verlauf', 'History');
     case 'plan':
       return tr('Plan', 'Plan');
+    case 'development':
+      return tr('Entwicklung', 'Progress');
     case 'statistics':
       return tr('Statistik', 'Statistics');
     case 'routes':

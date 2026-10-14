@@ -17,5 +17,4 @@ export * from './plans';
 export * from './development';
 export * from './schedule';
 export * from './raceGoal';
-export * from './buildUp';
 export * from './runReport';

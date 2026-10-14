@@ -68,13 +68,25 @@ import {
 } from '../domain/raceGoal';
 import {
   addCalendarDays,
+  currentWeekly,
   localDateKey,
   normalizeSchedule,
+  plannedOn,
+  recordWeekly,
   scheduleTitle,
   startOfWeek,
-  type ScheduledSession,
+  type PlannedItem,
   type ScheduleState,
 } from '../domain/schedule';
+import { normalizeStrengthTarget } from '../domain/strengthGoal';
+import {
+  activitiesByDate,
+  dayEntries,
+  runActivity,
+  strengthActivity,
+  type DayEntry,
+} from '../domain/planView';
+import { PlanSettings } from './PlanSettings';
 import {
   googleMapsDirectionsUrl,
   type RouteCoordinate,
@@ -82,7 +94,6 @@ import {
 
 import { runExportRange } from './runExportRange';
 import { dateToInput, inputToDate } from './dateInput';
-import { TrainingChat } from './TrainingChat';
 import { DeviceSettings } from './DeviceSettings';
 import { WearRecordingRow } from './WearRecordingRow';
 import { VendorImport } from './VendorImport';
@@ -155,7 +166,6 @@ import {
   splitRange,
   type RunSeries,
 } from '../domain/runSeries';
-import { ProseSettings } from './ProseSettings';
 import { SoundSettings } from './SoundSettings';
 import { analyzeRun, allRegionIds } from '../domain';
 import type { RunAnalysis, RunPurpose, Sport } from '../domain/types';
@@ -329,8 +339,7 @@ type Page =
   | 'imports'
   | 'models'
   | 'development'
-  | 'chat'
-  | 'chat-settings'
+  | 'plan-settings'
   | 'distance-times'
   | 'run-audio'
   | 'sound'
@@ -339,8 +348,7 @@ type Page =
   | 'features-home'
   | 'features-navigation'
   | 'features-detail'
-  | 'all-functions'
-  | 'goals';
+  | 'all-functions';
 /** Where "‹ Back" leads from a page. A missing entry goes to the main page. */
 /** Pages opened from a strength session, exercise, or statistics;
  *  "Back" follows `trail` to where the user came from. */
@@ -359,16 +367,15 @@ const PARENT_PAGE: Partial<Record<Page, Page>> = {
   sound: 'settings',
   data: 'settings',
   models: 'settings',
-  chat: 'settings',
-  'chat-settings': 'chat',
+  'plan-settings': 'settings',
   features: 'settings',
   'features-home': 'features',
   'features-navigation': 'features',
   'features-detail': 'features',
   'all-functions': 'settings',
-  goals: 'all-functions',
-  goal: 'goals',
-  'strength-goal': 'goals',
+  development: 'all-functions',
+  goal: 'development',
+  'strength-goal': 'development',
   'vendor-import': 'data',
   imports: 'data',
 };
@@ -623,12 +630,7 @@ const UnitRow = memo(function UnitRow({
   );
 });
 
-export function RunbackApp({
-  onOpenRoutePlanner,
-}: {
-  /** Opens the route planner. Without it there is no entry point. */
-  onOpenRoutePlanner?: () => void;
-} = {}) {
+export function RunbackApp() {
   const insets = useSafeAreaInsets();
   const [state, setState] = useState<AppState>(initial);
   // Set before anything below builds text; children remount on a change
@@ -671,10 +673,6 @@ export function RunbackApp({
   const stateGeneration = useRef(0);
   const settingsRevision = useRef(0);
   const settingsWritePending = useRef(false);
-  const pendingScheduleLink = useRef<{
-    entryId: string;
-    activityId: string;
-  } | null>(null);
   const [tab, setTab] = useState<Tab>('today');
   const [page, setPage] = useState<Page>('main');
   const [featureDetail, setFeatureDetail] = useState<
@@ -803,14 +801,8 @@ export function RunbackApp({
   const showStrength = features.areas.strength;
   const sports = enabledSports(features);
   const schedule = useMemo(
-    () =>
-      normalizeSchedule(settings.schedule, {
-        routine: {
-          days: settings.trainingDays ?? [],
-          minutes: settings.minutes ?? 30,
-        },
-      }),
-    [settings.schedule, settings.trainingDays, settings.minutes],
+    () => normalizeSchedule(settings.schedule),
+    [settings.schedule],
   );
   const runs = state.runs;
   // Only runs carry this pace analysis and kilometers; rides sit alongside them.
@@ -819,7 +811,8 @@ export function RunbackApp({
   const racePrediction = useMemo(
     () =>
       predictRace({
-        goal: settings.goal || schedule.goal?.name || '',
+        // The schedule goal is canonical, as on the goal page.
+        goal: schedule.goal?.name || settings.goal || '',
         distanceKm: settings.goalDistanceKm ?? schedule.goal?.distanceKm,
         targetDate: settings.goalTargetDate || schedule.goal?.targetDate,
         targetSeconds:
@@ -846,8 +839,7 @@ export function RunbackApp({
   );
   const recording = state.recording;
   const isRecording = Boolean(recording);
-  const showOnboarding =
-    loaded && !isRecording && !settings.onboardedAt;
+  const showOnboarding = loaded && !isRecording && !settings.onboardedAt;
   const finishedSessions = useMemo(
     () => strengthSessions.filter(session => session.status === 'finished'),
     [strengthSessions],
@@ -922,7 +914,6 @@ export function RunbackApp({
     return next;
   }, []);
   const reloadTrainingState = useCallback(async () => {
-    pendingScheduleLink.current = null;
     strengthRef.current = emptyStrengthState();
     setStrength(emptyStrengthState());
     setStrengthSessions([]);
@@ -1662,12 +1653,16 @@ export function RunbackApp({
     }
     setTrail([]);
     const toStart = page === 'run-audio' && runAudioFromStart;
+    const parent = PARENT_PAGE[page] ?? 'main';
     setPage(
       page === 'templates'
         ? templatesParent
         : toStart
         ? 'main'
-        : PARENT_PAGE[page] ?? 'main',
+        : // Pinned as a tab, Development is the main page of its tab.
+        parent === 'development' && tab === 'development'
+        ? 'main'
+        : parent,
     );
     if (toStart) setStartSheet('run');
     setSelectedSession(null);
@@ -1887,33 +1882,85 @@ export function RunbackApp({
     setStrength(current => ({ ...current, templates: next }));
     void native.saveStrengthTemplates(next).catch(e => setError(e.message));
   };
-  const todaysScheduledRun = (
-    features.planning.enabled ? schedule.sessions : []
-  ).find(
-    item =>
-      item.date === todayKey &&
-      item.kind === 'run' &&
-      item.status === 'planned' &&
-      !item.activityId,
+  // Plan for a day: the weekly plan or the day's own entries, of the shown areas.
+  const planWeekly = useMemo(
+    () => currentWeekly(schedule, showStrength ? strength.templates : []),
+    [schedule, strength.templates, showStrength],
   );
-  const todaysScheduledStrength = (
-    features.planning.enabled ? schedule.sessions : []
-  ).find(
-    item =>
-      item.date === todayKey &&
-      item.kind === 'strength' &&
-      item.status === 'planned' &&
-      !item.activityId,
+  // Past days keep the weekly plan of their time: a change is noted from today
+  // on. Only with the templates loaded, otherwise their days would be missing.
+  const weeklyNoted = useRef('');
+  useEffect(() => {
+    if (!loaded || !strengthHistoryAvailable || !features.planning.enabled)
+      return;
+    const latest = normalizeSchedule(stateRef.current.settings.schedule);
+    const next = recordWeekly(
+      latest,
+      currentWeekly(latest, strength.templates),
+      todayKey,
+    );
+    if (next === latest) return;
+    const key = JSON.stringify(next.weeklyHistory);
+    if (weeklyNoted.current === key) return;
+    weeklyNoted.current = key;
+    persist({ schedule: next }).catch(() => {
+      weeklyNoted.current = '';
+    });
+  }, [
+    persist,
+    loaded,
+    strengthHistoryAvailable,
+    features.planning.enabled,
+    schedule,
+    strength.templates,
+    todayKey,
+  ]);
+  const planOn = (date: string): PlannedItem[] =>
+    features.planning.enabled
+      ? plannedOn(schedule, planWeekly, date, todayKey).filter(item =>
+          item.kind === 'run' ? showRunning : showStrength,
+        )
+      : [];
+  // Today's plan next to what was already recorded today, the running
+  // strength session included.
+  const todaysEntries = dayEntries(
+    planOn(todayKey),
+    activitiesByDate([
+      ...(showRunning ? runs.map(runActivity) : []),
+      ...(showStrength
+        ? [
+            ...strengthSessions.filter(
+              session => session.id !== strength.active?.id,
+            ),
+            ...(strength.active ? [strength.active] : []),
+          ].map(strengthActivity)
+        : []),
+    ])[todayKey] ?? [],
   );
-  const hasStrengthCalendar =
-    features.planning.enabled &&
-    schedule.sessions.some(item => item.kind === 'strength');
+  const openToday = (kind: PlannedItem['kind']) =>
+    todaysEntries.find(
+      (entry): entry is Extract<DayEntry, { type: 'planned' }> =>
+        entry.type === 'planned' &&
+        entry.state === 'planned' &&
+        entry.item.kind === kind,
+    )?.item;
+  const todaysPlannedRun = openToday('run');
+  const todaysPlannedStrength = openToday('strength');
+  const plannedTemplate = (item: PlannedItem | undefined) =>
+    item?.templateId
+      ? strength.templates.find(template => template.id === item.templateId) ??
+        null
+      : null;
+  const plannedTitle = (item: PlannedItem) =>
+    item.kind === 'run'
+      ? tr('Lauf', 'Run')
+      : plannedTemplate(item)?.name ||
+        scheduleTitle({ title: item.title ?? '' }) ||
+        tr('Krafttraining', 'Strength training');
   const todaysTemplate = !features.templates.enabled
     ? null
-    : hasStrengthCalendar
-    ? strength.templates.find(
-        item => item.id === todaysScheduledStrength?.templateId,
-      ) ?? null
+    : features.planning.enabled
+    ? plannedTemplate(todaysPlannedStrength)
     : features.strength.templateOfDay
     ? templateForDay(strength.templates, new Date(now).getDay())
     : null;
@@ -2000,139 +2047,7 @@ export function RunbackApp({
   };
   const saveSchedule = (next: ScheduleState) =>
     planningAction(async () => {
-      await persist({
-        schedule: normalizeSchedule(next),
-        trainingDays: next.routine.days,
-        minutes: next.routine.minutes,
-      });
-    });
-  const startScheduled = (planned: ScheduledSession) =>
-    planningAction(async () => {
-      const latest = normalizeSchedule(stateRef.current.settings.schedule);
-      const entry = latest.sessions.find(item => item.id === planned.id);
-      const pending = pendingScheduleLink.current;
-      if (
-        entry &&
-        pending?.entryId === entry.id &&
-        !entry.activityId &&
-        entry.status === 'planned'
-      ) {
-        try {
-          await persist({
-            schedule: {
-              ...latest,
-              sessions: latest.sessions.map(item =>
-                item.id === entry.id
-                  ? { ...item, activityId: pending.activityId }
-                  : item,
-              ),
-            },
-          });
-          pendingScheduleLink.current = null;
-        } catch {
-          const message = tr(
-            'Die Zuordnung konnte noch nicht gespeichert werden. Öffne Planung und tippe die Einheit erneut an.',
-            'The link could not be saved yet. Open Plan and tap the session again.',
-          );
-          setError(message);
-          throw new Error(message);
-        }
-        if (entry.kind === 'run') {
-          switchTab('today');
-        } else {
-          setWorkoutOpen(true);
-          setNow(Date.now());
-        }
-        return;
-      }
-      if (pending?.entryId === entry?.id && entry?.activityId) {
-        pendingScheduleLink.current = null;
-      }
-      if (
-        !entry ||
-        entry.status !== 'planned' ||
-        entry.date !== localDateKey()
-      ) {
-        throw new Error(
-          tr(
-            'Diese Einheit ist nicht für heute geplant. Verschiebe sie zuerst auf heute.',
-            'This session is not planned for today. Move it to today first.',
-          ),
-        );
-      }
-      if (entry.activityId) {
-        if (stateRef.current.recording?.id === entry.activityId) {
-          switchTab('today');
-          return;
-        }
-        if (strengthRef.current.active?.id === entry.activityId) {
-          setWorkoutOpen(true);
-          return;
-        }
-        throw new Error(
-          tr(
-            'Diese Einheit wurde bereits gestartet. Die Aufzeichnung findest du im Verlauf.',
-            'This session was already started. Find the recording in History.',
-          ),
-        );
-      }
-      if (stateRef.current.recording || strengthRef.current.active) {
-        throw new Error(
-          tr(
-            'Beende zuerst dein laufendes Training.',
-            'Finish your running session first.',
-          ),
-        );
-      }
-      let activityId: string;
-      if (entry.kind === 'run') {
-        const active = await beginRecording('running');
-        activityId = active.id;
-        pendingScheduleLink.current = { entryId: entry.id, activityId };
-        switchTab('today');
-      } else {
-        const template = entry.templateId
-          ? strengthRef.current.templates.find(
-              item => item.id === entry.templateId,
-            )
-          : null;
-        if (entry.templateId && !template) {
-          throw new Error(
-            tr(
-              'Die Kraftvorlage fehlt. Wähle in der geplanten Einheit eine vorhandene Vorlage.',
-              'The strength template is missing. Choose an existing template for the planned session.',
-            ),
-          );
-        }
-        const created = startSession(template ?? null, Date.now(), entry.title);
-        const session = reviseSession(created, created);
-        await native.saveStrengthSession(session);
-        strengthRef.current = { ...strengthRef.current, active: session };
-        setStrength(strengthRef.current);
-        setWorkoutOpen(true);
-        setNow(Date.now());
-        activityId = session.id;
-        pendingScheduleLink.current = { entryId: entry.id, activityId };
-        await loadRecentSessions(strengthRef.current);
-      }
-      try {
-        await persist({
-          schedule: {
-            ...latest,
-            sessions: latest.sessions.map(item =>
-              item.id === entry.id ? { ...item, activityId } : item,
-            ),
-          },
-        });
-        pendingScheduleLink.current = null;
-      } catch {
-        const message = tr(
-          'Das Training läuft. Die Zuordnung konnte noch nicht gespeichert werden. Öffne Planung und tippe die Einheit erneut an.',
-          'The session is running. The link could not be saved yet. Open Plan and tap the session again.',
-        );
-        setError(message);
-        throw new Error(message);
-      }
+      await persist({ schedule: normalizeSchedule(next) });
     });
   const stop = () => {
     const stopWords = sportWords(recording?.sport);
@@ -2185,7 +2100,6 @@ export function RunbackApp({
   };
   const beginImport = (stayOnPage: boolean) => {
     void action(async () => {
-      pendingScheduleLink.current = null;
       if (!stayOnPage) {
         setPage('data');
       }
@@ -2283,10 +2197,7 @@ export function RunbackApp({
       : '';
   // The run analysis applies only to runs. For other sports it does not appear
   // at all instead of showing wrong numbers (Spec T-1).
-  const snapshot =
-    selected && isRun(selected)
-      ? analyzeRun(selected)
-      : null;
+  const snapshot = selected && isRun(selected) ? analyzeRun(selected) : null;
   // The comparison with recent runs colors the tiles above; like the analysis,
   // it applies only to runs.
   const comparison =
@@ -2357,20 +2268,14 @@ export function RunbackApp({
   // button. Below it only what counts today: the week, the goal, a body check,
   // the last two sessions. Templates and the map have their place in Plan and
   // History.
+  // A planned workout starts like any other; Plan finds it by its day.
   const startPlannedRun = () => {
-    if (todaysScheduledRun) {
-      void startScheduled(todaysScheduledRun).catch(e => setError(e.message));
-    }
+    void action(async () => {
+      if (!stateRef.current.recording) await beginRecording('running');
+      switchTab('today');
+    });
   };
-  const startPlannedStrength = () => {
-    if (todaysScheduledStrength) {
-      void startScheduled(todaysScheduledStrength).catch(e =>
-        setError(e.message),
-      );
-    } else {
-      startStrength(todaysTemplate);
-    }
-  };
+  const startPlannedStrength = () => startStrength(todaysTemplate);
   const targetRow = () =>
     features.recording.targets ? (
       <Row
@@ -2391,9 +2296,9 @@ export function RunbackApp({
     const monday = startOfWeek(todayKey);
     const doneDays = new Set(units.map(unit => localDateKey(unit.at)));
     const plannedDays = new Set(
-      schedule.sessions
-        .filter(item => item.status === 'planned' && !item.activityId)
-        .map(item => item.date),
+      Array.from({ length: 7 }, (_, index) =>
+        addCalendarDays(monday, index),
+      ).filter(key => planOn(key).length > 0),
     );
     return (
       <Pressable
@@ -2432,21 +2337,24 @@ export function RunbackApp({
       </Pressable>
     );
   };
-  const nextPlanned = schedule.sessions
-    .filter(
-      item =>
-        item.status === 'planned' && !item.activityId && item.date > todayKey,
-    )
-    .sort((a, b) => a.date.localeCompare(b.date))[0];
-  const todaysLinked = schedule.sessions.filter(
-    item => item.date === todayKey && item.activityId,
+  // The next day with something planned, within two weeks.
+  const nextPlanned = Array.from({ length: 14 }, (_, index) =>
+    addCalendarDays(todayKey, index + 1),
+  )
+    .map(date => ({ date, item: planOn(date)[0] }))
+    .find(entry => entry.item);
+  // Planned for today and already recorded.
+  const todaysDone = todaysEntries.filter(
+    entry => entry.type === 'planned' && entry.state !== 'planned',
   );
-  const linkedUnit = (activityId: string) =>
-    units.find(unit =>
-      unit.kind === 'run'
-        ? unit.run.id === activityId || unit.run.canonicalId === activityId
-        : unit.session.id === activityId,
-    );
+  const doneUnit = (entry: DayEntry) =>
+    entry.activity
+      ? units.find(unit =>
+          unit.kind === 'run'
+            ? unit.run.id === entry.activity!.id
+            : unit.session.id === entry.activity!.id,
+        )
+      : undefined;
   const renderHero = () => {
     if (strength.active) {
       const minutes = Math.max(
@@ -2481,37 +2389,30 @@ export function RunbackApp({
     }
     // Without the running area, "something else" starts directly at strength training.
     const otherKind: StartKind = sports.length ? 'run' : 'strength';
-    if (todaysScheduledRun && showRunning) {
-      const plannedPurpose = todaysScheduledRun.purpose;
+    if (todaysPlannedRun && showRunning) {
+      const plannedPurpose = todaysPlannedRun.purpose;
       return (
         <Card style={styles.hero}>
           <Text style={styles.heroLabel}>
             {tr('Heute geplant', 'Planned for today')}
           </Text>
           <Text style={styles.heroTitle}>
-            {scheduleTitle(todaysScheduledRun)}
-          </Text>
-          <Copy muted>
-            {tr(
-              `Lauf · ${todaysScheduledRun.minutes} Min`,
-              `Run · ${todaysScheduledRun.minutes} min`,
-            )}
             {hasNamedPurpose(plannedPurpose)
-              ? ` · ${purposeLabel(plannedPurpose)}`
-              : ''}
-          </Copy>
+              ? purposeLabel(plannedPurpose)
+              : tr('Lauf', 'Run')}
+          </Text>
           {targetRow()}
           <Button
             title={tr('Lauf starten', 'Start run')}
             onPress={startPlannedRun}
             disabled={busy}
           />
-          {todaysScheduledStrength && showStrength ? (
+          {todaysPlannedStrength && showStrength ? (
             <Row
-              title={scheduleTitle(todaysScheduledStrength)}
+              title={plannedTitle(todaysPlannedStrength)}
               subtitle={tr(
-                `Krafttraining · ${todaysScheduledStrength.minutes} Min · ebenfalls heute`,
-                `Strength training · ${todaysScheduledStrength.minutes} min · also today`,
+                'Krafttraining · ebenfalls heute',
+                'Strength training · also today',
               )}
               onPress={startPlannedStrength}
             />
@@ -2529,27 +2430,21 @@ export function RunbackApp({
         </Card>
       );
     }
-    if (showStrength && (todaysScheduledStrength || todaysTemplate)) {
-      const title = todaysScheduledStrength
-        ? scheduleTitle(todaysScheduledStrength)
+    if (showStrength && (todaysPlannedStrength || todaysTemplate)) {
+      const title = todaysPlannedStrength
+        ? plannedTitle(todaysPlannedStrength)
         : todaysTemplate!.name;
       const exerciseCount = todaysTemplate?.exercises.length ?? 0;
       return (
         <Card style={styles.hero}>
           <Text style={styles.heroLabel}>
-            {todaysScheduledStrength
+            {todaysPlannedStrength
               ? tr('Heute geplant', 'Planned for today')
               : tr('Heute vorgesehen', 'Set for today')}
           </Text>
           <Text style={styles.heroTitle}>{title}</Text>
           <Copy muted>
             {tr('Krafttraining', 'Strength training')}
-            {todaysScheduledStrength
-              ? tr(
-                  ` · ${todaysScheduledStrength.minutes} Min`,
-                  ` · ${todaysScheduledStrength.minutes} min`,
-                )
-              : ''}
             {exerciseCount
               ? ` · ${counted(
                   exerciseCount,
@@ -2576,15 +2471,15 @@ export function RunbackApp({
         </Card>
       );
     }
-    if (todaysLinked.length) {
-      const first = linkedUnit(todaysLinked[0].activityId!);
+    if (todaysDone.length) {
+      const first = doneUnit(todaysDone[0]);
       return (
         <Card style={styles.hero}>
           <Text style={styles.heroLabel}>
             {tr('Heute erledigt ✓', 'Done today ✓')}
           </Text>
           <Text style={styles.heroTitle}>
-            {first ? unitTitle(first) : scheduleTitle(todaysLinked[0])}
+            {first ? unitTitle(first) : todaysDone[0].activity?.title}
           </Text>
           <Copy muted>
             {first
@@ -2609,10 +2504,10 @@ export function RunbackApp({
         {nextPlanned ? (
           <Copy muted>
             {tr(
-              `Als Nächstes: ${nextPlanned.title} · ${date(
+              `Als Nächstes: ${plannedTitle(nextPlanned.item)} · ${date(
                 new Date(`${nextPlanned.date}T12:00:00`).getTime(),
               )}`,
-              `Up next: ${nextPlanned.title} · ${date(
+              `Up next: ${plannedTitle(nextPlanned.item)} · ${date(
                 new Date(`${nextPlanned.date}T12:00:00`).getTime(),
               )}`,
             )}
@@ -2729,15 +2624,7 @@ export function RunbackApp({
   const startFromSheet = () => {
     if (startSheet === 'strength') {
       setStartSheet(null);
-      if (
-        todaysScheduledStrength &&
-        (todaysScheduledStrength.templateId ?? null) ===
-          (selectedTemplate?.id ?? null)
-      ) {
-        startPlannedStrength();
-      } else {
-        startStrength(selectedTemplate);
-      }
+      startStrength(selectedTemplate);
       return;
     }
     setStartSheet(null);
@@ -2775,8 +2662,7 @@ export function RunbackApp({
                 tr('Übung', 'exercise'),
                 tr('Übungen', 'exercises'),
               )}${
-                todaysScheduledStrength?.templateId === item.id ||
-                (!todaysScheduledStrength && todaysTemplate?.id === item.id)
+                todaysTemplate?.id === item.id
                   ? tr(' · heute vorgesehen', ' · set for today')
                   : ''
               }`}
@@ -3181,58 +3067,61 @@ export function RunbackApp({
     );
   };
 
-  const renderGoals = () => (
-    <>
-      <Title>{tr('Ziele', 'Goals')}</Title>
-      {showRunning ? (
-        <Section title={tr('Laufen', 'Running')}>
-          <Row
-            title={tr('Ziel', 'Goal')}
-            subtitle={
-              racePrediction.status === 'estimated' &&
-              racePrediction.predictedSeconds !== undefined
-                ? tr(
-                    `${racePrediction.goal} · etwa ${formatGoalTime(
-                      racePrediction.predictedSeconds,
-                    )} geschätzt`,
-                    `${racePrediction.goal} · about ${formatGoalTime(
-                      racePrediction.predictedSeconds,
-                    )} estimated`,
-                  )
-                : settings.goal ||
-                  schedule.goal?.name ||
-                  tr('Kein Ziel gesetzt', 'No goal set')
-            }
-            onPress={() => openPage('goal')}
-          />
-          <Row
-            title={tr('Zielzeiten', 'Goal times')}
-            subtitle={tr(
-              'Geschätzte Zeiten von 1 km bis Marathon',
-              'Estimated times from 1 km to marathon',
-            )}
-            onPress={() => openPage('distance-times')}
-          />
-        </Section>
-      ) : null}
-      {showStrength ? (
-        <Section title={tr('Krafttraining', 'Strength training')}>
-          <Row
-            title={tr('Ziel', 'Goal')}
-            subtitle={
-              settings.strengthGoal || tr('Kein Ziel gesetzt', 'No goal set')
-            }
-            onPress={() => openPage('strength-goal')}
-          />
-        </Section>
-      ) : null}
-    </>
+  const renderDevelopment = () => (
+    <DevelopmentScreen
+      runs={runningRuns}
+      sessions={strengthSessions}
+      now={now}
+      showRunning={showRunning}
+      showStrength={showStrength}
+      prediction={racePrediction}
+      onEditGoal={() => openPage('goal')}
+      onDistanceTimes={() => openPage('distance-times')}
+      strengthGoal={settings.strengthGoal || ''}
+      strengthGoalTargetDate={settings.strengthGoalTargetDate || ''}
+      strengthTarget={normalizeStrengthTarget(settings.strengthGoalTarget)}
+      onEditStrengthGoal={() => openPage('strength-goal')}
+      strengthHistoryAvailable={strengthHistoryAvailable}
+    />
+  );
+  // Plan fills the screen below the header; it does not scroll.
+  const renderPlan = () => (
+    <PlanningScreen
+      state={schedule}
+      onSave={saveSchedule}
+      templates={strength.templates}
+      runs={runs}
+      strengthSessions={
+        // The running session lives apart from the history; Plan shows it as started.
+        strength.active
+          ? [
+              strength.active,
+              ...strengthSessions.filter(
+                session => session.id !== strength.active!.id,
+              ),
+            ]
+          : strengthSessions
+      }
+      now={now}
+      onOpenActivity={(kind, id) => {
+        if (kind === 'run') openRun(id);
+        else if (id === strength.active?.id) {
+          setNow(Date.now());
+          setWorkoutOpen(true);
+        } else openSessionById(id);
+      }}
+      busy={busy}
+      showStrength={showStrength}
+      showRunning={showRunning}
+    />
   );
   const openFunction = (id: FeatureId) => {
     if (!featureEnabled(features, id)) return;
     if (id === 'music') openPage('music');
-    else if (id === 'goals') openPage('goals');
-    else {
+    else if (id === 'goals') {
+      if (tabs.includes('development')) switchTab('development');
+      else openPage('development');
+    } else {
       const entry = FEATURE_CATALOG.find(item => item.id === id);
       if (entry?.tab) {
         switchTab(entry.tab);
@@ -3441,8 +3330,8 @@ export function RunbackApp({
           target: selected.target,
           history: runningRuns,
           maxHeartRate: maxHeartRate(settings.maxHeartRate, runningRuns),
-          plannedPurpose: schedule.sessions.find(
-            item => item.activityId === selected.id,
+          plannedPurpose: planOn(localDateKey(selected.startTime)).find(
+            item => item.kind === 'run',
           )?.purpose,
         })
       : undefined;
@@ -4020,6 +3909,25 @@ export function RunbackApp({
 
   // Templates keep their place in Plan; Settings opens the same management.
   // Settings is a short list; each row names what lies behind it.
+  // "Lauf Di · Fr · So · Pull Mo · Do" — what repeats every week.
+  const weeklyPlanSummary = () => {
+    const days = (list: number[]) =>
+      list.map(day => weekdayShortLabels()[day]).join(' · ');
+    const parts = [
+      ...(showRunning && planWeekly.run.length
+        ? [`${tr('Lauf', 'Run')} ${days(planWeekly.run)}`]
+        : []),
+      ...planWeekly.strength.map(entry => {
+        const name =
+          strength.templates.find(item => item.id === entry.templateId)?.name ??
+          tr('Krafttraining', 'Strength training');
+        return `${name} ${days(entry.days)}`;
+      }),
+    ];
+    return parts.length
+      ? parts.join(', ')
+      : tr('Nichts regelmäßig geplant', 'Nothing planned weekly');
+  };
   const renderSettings = () => (
     <>
       <Title>{tr('Einstellungen', 'Settings')}</Title>
@@ -4059,6 +3967,13 @@ export function RunbackApp({
               'Voice, announcements, and signals while training',
             )}
             onPress={() => openPage('sound')}
+          />
+        ) : null}
+        {features.planning.enabled ? (
+          <Row
+            title={tr('Wochenplan', 'Weekly plan')}
+            subtitle={weeklyPlanSummary()}
+            onPress={() => openPage('plan-settings')}
           />
         ) : null}
         {features.templates.enabled ? (
@@ -4114,14 +4029,6 @@ export function RunbackApp({
             'What Runback calculates locally and what is locked',
           )}
           onPress={() => openPage('models')}
-        />
-        <Row
-          title={tr('Trainingschat', 'Training chat')}
-          subtitle={tr(
-            'Optional · Fragen zu deinen Daten mit eigenem OpenRouter-Schlüssel',
-            'Optional · ask about your data with your own OpenRouter key',
-          )}
-          onPress={() => openPage('chat')}
         />
       </View>
     </>
@@ -4353,12 +4260,7 @@ export function RunbackApp({
                 setGoalPhaseInput('');
                 setGoalDistanceInput('');
                 setGoalTimeInput('');
-                setMessage(
-                  tr(
-                    'Ziel entfernt.',
-                    'Goal removed.',
-                  ),
-                );
+                setMessage(tr('Ziel entfernt.', 'Goal removed.'));
               });
             }}
           />
@@ -4988,30 +4890,20 @@ export function RunbackApp({
       }}
     />
   ) : page === 'development' ? (
-    <DevelopmentScreen
-      runs={runningRuns}
-      sessions={strengthSessions}
-      goal={schedule.goal?.name || settings.goal || ''}
-      strengthHistoryAvailable={strengthHistoryAvailable}
-      now={now}
-      schedule={schedule}
-      prediction={racePrediction}
-      onEditGoal={() => openPage('goal')}
-    />
+    renderDevelopment()
   ) : page === 'session' ? (
     renderSession()
   ) : page === 'strength-goal' ? (
     <StrengthGoalEditor
       goal={settings.strengthGoal || ''}
       targetDate={settings.strengthGoalTargetDate || ''}
-      persist={(strengthGoal, strengthGoalTargetDate) =>
-        persist({ strengthGoal, strengthGoalTargetDate })
+      target={normalizeStrengthTarget(settings.strengthGoalTarget)}
+      persist={(strengthGoal, strengthGoalTargetDate, strengthGoalTarget) =>
+        persist({ strengthGoal, strengthGoalTargetDate, strengthGoalTarget })
       }
     />
   ) : page === 'templates' ? (
     renderTemplates()
-  ) : page === 'chat' ? (
-    <TrainingChat onSettings={() => openPage('chat-settings')} />
   ) : page === 'goal' ? (
     renderGoal()
   ) : page === 'run-target' || page === 'run-audio' ? (
@@ -5029,7 +4921,7 @@ export function RunbackApp({
           if (runAudioFromStart) setStartSheet('run');
         } else {
           setPage('main');
-          if (!todaysScheduledRun) setStartSheet('run');
+          if (!todaysPlannedRun) setStartSheet('run');
         }
       }}
     />
@@ -5046,8 +4938,6 @@ export function RunbackApp({
     />
   ) : page === 'all-functions' ? (
     renderFunctions()
-  ) : page === 'goals' ? (
-    renderGoals()
   ) : page === 'features' ||
     page === 'features-home' ||
     page === 'features-navigation' ||
@@ -5101,63 +4991,29 @@ export function RunbackApp({
     renderMuscleMap()
   ) : page === 'models' ? (
     renderModels()
-  ) : page === 'chat-settings' ? (
-    <>
-      <Title>{tr('Trainingschat', 'Training chat')}</Title>
-      <ProseSettings />
-    </>
+  ) : page === 'plan-settings' ? (
+    <PlanSettings
+      schedule={schedule}
+      templates={strength.templates}
+      showRunning={showRunning}
+      showStrength={showStrength}
+      disabled={busy}
+      onSaveSchedule={next =>
+        void saveSchedule(next).catch(e => setError(e.message))
+      }
+      onSaveTemplates={persistTemplates}
+      onOpenTemplates={
+        features.templates.enabled ? () => openPage('templates') : undefined
+      }
+    />
   ) : tab === 'today' ? (
     recording ? (
       renderRecording()
     ) : (
       renderHome()
     )
-  ) : tab === 'plan' ? (
-    <PlanningScreen
-      state={schedule}
-      onSave={saveSchedule}
-      templates={strength.templates}
-      runs={runs}
-      strengthSessions={
-        // The running session lives apart from the history; Plan shows it as started.
-        strength.active
-          ? [
-              strength.active,
-              ...strengthSessions.filter(
-                session => session.id !== strength.active!.id,
-              ),
-            ]
-          : strengthSessions
-      }
-      now={now}
-      onStartRun={startScheduled}
-      onStartStrength={startScheduled}
-      onDevelopment={() => openPage('development')}
-      onManageTemplates={
-        features.templates.enabled
-          ? () => {
-              openPage('templates');
-            }
-          : undefined
-      }
-      onOpenRoutePlanner={
-        onOpenRoutePlanner && features.recording.routes && showRunning
-          ? onOpenRoutePlanner
-          : undefined
-      }
-      onOpenActivity={(kind, id) => {
-        if (kind === 'run') openRun(id);
-        else if (id === strength.active?.id) {
-          setNow(Date.now());
-          setWorkoutOpen(true);
-        } else openSessionById(id);
-      }}
-      busy={busy}
-      showSuggest={features.planning.suggest}
-      showMonth={features.planning.month}
-      showStrength={showStrength}
-      showRunning={showRunning}
-    />
+  ) : tab === 'development' ? (
+    renderDevelopment()
   ) : tab === 'templates' ? (
     renderTemplates()
   ) : tab === 'soreness' ? (
@@ -5542,8 +5398,8 @@ export function RunbackApp({
         }}
       />
     );
-  // The chat needs the full height: history scrolls, the input stays at the bottom.
-  const isChat = !selected && page === 'chat';
+  // Plan fills the height: the calendar takes what is left below the header.
+  const isPlan = !selected && page === 'main' && tab === 'plan';
   return (
     <View key={language} style={[styles.app, { paddingTop: insets.top }]}>
       <View style={styles.header}>
@@ -5617,8 +5473,8 @@ export function RunbackApp({
             {tr('Einheiten werden geladen …', 'Loading workouts …')}
           </Copy>
         </View>
-      ) : isChat ? (
-        <TrainingChat onSettings={() => openPage('chat-settings')} />
+      ) : isPlan ? (
+        <View style={styles.fixedContent}>{renderPlan()}</View>
       ) : !selected && page === 'main' && tab === 'routes' ? (
         <RoutePlannerScreen embedded onClose={() => switchTab('today')} />
       ) : isUnits ? (
@@ -5873,6 +5729,12 @@ const styles = StyleSheet.create({
     paddingTop: space.xs,
     paddingBottom: space.xxl,
     gap: space.xs,
+  },
+  fixedContent: {
+    flex: 1,
+    paddingHorizontal: space.lg,
+    paddingTop: space.xs,
+    paddingBottom: space.sm,
   },
   listContent: {
     paddingHorizontal: space.lg,

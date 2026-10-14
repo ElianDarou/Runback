@@ -1,22 +1,21 @@
 import type { Run } from './trainingRecords';
 import type { StrengthSession } from './strength';
 import { localDateKey as scheduleLocalDateKey } from './schedule';
-import type { ScheduleState } from './schedule';
 import { isAccidentalRun, isRun } from './sport';
 import { tr } from './i18n';
 
 /**
  * Facts for the development view.
  *
- * The page deliberately keeps three things apart:
- * - `planPosition` comes only from an explicitly saved plan.
+ * The page deliberately keeps two things apart:
  * - `current` and `previous` are calculated only from completed sessions.
  * - `goalEvidence` describes observable values. It is not a forecast and
  *   produces no readiness or fitness value.
  */
 
 const FOUR_WEEKS = 28;
-export const DEVELOPMENT_VERSION = 'development-v2';
+// v3: without the plan position; the plan has no phases anymore.
+export const DEVELOPMENT_VERSION = 'development-v3';
 
 /**
  * The app deliberately loads bounded history pages for the overview screens.
@@ -26,15 +25,13 @@ export const DEVELOPMENT_VERSION = 'development-v2';
 export const DEVELOPMENT_RUN_LOAD_LIMIT = 1000;
 export const DEVELOPMENT_STRENGTH_LOAD_LIMIT = 500;
 
-export type { ScheduleState } from './schedule';
-
 export interface DevelopmentInput {
   runs: Run[];
   /** Full sessions, not just the shortened SessionSummary values. */
   sessions: StrengthSession[];
-  goal: string;
+  /** Running goal text, for the goal evidence. */
+  goal?: string;
   now: number;
-  schedule?: ScheduleState | null;
 }
 
 export interface DevelopmentPeriod {
@@ -69,17 +66,6 @@ export interface StrengthHistory {
   hasData: boolean;
 }
 
-export interface PlanPosition {
-  label: string;
-  phase?: string;
-  startDate: string;
-  targetDate?: string;
-  source: 'schedule';
-  timing: 'upcoming' | 'active' | 'ended';
-  week?: number;
-  totalWeeks?: number;
-}
-
 export type GoalEvidenceStatus = 'no_goal' | 'insufficient_data' | 'observed';
 
 export interface GoalEvidence {
@@ -102,7 +88,6 @@ export interface DevelopmentComparison {
 
 export interface DevelopmentFacts {
   version: typeof DEVELOPMENT_VERSION;
-  planPosition: PlanPosition | null;
   /** Aliases for callers that read the two windows as `periods`. */
   current: DevelopmentPeriod;
   previous: DevelopmentPeriod;
@@ -409,45 +394,6 @@ const goalEvidenceFor = (goal: string, runs: ActualRun[]): GoalEvidence => {
   };
 };
 
-const planPositionFor = (
-  schedule: ScheduleState | null | undefined,
-  now: number,
-): PlanPosition | null => {
-  const goal = schedule?.goal;
-  if (!goal) {
-    return null;
-  }
-  const today = scheduleLocalDateKey(now);
-  const ordinal = (date: string) => {
-    const [year, month, day] = date.split('-').map(Number);
-    return Date.UTC(year, month - 1, day) / 86400000;
-  };
-  const timing =
-    today < goal.startDate
-      ? 'upcoming'
-      : goal.targetDate && today > goal.targetDate
-      ? 'ended'
-      : 'active';
-  return {
-    label: goal.name,
-    phase: goal.phase,
-    startDate: goal.startDate,
-    targetDate: goal.targetDate,
-    source: 'schedule',
-    timing,
-    week:
-      timing === 'active'
-        ? Math.floor((ordinal(today) - ordinal(goal.startDate)) / 7) + 1
-        : undefined,
-    totalWeeks:
-      goal.targetDate && goal.targetDate >= goal.startDate
-        ? Math.ceil(
-            (ordinal(goal.targetDate) - ordinal(goal.startDate) + 1) / 7,
-          )
-        : undefined,
-  };
-};
-
 const comparePeriods = (
   current: DevelopmentPeriod,
   previous: DevelopmentPeriod,
@@ -526,17 +472,8 @@ export function buildDevelopmentFacts(
       ),
     );
   }
-  if (!input.schedule) {
-    limits.push(
-      tr(
-        'Kein ausdrücklich gespeicherter Planabschnitt vorhanden.',
-        'No explicitly saved plan section.',
-      ),
-    );
-  }
   return {
     version: DEVELOPMENT_VERSION,
-    planPosition: planPositionFor(input.schedule, now),
     current,
     previous,
     periods: { current, previous },

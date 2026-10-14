@@ -7,7 +7,7 @@ import {
   type DevelopmentInput,
 } from '../src/domain/development';
 import type { LoggedSet, StrengthSession } from '../src/domain/strength';
-import type { ScheduleState } from '../src/domain/schedule';
+import { predictRace } from '../src/domain/raceGoal';
 import { DevelopmentScreen } from '../src/ui/DevelopmentScreen';
 
 const localAt = (date: string, hour = 9, minute = 0): number => {
@@ -75,14 +75,6 @@ const strengthAt = (
     ...overrides,
   };
 };
-
-const emptySchedule = (goal?: ScheduleState['goal']): ScheduleState => ({
-  version: 1,
-  sessions: [],
-  availability: {},
-  routine: { days: [], minutes: 30 },
-  ...(goal ? { goal } : {}),
-});
 
 const input = (
   now: number,
@@ -216,32 +208,15 @@ describe('Entwicklungsfakten', () => {
     expect(facts.current.distanceMeters).toBe(5000);
   });
 
-  it('uses the explicit schedule goal as calendar context', () => {
+  it('describes the running goal by observed distance, without a forecast', () => {
     const now = localAt('2025-03-10', 12);
-    const goal = {
-      name: '10 km schaffen',
-      startDate: '2025-02-01',
-      targetDate: '2025-05-01',
-      phase: 'Grundlage',
-    };
     const facts = buildDevelopmentFacts(
       input(now, {
         goal: '10 km schaffen',
         runs: [runAt('long', '2025-02-20', 7500)],
-        schedule: emptySchedule(goal),
       }),
     );
-
-    expect(facts.planPosition).toEqual({
-      label: goal.name,
-      startDate: goal.startDate,
-      targetDate: goal.targetDate,
-      phase: goal.phase,
-      source: 'schedule',
-      timing: 'active',
-      week: 6,
-      totalWeeks: 13,
-    });
+    expect(facts).not.toHaveProperty('planPosition');
     expect(facts.goalEvidence).toMatchObject({
       status: 'observed',
       targetDistanceKm: 10,
@@ -249,26 +224,6 @@ describe('Entwicklungsfakten', () => {
     });
     expect(facts.goalEvidence).not.toHaveProperty('fitnessPercent');
     expect(facts.goalEvidence.message).toContain('keine Prognose');
-  });
-
-  it('keeps plan weeks stable across a daylight-saving boundary and does not claim completion', () => {
-    const schedule = emptySchedule({
-      name: 'Regelmäßig laufen',
-      startDate: '2025-03-24',
-      targetDate: '2025-04-06',
-    });
-    expect(
-      buildDevelopmentFacts(input(localAt('2025-03-31', 0), { schedule }))
-        .planPosition,
-    ).toMatchObject({ timing: 'active', week: 2, totalWeeks: 2 });
-    expect(
-      buildDevelopmentFacts(input(localAt('2025-03-23', 12), { schedule }))
-        .planPosition,
-    ).toMatchObject({ timing: 'upcoming', week: undefined });
-    expect(
-      buildDevelopmentFacts(input(localAt('2025-04-07', 12), { schedule }))
-        .planPosition,
-    ).toMatchObject({ timing: 'ended', week: undefined });
   });
 
   it('keeps free-text goals honest when a direct distance comparison is unavailable', () => {
@@ -302,17 +257,28 @@ function textContent(node: TestRenderer.ReactTestInstance): string {
     .join('');
 }
 
+const screenProps = (now: number) => ({
+  runs: [],
+  sessions: [],
+  now,
+  showRunning: true,
+  showStrength: true,
+  prediction: predictRace({ goal: '', runs: [], now }),
+  onEditGoal: jest.fn(),
+  onDistanceTimes: jest.fn(),
+  strengthGoal: '',
+  strengthGoalTargetDate: '',
+  onEditStrengthGoal: jest.fn(),
+});
+
 describe('DevelopmentScreen', () => {
   it('is content for the parent scroll container and discloses unavailable strength history', () => {
     let tree!: TestRenderer.ReactTestRenderer;
     TestRenderer.act(() => {
       tree = TestRenderer.create(
         <DevelopmentScreen
-          runs={[]}
-          sessions={[]}
-          goal=""
-          now={localAt('2025-03-10', 12)}
-          onEditGoal={jest.fn()}
+          {...screenProps(localAt('2025-03-10', 12))}
+          showRunning={false}
           strengthHistoryAvailable={false}
         />,
       );
@@ -321,12 +287,60 @@ describe('DevelopmentScreen', () => {
     const text = tree.root.findAllByType(Text).map(textContent).join(' ');
     expect(tree.root.findAllByType(ScrollView)).toHaveLength(0);
     expect(text).toContain('Kraft-Historie momentan nicht verfügbar.');
-    expect(text).toContain(
-      'Trainingstage und Vergleich berücksichtigen nur Läufe.',
-    );
+    expect(text).toContain('Krafttraining ist momentan nicht geladen.');
     expect(text).not.toContain(
       'Keine abgeschlossenen Krafttrainings mit bestätigten Werten.',
     );
+    TestRenderer.act(() => tree.unmount());
+  });
+
+  it('keeps running and strength apart and measures the strength goal', () => {
+    const now = localAt('2025-03-10', 12);
+    const sessions = [
+      strengthAt('legs', '2025-03-05', {
+        exercises: [
+          {
+            exerciseId: 'squat',
+            name: 'Kniebeuge',
+            sets: [
+              {
+                ...loggedSet('heavy', localAt('2025-03-05', 8, 30)),
+                actualReps: 5,
+                actualWeightKg: 80,
+              },
+            ],
+          },
+        ],
+      }),
+    ];
+    let tree!: TestRenderer.ReactTestRenderer;
+    TestRenderer.act(() => {
+      tree = TestRenderer.create(
+        <DevelopmentScreen
+          {...screenProps(now)}
+          sessions={sessions}
+          strengthTarget={{
+            exerciseId: 'squat',
+            name: 'Kniebeuge',
+            kg: 100,
+            reps: 5,
+          }}
+        />,
+      );
+    });
+    const text = () => tree.root.findAllByType(Text).map(textContent).join(' ');
+    expect(text()).toContain('Zielzeiten');
+    expect(text()).not.toContain('Kniebeuge');
+    const strength = tree.root.find(
+      node =>
+        node.props.accessibilityRole === 'radio' &&
+        node.props.accessibilityLabel === 'Krafttraining' &&
+        typeof node.props.onPress === 'function',
+    );
+    TestRenderer.act(() => strength.props.onPress());
+    expect(text()).not.toContain('Zielzeiten');
+    expect(text()).toContain('Kniebeuge · 100 kg × 5');
+    expect(text()).toContain('Bestes in 12 Wochen: 80 kg × 5');
     TestRenderer.act(() => tree.unmount());
   });
 
@@ -346,11 +360,9 @@ describe('DevelopmentScreen', () => {
     TestRenderer.act(() => {
       tree = TestRenderer.create(
         <DevelopmentScreen
-          runs={[]}
+          {...screenProps(localAt('2025-03-10', 12))}
           sessions={sessions}
-          goal=""
-          now={localAt('2025-03-10', 12)}
-          onEditGoal={jest.fn()}
+          showRunning={false}
         />,
       );
     });

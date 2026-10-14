@@ -18,15 +18,33 @@ const template = (): WorkoutTemplate => ({
       exerciseId: 'barbell_back_squat',
       name: 'Kniebeuge (Langhantel)',
       sets: [
-        { kind: 'normal', loadKind: 'kg', reps: 5, weightKg: 100, restSeconds: 180 },
-        { kind: 'normal', loadKind: 'kg', reps: 5, weightKg: 100, restSeconds: 180 },
+        {
+          kind: 'normal',
+          loadKind: 'kg',
+          reps: 5,
+          weightKg: 100,
+          restSeconds: 180,
+        },
+        {
+          kind: 'normal',
+          loadKind: 'kg',
+          reps: 5,
+          weightKg: 100,
+          restSeconds: 180,
+        },
       ],
     },
     {
       exerciseId: 'lying_leg_curl',
       name: 'Beinbeuger liegend',
       sets: [
-        { kind: 'normal', loadKind: 'kg', reps: 10, weightKg: 40, restSeconds: 90 },
+        {
+          kind: 'normal',
+          loadKind: 'kg',
+          reps: 10,
+          weightKg: 40,
+          restSeconds: 90,
+        },
       ],
     },
   ],
@@ -135,7 +153,9 @@ describe('Plan editor', () => {
     expect(shown).toContain('Kniebeuge (Langhantel)');
     expect(shown).toContain('Beinbeuger liegend');
     expect(shown).toContain('Mo');
-    expect(inputByLabel(tree, 'Name des Plans').props.value).toBe('Unterkörper');
+    expect(inputByLabel(tree, 'Name des Plans').props.value).toBe(
+      'Unterkörper',
+    );
   });
 
   it('takes over a new name', () => {
@@ -171,8 +191,16 @@ describe('Plan editor', () => {
     const handlers = editorHandlers();
     const tree = renderEditor(template(), handlers);
     type(tree, 'Wiederholungen für Satz 1 von Kniebeuge (Langhantel)', '3');
-    type(tree, 'Gewicht für Satz 1 von Kniebeuge (Langhantel) in Kilogramm', '107,5');
-    type(tree, 'Pause nach Satz 1 von Kniebeuge (Langhantel) in Sekunden', '240');
+    type(
+      tree,
+      'Gewicht für Satz 1 von Kniebeuge (Langhantel) in Kilogramm',
+      '107,5',
+    );
+    type(
+      tree,
+      'Pause nach Satz 1 von Kniebeuge (Langhantel) in Sekunden',
+      '240',
+    );
     press(tree, 'Plan speichern');
     expect(handlers.onSave.mock.calls[0][0].exercises[0].sets[0]).toEqual({
       kind: 'normal',
@@ -186,7 +214,11 @@ describe('Plan editor', () => {
   it('treats a cleared input as not set', () => {
     const handlers = editorHandlers();
     const tree = renderEditor(template(), handlers);
-    type(tree, 'Gewicht für Satz 1 von Kniebeuge (Langhantel) in Kilogramm', '');
+    type(
+      tree,
+      'Gewicht für Satz 1 von Kniebeuge (Langhantel) in Kilogramm',
+      '',
+    );
     press(tree, 'Plan speichern');
     expect(
       handlers.onSave.mock.calls[0][0].exercises[0].sets[0].weightKg,
@@ -256,7 +288,8 @@ describe('Plan editor', () => {
     press(tree, 'Übung zum Plan hinzufügen');
     const picker = tree.root.find(
       node =>
-        typeof node.type !== 'string' && typeof node.props.onSelect === 'function',
+        typeof node.type !== 'string' &&
+        typeof node.props.onSelect === 'function',
     );
     ReactTestRenderer.act(() => {
       picker.props.onSelect(catalogExercise('pull_up') as Exercise);
@@ -305,7 +338,8 @@ describe('Plan editor', () => {
     for (const pressable of pressables) {
       expect(typeof pressable.props.accessibilityLabel).toBe('string');
       expect(pressable.props.accessibilityLabel.length).toBeGreaterThan(0);
-      expect(pressable.props.accessibilityRole).toBe('button');
+      // The symbol picker is a group of radio buttons.
+      expect(['button', 'radio']).toContain(pressable.props.accessibilityRole);
     }
   });
 });
@@ -338,7 +372,9 @@ describe('Plan overview', () => {
     const shown = texts(tree);
     expect(shown).toContain('Unterkörper');
     expect(
-      shown.some(entry => entry.includes('Mo, Do') && entry.includes('2 Übungen')),
+      shown.some(
+        entry => entry.includes('Mo, Do') && entry.includes('2 Übungen'),
+      ),
     ).toBe(true);
   });
 

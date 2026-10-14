@@ -29,7 +29,8 @@ import {
   type SetKind,
   type WorkoutTemplate,
 } from '../domain/strength';
-import { color, Copy } from './components';
+import { color, Copy, IconPicker } from './components';
+import { templateIcon } from '../domain/trainingIcons';
 import { ExercisePicker } from './ExercisePicker';
 import { getLanguage, tr } from '../domain/i18n';
 import { exerciseDisplayName } from '../domain/catalog';
@@ -331,11 +332,21 @@ export function PlanEditor({
         </View>
 
         <View style={styles.card}>
+          <Text style={styles.label}>
+            {tr('Symbol im Plan', 'Symbol in Plan')}
+          </Text>
+          <IconPicker
+            value={templateIcon(draft)}
+            onChange={icon => change(current => ({ ...current, icon }))}
+          />
+        </View>
+
+        <View style={styles.card}>
           <Text style={styles.label}>{tr('Wochentage', 'Weekdays')}</Text>
           <Copy muted style={styles.hint}>
             {tr(
-              'Ohne festen Tag ist der Plan jederzeit startbar. Ein Tag ist ein Vorschlag, keine Verpflichtung.',
-              'Without a fixed day, the plan can be started at any time. A day is a suggestion, not a commitment.',
+              'Diese Tage stehen jede Woche im Plan. Ohne festen Tag ist die Vorlage jederzeit startbar.',
+              'These days show in Plan every week. Without a fixed day, the template can be started any time.',
             )}
           </Copy>
           <View style={styles.days}>
@@ -393,8 +404,14 @@ export function PlanEditor({
               </Text>
               <Pressable
                 accessibilityLabel={tr(
-                  `${exerciseDisplayName(exercise.exerciseId, exercise.name)} nach oben schieben`,
-                  `Move ${exerciseDisplayName(exercise.exerciseId, exercise.name)} up`,
+                  `${exerciseDisplayName(
+                    exercise.exerciseId,
+                    exercise.name,
+                  )} nach oben schieben`,
+                  `Move ${exerciseDisplayName(
+                    exercise.exerciseId,
+                    exercise.name,
+                  )} up`,
                 )}
                 accessibilityRole="button"
                 accessibilityState={{ disabled: exerciseIndex === 0 }}
@@ -418,8 +435,14 @@ export function PlanEditor({
               </Pressable>
               <Pressable
                 accessibilityLabel={tr(
-                  `${exerciseDisplayName(exercise.exerciseId, exercise.name)} nach unten schieben`,
-                  `Move ${exerciseDisplayName(exercise.exerciseId, exercise.name)} down`,
+                  `${exerciseDisplayName(
+                    exercise.exerciseId,
+                    exercise.name,
+                  )} nach unten schieben`,
+                  `Move ${exerciseDisplayName(
+                    exercise.exerciseId,
+                    exercise.name,
+                  )} down`,
                 )}
                 accessibilityRole="button"
                 accessibilityState={{
@@ -446,8 +469,14 @@ export function PlanEditor({
               </Pressable>
               <Pressable
                 accessibilityLabel={tr(
-                  `${exerciseDisplayName(exercise.exerciseId, exercise.name)} aus dem Plan nehmen`,
-                  `Remove ${exerciseDisplayName(exercise.exerciseId, exercise.name)} from the plan`,
+                  `${exerciseDisplayName(
+                    exercise.exerciseId,
+                    exercise.name,
+                  )} aus dem Plan nehmen`,
+                  `Remove ${exerciseDisplayName(
+                    exercise.exerciseId,
+                    exercise.name,
+                  )} from the plan`,
                 )}
                 accessibilityRole="button"
                 onPress={() =>
@@ -466,10 +495,16 @@ export function PlanEditor({
 
             <Pressable
               accessibilityLabel={tr(
-                `Lastart für ${exerciseDisplayName(exercise.exerciseId, exercise.name)}, jetzt ${loadKindLabel(
+                `Lastart für ${exerciseDisplayName(
+                  exercise.exerciseId,
+                  exercise.name,
+                )}, jetzt ${loadKindLabel(
                   exercise.sets[0]?.loadKind || 'kg',
                 )}, weiterschalten`,
-                `Load type for ${exerciseDisplayName(exercise.exerciseId, exercise.name)}, now ${loadKindLabel(
+                `Load type for ${exerciseDisplayName(
+                  exercise.exerciseId,
+                  exercise.name,
+                )}, now ${loadKindLabel(
                   exercise.sets[0]?.loadKind || 'kg',
                 )}, switch to next`,
               )}
@@ -513,7 +548,10 @@ export function PlanEditor({
 
             {exercise.sets.map((set, setIndex) => (
               <SetRow
-                exerciseName={exerciseDisplayName(exercise.exerciseId, exercise.name)}
+                exerciseName={exerciseDisplayName(
+                  exercise.exerciseId,
+                  exercise.name,
+                )}
                 key={`${exercise.exerciseId}-${exerciseIndex}-${setIndex}-${set.kind}-${set.loadKind}`}
                 onChange={values => setValues(exerciseIndex, setIndex, values)}
                 onCycleKind={() =>

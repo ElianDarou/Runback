@@ -1,22 +1,43 @@
-import type { ScheduledSession } from './schedule';
 import type { Sport } from './types';
-import { localDateKey } from './schedule';
+import type { Run } from './trainingRecords';
+import {
+  displaySessionName,
+  summarize,
+  type StrengthSession,
+} from './strength';
+import { isAccidentalRun, isRun } from './sport';
+import { runTitle } from './runTitle';
+import { tr } from './i18n';
+import {
+  addCalendarDays,
+  localDateKey,
+  startOfWeek,
+  type PlannedItem,
+  type ScheduleDate,
+} from './schedule';
 
 /**
- * What Plan shows per day: planned sessions next to what was actually
- * recorded. Pure view data — nothing here judges a day or infers completion
- * from a date. A planned session counts as done only through its linked
- * activity.
+ * What Plan shows per day: planned workouts next to what was recorded.
+ *
+ * A planned workout counts as done only through a recording of the same kind
+ * on the same day, never from the date alone: a run by a run (not a ride), a
+ * strength template first by a session of that template, then by any other
+ * strength session of the day. Whatever is left was trained without a plan.
+ * False starts are no training and do not appear.
+ *
+ * v2: matched by day instead of a stored link; totals compare with the usual
+ * amount of earlier periods.
  */
+export const PLAN_VIEW_VERSION = 'plan-view-v2';
 
 /** A recorded workout, reduced to what the calendar shows. */
 export interface PlanActivity {
   id: string;
-  /** Older imports link through a canonical ID. */
-  canonicalId?: string;
   kind: 'run' | 'strength';
   /** Runs only: running or cycling. */
   sport?: Sport;
+  /** Strength only: the template it was started from. */
+  templateId?: string;
   startTime: number;
   title: string;
   finished: boolean;
@@ -28,177 +49,310 @@ export interface PlanActivity {
   runningMeters?: number;
   /** Strength only: confirmed sets. */
   sets?: number;
-  /** A false start: stays visible but does not count as training. */
+  /** Under 60 s and 100 m: stays stored but is no training. */
   falseStart?: boolean;
 }
 
-export type PlanStatus = 'planned' | 'skipped' | 'started' | 'done';
+/** A run or ride as the calendar sees it. */
+export function runActivity(run: Run): PlanActivity {
+  const status = String(run.status || '').toLowerCase();
+  return {
+    id: run.id,
+    kind: 'run',
+    sport: run.sport,
+    startTime: run.startTime,
+    title: runTitle(run),
+    finished:
+      run.endTime > run.startTime &&
+      ['completed', 'finished', 'complete', 'done', 'imported'].includes(
+        status,
+      ),
+    durationSeconds: run.durationSeconds > 0 ? run.durationSeconds : undefined,
+    distanceMeters: run.distanceMeters > 0 ? run.distanceMeters : undefined,
+    runningMeters:
+      isRun(run) && run.distanceMeters > 0 ? run.distanceMeters : undefined,
+    falseStart: isAccidentalRun(run),
+  };
+}
 
-export type PlanEntry =
+/** A strength session as the calendar sees it. */
+export function strengthActivity(session: StrengthSession): PlanActivity {
+  const ended = (session.endTime ?? 0) > session.startTime;
+  return {
+    id: session.id,
+    kind: 'strength',
+    templateId: session.templateId,
+    startTime: session.startTime,
+    title:
+      displaySessionName(session.name) ||
+      tr('Krafttraining', 'Strength training'),
+    // Imports may lack an end time: finished stays finished, only the
+    // duration is unknown.
+    finished: session.status === 'finished',
+    durationSeconds: ended
+      ? Math.round((session.endTime! - session.startTime) / 1000)
+      : undefined,
+    sets: summarize(session).completedSets,
+  };
+}
+
+/** Planned and not (yet) done · running right now · done. */
+export type MarkState = 'planned' | 'started' | 'done';
+
+export type DayEntry =
   | {
       type: 'planned';
-      session: ScheduledSession;
-      status: PlanStatus;
+      item: PlannedItem;
+      state: MarkState;
       activity?: PlanActivity;
     }
-  | {
-      /**
-       * A recording on the day it started. `plannedFor` names the planned
-       * date when it belongs to a plan of another day; without it, it was
-       * trained without a plan.
-       */
-      type: 'recorded';
-      activity: PlanActivity;
-      plannedFor?: string;
-    };
+  | { type: 'unplanned'; activity: PlanActivity; state: 'started' | 'done' };
 
-const matches = (activity: PlanActivity, id: string | undefined): boolean =>
-  Boolean(id && (activity.id === id || activity.canonicalId === id));
+const isRunning = (activity: PlanActivity) =>
+  activity.kind === 'run' && activity.sport !== 'cycling';
 
-export function linkedActivity(
-  session: ScheduledSession,
+/** Training activities per local start date, oldest first. */
+export function activitiesByDate(
   activities: PlanActivity[],
-): PlanActivity | undefined {
-  if (!session.activityId) return undefined;
-  // A false start does not carry out a plan; it shows on its own day.
-  return activities.find(
-    activity =>
-      activity.kind === session.kind &&
-      !activity.falseStart &&
-      matches(activity, session.activityId),
-  );
-}
-
-export function planStatus(
-  session: ScheduledSession,
-  activities: PlanActivity[],
-): PlanStatus {
-  if (session.status === 'skipped') return 'skipped';
-  const activity = linkedActivity(session, activities);
-  if (!activity) return 'planned';
-  return activity.finished ? 'done' : 'started';
-}
-
-/**
- * Entries per date key. A linked activity appears with its planned session on
- * the planned date. If it started on another day, it also shows there, so
- * every day lists what was trained on it. Unlinked activities show on the day
- * they started. Within a day: by start time, planned-only sessions last.
- */
-export function planEntriesByDate(
-  sessions: ScheduledSession[],
-  activities: PlanActivity[],
-): Record<string, PlanEntry[]> {
-  const byDate: Record<string, PlanEntry[]> = {};
-  const push = (date: string, entry: PlanEntry) => {
-    (byDate[date] = byDate[date] ?? []).push(entry);
-  };
-  const linkedIds = new Set<string>();
-  sessions.forEach(session => {
-    const activity = linkedActivity(session, activities);
-    if (activity) {
-      linkedIds.add(activity.id);
-      const started = localDateKey(new Date(activity.startTime));
-      if (started !== session.date)
-        push(started, {
-          type: 'recorded',
-          activity,
-          plannedFor: session.date,
-        });
-    }
-    push(session.date, {
-      type: 'planned',
-      session,
-      status: planStatus(session, activities),
-      activity,
+): Record<ScheduleDate, PlanActivity[]> {
+  const byDate: Record<ScheduleDate, PlanActivity[]> = {};
+  [...activities]
+    .filter(activity => !activity.falseStart)
+    .sort((a, b) => a.startTime - b.startTime)
+    .forEach(activity => {
+      const date = localDateKey(new Date(activity.startTime));
+      (byDate[date] = byDate[date] ?? []).push(activity);
     });
-  });
-  activities.forEach(activity => {
-    if (linkedIds.has(activity.id)) return;
-    push(localDateKey(new Date(activity.startTime)), {
-      type: 'recorded',
-      activity,
-    });
-  });
-  const order = (entry: PlanEntry) =>
-    entry.type === 'recorded'
-      ? entry.activity.startTime
-      : entry.activity?.startTime ?? Number.MAX_SAFE_INTEGER;
-  Object.values(byDate).forEach(entries =>
-    entries.sort((a, b) => order(a) - order(b)),
-  );
   return byDate;
 }
 
-export interface PlanSummary {
-  /** Finished recorded workouts that started in the period, planned or not. */
-  done: number;
-  /** Planned sessions dated in the period that were not skipped. */
-  planned: number;
-  /** Of those, done through a linked finished activity. */
-  plannedDone: number;
-  /** Measured durations of finished workouts; undefined if none is known. */
+/**
+ * Pairs the planned workouts of one day with that day's recordings. Planned
+ * entries keep their order; unplanned recordings follow by start time.
+ */
+export function dayEntries(
+  planned: PlannedItem[],
+  activities: PlanActivity[],
+): DayEntry[] {
+  const open = activities.filter(activity => !activity.falseStart);
+  const matched = new Map<number, PlanActivity>();
+  const take = (index: number, test: (activity: PlanActivity) => boolean) => {
+    const found = open.find(test);
+    if (!found) return;
+    open.splice(open.indexOf(found), 1);
+    matched.set(index, found);
+  };
+  // The same template first, so "Pull" is not taken by the "Push" session.
+  planned.forEach((item, index) => {
+    if (item.kind === 'strength' && item.templateId)
+      take(
+        index,
+        activity =>
+          activity.kind === 'strength' &&
+          activity.templateId === item.templateId,
+      );
+  });
+  planned.forEach((item, index) => {
+    if (matched.has(index)) return;
+    take(index, item.kind === 'run' ? isRunning : a => a.kind === 'strength');
+  });
+  const state = (activity: PlanActivity) =>
+    activity.finished ? ('done' as const) : ('started' as const);
+  return [
+    ...planned.map((item, index): DayEntry => {
+      const activity = matched.get(index);
+      return activity
+        ? { type: 'planned', item, state: state(activity), activity }
+        : { type: 'planned', item, state: 'planned' };
+    }),
+    ...open.map(
+      (activity): DayEntry => ({
+        type: 'unplanned',
+        activity,
+        state: state(activity),
+      }),
+    ),
+  ];
+}
+
+export interface PeriodTotals {
+  /** Finished workouts that started in the period. */
+  workouts: number;
+  /** Sum of measured durations; undefined if none is known. */
   seconds?: number;
-  /** How many of the `done` workouts have a measured duration. */
+  /** How many of the workouts have a measured duration. */
   timed: number;
-  /** Running distance of finished runs; undefined if none is known. */
+  /** Running distance (not cycling); undefined if none is known. */
   runningMeters?: number;
-  /** Finished runs (running only), and how many of them have a distance. */
   runs: number;
   measuredRuns: number;
 }
 
-/**
- * Actual training counts by the day it started; plan progress by the planned
- * date. A run on March 31 linked to a plan for April 1 is March training and
- * done April plan. Totals that miss a measurement say so via `timed` and
- * `measuredRuns` instead of passing as complete.
- */
-export function planSummary(
-  dates: string[],
-  byDate: Record<string, PlanEntry[]>,
+/** Totals of finished training that started from `from` to `to`, inclusive. */
+export function periodTotals(
   activities: PlanActivity[],
-): PlanSummary {
-  const inPeriod = new Set(dates);
-  let planned = 0;
-  let plannedDone = 0;
-  dates.forEach(date => {
-    (byDate[date] ?? []).forEach(entry => {
-      if (entry.type !== 'planned' || entry.status === 'skipped') return;
-      planned += 1;
-      if (entry.status === 'done') plannedDone += 1;
-    });
-  });
-  let done = 0;
-  let timed = 0;
-  let runs = 0;
-  let measuredRuns = 0;
-  let seconds: number | undefined;
-  let runningMeters: number | undefined;
+  from: ScheduleDate,
+  to: ScheduleDate,
+): PeriodTotals {
+  const totals: PeriodTotals = {
+    workouts: 0,
+    timed: 0,
+    runs: 0,
+    measuredRuns: 0,
+  };
   activities.forEach(activity => {
     if (!activity.finished || activity.falseStart) return;
-    if (!inPeriod.has(localDateKey(new Date(activity.startTime)))) return;
-    done += 1;
+    const date = localDateKey(new Date(activity.startTime));
+    if (date < from || date > to) return;
+    totals.workouts += 1;
     if (activity.durationSeconds !== undefined) {
-      timed += 1;
-      seconds = (seconds ?? 0) + activity.durationSeconds;
+      totals.timed += 1;
+      totals.seconds = (totals.seconds ?? 0) + activity.durationSeconds;
     }
-    if (activity.kind === 'run' && activity.sport !== 'cycling') {
-      runs += 1;
+    if (isRunning(activity)) {
+      totals.runs += 1;
       if (activity.runningMeters !== undefined) {
-        measuredRuns += 1;
-        runningMeters = (runningMeters ?? 0) + activity.runningMeters;
+        totals.measuredRuns += 1;
+        totals.runningMeters =
+          (totals.runningMeters ?? 0) + activity.runningMeters;
       }
     }
   });
-  return {
-    done,
-    planned,
-    plannedDone,
-    seconds,
-    timed,
-    runningMeters,
-    runs,
-    measuredRuns,
+  return totals;
+}
+
+/** Earlier periods that make up "usual", and how many are needed at least. */
+export const USUAL_PERIODS = 6;
+export const USUAL_MIN_PERIODS = 3;
+/** Within ±10 % of the usual amount counts as usual. */
+export const USUAL_MARGIN = 0.1;
+
+export type UsualTone = 'more' | 'usual' | 'less';
+export type PeriodKind = 'week' | 'month';
+
+export interface UsualComparison {
+  /** Tones per value; missing where the basis is too thin or incomplete. */
+  workouts?: UsualTone;
+  seconds?: UsualTone;
+  runningMeters?: UsualTone;
+  /** Earlier periods the workouts are compared with. */
+  periods: number;
+  /** Days of each period compared: all of them, or the days so far. */
+  days: number;
+  partial: boolean;
+}
+
+const periodStart = (kind: PeriodKind, date: ScheduleDate): ScheduleDate =>
+  kind === 'week' ? startOfWeek(date) : `${date.slice(0, 7)}-01`;
+
+const monthsBack = (first: ScheduleDate, months: number): ScheduleDate => {
+  const [year, month] = first.split('-').map(Number);
+  const index = year * 12 + (month - 1) - months;
+  return `${String(Math.floor(index / 12)).padStart(4, '0')}-${String(
+    (index % 12) + 1,
+  ).padStart(2, '0')}-01`;
+};
+
+const periodEnd = (kind: PeriodKind, start: ScheduleDate): ScheduleDate =>
+  kind === 'week'
+    ? addCalendarDays(start, 6)
+    : addCalendarDays(monthsBack(start, -1), -1);
+
+const daysBetween = (from: ScheduleDate, to: ScheduleDate): number =>
+  Math.round(
+    (new Date(`${to}T12:00:00`).getTime() -
+      new Date(`${from}T12:00:00`).getTime()) /
+      86400000,
+  );
+
+const median = (values: number[]): number => {
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2
+    ? sorted[middle]
+    : (sorted[middle - 1] + sorted[middle]) / 2;
+};
+
+const tone = (value: number, usual: number): UsualTone => {
+  if (usual === 0) return value > 0 ? 'more' : 'usual';
+  const ratio = value / usual;
+  return ratio >= 1 + USUAL_MARGIN
+    ? 'more'
+    : ratio <= 1 - USUAL_MARGIN
+    ? 'less'
+    : 'usual';
+};
+
+/**
+ * Compares a week or month with the median of the up to six periods before
+ * it. A running period is compared day for day with the same first days of
+ * the earlier ones. Periods before the first recording are not "nothing
+ * trained" but unknown and stay out. A total with an unmeasured workout is
+ * not compared, and neither are earlier periods with one.
+ */
+export function compareWithUsual({
+  activities,
+  kind,
+  start,
+  today,
+}: {
+  activities: PlanActivity[];
+  kind: PeriodKind;
+  /** First day of the shown period. */
+  start: ScheduleDate;
+  today: ScheduleDate;
+}): UsualComparison | undefined {
+  if (start > today) return undefined;
+  const training = activities.filter(
+    activity => activity.finished && !activity.falseStart,
+  );
+  if (!training.length) return undefined;
+  const first = training
+    .map(activity => localDateKey(new Date(activity.startTime)))
+    .sort()[0];
+  const firstPeriod = periodStart(kind, first);
+  const end = periodEnd(kind, start);
+  const partial = end > today;
+  const days = daysBetween(start, partial ? today : end) + 1;
+  const window = (from: ScheduleDate) => {
+    const last = periodEnd(kind, from);
+    const cut = addCalendarDays(from, days - 1);
+    return periodTotals(training, from, cut < last ? cut : last);
   };
+  const earlier: PeriodTotals[] = [];
+  for (let back = 1; back <= USUAL_PERIODS; back += 1) {
+    const from =
+      kind === 'week'
+        ? addCalendarDays(start, -7 * back)
+        : monthsBack(start, back);
+    if (from < firstPeriod) break;
+    earlier.push(window(from));
+  }
+  if (earlier.length < USUAL_MIN_PERIODS) return undefined;
+  const current = window(start);
+  const comparison: UsualComparison = {
+    workouts: tone(current.workouts, median(earlier.map(p => p.workouts))),
+    periods: earlier.length,
+    days,
+    partial,
+  };
+  const timed = earlier.filter(period => period.timed === period.workouts);
+  if (current.timed === current.workouts && timed.length >= USUAL_MIN_PERIODS)
+    comparison.seconds = tone(
+      current.seconds ?? 0,
+      median(timed.map(period => period.seconds ?? 0)),
+    );
+  const measured = earlier.filter(
+    period => period.measuredRuns === period.runs,
+  );
+  if (
+    current.measuredRuns === current.runs &&
+    measured.length >= USUAL_MIN_PERIODS &&
+    (current.runs > 0 || measured.some(period => period.runs > 0))
+  )
+    comparison.runningMeters = tone(
+      current.runningMeters ?? 0,
+      median(measured.map(period => period.runningMeters ?? 0)),
+    );
+  return comparison;
 }

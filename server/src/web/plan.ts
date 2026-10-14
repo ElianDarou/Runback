@@ -57,6 +57,11 @@ export function planPage(ctx: PageContext) {
         )
       : null;
   const sessions = settings?.schedule?.sessions ?? [];
+  // Plans before app schedule v2 carried a duration.
+  const legacyMinutes = (entry: object): number | undefined => {
+    const minutes = (entry as { minutes?: unknown }).minutes;
+    return typeof minutes === 'number' ? minutes : undefined;
+  };
   const templates = loadObject(ctx.store, 'templates')?.templates;
   const appointments = !settings
     ? emptyState(
@@ -81,22 +86,23 @@ export function planPage(ctx: PageContext) {
           .map(entry =>
             row({
               title: entry.title,
-              subtitle: `${date(
-                tx,
-                new Date(`${entry.date}T12:00:00`).getTime(),
-              )} · ${
+              subtitle: [
+                date(tx, new Date(`${entry.date}T12:00:00`).getTime()),
                 entry.kind === 'strength'
                   ? tx.t('Krafttraining', 'Strength training')
-                  : tx.t('Laufen', 'Running')
-              } · ${numberFormat(tx).format(entry.minutes)} ${tx.t(
-                'Minuten',
-                'minutes',
-              )}`,
+                  : tx.t('Laufen', 'Running'),
+                legacyMinutes(entry) !== undefined
+                  ? `${numberFormat(tx).format(legacyMinutes(entry)!)} ${tx.t(
+                      'Minuten',
+                      'minutes',
+                    )}`
+                  : '',
+              ]
+                .filter(Boolean)
+                .join(' · '),
               value: badge(
                 entry.status === 'skipped'
                   ? tx.t('Übersprungen', 'Skipped')
-                  : entry.activityId
-                  ? tx.t('Verknüpft', 'Linked')
                   : tx.t('Geplant', 'Planned'),
                 'muted',
               ),

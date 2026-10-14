@@ -1,34 +1,22 @@
 import {
-  planEntriesByDate,
-  planStatus,
-  planSummary,
+  activitiesByDate,
+  compareWithUsual,
+  dayEntries,
+  periodTotals,
   type PlanActivity,
 } from '../src/domain/planView';
-import type { ScheduledSession } from '../src/domain/schedule';
+import type { PlannedItem } from '../src/domain/schedule';
 
 const at = (date: string, hour = 8): number => {
   const [year, month, day] = date.split('-').map(Number);
   return new Date(year, month - 1, day, hour).getTime();
 };
 
-const session = (
-  overrides: Partial<ScheduledSession> = {},
-): ScheduledSession => ({
-  id: 's1',
-  date: '2025-03-10',
-  title: 'Lauf',
-  kind: 'run',
-  minutes: 30,
-  locked: false,
-  status: 'planned',
-  effort: 'easy',
-  ...overrides,
-});
-
 const run = (overrides: Partial<PlanActivity> = {}): PlanActivity => ({
   id: 'r1',
   kind: 'run',
-  startTime: at('2025-03-10'),
+  sport: 'running',
+  startTime: at('2026-10-12'),
   title: 'Morgenlauf',
   finished: true,
   durationSeconds: 1800,
@@ -37,162 +25,242 @@ const run = (overrides: Partial<PlanActivity> = {}): PlanActivity => ({
   ...overrides,
 });
 
-describe('planView', () => {
-  it('counts a session as done only through a finished linked activity', () => {
-    expect(planStatus(session(), [run()])).toBe('planned');
-    expect(planStatus(session({ activityId: 'r1' }), [run()])).toBe('done');
-    expect(
-      planStatus(session({ activityId: 'r1' }), [run({ finished: false })]),
-    ).toBe('started');
-    expect(planStatus(session({ status: 'skipped' }), [run()])).toBe(
-      'skipped',
-    );
-    // A strength session never links to a run with the same ID.
-    expect(
-      planStatus(session({ kind: 'strength', activityId: 'r1' }), [run()]),
-    ).toBe('planned');
-  });
+const lift = (overrides: Partial<PlanActivity> = {}): PlanActivity => ({
+  id: 's1',
+  kind: 'strength',
+  startTime: at('2026-10-12', 18),
+  title: 'Pull',
+  finished: true,
+  durationSeconds: 3600,
+  sets: 12,
+  ...overrides,
+});
 
-  it('links through the canonical ID of older imports', () => {
-    expect(
-      planStatus(session({ activityId: 'canon' }), [
-        run({ canonicalId: 'canon' }),
-      ]),
-    ).toBe('done');
-  });
+const planned = (
+  kind: PlannedItem['kind'],
+  templateId?: string,
+): PlannedItem => ({
+  key: `${kind}-${templateId ?? ''}`,
+  kind,
+  templateId,
+  fromWeekly: true,
+});
 
-  it('shows a linked activity on its planned day and the day it started', () => {
-    const byDate = planEntriesByDate(
-      [session({ date: '2025-03-11', activityId: 'r1' })],
-      [run(), run({ id: 'r2', startTime: at('2025-03-12', 18) })],
-    );
-    // Trained on the 10th for the plan of the 11th: both days say so.
-    expect(byDate['2025-03-10']).toEqual([
-      expect.objectContaining({ type: 'recorded', plannedFor: '2025-03-11' }),
+describe('dayEntries', () => {
+  it('turns a planned workout done through a recording of the same day', () => {
+    const entries = dayEntries([planned('run')], [run()]);
+    expect(entries).toEqual([
+      expect.objectContaining({ type: 'planned', state: 'done' }),
     ]);
-    expect(byDate['2025-03-11']).toEqual([
-      expect.objectContaining({ type: 'planned', status: 'done' }),
+    expect(dayEntries([planned('run')], [])).toEqual([
+      expect.objectContaining({ type: 'planned', state: 'planned' }),
     ]);
-    expect(byDate['2025-03-12']).toHaveLength(1);
-    expect(byDate['2025-03-12'][0]).toMatchObject({ type: 'recorded' });
-    expect(byDate['2025-03-12'][0]).not.toHaveProperty('plannedFor');
   });
 
-  it('orders a day by time and puts open plans last', () => {
-    const byDate = planEntriesByDate(
-      [session({ id: 'open' })],
+  it('matches the same template first, then any strength session', () => {
+    const entries = dayEntries(
+      [planned('strength', 'push'), planned('strength', 'pull')],
+      [lift({ id: 'a', templateId: 'pull' }), lift({ id: 'b' })],
+    );
+    expect(
+      entries.map(entry => [entry.type, entry.state, entry.activity?.id]),
+    ).toEqual([
+      ['planned', 'done', 'b'],
+      ['planned', 'done', 'a'],
+    ]);
+  });
+
+  it('does not let a ride carry out a planned run', () => {
+    const ride = run({ sport: 'cycling', runningMeters: undefined });
+    expect(dayEntries([planned('run')], [ride])).toEqual([
+      expect.objectContaining({ type: 'planned', state: 'planned' }),
+      expect.objectContaining({ type: 'unplanned', state: 'done' }),
+    ]);
+  });
+
+  it('shows a running session as started and leaves false starts out', () => {
+    const entries = dayEntries(
+      [planned('strength')],
       [
-        run({ id: 'late', startTime: at('2025-03-10', 19) }),
-        run({ id: 'early', startTime: at('2025-03-10', 6) }),
+        lift({ finished: false }),
+        run({ falseStart: true, durationSeconds: 10, distanceMeters: 20 }),
       ],
     );
-    expect(
-      byDate['2025-03-10'].map(entry =>
-        entry.type === 'planned' ? entry.session.id : entry.activity.id,
-      ),
-    ).toEqual(['early', 'late', 'open']);
+    expect(entries).toEqual([
+      expect.objectContaining({ type: 'planned', state: 'started' }),
+    ]);
   });
 
-  it('sums only finished workouts and keeps unknown totals unknown', () => {
-    const activities: PlanActivity[] = [
+  it('lists unplanned training after the plan', () => {
+    const entries = dayEntries([], [lift(), run()]);
+    expect(entries.map(entry => entry.type)).toEqual([
+      'unplanned',
+      'unplanned',
+    ]);
+  });
+});
+
+describe('activitiesByDate', () => {
+  it('groups by local start day, oldest first, without false starts', () => {
+    const byDate = activitiesByDate([
+      lift(),
       run(),
-      run({ id: 'unfinished', finished: false, startTime: at('2025-03-11') }),
-      {
-        id: 'gym',
-        kind: 'strength',
-        startTime: at('2025-03-12'),
-        title: 'Kraft',
-        finished: true,
-        sets: 12,
-      },
-    ];
-    const byDate = planEntriesByDate(
-      [
-        session({ id: 'done', activityId: 'r1' }),
-        session({ id: 'open', date: '2025-03-11' }),
-        session({ id: 'skipped', date: '2025-03-12', status: 'skipped' }),
-      ],
-      activities,
-    );
-    const dates = ['2025-03-10', '2025-03-11', '2025-03-12'];
-    expect(planSummary(dates, byDate, activities)).toEqual({
-      done: 2,
-      planned: 2,
-      plannedDone: 1,
+      run({ id: 'x', falseStart: true }),
+      run({ id: 'next', startTime: at('2026-10-13') }),
+    ]);
+    expect(byDate['2026-10-12'].map(item => item.id)).toEqual(['r1', 's1']);
+    expect(byDate['2026-10-13'].map(item => item.id)).toEqual(['next']);
+  });
+});
+
+describe('periodTotals', () => {
+  it('sums finished training and keeps unknown totals unknown', () => {
+    expect(
+      periodTotals(
+        [
+          run(),
+          lift({ durationSeconds: undefined }),
+          run({ id: 'open', finished: false }),
+          run({ id: 'out', startTime: at('2026-10-20') }),
+        ],
+        '2026-10-12',
+        '2026-10-18',
+      ),
+    ).toEqual({
+      workouts: 2,
       seconds: 1800,
       timed: 1,
       runningMeters: 5000,
       runs: 1,
       measuredRuns: 1,
     });
-    // Strength without a known duration and no run: no invented zero.
-    expect(planSummary(['2025-03-12'], byDate, activities)).toEqual({
-      done: 1,
-      planned: 0,
-      plannedDone: 0,
-      seconds: undefined,
-      timed: 0,
+    expect(periodTotals([lift()], '2026-10-12', '2026-10-12')).toEqual({
+      workouts: 1,
+      seconds: 3600,
+      timed: 1,
       runningMeters: undefined,
       runs: 0,
       measuredRuns: 0,
     });
   });
+});
 
-  it('counts training by its start day and plan progress by the planned day', () => {
-    const activities = [run({ startTime: at('2025-03-31', 20) })];
-    const byDate = planEntriesByDate(
-      [session({ date: '2025-04-01', activityId: 'r1' })],
-      activities,
-    );
-    expect(planSummary(['2025-03-31'], byDate, activities)).toMatchObject({
-      done: 1,
-      planned: 0,
-      runningMeters: 5000,
+describe('compareWithUsual', () => {
+  // One run per earlier week, 5 km and 30 min each.
+  const weeks = (count: number, start = '2026-10-12') =>
+    Array.from({ length: count }, (_, index) => {
+      const date = new Date(at(start) - (index + 1) * 7 * 86400000);
+      return run({ id: `w${index}`, startTime: date.getTime() });
     });
-    expect(planSummary(['2025-04-01'], byDate, activities)).toMatchObject({
-      done: 0,
-      planned: 1,
-      plannedDone: 1,
-      seconds: undefined,
-    });
-  });
 
-  it('leaves rides out of the running distance', () => {
-    const activities = [
-      run({ sport: 'cycling', runningMeters: undefined, distanceMeters: 20000 }),
-    ];
-    const byDate = planEntriesByDate([], activities);
-    expect(planSummary(['2025-03-10'], byDate, activities)).toMatchObject({
-      done: 1,
-      runs: 0,
-      runningMeters: undefined,
-    });
-  });
-
-  it('shows a false start but does not count it as training', () => {
-    const activities = [
-      run({
-        falseStart: true,
-        durationSeconds: 10,
-        distanceMeters: 20,
-        runningMeters: 20,
+  it('needs three earlier periods with recordings', () => {
+    expect(
+      compareWithUsual({
+        activities: [run(), ...weeks(2)],
+        kind: 'week',
+        start: '2026-10-12',
+        today: '2026-10-18',
       }),
-    ];
-    // Even linked to a plan, it does not carry the plan out.
-    const byDate = planEntriesByDate(
-      [session({ activityId: 'r1' })],
-      activities,
-    );
-    expect(byDate['2025-03-10']).toEqual([
-      expect.objectContaining({ type: 'recorded' }),
-      expect.objectContaining({ type: 'planned', status: 'planned' }),
-    ]);
-    expect(planSummary(['2025-03-10'], byDate, activities)).toMatchObject({
-      done: 0,
-      planned: 1,
-      plannedDone: 0,
-      seconds: undefined,
-      runningMeters: undefined,
+    ).toBeUndefined();
+  });
+
+  it('marks more and less than the median of the weeks before', () => {
+    const more = compareWithUsual({
+      activities: [
+        run(),
+        run({ id: 'b', startTime: at('2026-10-14') }),
+        ...weeks(6),
+      ],
+      kind: 'week',
+      start: '2026-10-12',
+      today: '2026-10-25',
     });
+    expect(more).toEqual({
+      workouts: 'more',
+      seconds: 'more',
+      runningMeters: 'more',
+      periods: 6,
+      days: 7,
+      partial: false,
+    });
+    const less = compareWithUsual({
+      activities: weeks(6),
+      kind: 'week',
+      start: '2026-10-12',
+      today: '2026-10-25',
+    });
+    expect(less?.workouts).toBe('less');
+    const same = compareWithUsual({
+      activities: [run(), ...weeks(4)],
+      kind: 'week',
+      start: '2026-10-12',
+      today: '2026-10-25',
+    });
+    expect(same).toMatchObject({ workouts: 'usual', periods: 4 });
+  });
+
+  it('compares a running week day for day', () => {
+    // Earlier weeks trained on Sunday; on Tuesday this week nothing is behind.
+    const sundays = Array.from({ length: 4 }, (_, index) =>
+      run({
+        id: `s${index}`,
+        startTime: at('2026-10-11') - index * 7 * 86400000,
+      }),
+    );
+    const result = compareWithUsual({
+      activities: sundays,
+      kind: 'week',
+      start: '2026-10-12',
+      today: '2026-10-13',
+    });
+    expect(result).toMatchObject({
+      workouts: 'usual',
+      days: 2,
+      partial: true,
+    });
+  });
+
+  it('leaves a total with an unmeasured workout uncompared', () => {
+    const result = compareWithUsual({
+      activities: [run({ durationSeconds: undefined }), ...weeks(4)],
+      kind: 'week',
+      start: '2026-10-12',
+      today: '2026-10-25',
+    });
+    expect(result?.workouts).toBe('usual');
+    expect(result?.seconds).toBeUndefined();
+    expect(result?.runningMeters).toBe('usual');
+  });
+
+  it('compares months with the months before', () => {
+    const months = [8, 7, 6].map((month, index) =>
+      run({
+        id: `m${index}`,
+        startTime: new Date(2026, month, 3, 8).getTime(),
+      }),
+    );
+    const result = compareWithUsual({
+      activities: [...months, run({ startTime: at('2026-10-02') })],
+      kind: 'month',
+      start: '2026-10-01',
+      today: '2026-10-14',
+    });
+    expect(result).toMatchObject({
+      workouts: 'usual',
+      periods: 3,
+      days: 14,
+      partial: true,
+    });
+  });
+
+  it('says nothing about a period that has not begun', () => {
+    expect(
+      compareWithUsual({
+        activities: weeks(6),
+        kind: 'week',
+        start: '2026-10-19',
+        today: '2026-10-14',
+      }),
+    ).toBeUndefined();
   });
 });

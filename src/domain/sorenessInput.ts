@@ -58,13 +58,6 @@ export interface SorenessParse {
   questions: SorenessQuestion[];
 }
 
-/** Structured fields from an optional language-model pass. */
-export interface StructuredSorenessItem {
-  region?: unknown;
-  side?: unknown;
-  value?: unknown;
-}
-
 // ---------------------------------------------------------------------------
 // Lexikon
 // ---------------------------------------------------------------------------
@@ -880,95 +873,6 @@ const REGION_ORDER = new Map(allRegionIds().map((id, index) => [id, index]));
 /** Returns the ID if it really exists in `regions-v1`. */
 export function validRegionId(value: unknown): RegionId | null {
   return typeof value === 'string' && VALID_IDS.has(value) ? value : null;
-}
-
-/**
- * Passes structured fields from a language model through the same lexicon.
- * What does not get through is discarded and asked about — never invented.
- */
-export function fromStructured(
-  items: StructuredSorenessItem[],
-  transcript = '',
-): SorenessParse {
-  const proposals: SorenessProposal[] = [];
-  const questions: SorenessQuestion[] = [];
-  for (const item of items || []) {
-    const raw = typeof item?.region === 'string' ? item.region : '';
-    const sideRaw =
-      typeof item?.side === 'string' ? normalizeText(item.side) : '';
-    const side =
-      sideRaw === 'l' || sideRaw === 'r'
-        ? (sideRaw as Side)
-        : SIDE_WORDS[sideRaw];
-    const rawValue = item?.value;
-    const numeric =
-      typeof rawValue === 'string' && rawValue.trim() === ''
-        ? Number.NaN
-        : Number(rawValue);
-    const value =
-      rawValue !== undefined &&
-      rawValue !== null &&
-      Number.isFinite(numeric)
-        ? clamp(numeric)
-        : undefined;
-
-    const direct = validRegionId(raw);
-    if (direct) {
-      if (value === undefined) {
-        questions.push({
-          kind: 'intensity',
-          fragment: raw,
-          question: tr(
-            `Wie stark ist es an ${regionLabel(direct)}? 0 bis 10.`,
-            `How sore is it at ${regionLabel(direct)}? 0 to 10.`,
-          ),
-          candidates: [direct],
-        });
-      } else {
-        proposals.push({ regionId: direct, value });
-      }
-      continue;
-    }
-
-    const token = raw ? classify(normalizeText(raw), 1) : null;
-    if (!token || token.type !== 'region') {
-      questions.push({
-        kind: 'unknown',
-        fragment: raw,
-        question: raw
-          ? `${quote(raw)} ${tr(
-              'gehört nicht zur Regionenliste und wurde verworfen. Tippe die Region auf der Figur an.',
-              'is not in the region list and was discarded. Tap the region on the figure.',
-            )}`
-          : tr(
-              'Eine Angabe ohne Region wurde verworfen. Tippe die Region auf der Figur an.',
-              'An entry without a region was discarded. Tap the region on the figure.',
-            ),
-        candidates: [],
-      });
-      continue;
-    }
-    const entry: Entry = { text: raw, bases: token.bases, side, value };
-    const question = questionForEntry(entry);
-    if (question) {
-      questions.push(question);
-      continue;
-    }
-    const base = entry.bases[0];
-    const definition = regionDefinition(base);
-    const ids = definition.sided
-      ? sidesOf(entry.side).map(s => regionId(base, s))
-      : [regionId(base)];
-    ids.forEach(id => proposals.push({ regionId: id, value: value as number }));
-  }
-  return {
-    lexiconVersion: SORENESS_LEXICON_VERSION,
-    regionsVersion: REGIONS_VERSION,
-    transcript,
-    nothingToday: false,
-    proposals: dedupe(proposals),
-    questions,
-  };
 }
 
 /** A saved report. Stored on the device and included in backups. */

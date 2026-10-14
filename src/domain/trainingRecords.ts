@@ -1,10 +1,6 @@
-import type {
-  GaitPlacement,
-  RunSummary,
-  RunPurpose,
-  Sport,
-} from './types';
+import type { GaitPlacement, RunSummary, RunPurpose, Sport } from './types';
 import type { ScheduleState } from './schedule';
+import type { StrengthTarget } from './strengthGoal';
 import type { IntervalState, RunTarget, RunTargetMemory } from './runTarget';
 import type { RunAnnouncementSettings } from './runAnnouncements';
 import type { FeatureSettings } from './features';
@@ -33,6 +29,9 @@ export interface Settings {
   /** Strength area: own goal. */
   strengthGoal?: string;
   strengthGoalTargetDate?: string;
+  /** Measurable strength goal (`domain/strengthGoal`). */
+  strengthGoalTarget?: StrengthTarget;
+  /** Older daily time budget; no longer read. */
   minutes?: number;
   /** No longer read: the run type is asked after the run (`likelyPurpose`). */
   purpose?: RunPurpose;

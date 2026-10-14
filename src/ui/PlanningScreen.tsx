@@ -1,80 +1,49 @@
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import type { Run } from '../native';
+import type { StrengthSession, WorkoutTemplate } from '../domain/strength';
 import {
-  displaySessionName,
-  summarize,
-  type StrengthSession,
-  type WorkoutTemplate,
-} from '../domain/strength';
-import {
-  linkedActivity,
-  planEntriesByDate,
-  planStatus,
-  planSummary,
+  activitiesByDate,
+  compareWithUsual,
+  dayEntries,
+  periodTotals,
+  runActivity,
+  strengthActivity,
+  type DayEntry,
+  type MarkState,
   type PlanActivity,
-  type PlanEntry,
-  type PlanStatus,
-  type PlanSummary,
+  type UsualTone,
 } from '../domain/planView';
-import { isAccidentalRun, isRun, sportNoun } from '../domain/sport';
-import type { RunPurpose } from '../domain/types';
-import { RUN_PURPOSES, runTitle } from '../domain/runTitle';
-import { buildUpWeek } from '../domain/buildUp';
-import { effectiveGoalDistanceKm } from '../domain/raceGoal';
 import {
   addCalendarDays,
-  addScheduledSession,
-  applyWeekSuggestion,
-  cancelSession,
+  currentWeekly,
+  isChangedDay,
   localDateKey,
-  moveSession as applyDomainMove,
-  proposeMove,
+  plannedOn,
+  resetDay,
   scheduleTitle,
-  setAvailability,
-  storedScheduleTitle,
-  setRoutine,
+  setDayPlan,
   startOfWeek,
-  suggestWeek,
-  updateSession,
-  type ScheduleKind,
-  type ScheduleEffort,
+  weeklyFor,
+  weekdayOf,
+  type DayPlanEntry,
+  type PlannedItem,
   type ScheduleState,
-  type ScheduledSession,
-  type WeekSuggestion,
 } from '../domain/schedule';
+import { templateIcon, type TrainingIcon } from '../domain/trainingIcons';
 import {
-  Badge,
   Button,
-  Card,
-  ChipGroup,
   Copy,
-  EmptyState,
-  Field,
-  Input,
   Notice,
-  Progress,
-  Row,
-  Section,
-  Segmented,
-  Stat,
+  Sheet,
   Title,
-  ToggleChips,
+  WorkoutIcon,
   color,
   radius,
   space,
@@ -88,7 +57,7 @@ import {
   tr,
 } from '../domain/i18n';
 
-export type { ScheduleState, ScheduledSession } from '../domain/schedule';
+export type { ScheduleState } from '../domain/schedule';
 
 export interface PlanningScreenProps {
   state: ScheduleState;
@@ -97,72 +66,23 @@ export interface PlanningScreenProps {
   runs: Run[];
   strengthSessions: StrengthSession[];
   now: number;
-  onStartRun: (session: ScheduledSession) => Promise<void>;
-  onStartStrength: (session: ScheduledSession) => Promise<void>;
-  onDevelopment?: () => void;
-  onManageTemplates?: () => void;
-  /** Opens the route planner. Without it, there is no entry point. */
-  onOpenRoutePlanner?: () => void;
   /** Opens a recorded run or strength session. */
   onOpenActivity?: (kind: 'run' | 'strength', id: string) => void;
   busy?: boolean;
-  /** Offer "suggest week". People who plan on their own hide it. */
-  showSuggest?: boolean;
-  /** Offer the month view. */
-  showMonth?: boolean;
-  /** Strength sessions can be planned. Without the strength area, runs only. */
+  /** Without the strength area, Plan shows neither sessions nor templates. */
   showStrength?: boolean;
   /** Without the running area, Plan shows neither runs nor planned runs. */
   showRunning?: boolean;
 }
 
 type ViewMode = 'week' | 'month';
-type PlanningScope = 'week' | 'routine';
-
-interface SessionDraft {
-  id?: string;
-  date: string;
-  title: string;
-  kind: ScheduleKind;
-  minutes: string;
-  purpose: RunPurpose;
-  effort: ScheduleEffort;
-  templateId?: string;
-  locked: boolean;
-}
-
-interface PendingSave {
-  next: ScheduleState;
-  previous: ScheduleState;
-  message: string;
-  trackUndo: boolean;
-}
 
 // Labels are built per call: the language can change at runtime.
 const weekdayShort = () =>
   getLanguage() === 'en'
     ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
     : ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
-const weekdayLong = () =>
-  getLanguage() === 'en'
-    ? [
-        'Monday',
-        'Tuesday',
-        'Wednesday',
-        'Thursday',
-        'Friday',
-        'Saturday',
-        'Sunday',
-      ]
-    : [
-        'Montag',
-        'Dienstag',
-        'Mittwoch',
-        'Donnerstag',
-        'Freitag',
-        'Samstag',
-        'Sonntag',
-      ];
+
 const monthNames = () =>
   getLanguage() === 'en'
     ? [
@@ -193,263 +113,41 @@ const monthNames = () =>
         'November',
         'Dezember',
       ];
-const purposeOptions = () =>
-  RUN_PURPOSES.map(({ value, label }) => ({ value, label }));
-const kindOptions = (): { value: ScheduleKind; label: string }[] => [
-  { value: 'run', label: tr('Lauf', 'Run') },
-  { value: 'strength', label: tr('Kraft', 'Strength') },
-];
-const effortOptions = (): { value: ScheduleEffort; label: string }[] => [
-  { value: 'easy', label: tr('Locker', 'Easy') },
-  { value: 'hard', label: tr('Anstrengend', 'Hard') },
-];
-const scopeOptions = (): { value: PlanningScope; label: string }[] => [
-  { value: 'week', label: tr('Diese Woche', 'This week') },
-  { value: 'routine', label: tr('Rhythmus', 'Routine') },
-];
 
-let nextSessionNumber = 0;
-
-function localDateFrom(value: number | string | Date): Date {
-  if (value instanceof Date) return new Date(value.getTime());
-  if (typeof value === 'number') return new Date(value);
-  const parts = value.split('-').map(Number);
-  return new Date(parts[0], parts[1] - 1, parts[2]);
-}
-
-function isoDate(value: Date): string {
-  return localDateKey(value);
-}
-
-function addDays(value: Date, amount: number): Date {
-  return localDateFrom(addCalendarDays(isoDate(value), amount));
-}
-
-function mondayOf(value: Date): Date {
-  return localDateFrom(startOfWeek(value));
-}
-
-function firstOfMonth(value: Date): Date {
-  return new Date(value.getFullYear(), value.getMonth(), 1);
-}
-
-function dateLabel(value: Date): string {
-  const weekday = weekdayShort()[(value.getDay() + 6) % 7];
-  const month = monthNames()[value.getMonth()].slice(0, 3);
-  return tr(
-    `${weekday}, ${value.getDate()}. ${month}.`,
-    dateFormat({ weekday: 'short', day: 'numeric', month: 'short' }).format(
-      value,
-    ),
-  );
-}
-
-function fullDateLabel(value: Date): string {
-  const weekday = weekdayLong()[(value.getDay() + 6) % 7];
-  const month = monthNames()[value.getMonth()];
-  return tr(
-    `${weekday}, ${value.getDate()}. ${month}`,
-    dateFormat({ weekday: 'long', day: 'numeric', month: 'long' }).format(
-      value,
-    ),
-  );
-}
-
-function monthLabel(value: Date): string {
-  return `${monthNames()[value.getMonth()]} ${value.getFullYear()}`;
-}
-
-function parseMinutes(value: string): number | undefined {
-  const parsed = Number(value.trim().replace(',', '.'));
-  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1440) return undefined;
-  return Math.round(parsed);
-}
-
-function parseDuration(value: string): number | undefined {
-  const minutes = parseMinutes(value);
-  return minutes === undefined || minutes < 1 ? undefined : minutes;
-}
-
-function mondayIndex(value: Date): number {
-  return (value.getDay() + 6) % 7;
-}
-
-function formatMinutes(value: number): string {
-  return `${Math.max(0, Math.round(value))} min`;
-}
-
-function cloneState(state: ScheduleState): ScheduleState {
-  return {
-    version: state.version,
-    sessions: state.sessions.map(session => ({ ...session })),
-    availability: { ...state.availability },
-    routine: { days: [...state.routine.days], minutes: state.routine.minutes },
-    goal: state.goal ? { ...state.goal } : undefined,
-  };
-}
-
-function scheduleSignature(state: ScheduleState): string {
-  return JSON.stringify({
-    version: state.version,
-    availability: Object.keys(state.availability)
-      .sort()
-      .map(date => [date, state.availability[date]]),
-    routine: {
-      days: [...state.routine.days].sort((a, b) => a - b),
-      minutes: state.routine.minutes,
-    },
-    goal: state.goal
-      ? {
-          name: state.goal.name,
-          startDate: state.goal.startDate,
-          targetDate: state.goal.targetDate,
-          phase: state.goal.phase,
-          distanceKm: state.goal.distanceKm,
-          targetSeconds: state.goal.targetSeconds,
-        }
-      : undefined,
-    sessions: [...state.sessions]
-      .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))
-      .map(session => ({
-        id: session.id,
-        date: session.date,
-        title: session.title,
-        kind: session.kind,
-        minutes: session.minutes,
-        purpose: session.purpose,
-        templateId: session.templateId,
-        locked: session.locked,
-        status: session.status,
-        effort: session.effort,
-        activityId: session.activityId,
-        origin: session.origin,
-        routineDay: session.routineDay,
-      })),
-  });
-}
-
-function statusLabel(status: PlanStatus): string {
-  switch (status) {
-    case 'done':
-      return tr('Erledigt', 'Done');
-    case 'started':
-      return tr('Gestartet', 'Started');
-    case 'skipped':
-      return tr('Ausgelassen', 'Skipped');
-    default:
-      return tr('Geplant', 'Planned');
-  }
-}
-
-const MARKS: PlanStatus[] = ['done', 'started', 'planned', 'skipped'];
-const MARK_GLYPH: Record<PlanStatus, string> = {
-  done: '✓',
-  started: '•',
-  planned: '○',
-  skipped: '–',
+const dateOf = (key: string): Date => {
+  const [year, month, day] = key.split('-').map(Number);
+  return new Date(year, month - 1, day);
 };
 
-function entryMark(entry: PlanEntry): PlanStatus {
-  if (entry.type === 'planned') return entry.status;
-  return entry.activity.finished ? 'done' : 'started';
-}
+const firstOfMonth = (key: string) => `${key.slice(0, 7)}-01`;
 
-/** Lower case for counts in a sentence: "2 erledigt" / "2 done". */
-function markLabel(status: PlanStatus): string {
-  switch (status) {
-    case 'done':
-      return tr('erledigt', 'done');
-    case 'started':
-      return tr('gestartet', 'started');
-    case 'skipped':
-      return tr('ausgelassen', 'skipped');
-    default:
-      return tr('geplant', 'planned');
-  }
-}
-
-function sessionKindLabel(session: ScheduledSession): string {
-  return session.kind === 'run' ? tr('Lauf', 'Run') : tr('Kraft', 'Strength');
-}
-
-function createSessionDraft(
-  date: string,
-  session?: ScheduledSession,
-  defaultKind: ScheduleKind = 'run',
-): SessionDraft {
-  return {
-    id: session?.id,
-    date,
-    title: session ? scheduleTitle(session) : '',
-    kind: session?.kind ?? defaultKind,
-    minutes: session ? String(session.minutes) : '30',
-    purpose: session?.purpose ?? 'easy',
-    effort:
-      session?.effort ??
-      (session?.purpose === 'intervals' || session?.purpose === 'race'
-        ? 'hard'
-        : 'easy'),
-    templateId: session?.templateId,
-    locked: Boolean(session?.locked),
-  };
-}
-
-function monthCells(month: Date): Date[] {
-  const start = mondayOf(firstOfMonth(month));
-  const last = new Date(month.getFullYear(), month.getMonth() + 1, 0);
-  const leadingDays = mondayIndex(firstOfMonth(month));
-  const days = Math.ceil((leadingDays + last.getDate()) / 7) * 7;
-  return Array.from({ length: Math.max(35, days) }, (_, index) =>
-    addDays(start, index),
+const shiftMonth = (first: string, months: number): string => {
+  const date = dateOf(first);
+  return localDateKey(
+    new Date(date.getFullYear(), date.getMonth() + months, 1),
   );
+};
+
+function fullDateLabel(key: string): string {
+  return dateFormat({
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  }).format(dateOf(key));
 }
 
-function inMonth(value: Date, month: Date): boolean {
-  return (
-    value.getFullYear() === month.getFullYear() &&
-    value.getMonth() === month.getMonth()
-  );
+function shortDateLabel(key: string): string {
+  return dateFormat({ day: 'numeric', month: 'short' }).format(dateOf(key));
 }
 
-function runActivity(run: Run): PlanActivity {
-  const status = String(run.status || '').toLowerCase();
-  return {
-    id: run.id,
-    canonicalId: run.canonicalId,
-    kind: 'run',
-    sport: run.sport,
-    startTime: run.startTime,
-    title: runTitle(run),
-    finished:
-      run.endTime > run.startTime &&
-      ['completed', 'finished', 'complete', 'done', 'imported'].includes(
-        status,
-      ),
-    durationSeconds: run.durationSeconds > 0 ? run.durationSeconds : undefined,
-    distanceMeters: run.distanceMeters > 0 ? run.distanceMeters : undefined,
-    runningMeters:
-      isRun(run) && run.distanceMeters > 0 ? run.distanceMeters : undefined,
-    falseStart: isAccidentalRun(run),
-  };
-}
-
-function strengthActivity(session: StrengthSession): PlanActivity {
-  const ended = (session.endTime ?? 0) > session.startTime;
-  return {
-    id: session.id,
-    kind: 'strength',
-    startTime: session.startTime,
-    title:
-      displaySessionName(session.name) ||
-      tr('Krafttraining', 'Strength training'),
-    // Imports may lack an end time: finished stays finished, only the
-    // duration is unknown.
-    finished: session.status === 'finished',
-    durationSeconds: ended
-      ? Math.round((session.endTime! - session.startTime) / 1000)
-      : undefined,
-    sets: summarize(session).completedSets,
-  };
+/** The six or five weeks that show a month, Monday first. */
+function monthWeeks(first: string): string[][] {
+  const start = startOfWeek(first);
+  const next = shiftMonth(first, 1);
+  const weeks: string[][] = [];
+  for (let monday = start; monday < next; monday = addCalendarDays(monday, 7))
+    weeks.push(Array.from({ length: 7 }, (_, i) => addCalendarDays(monday, i)));
+  return weeks;
 }
 
 /** "28:14" or "1:02:05"; unknown stays "–". */
@@ -473,11 +171,12 @@ function totalTime(seconds: number | undefined): string {
     : `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')} h`;
 }
 
-function kilometers(meters: number): string {
-  return numberFormat({
+function kilometers(meters: number | undefined): string {
+  if (meters === undefined) return '–';
+  return `${numberFormat({
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(meters / 1000);
+  }).format(meters / 1000)} km`;
 }
 
 /** What was measured: "5,02 km · 28:14" or "14 Sätze · 46:10". */
@@ -496,56 +195,25 @@ function activityMeta(activity: PlanActivity): string {
   return parts.join(' · ');
 }
 
-function activityKindLabel(activity: PlanActivity): string {
-  return activity.kind === 'run'
-    ? sportNoun(activity.sport)
-    : tr('Kraft', 'Strength');
-}
+const stateLabel = (state: MarkState): string =>
+  state === 'done'
+    ? tr('erledigt', 'done')
+    : state === 'started'
+    ? tr('läuft', 'in progress')
+    : tr('geplant', 'planned');
 
-/**
- * With a race goal and date, the build-up replaces the uniform routine: one
- * long run per week, easing off before the goal, the race on the goal date.
- * Without the basis, the suggestion says what is missing and proposes the
- * routine as usual.
- */
-function suggestTrainingWeek(
-  state: ScheduleState,
-  weekStart: Date,
-  templates: WorkoutTemplate[],
-  today: string,
-  runs: Run[],
-  now: number,
-  kinds: ScheduleKind[],
-): WeekSuggestion {
-  // The build-up plans runs; without the running area there is none.
-  const goal = kinds.includes('run') ? state.goal : undefined;
-  const distanceKm = goal ? effectiveGoalDistanceKm(goal) : undefined;
-  const buildUp =
-    goal?.targetDate && distanceKm !== undefined
-      ? buildUpWeek({
-          goal: { name: goal.name, distanceKm, targetDate: goal.targetDate },
-          runs,
-          routine: state.routine,
-          weekStart: localDateKey(weekStart),
-          today,
-          now,
-        })
-      : undefined;
-  const suggestion = suggestWeek(state, weekStart, {
-    today,
-    kinds,
-    strengthTemplates: templates,
-    runSlots: buildUp?.status === 'ready' ? buildUp.slots : undefined,
-  });
-  if (!buildUp) {
-    return suggestion;
-  }
-  return {
-    ...suggestion,
-    warnings: [...buildUp.limits, ...suggestion.warnings],
-    rationale: [...buildUp.rationale, ...suggestion.rationale],
-  };
-}
+const TONE_MARK: Record<UsualTone, string> = {
+  more: '▲',
+  usual: '',
+  less: '▼',
+};
+
+const toneWord = (tone: UsualTone): string =>
+  tone === 'more'
+    ? tr('mehr als üblich', 'more than usual')
+    : tone === 'less'
+    ? tr('weniger als üblich', 'less than usual')
+    : tr('wie üblich', 'as usual');
 
 export function PlanningScreen({
   state,
@@ -554,1022 +222,556 @@ export function PlanningScreen({
   runs,
   strengthSessions,
   now,
-  onStartRun,
-  onStartStrength,
-  onDevelopment,
-  onManageTemplates,
-  onOpenRoutePlanner,
   onOpenActivity,
   busy = false,
-  showSuggest = true,
-  showMonth = true,
   showStrength = true,
   showRunning = true,
 }: PlanningScreenProps) {
-  const [displayState, setDisplayState] = useState<ScheduleState>(() =>
-    cloneState(state),
-  );
-  const [view, setView] = useState<ViewMode>('week');
-  const [weekStart, setWeekStart] = useState(() =>
-    mondayOf(localDateFrom(now)),
-  );
-  const [monthDate, setMonthDate] = useState(() =>
-    firstOfMonth(localDateFrom(now)),
-  );
-  const [adjusting, setAdjusting] = useState(false);
-  const [scope, setScope] = useState<PlanningScope>('week');
-  const [availabilityDraft, setAvailabilityDraft] = useState<
-    Record<string, string>
-  >({});
-  const [routineDaysDraft, setRoutineDaysDraft] = useState<number[]>([]);
-  const [routineMinutesDraft, setRoutineMinutesDraft] = useState('30');
-  const [proposal, setProposal] = useState<WeekSuggestion | null>(null);
-  const [editor, setEditor] = useState<SessionDraft | null>(null);
-  const [detailsId, setDetailsId] = useState<string | null>(null);
-  const [moveId, setMoveId] = useState<string | null>(null);
-  const [moveWeekStart, setMoveWeekStart] = useState(() =>
-    mondayOf(localDateFrom(now)),
-  );
+  const today = localDateKey(new Date(now));
+  const [shown, setShown] = useState<ScheduleState>(state);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
-  const [validation, setValidation] = useState('');
-  const [pending, setPending] = useState<PendingSave | null>(null);
-  const [undoState, setUndoState] = useState<ScheduleState | null>(null);
-  const [startingId, setStartingId] = useState<string | null>(null);
-  const saveExpectation = useRef<ScheduleState | null>(null);
+  const [view, setView] = useState<ViewMode>('month');
+  const [month, setMonth] = useState(() => firstOfMonth(today));
+  const [week, setWeek] = useState(() => startOfWeek(today));
+  const [openDay, setOpenDay] = useState<string | null>(null);
+  const working = saving || busy;
 
-  const today = isoDate(localDateFrom(now));
-  const working = saving || Boolean(busy) || Boolean(pending);
-
+  // The saved state wins once no own change is on its way.
   useEffect(() => {
-    if (saving || pending) return;
-    const expected = saveExpectation.current;
-    if (expected) {
-      if (scheduleSignature(state) !== scheduleSignature(expected)) return;
-      saveExpectation.current = null;
-    }
-    setDisplayState(cloneState(state));
-  }, [pending, saving, state]);
-
-  const weekDates = useMemo(
-    () => Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)),
-    [weekStart],
-  );
-  const moveWeekDates = useMemo(
-    () =>
-      Array.from({ length: 7 }, (_, index) => addDays(moveWeekStart, index)),
-    [moveWeekStart],
-  );
-  const weekDateKeys = useMemo(() => weekDates.map(isoDate), [weekDates]);
-  const monthDays = useMemo(() => monthCells(monthDate), [monthDate]);
-  const monthRows = useMemo(
-    () =>
-      Array.from({ length: Math.ceil(monthDays.length / 7) }, (_, index) =>
-        monthDays.slice(index * 7, index * 7 + 7),
-      ),
-    [monthDays],
-  );
-  const detailsSession = detailsId
-    ? displayState.sessions.find(session => session.id === detailsId) ?? null
-    : null;
-  const moveSessionDraft = moveId
-    ? displayState.sessions.find(session => session.id === moveId) ?? null
-    : null;
-
-  const availableMinutes = useCallback(
-    (date: string, _day?: number) => {
-      if (
-        Object.prototype.hasOwnProperty.call(displayState.availability, date)
-      ) {
-        return Math.max(0, displayState.availability[date] ?? 0);
-      }
-      return displayState.routine.minutes;
-    },
-    [displayState.availability, displayState.routine],
-  );
+    if (!saving) setShown(state);
+  }, [saving, state]);
 
   const language = getLanguage();
-  // Titles depend on the language, so it is part of the memo.
   // Each area shows only its own data; a switched-off area leaves no trace.
   const activities = useMemo(
     () => [
       ...(showRunning ? runs.map(runActivity) : []),
       ...(showStrength ? strengthSessions.map(strengthActivity) : []),
     ],
+    // Titles depend on the language, so it is part of the memo.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [runs, strengthSessions, language, showRunning, showStrength],
   );
-  const enabledKinds = useMemo<ScheduleKind[]>(
-    () => [
-      ...(showRunning ? (['run'] as const) : []),
-      ...(showStrength ? (['strength'] as const) : []),
-    ],
-    [showRunning, showStrength],
+  const byDate = useMemo(() => activitiesByDate(activities), [activities]);
+  const weekly = useMemo(
+    () => currentWeekly(shown, showStrength ? templates : []),
+    [shown, templates, showStrength],
   );
-  const shownSessions = useMemo(
-    () =>
-      displayState.sessions.filter(session =>
-        session.kind === 'run' ? showRunning : showStrength,
-      ),
-    [displayState.sessions, showRunning, showStrength],
-  );
-  const entriesByDate = useMemo(
-    () => planEntriesByDate(shownSessions, activities),
-    [activities, shownSessions],
-  );
-  const detailsActivity = detailsSession
-    ? linkedActivity(detailsSession, activities)
-    : undefined;
-  const monthDateKeys = useMemo(
-    () => monthDays.filter(day => inMonth(day, monthDate)).map(isoDate),
-    [monthDate, monthDays],
-  );
-  const [selectedDay, setSelectedDay] = useState(() =>
-    isoDate(localDateFrom(now)),
+  const templateById = useMemo(
+    () => new Map(templates.map(template => [template.id, template])),
+    [templates],
   );
 
-  const persist = useCallback(
-    async (
-      next: ScheduleState,
-      saveMessage: string,
-      trackUndo = true,
-      previous = displayState,
-    ): Promise<boolean> => {
-      setError('');
-      setMessage('');
-      setValidation('');
-      setPending(null);
-      saveExpectation.current = cloneState(next);
-      setDisplayState(cloneState(next));
-      setSaving(true);
-      try {
-        await onSave(next);
-        setUndoState(trackUndo ? cloneState(previous) : null);
-        setMessage(saveMessage);
-        return true;
-      } catch (caught) {
-        const reason =
-          caught instanceof Error
-            ? caught.message
-            : tr('Bitte versuche es erneut.', 'Please try again.');
-        setDisplayState(cloneState(previous));
-        saveExpectation.current = null;
-        setPending({
-          next: cloneState(next),
-          previous: cloneState(previous),
-          message: saveMessage,
-          trackUndo,
-        });
-        setError(
-          tr(
-            `Änderung nicht gespeichert. ${reason}`,
-            `Change not saved. ${reason}`,
-          ),
-        );
-        return false;
-      } finally {
-        setSaving(false);
-      }
-    },
-    [displayState, onSave],
-  );
-
-  const retrySave = useCallback(() => {
-    if (!pending || saving || busy) return;
-    void persist(
-      pending.next,
-      pending.message,
-      pending.trackUndo,
-      pending.previous,
-    ).then(ok => {
-      if (ok) {
-        setEditor(null);
-        setAdjusting(false);
-        setMoveId(null);
-        setDetailsId(null);
-        setProposal(null);
-      }
-    });
-  }, [pending, persist, saving, busy]);
-
-  const undo = useCallback(() => {
-    if (!undoState || working) return;
-    void persist(
-      undoState,
-      tr('Letzte Änderung zurückgenommen.', 'Last change undone.'),
-      false,
-      displayState,
-    ).then(ok => {
-      if (ok) setUndoState(null);
-    });
-  }, [displayState, persist, undoState, working]);
-
-  const openAdjustment = useCallback(() => {
-    const values: Record<string, string> = {};
-    weekDates.forEach((date, index) => {
-      const key = isoDate(date);
-      values[key] = String(availableMinutes(key, index));
-    });
-    setAvailabilityDraft(values);
-    setRoutineDaysDraft([...displayState.routine.days]);
-    setRoutineMinutesDraft(String(displayState.routine.minutes));
-    setScope('week');
-    setValidation('');
-    setAdjusting(true);
-  }, [
-    availableMinutes,
-    displayState.routine.days,
-    displayState.routine.minutes,
-    weekDates,
-  ]);
-
-  const saveAdjustment = useCallback(async () => {
-    if (scope === 'routine') {
-      const minutes = parseDuration(routineMinutesDraft);
-      if (minutes === undefined) {
-        setValidation(
-          tr(
-            'Der Rhythmus braucht 1 bis 1.440 Minuten.',
-            'The routine needs 1 to 1,440 minutes.',
-          ),
-        );
-        return;
-      }
-      const next = setRoutine(displayState, {
-        days: routineDaysDraft,
-        minutes,
-      });
-      const ok = await persist(
-        next,
-        tr('Rhythmus gespeichert.', 'Routine saved.'),
-      );
-      if (ok) setAdjusting(false);
-      return;
-    }
-
-    let next = cloneState(displayState);
-    for (const date of weekDateKeys) {
-      const minutes = parseMinutes(availabilityDraft[date] ?? '');
-      if (minutes === undefined) {
-        const day = fullDateLabel(localDateFrom(date));
-        setValidation(
-          tr(
-            `Bitte trage für ${day} eine Zahl zwischen 0 und 1.440 ein.`,
-            `Enter a number from 0 to 1,440 for ${day}.`,
-          ),
-        );
-        return;
-      }
-      next = setAvailability(next, date, minutes);
-    }
-    const ok = await persist(
-      next,
-      tr('Verfügbarkeit gespeichert.', 'Availability saved.'),
+  const plannedFor = (date: string): PlannedItem[] =>
+    plannedOn(shown, weekly, date, today).filter(item =>
+      item.kind === 'run' ? showRunning : showStrength,
     );
-    if (ok) setAdjusting(false);
-  }, [
-    availabilityDraft,
-    displayState,
-    persist,
-    routineDaysDraft,
-    routineMinutesDraft,
-    scope,
-    weekDateKeys,
-  ]);
+  const entriesFor = (date: string): DayEntry[] =>
+    dayEntries(plannedFor(date), byDate[date] ?? []);
 
-  const createProposal = useCallback(() => {
-    setError('');
-    setMessage('');
-    setValidation('');
-    setProposal(
-      suggestTrainingWeek(
-        displayState,
-        weekStart,
-        templates,
-        today,
-        runs,
-        now,
-        enabledKinds,
-      ),
-    );
-  }, [displayState, enabledKinds, now, runs, templates, today, weekStart]);
-
-  const applyProposal = useCallback(async () => {
-    if (
-      !proposal ||
-      (!proposal.addedSessions.length && !proposal.movedSessions.length) ||
-      working
-    ) {
-      return;
-    }
-    const next = applyWeekSuggestion(displayState, proposal, { today });
-    if (next === displayState) {
-      setError(
-        tr(
-          'Der Plan hat sich geändert. Erstelle den Vorschlag bitte erneut.',
-          'The plan has changed. Please create the suggestion again.',
-        ),
-      );
-      setProposal(null);
-      return;
-    }
-    const ok = await persist(
-      next,
-      tr('Vorschlag übernommen.', 'Suggestion applied.'),
-    );
-    if (ok) setProposal(null);
-  }, [displayState, persist, proposal, today, working]);
-
-  const openEditor = useCallback(
-    (session?: ScheduledSession, date = weekDateKeys[0]) => {
-      setValidation('');
-      setProposal(null);
-      setDetailsId(null);
-      setEditor(createSessionDraft(date, session, enabledKinds[0]));
-    },
-    [enabledKinds, weekDateKeys],
-  );
-
-  const saveEditor = useCallback(async () => {
-    if (!editor) return;
-    const title = storedScheduleTitle(editor.title.trim());
-    const minutes = parseDuration(editor.minutes);
-    if (!title) {
-      setValidation(
-        tr(
-          'Bitte gib der Einheit einen Namen.',
-          'Enter a name for the workout.',
-        ),
-      );
-      return;
-    }
-    if (minutes === undefined) {
-      setValidation(
-        tr(
-          'Die Dauer muss zwischen 1 und 1.440 Minuten liegen.',
-          'The duration must be between 1 and 1,440 minutes.',
-        ),
-      );
-      return;
-    }
-    const current = editor.id
-      ? displayState.sessions.find(session => session.id === editor.id)
+  const itemTitle = (item: PlannedItem): string => {
+    if (item.kind === 'run') return tr('Lauf', 'Run');
+    const template = item.templateId
+      ? templateById.get(item.templateId)
       : undefined;
-    if (current?.locked) {
-      setValidation(
-        tr(
-          'Eine gesperrte Einheit kann nicht geändert werden.',
-          "A locked workout can't be changed.",
-        ),
-      );
-      return;
-    }
-    if (current?.activityId && editor.kind !== current.kind) {
-      setValidation(
-        tr(
-          'Eine gestartete Einheit kann nicht in eine andere Art geaendert werden.',
-          "A started workout can't be changed to another kind.",
-        ),
-      );
-      return;
-    }
-    const session: ScheduledSession = {
-      id: editor.id ?? `session-${Date.now()}-${nextSessionNumber++}`,
-      date: editor.date,
-      title,
-      kind: editor.kind,
-      minutes,
-      purpose: editor.kind === 'run' ? editor.purpose : undefined,
-      templateId: editor.kind === 'strength' ? editor.templateId : undefined,
-      locked: current?.locked ?? false,
-      status: current?.status ?? 'planned',
-      effort: current?.effort ?? 'easy',
-      activityId: current?.activityId,
-      origin: current?.origin ?? 'manual',
-      routineDay: current?.routineDay,
-    };
-    const next = current
-      ? updateSession(
-          displayState,
-          current.id,
-          {
-            title: session.title,
-            kind: session.kind,
-            minutes: session.minutes,
-            purpose: session.purpose,
-            templateId: session.templateId,
-            effort: session.effort,
-          },
-          { today },
-        )
-      : addScheduledSession(displayState, session, { today });
-    if (next === displayState) {
-      setValidation(
-        tr(
-          'Die Einheit konnte nicht geändert werden. Prüfe Datum und Sperre.',
-          "The workout couldn't be changed. Check the date and lock.",
-        ),
-      );
-      return;
-    }
-    const ok = await persist(
-      next,
-      current
-        ? tr('Einheit geändert.', 'Workout changed.')
-        : tr('Einheit hinzugefügt.', 'Workout added.'),
-    );
-    if (ok) setEditor(null);
-  }, [displayState, editor, persist, today]);
-
-  const handleMoveChoice = useCallback(
-    async (session: ScheduledSession, date: string) => {
-      if (working || session.locked || session.date === date) return;
-      const proposalForMove = proposeMove(displayState, session.id, date, {
-        today,
-        maxSuggestions: 2,
-      });
-      if (!proposalForMove.allowed) {
-        const explanation = proposalForMove.conflicts
-          .map(conflict => conflict.message)
-          .join(' ');
-        setValidation(
-          explanation ||
-            tr(
-              'Dieser Tag passt nicht für die Einheit.',
-              "This day doesn't fit the workout.",
-            ),
-        );
-        return;
-      }
-      const next = applyDomainMove(displayState, proposalForMove);
-      if (next === displayState) {
-        setValidation(
-          tr(
-            'Die Einheit konnte nicht verschoben werden.',
-            "The workout couldn't be moved.",
-          ),
-        );
-        return;
-      }
-      const ok = await persist(
-        next,
-        tr('Einheit verschoben.', 'Workout moved.'),
-      );
-      if (ok) {
-        setMoveId(null);
-        setDetailsId(null);
-      }
-    },
-    [displayState, persist, today, working],
-  );
-
-  const skip = useCallback(
-    async (session: ScheduledSession) => {
-      if (working || session.activityId || session.date < today) return;
-      const next =
-        session.status === 'skipped'
-          ? updateSession(
-              displayState,
-              session.id,
-              { status: 'planned' },
-              { today },
-            )
-          : cancelSession(displayState, session.id, { today });
-      if (next === displayState) {
-        setValidation(
-          tr(
-            'Diese Einheit kann nicht mehr geändert werden.',
-            "This workout can't be changed anymore.",
-          ),
-        );
-        return;
-      }
-      const ok = await persist(
-        next,
-        session.status === 'skipped'
-          ? tr('Einheit wieder eingeplant.', 'Workout scheduled again.')
-          : tr('Einheit ausgelassen.', 'Workout skipped.'),
-      );
-      if (ok) setDetailsId(null);
-    },
-    [displayState, persist, today, working],
-  );
-
-  const toggleLock = useCallback(
-    async (session: ScheduledSession) => {
-      if (working || session.date < today) return;
-      let next: ScheduleState;
-      if (session.locked) {
-        next = {
-          ...cloneState(displayState),
-          sessions: displayState.sessions.map(candidate =>
-            candidate.id === session.id
-              ? {
-                  ...candidate,
-                  locked: false,
-                  origin:
-                    candidate.origin === 'fixed' ? 'manual' : candidate.origin,
-                }
-              : { ...candidate },
-          ),
-        };
-      } else {
-        next = updateSession(
-          displayState,
-          session.id,
-          { locked: true },
-          { today },
-        );
-      }
-      if (next === displayState) {
-        setValidation(
-          tr(
-            'Die Sperre konnte nicht geändert werden.',
-            "The lock couldn't be changed.",
-          ),
-        );
-        return;
-      }
-      const ok = await persist(
-        next,
-        session.locked
-          ? tr('Einheit wieder flexibel.', 'Workout is flexible again.')
-          : tr('Einheit gesperrt.', 'Workout locked.'),
-      );
-      if (ok) setDetailsId(null);
-    },
-    [displayState, persist, today, working],
-  );
-
-  const startSession = useCallback(
-    async (session: ScheduledSession) => {
-      if (working || startingId) return;
-      const handler = session.kind === 'run' ? onStartRun : onStartStrength;
-      if (session.date !== today) {
-        setValidation(
-          tr(
-            'Verschiebe die Einheit zuerst auf heute.',
-            'Move the workout to today first.',
-          ),
-        );
-        return;
-      }
-      setError('');
-      setStartingId(session.id);
-      try {
-        await handler(session);
-        setMessage(
-          tr(
-            `${session.title} kann jetzt gestartet werden.`,
-            `${scheduleTitle(session)} can be started now.`,
-          ),
-        );
-        setDetailsId(null);
-      } catch (caught) {
-        const reason =
-          caught instanceof Error
-            ? caught.message
-            : tr('Bitte versuche es erneut.', 'Please try again.');
-        setError(
-          tr(
-            `Einheit konnte nicht gestartet werden. ${reason}`,
-            `Couldn't start the workout. ${reason}`,
-          ),
-        );
-      } finally {
-        setStartingId(null);
-      }
-    },
-    [onStartRun, onStartStrength, startingId, today, working],
-  );
-
-  const jumpToToday = useCallback(() => {
-    const current = localDateFrom(now);
-    setWeekStart(mondayOf(current));
-    setMonthDate(firstOfMonth(current));
-  }, [now]);
-
-  const navigateWeek = useCallback((amount: number) => {
-    setWeekStart(current => addDays(current, amount * 7));
-  }, []);
-
-  const navigateMonth = useCallback((amount: number) => {
-    setMonthDate(
-      current =>
-        new Date(current.getFullYear(), current.getMonth() + amount, 1),
-    );
-  }, []);
-
-  const openMove = useCallback((session: ScheduledSession) => {
-    setValidation('');
-    setDetailsId(null);
-    setMoveId(session.id);
-    setMoveWeekStart(mondayOf(localDateFrom(session.date)));
-  }, []);
-
-  const weekSummary = planSummary(weekDateKeys, entriesByDate, activities);
-  const monthSummary = planSummary(monthDateKeys, entriesByDate, activities);
-  const shownDay = monthDateKeys.includes(selectedDay)
-    ? selectedDay
-    : monthDateKeys.includes(today)
-    ? today
-    : monthDateKeys[0];
-
-  const openActivity = onOpenActivity;
-  const periodHasPlan =
-    view === 'week' || !showMonth
-      ? weekSummary.planned > 0
-      : monthSummary.planned > 0;
-
-  // One marker per entry. Each state has its own shape — ✓ done, • started,
-  // ring planned, – skipped — so color is never the only information.
-  const renderMarker = (entry: PlanEntry, size: 'small' | 'large') => {
-    const mark = entryMark(entry);
-    if (size === 'small')
-      return (
-        <Text
-          style={[
-            styles.smallMark,
-            (mark === 'done' || mark === 'started') && styles.todayText,
-          ]}
-        >
-          {MARK_GLYPH[mark]}
-        </Text>
-      );
     return (
-      <View
+      template?.name ||
+      scheduleTitle({ title: item.title ?? '' }) ||
+      tr('Krafttraining', 'Strength training')
+    );
+  };
+  const itemIcon = (item: PlannedItem): TrainingIcon =>
+    item.kind === 'run'
+      ? 'run'
+      : templateIcon(
+          item.templateId ? templateById.get(item.templateId) : null,
+        );
+  const activityIcon = (activity: PlanActivity): TrainingIcon =>
+    activity.kind === 'run'
+      ? activity.sport === 'cycling'
+        ? 'bike'
+        : 'run'
+      : templateIcon(
+          activity.templateId ? templateById.get(activity.templateId) : null,
+        );
+  const entryIcon = (entry: DayEntry): TrainingIcon =>
+    entry.type === 'planned'
+      ? itemIcon(entry.item)
+      : activityIcon(entry.activity);
+  const entryTitle = (entry: DayEntry): string =>
+    entry.type === 'planned' ? itemTitle(entry.item) : entry.activity.title;
+  const entryLabel = (entry: DayEntry) =>
+    `${entryTitle(entry)}, ${stateLabel(entry.state)}${
+      entry.type === 'unplanned' ? tr(', ohne Plan', ', unplanned') : ''
+    }`;
+
+  const save = async (next: ScheduleState) => {
+    if (working || next === shown) return;
+    const previous = shown;
+    setShown(next);
+    setSaving(true);
+    setError('');
+    try {
+      await onSave(next);
+    } catch (caught) {
+      setShown(previous);
+      setError(
+        caught instanceof Error && caught.message
+          ? caught.message
+          : tr('Bitte versuche es erneut.', 'Please try again.'),
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // The shown period: its days, first and last day.
+  const weeks = useMemo(() => monthWeeks(month), [month]);
+  const weekDays = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => addCalendarDays(week, i)),
+    [week],
+  );
+  const periodStart = view === 'month' ? month : week;
+  const periodEnd =
+    view === 'month' ? addCalendarDays(shiftMonth(month, 1), -1) : weekDays[6];
+  const containsToday = periodStart <= today && today <= periodEnd;
+  const totals = periodTotals(
+    activities,
+    periodStart,
+    containsToday ? today : periodEnd,
+  );
+  const usual = compareWithUsual({
+    activities,
+    kind: view,
+    start: periodStart,
+    today,
+  });
+
+  const navigate = (amount: number) => {
+    if (view === 'month') setMonth(current => shiftMonth(current, amount));
+    else setWeek(current => addCalendarDays(current, amount * 7));
+  };
+  const backToToday = () => {
+    setMonth(firstOfMonth(today));
+    setWeek(startOfWeek(today));
+  };
+  const switchView = () => {
+    if (view === 'month') {
+      // The week of today if it is in the month, else the month's first week.
+      setWeek(startOfWeek(month === firstOfMonth(today) ? today : month));
+      setView('week');
+    } else {
+      setMonth(firstOfMonth(week));
+      setView('month');
+    }
+  };
+  const periodTitle =
+    view === 'month'
+      ? `${monthNames()[dateOf(month).getMonth()]} ${dateOf(
+          month,
+        ).getFullYear()}`
+      : `${shortDateLabel(weekDays[0])} – ${shortDateLabel(weekDays[6])}`;
+
+  const renderTotal = (
+    value: string,
+    label: string,
+    tone: UsualTone | undefined,
+  ) => (
+    <View
+      style={styles.total}
+      accessible
+      accessibilityLabel={`${value} ${label}${
+        tone ? `, ${toneWord(tone)}` : ''
+      }`}
+    >
+      <Text
         style={[
-          styles.marker,
-          mark === 'done' && styles.markerDone,
-          mark === 'started' && styles.markerStarted,
-          mark === 'planned' && styles.markerPlanned,
-          mark === 'skipped' && styles.markerSkipped,
+          styles.totalValue,
+          tone === 'more' && styles.more,
+          tone === 'less' && styles.less,
         ]}
       >
-        {mark === 'done' ? <Text style={styles.markerCheck}>✓</Text> : null}
-        {mark === 'started' ? (
-          <Text style={[styles.markerDash, styles.todayText]}>•</Text>
-        ) : null}
-        {mark === 'skipped' ? <Text style={styles.markerDash}>–</Text> : null}
-      </View>
-    );
-  };
-
-  const renderEntry = (entry: PlanEntry) => {
-    if (entry.type === 'recorded') {
-      const { activity } = entry;
-      const content = (
-        <>
-          {renderMarker(entry, 'large')}
-          <View style={styles.entryMain}>
-            <Text style={styles.entryTitle} numberOfLines={1}>
-              {activity.title}
-            </Text>
-            <Text style={styles.entryMeta}>
-              {[
-                activityKindLabel(activity),
-                activityMeta(activity),
-                activity.finished ? '' : statusLabel('started'),
-                activity.falseStart ? tr('Fehlstart', 'false start') : '',
-                entry.plannedFor
-                  ? tr(
-                      `für den Plan am ${dateLabel(
-                        localDateFrom(entry.plannedFor),
-                      )}`,
-                      `for the plan on ${dateLabel(
-                        localDateFrom(entry.plannedFor),
-                      )}`,
-                    )
-                  : // Only worth saying when the period has a plan to compare with.
-                  periodHasPlan
-                  ? tr('ohne Plan', 'unplanned')
-                  : '',
-              ]
-                .filter(Boolean)
-                .join(' · ')}
-            </Text>
-          </View>
-          {openActivity ? <Text style={styles.entryChevron}>›</Text> : null}
-        </>
-      );
-      return openActivity ? (
-        <Pressable
-          key={`${activity.kind}-${activity.id}`}
-          accessibilityRole="button"
-          accessibilityLabel={tr(
-            `${activity.title} ansehen`,
-            `View ${activity.title}`,
-          )}
-          onPress={() => openActivity(activity.kind, activity.id)}
-          style={({ pressed }) => [styles.entry, pressed && styles.pressed]}
-        >
-          {content}
-        </Pressable>
-      ) : (
-        <View key={`${activity.kind}-${activity.id}`} style={styles.entry}>
-          {content}
-        </View>
-      );
-    }
-    const { session, status, activity } = entry;
-    const startedOn = activity
-      ? isoDate(localDateFrom(activity.startTime))
-      : undefined;
-    const meta =
-      activity && status !== 'planned'
-        ? [
-            sessionKindLabel(session),
-            statusLabel(status),
-            startedOn && startedOn !== session.date
-              ? tr(
-                  `am ${dateLabel(localDateFrom(startedOn))}`,
-                  `on ${dateLabel(localDateFrom(startedOn))}`,
-                )
-              : '',
-            activityMeta(activity),
-          ]
-        : [
-            sessionKindLabel(session),
-            formatMinutes(session.minutes),
-            statusLabel(status),
-          ];
-    return (
-      <Pressable
-        key={session.id}
-        accessibilityRole="button"
-        accessibilityLabel={tr(
-          `Einheit ${session.title}, ${fullDateLabel(
-            localDateFrom(session.date),
-          )}`,
-          `Workout ${scheduleTitle(session)}, ${fullDateLabel(
-            localDateFrom(session.date),
-          )}`,
-        )}
-        accessibilityState={{ disabled: working }}
-        disabled={working}
-        onPress={() => setDetailsId(session.id)}
-        style={({ pressed }) => [styles.entry, pressed && styles.pressed]}
-      >
-        {renderMarker(entry, 'large')}
-        <View style={styles.entryMain}>
-          <Text
-            numberOfLines={1}
-            style={[
-              styles.entryTitle,
-              status === 'skipped' && styles.struck,
-            ]}
-          >
-            {scheduleTitle(session)}
-          </Text>
-          <Text style={styles.entryMeta}>
-            {meta.filter(Boolean).join(' · ')}
-          </Text>
-        </View>
-        {session.locked ? (
-          <Badge muted>{tr('Gesperrt', 'Locked')}</Badge>
-        ) : null}
-        <Text style={styles.entryChevron}>›</Text>
-      </Pressable>
-    );
-  };
-
-  const addLabel = (date: Date) =>
-    tr(
-      `Einheit am ${weekdayLong()[mondayIndex(date)]} hinzufügen`,
-      `Add workout on ${weekdayLong()[mondayIndex(date)]}`,
-    );
-
-  // Entries of one day; an empty future day is itself the way to add one.
-  const renderDayEntries = (date: Date) => {
-    const key = isoDate(date);
-    const entries = entriesByDate[key] ?? [];
-    const past = key < today;
-    if (!entries.length) {
-      return past ? (
-        <Text style={styles.emptyDay}>{tr('Kein Training', 'No workout')}</Text>
-      ) : (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={addLabel(date)}
-          accessibilityState={{ disabled: working }}
-          disabled={working}
-          onPress={() => openEditor(undefined, key)}
-          style={({ pressed }) => [styles.addDay, pressed && styles.pressed]}
-        >
-          <Text style={styles.addDayMuted}>
-            {tr('+ Einheit planen', '+ Plan a workout')}
-          </Text>
-        </Pressable>
-      );
-    }
-    return (
-      <>
-        {entries.map(renderEntry)}
-        {past ? null : (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={addLabel(date)}
-            accessibilityState={{ disabled: working }}
-            disabled={working}
-            onPress={() => openEditor(undefined, key)}
-            style={({ pressed }) => [styles.addMore, pressed && styles.pressed]}
-          >
-            <Text style={styles.addDayText}>
-              {tr('+ Weitere Einheit', '+ Another workout')}
-            </Text>
-          </Pressable>
-        )}
-      </>
-    );
-  };
-
-  const renderDayBlock = (date: Date, index: number) => {
-    const key = isoDate(date);
-    const isToday = key === today;
-    const past = key < today;
-    // The time budget only shows on days where it says something: routine days
-    // and exceptions set on purpose.
-    const budgetShown =
-      !past &&
-      (displayState.routine.days.includes(index) ||
-        Object.prototype.hasOwnProperty.call(displayState.availability, key));
-    return (
-      <View
-        key={key}
-        style={[styles.dayBlock, index > 0 && styles.dayDivider]}
-        accessibilityLabel={fullDateLabel(date)}
-      >
-        <View style={styles.dateColumn}>
-          <Text style={[styles.dateWeekday, isToday && styles.todayText]}>
-            {weekdayShort()[index]}
-          </Text>
-          <Text
-            style={[
-              styles.dateNumber,
-              past && styles.mutedText,
-              isToday && styles.todayText,
-            ]}
-          >
-            {date.getDate()}
-          </Text>
-          {isToday ? (
-            <Text style={styles.todayLabel}>{tr('Heute', 'Today')}</Text>
-          ) : null}
-        </View>
-        <View style={styles.dayEntries}>
-          {renderDayEntries(date)}
-          {budgetShown ? (
-            <Text style={styles.budget}>
-              {tr(
-                `${formatMinutes(availableMinutes(key, index))} verfügbar`,
-                `${formatMinutes(availableMinutes(key, index))} available`,
-              )}
-            </Text>
-          ) : null}
-        </View>
-      </View>
-    );
-  };
-
-  // The period at a glance: what was done, what the plan asked for.
-  const renderSummary = (summary: PlanSummary, month: boolean) => (
-    <Card style={styles.summaryCard}>
-      <View style={styles.stats}>
-        <Stat
-          value={String(summary.done)}
-          label={tr('erledigt', 'done')}
-        />
-        <Stat
-          value={totalTime(summary.seconds)}
-          label={
-            summary.timed < summary.done
-              ? tr(
-                  `Zeit von ${summary.timed} der ${summary.done}`,
-                  `Time of ${summary.timed} of ${summary.done}`,
-                )
-              : tr('Trainingszeit', 'Training time')
-          }
-        />
-        {summary.runningMeters !== undefined ? (
-          <Stat
-            value={kilometers(summary.runningMeters)}
-            label={
-              summary.measuredRuns < summary.runs
-                ? tr(
-                    `km aus ${summary.measuredRuns} von ${summary.runs} Läufen`,
-                    `km from ${summary.measuredRuns} of ${summary.runs} runs`,
-                  )
-                : tr('km gelaufen', 'km run')
-            }
-          />
-        ) : null}
-      </View>
-      {summary.planned ? (
-        <View style={styles.planProgress}>
-          <Text style={styles.planProgressText}>
-            {tr(
-              `${summary.plannedDone} von ${summary.planned} geplanten Einheiten erledigt`,
-              `${summary.plannedDone} of ${summary.planned} planned ${
-                summary.planned === 1 ? 'workout' : 'workouts'
-              } done`,
-            )}
-          </Text>
-          <Progress
-            value={summary.plannedDone / summary.planned}
-            label={tr(
-              month ? 'Plan in diesem Monat' : 'Plan in dieser Woche',
-              month ? 'Plan this month' : 'Plan this week',
-            )}
-          />
-        </View>
-      ) : (
-        <Text style={styles.planProgressText}>
-          {month
-            ? tr('In diesem Monat ist nichts geplant.', 'Nothing planned this month.')
-            : tr('In dieser Woche ist nichts geplant.', 'Nothing planned this week.')}
-        </Text>
-      )}
-    </Card>
+        {value}
+        {tone && TONE_MARK[tone] ? ` ${TONE_MARK[tone]}` : ''}
+      </Text>
+      <Text style={styles.totalLabel}>{label}</Text>
+    </View>
   );
 
-  const renderCalendarCell = (date: Date) => {
-    const key = isoDate(date);
-    const entries = entriesByDate[key] ?? [];
-    const isToday = key === today;
-    const selected = key === shownDay;
-    const outside = !inMonth(date, monthDate);
+  const renderTotals = () => {
+    if (periodStart > today)
+      return (
+        <Text style={styles.compareNote}>
+          {tr('Noch nichts trainiert.', 'Nothing trained yet.')}
+        </Text>
+      );
+    const unit =
+      view === 'month' ? tr('Monate', 'months') : tr('Wochen', 'weeks');
+    return (
+      <View style={styles.totals}>
+        <View style={styles.totalRow}>
+          {renderTotal(
+            String(totals.workouts),
+            totals.workouts === 1
+              ? tr('Einheit', 'workout')
+              : tr('Einheiten', 'workouts'),
+            usual?.workouts,
+          )}
+          {renderTotal(
+            totalTime(totals.seconds),
+            totals.timed < totals.workouts
+              ? tr(`Zeit von ${totals.timed}`, `time of ${totals.timed}`)
+              : tr('Zeit', 'time'),
+            usual?.seconds,
+          )}
+          {showRunning
+            ? renderTotal(
+                kilometers(totals.runningMeters),
+                totals.measuredRuns < totals.runs
+                  ? tr(
+                      `aus ${totals.measuredRuns} von ${totals.runs} Läufen`,
+                      `from ${totals.measuredRuns} of ${totals.runs} runs`,
+                    )
+                  : tr('gelaufen', 'run'),
+                usual?.runningMeters,
+              )
+            : null}
+        </View>
+        {usual ? (
+          <Text style={styles.compareNote}>
+            {usual.partial
+              ? tr(
+                  `▲ ▼ gegenüber den ersten ${usual.days} Tagen der ${usual.periods} ${unit} davor`,
+                  `▲ ▼ against the first ${usual.days} days of the ${usual.periods} ${unit} before`,
+                )
+              : tr(
+                  `▲ ▼ gegenüber den ${usual.periods} ${unit} davor`,
+                  `▲ ▼ against the ${usual.periods} ${unit} before`,
+                )}
+          </Text>
+        ) : null}
+      </View>
+    );
+  };
+
+  const dayLabel = (date: string, entries: DayEntry[]) =>
+    [
+      fullDateLabel(date),
+      date === today ? tr('heute', 'today') : '',
+      ...entries.map(entryLabel),
+    ]
+      .filter(Boolean)
+      .join(', ');
+
+  const renderCell = (date: string) => {
+    const entries = entriesFor(date);
+    const outside = date.slice(0, 7) !== month.slice(0, 7);
+    const isToday = date === today;
+    const shownEntries = entries.slice(0, entries.length > 4 ? 3 : 4);
     return (
       <Pressable
-        key={key}
+        key={date}
         accessibilityRole="button"
-        accessibilityLabel={[
-          fullDateLabel(date),
-          ...MARKS.map(mark => {
-            const count = entries.filter(
-              entry => entryMark(entry) === mark,
-            ).length;
-            return count ? `${count} ${markLabel(mark)}` : '';
-          }),
-        ]
-          .filter(Boolean)
-          .join(', ')}
-        accessibilityState={{ selected }}
-        onPress={() => {
-          if (outside) setMonthDate(firstOfMonth(date));
-          setSelectedDay(key);
-        }}
+        accessibilityLabel={dayLabel(date, entries)}
+        onPress={() => setOpenDay(date)}
         style={({ pressed }) => [
-          styles.calendarCell,
-          outside && styles.calendarOutside,
-          selected && styles.calendarSelected,
-          isToday && styles.calendarToday,
+          styles.cell,
+          outside && styles.cellOutside,
+          isToday && styles.cellToday,
           pressed && styles.pressed,
         ]}
       >
         <Text
           style={[
-            styles.calendarNumber,
-            outside && styles.mutedText,
+            styles.cellNumber,
+            (outside || date < today) && styles.mutedText,
             isToday && styles.todayText,
           ]}
         >
-          {date.getDate()}
+          {dateOf(date).getDate()}
         </Text>
-        <View style={styles.calendarDots}>
-          {entries.slice(0, 3).map((entry, index) => (
-            <React.Fragment key={index}>
-              {renderMarker(entry, 'small')}
-            </React.Fragment>
+        <View style={styles.cellIcons}>
+          {shownEntries.map((entry, index) => (
+            <WorkoutIcon
+              key={index}
+              name={entryIcon(entry)}
+              state={entry.state}
+              size="small"
+            />
           ))}
+          {entries.length > shownEntries.length ? (
+            <Text style={styles.moreCount}>
+              +{entries.length - shownEntries.length}
+            </Text>
+          ) : null}
         </View>
-        {entries.length > 3 ? (
-          <Text style={styles.calendarMore}>+{entries.length - 3}</Text>
-        ) : null}
       </Pressable>
     );
   };
 
-  const legend = () => (
-    <View style={styles.legend} accessible={false}>
-      {MARKS.map(mark => (
-        <View key={mark} style={styles.legendItem}>
+  const renderWeekDay = (date: string, index: number) => {
+    const entries = entriesFor(date);
+    const isToday = date === today;
+    return (
+      <Pressable
+        key={date}
+        accessibilityRole="button"
+        accessibilityLabel={dayLabel(date, entries)}
+        onPress={() => setOpenDay(date)}
+        style={({ pressed }) => [
+          styles.weekRow,
+          index > 0 && styles.weekDivider,
+          pressed && styles.pressed,
+        ]}
+      >
+        <View style={styles.weekDate}>
+          <Text style={[styles.weekWeekday, isToday && styles.todayText]}>
+            {weekdayShort()[index]}
+          </Text>
           <Text
             style={[
-              styles.smallMark,
-              (mark === 'done' || mark === 'started') && styles.todayText,
+              styles.weekNumber,
+              date < today && styles.mutedText,
+              isToday && styles.todayText,
             ]}
           >
-            {MARK_GLYPH[mark]}
+            {dateOf(date).getDate()}
           </Text>
-          <Text style={styles.legendText}>{statusLabel(mark)}</Text>
         </View>
-      ))}
-    </View>
-  );
+        <View style={styles.weekEntries}>
+          {entries.map((entry, entryIndex) => (
+            <View key={entryIndex} style={styles.weekEntry}>
+              <WorkoutIcon name={entryIcon(entry)} state={entry.state} />
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.weekEntryText,
+                  entry.state === 'planned' && styles.mutedText,
+                ]}
+              >
+                {entryTitle(entry)}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </Pressable>
+    );
+  };
 
-  const isCurrentWeek = weekDateKeys.includes(today);
-  const isCurrentMonth = monthDateKeys.includes(today);
+  const renderDaySheet = () => {
+    if (!openDay) return null;
+    const date = openDay;
+    const planned = plannedFor(date);
+    // Same item objects as `planned`, so a row finds its index for removal.
+    const entries = dayEntries(planned, byDate[date] ?? []);
+    const editable = date >= today;
+    const changed = isChangedDay(shown, date);
+    const weeklyDay = weeklyFor(shown, weekly, date, today);
+    const hasWeekly =
+      Boolean(weeklyDay) &&
+      (weeklyDay!.run.includes(weekdayOf(date)) ||
+        weeklyDay!.strength.some(entry =>
+          entry.days.includes(weekdayOf(date)),
+        ));
+    const asEntries = (items: PlannedItem[]): DayPlanEntry[] =>
+      items.map(item => ({
+        kind: item.kind,
+        templateId: item.templateId,
+        title: itemTitle(item),
+        purpose: item.purpose,
+      }));
+    // Planned items of the other area stay as they are.
+    const hidden = plannedOn(shown, weekly, date, today).filter(
+      item => !(item.kind === 'run' ? showRunning : showStrength),
+    );
+    const setPlan = (items: DayPlanEntry[]) =>
+      void save(
+        setDayPlan(shown, date, [...asEntries(hidden), ...items], today),
+      );
+    const remove = (index: number) =>
+      setPlan(asEntries(planned.filter((_, i) => i !== index)));
+    const add = (entry: DayPlanEntry) =>
+      setPlan([...asEntries(planned), entry]);
+    const options: {
+      key: string;
+      label: string;
+      icon: TrainingIcon;
+      entry: DayPlanEntry;
+    }[] = [
+      ...(showRunning
+        ? [
+            {
+              key: 'run',
+              label: tr('Lauf', 'Run'),
+              icon: 'run' as const,
+              entry: { kind: 'run' as const },
+            },
+          ]
+        : []),
+      ...(showStrength
+        ? templates.length
+          ? templates.map(template => ({
+              key: template.id,
+              label: template.name,
+              icon: templateIcon(template),
+              entry: {
+                kind: 'strength' as const,
+                templateId: template.id,
+                title: template.name,
+              },
+            }))
+          : [
+              {
+                key: 'strength',
+                label: tr('Krafttraining', 'Strength training'),
+                icon: templateIcon(null),
+                entry: { kind: 'strength' as const },
+              },
+            ]
+        : []),
+    ];
+    return (
+      <Sheet
+        visible
+        title={`${fullDateLabel(date)}${
+          date === today ? tr(' · heute', ' · today') : ''
+        }`}
+        onClose={() => setOpenDay(null)}
+      >
+        {entries.length ? (
+          entries.map((entry, index) => {
+            const activity = entry.activity;
+            const plannedIndex =
+              entry.type === 'planned' ? planned.indexOf(entry.item) : -1;
+            const meta = [
+              entry.type === 'unplanned'
+                ? tr('ohne Plan', 'unplanned')
+                : stateLabel(entry.state),
+              activity ? activityMeta(activity) : '',
+            ]
+              .filter(Boolean)
+              .join(' · ');
+            const open =
+              activity && onOpenActivity
+                ? () => {
+                    setOpenDay(null);
+                    onOpenActivity(activity.kind, activity.id);
+                  }
+                : undefined;
+            return (
+              <View key={index} style={styles.sheetRow}>
+                <Pressable
+                  accessibilityRole={open ? 'button' : undefined}
+                  accessibilityLabel={
+                    open
+                      ? tr(
+                          `${activity!.title} ansehen`,
+                          `View ${activity!.title}`,
+                        )
+                      : entryLabel(entry)
+                  }
+                  disabled={!open}
+                  onPress={open}
+                  style={({ pressed }) => [
+                    styles.sheetEntry,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <WorkoutIcon name={entryIcon(entry)} state={entry.state} />
+                  <View style={styles.sheetText}>
+                    <Text numberOfLines={1} style={styles.sheetTitle}>
+                      {entryTitle(entry)}
+                    </Text>
+                    <Text style={styles.sheetMeta}>{meta}</Text>
+                  </View>
+                  {open ? <Text style={styles.chevron}>›</Text> : null}
+                </Pressable>
+                {editable && plannedIndex >= 0 ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={tr(
+                      `${entryTitle(entry)} an diesem Tag nicht planen`,
+                      `Unplan ${entryTitle(entry)} on this day`,
+                    )}
+                    accessibilityState={{ disabled: working }}
+                    disabled={working}
+                    onPress={() => remove(plannedIndex)}
+                    style={({ pressed }) => [
+                      styles.remove,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Text style={styles.removeText}>×</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            );
+          })
+        ) : (
+          <Copy muted>
+            {editable
+              ? tr('Nichts geplant.', 'Nothing planned.')
+              : tr('Kein Training.', 'No workout.')}
+          </Copy>
+        )}
+        {editable && options.length ? (
+          <>
+            <Text style={styles.sheetSection}>
+              {tr('An diesem Tag planen', 'Plan on this day')}
+            </Text>
+            <View style={styles.options}>
+              {options.map(option => (
+                <Pressable
+                  key={option.key}
+                  accessibilityRole="button"
+                  accessibilityLabel={tr(
+                    `${option.label} planen`,
+                    `Plan ${option.label}`,
+                  )}
+                  accessibilityState={{ disabled: working }}
+                  disabled={working}
+                  onPress={() => add(option.entry)}
+                  style={({ pressed }) => [
+                    styles.option,
+                    working && styles.disabled,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <WorkoutIcon name={option.icon} size="small" />
+                  <Text numberOfLines={1} style={styles.optionText}>
+                    {option.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            {changed && hasWeekly ? (
+              <Button
+                secondary
+                small
+                title={tr('Wie jede Woche', 'As every week')}
+                label={tr(
+                  'Wochenplan für diesen Tag wiederherstellen',
+                  'Restore the weekly plan for this day',
+                )}
+                disabled={working}
+                onPress={() => void save(resetDay(shown, date, today))}
+              />
+            ) : null}
+            {!changed && hasWeekly ? (
+              <Copy muted>
+                {tr(
+                  'Eine Änderung gilt nur für diesen Tag.',
+                  'A change applies to this day only.',
+                )}
+              </Copy>
+            ) : null}
+          </>
+        ) : null}
+        <Button title={tr('Fertig', 'Done')} onPress={() => setOpenDay(null)} />
+      </Sheet>
+    );
+  };
 
   return (
     <View style={styles.screen}>
@@ -1581,94 +783,43 @@ export function PlanningScreen({
             accessibilityLabel={tr('Speichern läuft', 'Saving')}
           />
         ) : null}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={
+            view === 'month'
+              ? tr('Wochenansicht zeigen', 'Show week view')
+              : tr('Monatsansicht zeigen', 'Show month view')
+          }
+          onPress={switchView}
+          style={({ pressed }) => [
+            styles.viewSwitch,
+            pressed && styles.pressed,
+          ]}
+        >
+          <Text style={styles.viewSwitchText}>
+            {view === 'month' ? tr('Woche', 'Week') : tr('Monat', 'Month')}
+          </Text>
+        </Pressable>
       </View>
 
       {error ? (
         <Notice
-          title={tr('Aktion nicht abgeschlossen', 'Action not completed')}
+          title={tr('Nicht gespeichert', 'Not saved')}
           onDismiss={() => setError('')}
         >
           {error}
         </Notice>
       ) : null}
-      {message ? (
-        <Notice onDismiss={() => setMessage('')}>{message}</Notice>
-      ) : null}
-      {pending ? (
-        <Notice title={tr('Speichern erneut versuchen', 'Try saving again')}>
-          <Text>
-            {tr(
-              'Deine Eingaben sind noch offen.',
-              'Your changes are still open.',
-            )}
-          </Text>
-          <View style={styles.noticeAction}>
-            <Button
-              title={tr('Erneut speichern', 'Save again')}
-              secondary
-              small
-              disabled={saving || Boolean(busy)}
-              onPress={retrySave}
-            />
-            <Button
-              title={tr('Änderung verwerfen', 'Discard change')}
-              secondary
-              small
-              disabled={saving || Boolean(busy)}
-              onPress={() => {
-                setPending(null);
-                setError('');
-                setEditor(null);
-                setAdjusting(false);
-                setMoveId(null);
-                setProposal(null);
-              }}
-            />
-          </View>
-        </Notice>
-      ) : null}
-      {validation ? (
-        <Notice
-          title={tr('Bitte prüfen', 'Please check')}
-          onDismiss={() => setValidation('')}
-        >
-          {validation}
-        </Notice>
-      ) : null}
 
-      {showMonth ? (
-        <Segmented<ViewMode>
-          label={tr('Zeitraum', 'Period')}
-          options={[
-            { value: 'week', label: tr('Woche', 'Week') },
-            { value: 'month', label: tr('Monat', 'Month') },
-          ]}
-          value={view}
-          onChange={next => {
-            if (next === 'month') {
-              setMonthDate(firstOfMonth(weekStart));
-              setSelectedDay(
-                weekDateKeys.includes(today) ? today : weekDateKeys[0],
-              );
-            }
-            setView(next);
-          }}
-        />
-      ) : null}
-
-      <View style={styles.periodNavigation}>
+      <View style={styles.navigation}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={
-            view === 'week' || !showMonth
-              ? tr('Vorherige Woche', 'Previous week')
-              : tr('Vorheriger Monat', 'Previous month')
+            view === 'month'
+              ? tr('Vorheriger Monat', 'Previous month')
+              : tr('Vorherige Woche', 'Previous week')
           }
-          accessibilityState={{ disabled: working }}
-          disabled={working}
-          onPress={() =>
-            view === 'week' || !showMonth ? navigateWeek(-1) : navigateMonth(-1)
-          }
+          onPress={() => navigate(-1)}
           style={({ pressed }) => [styles.navButton, pressed && styles.pressed]}
         >
           <Text style={styles.navText}>‹</Text>
@@ -1676,1041 +827,234 @@ export function PlanningScreen({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={
-            view === 'week' || !showMonth
-              ? tr('Aktuelle Woche', 'Current week')
-              : tr('Aktuellen Monat', 'Current month')
+            containsToday
+              ? periodTitle
+              : tr(
+                  `${periodTitle}, zurück zu heute`,
+                  `${periodTitle}, back to today`,
+                )
           }
-          accessibilityState={{ disabled: working }}
-          disabled={working}
-          onPress={jumpToToday}
+          disabled={containsToday}
+          onPress={backToToday}
           style={styles.periodLabel}
         >
-          <Text style={styles.periodTitle}>
-            {view === 'week' || !showMonth
-              ? `${dateLabel(weekDates[0])} – ${dateLabel(weekDates[6])}`
-              : monthLabel(monthDate)}
-          </Text>
-          <Text
-            style={
-              (view === 'week' || !showMonth ? isCurrentWeek : isCurrentMonth)
-                ? styles.periodMeta
-                : styles.periodLink
-            }
-          >
-            {view === 'week' || !showMonth
-              ? isCurrentWeek
-                ? tr('Diese Woche', 'This week')
-                : tr('Zurück zu heute', 'Back to today')
-              : isCurrentMonth
-              ? tr('Dieser Monat', 'This month')
-              : tr('Zurück zu heute', 'Back to today')}
-          </Text>
+          <Text style={styles.periodTitle}>{periodTitle}</Text>
+          {containsToday ? null : (
+            <Text style={styles.periodLink}>
+              {tr('Zurück zu heute', 'Back to today')}
+            </Text>
+          )}
         </Pressable>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={
-            view === 'week' || !showMonth
-              ? tr('Nächste Woche', 'Next week')
-              : tr('Nächster Monat', 'Next month')
+            view === 'month'
+              ? tr('Nächster Monat', 'Next month')
+              : tr('Nächste Woche', 'Next week')
           }
-          accessibilityState={{ disabled: working }}
-          disabled={working}
-          onPress={() =>
-            view === 'week' || !showMonth ? navigateWeek(1) : navigateMonth(1)
-          }
+          onPress={() => navigate(1)}
           style={({ pressed }) => [styles.navButton, pressed && styles.pressed]}
         >
           <Text style={styles.navText}>›</Text>
         </Pressable>
       </View>
 
-      {view === 'week' || !showMonth ? (
-        <>
-          {renderSummary(weekSummary, false)}
-          <Card style={styles.agenda}>{weekDates.map(renderDayBlock)}</Card>
-          {legend()}
-          {showSuggest ? (
-            <Button
-              title={tr('Woche vorschlagen lassen', 'Suggest a week')}
-              secondary={Boolean(weekSummary.planned)}
-              disabled={working}
-              onPress={createProposal}
-              label={tr(
-                'Trainingswoche aus Rhythmus und Kraftvorlagen vorschlagen',
-                'Suggest a training week from your routine and strength templates',
-              )}
-            />
-          ) : null}
-        </>
+      {renderTotals()}
+
+      {view === 'month' ? (
+        <View style={styles.calendar}>
+          <View style={styles.weekdays}>
+            {weekdayShort().map(day => (
+              <Text key={day} style={styles.weekday}>
+                {day}
+              </Text>
+            ))}
+          </View>
+          {weeks.map(days => (
+            <View key={days[0]} style={styles.calendarRow}>
+              {days.map(renderCell)}
+            </View>
+          ))}
+        </View>
       ) : (
-        <>
-          {renderSummary(monthSummary, true)}
-          <Card style={styles.calendarCard}>
-            <View style={styles.calendarWeekdays}>
-              {weekdayShort().map(day => (
-                <Text key={day} style={styles.calendarWeekday}>
-                  {day}
-                </Text>
-              ))}
-            </View>
-            <View style={styles.calendarGrid}>
-              {monthRows.map((row, index) => (
-                <View key={`month-week-${index}`} style={styles.calendarRow}>
-                  {row.map(renderCalendarCell)}
-                </View>
-              ))}
-            </View>
-          </Card>
-          {legend()}
-          {shownDay ? (
-            <Section title={fullDateLabel(localDateFrom(shownDay))}>
-              <Card style={styles.agenda}>
-                <View style={styles.dayEntries}>
-                  {renderDayEntries(localDateFrom(shownDay))}
-                </View>
-              </Card>
-            </Section>
-          ) : null}
-        </>
+        <View style={styles.calendar}>{weekDays.map(renderWeekDay)}</View>
       )}
 
-      {undoState ? (
-        <View style={styles.undoRow}>
-          <Copy muted>{tr('Änderung gespeichert.', 'Change saved.')}</Copy>
-          <Button
-            title={tr('Rückgängig', 'Undo')}
-            secondary
-            small
-            disabled={working}
-            onPress={undo}
-          />
+      <View style={styles.legend} accessible={false}>
+        <View style={styles.legendItem}>
+          <WorkoutIcon name="run" state="planned" size="small" />
+          <Text style={styles.legendText}>{tr('Geplant', 'Planned')}</Text>
         </View>
-      ) : null}
+        <View style={styles.legendItem}>
+          <WorkoutIcon name="run" state="done" size="small" />
+          <Text style={styles.legendText}>{tr('Erledigt', 'Done')}</Text>
+        </View>
+        <Text style={styles.legendText}>
+          {tr('Tippe auf einen Tag zum Planen.', 'Tap a day to plan it.')}
+        </Text>
+      </View>
 
-      <Section title={tr('Mehr', 'More')}>
-        <Row
-          title={tr('Zeit & Rhythmus', 'Time & routine')}
-          subtitle={`${
-            displayState.routine.days.length
-              ? displayState.routine.days
-                  .map(day => weekdayShort()[day])
-                  .join(' · ')
-              : tr('Keine festen Tage', 'No fixed days')
-          } · ${tr(
-            `${formatMinutes(displayState.routine.minutes)} üblich`,
-            `${formatMinutes(displayState.routine.minutes)} usual`,
-          )}`}
-          onPress={openAdjustment}
-        />
-        {onManageTemplates ? (
-          <Row
-            title={tr('Vorlagen', 'Templates')}
-            subtitle={
-              templates.length
-                ? tr(
-                    `${templates.length} ${
-                      templates.length === 1 ? 'Kraftvorlage' : 'Kraftvorlagen'
-                    }`,
-                    `${templates.length} ${
-                      templates.length === 1
-                        ? 'strength template'
-                        : 'strength templates'
-                    }`,
-                  )
-                : tr('Kraftvorlagen', 'Strength templates')
-            }
-            onPress={onManageTemplates}
-          />
-        ) : null}
-        {onOpenRoutePlanner ? (
-          <Row
-            title={tr('Route planen', 'Plan route')}
-            subtitle={tr(
-              'Strecke festlegen und beim Lauf folgen',
-              'Set the distance and follow it on your run',
-            )}
-            onPress={onOpenRoutePlanner}
-          />
-        ) : null}
-        {onDevelopment ? (
-          <Row
-            title={tr('Entwicklung', 'Progress')}
-            subtitle={tr(
-              'Ziel, Planstand und tatsächliches Training',
-              'Goal, plan status, and actual training',
-            )}
-            onPress={onDevelopment}
-          />
-        ) : null}
-      </Section>
-
-      <Modal
-        visible={Boolean(proposal)}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setProposal(null)}
-      >
-        <KeyboardAvoidingView behavior="height" style={styles.modalBackdrop}>
-          <ScrollView
-            style={styles.modalScroll}
-            contentContainerStyle={styles.modalCard}
-            keyboardShouldPersistTaps="handled"
-          >
-            <View style={styles.modalHeader}>
-              <Text accessibilityRole="header" style={styles.modalTitle}>
-                {tr('Wochenvorschlag', 'Week suggestion')}
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={tr(
-                  'Vorschlag schließen',
-                  'Close suggestion',
-                )}
-                onPress={() => setProposal(null)}
-                style={styles.closeButton}
-              >
-                <Text style={styles.closeText}>×</Text>
-              </Pressable>
-            </View>
-            {proposal ? (
-              proposal.addedSessions.length || proposal.movedSessions.length ? (
-                <>
-                  <Copy>
-                    {proposal.addedSessions.length +
-                      proposal.movedSessions.length ===
-                    1
-                      ? tr(
-                          '1 Änderung für diese Woche.',
-                          '1 change for this week.',
-                        )
-                      : tr(
-                          `${
-                            proposal.addedSessions.length +
-                            proposal.movedSessions.length
-                          } Änderungen für diese Woche.`,
-                          `${
-                            proposal.addedSessions.length +
-                            proposal.movedSessions.length
-                          } changes for this week.`,
-                        )}
-                  </Copy>
-                  {proposal.addedSessions.map(session => (
-                    <Row
-                      key={session.id}
-                      title={scheduleTitle(session)}
-                      subtitle={`${fullDateLabel(
-                        localDateFrom(session.date),
-                      )} · ${formatMinutes(session.minutes)}`}
-                    />
-                  ))}
-                  {proposal.moves.map(move => (
-                    <Row
-                      key={move.id}
-                      title={scheduleTitle(move)}
-                      subtitle={`${dateLabel(
-                        localDateFrom(move.from),
-                      )} → ${dateLabel(
-                        localDateFrom(move.to),
-                      )} · ${formatMinutes(move.session.minutes)}`}
-                    />
-                  ))}
-                  {proposal.warnings.map(warning => (
-                    <Notice key={warning}>{warning}</Notice>
-                  ))}
-                  {/* Dated entries are the routine's log ("2026-09-28: …"); what
-                      changes is already in the rows above. A build-up sentence
-                      carries a reason instead. */}
-                  {proposal.rationale
-                    .filter(line => !/^\d{4}-\d{2}-\d{2}:/.test(line))
-                    .slice(0, 1)
-                    .map(line => (
-                      <Copy muted key={line}>
-                        {line}
-                      </Copy>
-                    ))}
-                  <Button
-                    title={tr('Vorschlag übernehmen', 'Apply suggestion')}
-                    disabled={working}
-                    onPress={() => void applyProposal()}
-                  />
-                </>
-              ) : (
-                <EmptyState
-                  title={tr('Keine neue Einheit', 'No new workout')}
-                  copy={
-                    proposal.warnings[0] ??
-                    (displayState.routine.days.length ||
-                    templates.some(template => template.days.length)
-                      ? tr(
-                          'Der vorhandene Plan passt bereits.',
-                          'The existing plan already fits.',
-                        )
-                      : tr(
-                          'Lege unter „Zeit & Rhythmus“ deine üblichen Tage fest oder füge eine Einheit direkt hinzu.',
-                          'Set your usual days under “Time & routine”, or add a workout directly.',
-                        ))
-                  }
-                  action={{
-                    title: tr('Schließen', 'Close'),
-                    onPress: () => setProposal(null),
-                  }}
-                />
-              )
-            ) : null}
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      <Modal
-        visible={Boolean(detailsSession)}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setDetailsId(null)}
-      >
-        <KeyboardAvoidingView behavior="height" style={styles.modalBackdrop}>
-          <ScrollView
-            style={styles.modalScroll}
-            contentContainerStyle={styles.modalCard}
-            keyboardShouldPersistTaps="handled"
-          >
-            <View style={styles.modalHeader}>
-              <Text accessibilityRole="header" style={styles.modalTitle}>
-                {tr('Einheit', 'Workout')}
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={tr('Details schließen', 'Close details')}
-                onPress={() => setDetailsId(null)}
-                style={styles.closeButton}
-              >
-                <Text style={styles.closeText}>×</Text>
-              </Pressable>
-            </View>
-            {detailsSession ? (
-              <>
-                <Text style={styles.detailTitle}>
-                  {scheduleTitle(detailsSession)}
-                </Text>
-                <Text style={styles.detailMeta}>
-                  {fullDateLabel(localDateFrom(detailsSession.date))} ·{' '}
-                  {sessionKindLabel(detailsSession)} ·{' '}
-                  {formatMinutes(detailsSession.minutes)}
-                </Text>
-                <Text style={styles.detailStatus}>
-                  {statusLabel(planStatus(detailsSession, activities))}
-                  {detailsSession.locked ? tr(' · Gesperrt', ' · Locked') : ''}
-                </Text>
-                {detailsActivity ? (
-                  <Text style={styles.detailMeta}>
-                    {[
-                      detailsActivity.title,
-                      activityMeta(detailsActivity),
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </Text>
-                ) : null}
-                <View style={styles.modalActions}>
-                  {detailsActivity && onOpenActivity ? (
-                    <Button
-                      title={tr('Aufzeichnung ansehen', 'View recording')}
-                      secondary
-                      onPress={() => {
-                        setDetailsId(null);
-                        onOpenActivity(
-                          detailsActivity.kind,
-                          detailsActivity.id,
-                        );
-                      }}
-                    />
-                  ) : null}
-                  <Button
-                    title={
-                      detailsSession.date === today
-                        ? tr('Einheit starten', 'Start workout')
-                        : tr('Heute einplanen', 'Schedule for today')
-                    }
-                    secondary
-                    disabled={
-                      working ||
-                      detailsSession.status === 'skipped' ||
-                      Boolean(detailsSession.activityId)
-                    }
-                    onPress={() => void startSession(detailsSession)}
-                  />
-                  <Button
-                    title={tr('Einheit bearbeiten', 'Edit workout')}
-                    secondary
-                    disabled={
-                      working ||
-                      detailsSession.locked ||
-                      detailsSession.date < today
-                    }
-                    onPress={() =>
-                      openEditor(detailsSession, detailsSession.date)
-                    }
-                  />
-                  <Button
-                    title={tr('Einheit verschieben', 'Move workout')}
-                    secondary
-                    disabled={
-                      working ||
-                      detailsSession.locked ||
-                      detailsSession.date < today
-                    }
-                    onPress={() => openMove(detailsSession)}
-                  />
-                  <Button
-                    title={
-                      detailsSession.status === 'skipped'
-                        ? tr(
-                            'Einheit wieder einplanen',
-                            'Schedule workout again',
-                          )
-                        : tr('Einheit auslassen', 'Skip workout')
-                    }
-                    secondary
-                    disabled={
-                      working ||
-                      Boolean(detailsSession.activityId) ||
-                      detailsSession.locked ||
-                      detailsSession.date < today
-                    }
-                    onPress={() => void skip(detailsSession)}
-                  />
-                  <Button
-                    title={
-                      detailsSession.locked
-                        ? tr('Einheit entsperren', 'Unlock workout')
-                        : tr('Einheit sperren', 'Lock workout')
-                    }
-                    secondary
-                    disabled={working || detailsSession.date < today}
-                    onPress={() => void toggleLock(detailsSession)}
-                  />
-                </View>
-              </>
-            ) : null}
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      <Modal
-        visible={Boolean(moveSessionDraft)}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setMoveId(null)}
-      >
-        <KeyboardAvoidingView behavior="height" style={styles.modalBackdrop}>
-          <ScrollView
-            style={styles.modalScroll}
-            contentContainerStyle={styles.modalCard}
-            keyboardShouldPersistTaps="handled"
-          >
-            <View style={styles.modalHeader}>
-              <Text accessibilityRole="header" style={styles.modalTitle}>
-                {tr('Einheit verschieben', 'Move workout')}
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={tr('Verschieben schließen', 'Close move')}
-                onPress={() => setMoveId(null)}
-                style={styles.closeButton}
-              >
-                <Text style={styles.closeText}>×</Text>
-              </Pressable>
-            </View>
-            {moveSessionDraft ? (
-              <>
-                <Copy>{scheduleTitle(moveSessionDraft)}</Copy>
-                <View style={styles.periodNavigation}>
-                  <Button
-                    title="‹"
-                    secondary
-                    label={tr(
-                      'Vorherige Woche zum Verschieben',
-                      'Previous week to move to',
-                    )}
-                    disabled={working}
-                    onPress={() =>
-                      setMoveWeekStart(current => addDays(current, -7))
-                    }
-                  />
-                  <Text style={styles.periodTitle}>
-                    {dateLabel(moveWeekStart)} –{' '}
-                    {dateLabel(addDays(moveWeekStart, 6))}
-                  </Text>
-                  <Button
-                    title="›"
-                    secondary
-                    label={tr(
-                      'Nächste Woche zum Verschieben',
-                      'Next week to move to',
-                    )}
-                    disabled={working}
-                    onPress={() =>
-                      setMoveWeekStart(current => addDays(current, 7))
-                    }
-                  />
-                </View>
-                {moveWeekDates.map(date => {
-                  const key = isoDate(date);
-                  const candidate = proposeMove(
-                    displayState,
-                    moveSessionDraft.id,
-                    key,
-                    { today, maxSuggestions: 0 },
-                  );
-                  const selected = key === moveSessionDraft.date;
-                  return (
-                    <Pressable
-                      key={key}
-                      accessibilityRole="button"
-                      accessibilityLabel={`${fullDateLabel(date)}${
-                        selected ? tr(', aktueller Tag', ', current day') : ''
-                      }`}
-                      accessibilityState={{
-                        disabled: working || selected || !candidate.allowed,
-                        selected,
-                      }}
-                      disabled={working || selected || !candidate.allowed}
-                      onPress={() =>
-                        void handleMoveChoice(moveSessionDraft, key)
-                      }
-                      style={({ pressed }) => [
-                        styles.moveChoice,
-                        selected && styles.moveChoiceSelected,
-                        pressed && styles.pressed,
-                      ]}
-                    >
-                      <Text style={styles.moveChoiceText}>
-                        {fullDateLabel(date)}
-                      </Text>
-                      <Text style={styles.moveChoiceMeta}>
-                        {selected
-                          ? tr('Aktuell', 'Current')
-                          : candidate.allowed
-                          ? tr('Passt', 'Fits')
-                          : tr('Nicht möglich', 'Not possible')}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-                {error ? <Notice>{error}</Notice> : null}
-                {pending ? (
-                  <Button
-                    title={tr('Speicherung wiederholen', 'Retry saving')}
-                    secondary
-                    disabled={saving || Boolean(busy)}
-                    onPress={retrySave}
-                  />
-                ) : null}
-                {validation ? <Notice>{validation}</Notice> : null}
-              </>
-            ) : null}
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      <Modal
-        visible={Boolean(editor)}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setEditor(null)}
-      >
-        <KeyboardAvoidingView behavior="height" style={styles.modalBackdrop}>
-          <ScrollView
-            style={styles.modalScroll}
-            contentContainerStyle={styles.modalCard}
-            keyboardShouldPersistTaps="handled"
-          >
-            <View style={styles.modalHeader}>
-              <Text accessibilityRole="header" style={styles.modalTitle}>
-                {editor?.id
-                  ? tr('Einheit bearbeiten', 'Edit workout')
-                  : tr('Einheit hinzufügen', 'Add workout')}
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={tr('Bearbeiten schließen', 'Close editor')}
-                onPress={() => setEditor(null)}
-                style={styles.closeButton}
-              >
-                <Text style={styles.closeText}>×</Text>
-              </Pressable>
-            </View>
-            {editor ? (
-              <>
-                <Field label={tr('Name', 'Name')}>
-                  <Input
-                    label={tr('Name der Einheit', 'Workout name')}
-                    value={editor.title}
-                    onChangeText={title =>
-                      setEditor(current =>
-                        current ? { ...current, title } : current,
-                      )
-                    }
-                    placeholder={tr(
-                      'Zum Beispiel Ruhige Runde',
-                      'For example, Easy loop',
-                    )}
-                  />
-                </Field>
-                <Field label={tr('Dauer in Minuten', 'Duration in minutes')}>
-                  <Input
-                    label={tr('Dauer in Minuten', 'Duration in minutes')}
-                    keyboardType="numeric"
-                    value={editor.minutes}
-                    onChangeText={minutes =>
-                      setEditor(current =>
-                        current ? { ...current, minutes } : current,
-                      )
-                    }
-                  />
-                </Field>
-                <Field label={tr('Art', 'Type')}>
-                  <ChipGroup
-                    options={kindOptions().filter(
-                      item =>
-                        enabledKinds.includes(item.value) ||
-                        item.value === editor.kind,
-                    )}
-                    value={editor.kind}
-                    onChange={kind =>
-                      setEditor(current =>
-                        current ? { ...current, kind } : current,
-                      )
-                    }
-                    label={tr('Art der Einheit', 'Workout type')}
-                  />
-                </Field>
-                {editor.kind === 'run' ? (
-                  <Field label={tr('Laufart', 'Run type')}>
-                    <ChipGroup
-                      options={purposeOptions()}
-                      value={editor.purpose}
-                      onChange={purpose =>
-                        setEditor(current =>
-                          current
-                            ? {
-                                ...current,
-                                purpose,
-                                effort:
-                                  purpose === 'intervals' || purpose === 'race'
-                                    ? 'hard'
-                                    : current.effort,
-                              }
-                            : current,
-                        )
-                      }
-                      label={tr('Laufart', 'Run type')}
-                    />
-                  </Field>
-                ) : (
-                  <Field label={tr('Kraftvorlage', 'Strength template')}>
-                    {templates.length ? (
-                      <ChipGroup
-                        options={templates.map(template => ({
-                          value: template.id,
-                          label: template.name,
-                        }))}
-                        value={editor.templateId ?? templates[0].id}
-                        onChange={templateId =>
-                          setEditor(current =>
-                            current ? { ...current, templateId } : current,
-                          )
-                        }
-                        label={tr('Kraftvorlage', 'Strength template')}
-                      />
-                    ) : (
-                      <Copy muted>
-                        {tr(
-                          'Lege zuerst eine Kraftvorlage an.',
-                          'Create a strength template first.',
-                        )}
-                      </Copy>
-                    )}
-                  </Field>
-                )}
-                <Field label={tr('Belastung', 'Load')}>
-                  <ChipGroup
-                    options={effortOptions()}
-                    value={editor.effort}
-                    onChange={effort =>
-                      setEditor(current =>
-                        current ? { ...current, effort } : current,
-                      )
-                    }
-                    label={tr('Belastung der Einheit', 'Workout load')}
-                  />
-                </Field>
-                {error ? <Notice>{error}</Notice> : null}
-                {pending ? (
-                  <Button
-                    title={tr('Speicherung wiederholen', 'Retry saving')}
-                    secondary
-                    disabled={saving || Boolean(busy)}
-                    onPress={retrySave}
-                  />
-                ) : null}
-                {validation ? <Notice>{validation}</Notice> : null}
-                <View style={styles.modalActions}>
-                  <Button
-                    title={tr('Speichern', 'Save')}
-                    secondary
-                    disabled={working}
-                    onPress={() => void saveEditor()}
-                  />
-                  <Button
-                    title={tr('Abbrechen', 'Cancel')}
-                    secondary
-                    disabled={working}
-                    onPress={() => setEditor(null)}
-                  />
-                </View>
-              </>
-            ) : null}
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      <Modal
-        visible={adjusting}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setAdjusting(false)}
-      >
-        <KeyboardAvoidingView behavior="height" style={styles.modalBackdrop}>
-          <ScrollView
-            style={styles.modalScroll}
-            contentContainerStyle={styles.modalCard}
-            keyboardShouldPersistTaps="handled"
-          >
-            <View style={styles.modalHeader}>
-              <Text accessibilityRole="header" style={styles.modalTitle}>
-                {tr('Zeitbudget', 'Time budget')}
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={tr(
-                  'Zeitbudget schließen',
-                  'Close time budget',
-                )}
-                onPress={() => setAdjusting(false)}
-                style={styles.closeButton}
-              >
-                <Text style={styles.closeText}>×</Text>
-              </Pressable>
-            </View>
-            <Segmented
-              options={scopeOptions()}
-              value={scope}
-              onChange={setScope}
-              label={tr('Zeitbudget ändern für', 'Change time budget for')}
-            />
-            {scope === 'week' ? (
-              <>
-                <Copy muted>
-                  {tr(
-                    'Gilt nur für diese Woche.',
-                    'Applies to this week only.',
-                  )}
-                </Copy>
-                {weekDateKeys.map((date, index) => (
-                  <Field key={date} label={weekdayLong()[index]}>
-                    <Input
-                      label={tr(
-                        `${weekdayLong()[index]} verfügbare Minuten`,
-                        `${weekdayLong()[index]} available minutes`,
-                      )}
-                      keyboardType="numeric"
-                      value={availabilityDraft[date] ?? ''}
-                      onChangeText={value =>
-                        setAvailabilityDraft(current => ({
-                          ...current,
-                          [date]: value,
-                        }))
-                      }
-                    />
-                  </Field>
-                ))}
-              </>
-            ) : (
-              <>
-                <Field label={tr('Wöchentliche Tage', 'Weekly days')}>
-                  <ToggleChips
-                    options={weekdayShort().map((label, value) => ({
-                      value: String(value),
-                      label,
-                    }))}
-                    values={routineDaysDraft.map(String)}
-                    onToggle={value => {
-                      const day = Number(value);
-                      setRoutineDaysDraft(current =>
-                        current.includes(day)
-                          ? current.filter(item => item !== day)
-                          : [...current, day].sort((a, b) => a - b),
-                      );
-                    }}
-                    label={tr('Wochentage im Rhythmus', 'Weekdays in routine')}
-                  />
-                </Field>
-                <Field
-                  label={tr(
-                    'Übliches Zeitbudget in Minuten',
-                    'Usual time budget in minutes',
-                  )}
-                >
-                  <Input
-                    label={tr('Übliche Minuten', 'Usual minutes')}
-                    keyboardType="numeric"
-                    value={routineMinutesDraft}
-                    onChangeText={setRoutineMinutesDraft}
-                  />
-                </Field>
-              </>
-            )}
-            {error ? <Notice>{error}</Notice> : null}
-            {pending ? (
-              <Button
-                title={tr('Speicherung wiederholen', 'Retry saving')}
-                secondary
-                disabled={saving || Boolean(busy)}
-                onPress={retrySave}
-              />
-            ) : null}
-            {validation ? <Notice>{validation}</Notice> : null}
-            <View style={styles.modalActions}>
-              <Button
-                title={
-                  scope === 'week'
-                    ? tr('Verfügbarkeit speichern', 'Save availability')
-                    : tr('Rhythmus speichern', 'Save routine')
-                }
-                disabled={working}
-                onPress={() => void saveAdjustment()}
-              />
-              <Button
-                title={tr('Abbrechen', 'Cancel')}
-                secondary
-                disabled={working}
-                onPress={() => setAdjusting(false)}
-              />
-            </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </Modal>
+      {renderDaySheet()}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { gap: space.md },
-  periodLink: { color: color.green, ...typography.label, textAlign: 'center' },
-  summaryCard: { padding: space.md, gap: space.sm },
-  planProgress: { gap: space.xs },
-  planProgressText: { color: color.muted, ...typography.label },
-  agenda: { paddingVertical: space.xxs, paddingHorizontal: space.md },
-  dayBlock: {
+  screen: { flex: 1, gap: space.xs },
+  header: {
     flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: space.sm,
-    paddingVertical: space.sm,
   },
-  dayDivider: { borderTopWidth: 1, borderTopColor: color.line },
-  dateColumn: { width: space.xxl, alignItems: 'center', paddingTop: space.xxs },
-  dateWeekday: { color: color.muted, ...typography.micro },
-  dateNumber: {
+  viewSwitch: {
+    minHeight: 48,
+    minWidth: 48,
+    paddingHorizontal: space.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewSwitchText: { color: color.green, ...typography.label },
+  navigation: { flexDirection: 'row', alignItems: 'center' },
+  navButton: {
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navText: { color: color.text, fontSize: 28, lineHeight: 32 },
+  periodLabel: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  periodTitle: { color: color.text, ...typography.heading },
+  periodLink: { color: color.green, ...typography.micro },
+  totals: { gap: space.xxs },
+  totalRow: { flexDirection: 'row', gap: space.sm },
+  total: { flex: 1 },
+  totalValue: {
     color: color.text,
-    ...typography.heading,
+    ...typography.label,
     fontVariant: ['tabular-nums'],
   },
-  todayText: { color: color.green },
-  todayLabel: { color: color.green, ...typography.micro },
-  dayEntries: { flex: 1, gap: space.xxs, justifyContent: 'center' },
-  entry: {
-    minHeight: 56,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.sm,
+  totalLabel: { color: color.muted, ...typography.micro },
+  more: { color: color.green },
+  moreCount: { color: color.muted, ...typography.micro },
+  less: { color: color.danger },
+  compareNote: { color: color.muted, ...typography.micro },
+  calendar: {
+    flex: 1,
+    borderRadius: radius.md,
+    backgroundColor: color.surface,
+    overflow: 'hidden',
   },
-  entryMain: { flex: 1 },
-  entryTitle: { color: color.text, ...typography.body, fontWeight: '600' },
-  entryMeta: { color: color.muted, ...typography.label },
-  entryChevron: { color: color.muted, ...typography.heading },
-  marker: {
-    width: space.lg,
-    height: space.lg,
-    borderRadius: radius.pill,
+  weekdays: { flexDirection: 'row', paddingVertical: space.xxs },
+  weekday: {
+    flex: 1,
+    textAlign: 'center',
+    color: color.muted,
+    ...typography.micro,
+  },
+  calendarRow: {
+    flex: 1,
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderTopColor: color.line,
+  },
+  cell: {
+    flex: 1,
+    padding: space.xxs,
+    gap: 2,
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: 'transparent',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  smallMark: { color: color.muted, ...typography.micro },
-  markerDone: { backgroundColor: color.green, borderColor: color.green },
-  markerStarted: { borderColor: color.green },
-  markerPlanned: { borderColor: color.muted },
-  markerSkipped: { borderColor: color.line, backgroundColor: color.line },
-  markerCheck: {
-    color: color.ink,
+  cellOutside: { opacity: 0.45 },
+  cellToday: { borderColor: color.green, borderRadius: radius.sm },
+  cellNumber: {
+    color: color.text,
     ...typography.micro,
-    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
   },
-  markerDash: { color: color.muted, ...typography.micro },
-  emptyDay: {
-    color: color.muted,
+  cellIcons: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 2,
+  },
+  weekRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: space.sm,
+    gap: space.sm,
+  },
+  weekDivider: { borderTopWidth: 1, borderTopColor: color.line },
+  weekDate: { width: 36, alignItems: 'center' },
+  weekWeekday: { color: color.muted, ...typography.micro },
+  weekNumber: {
+    color: color.text,
     ...typography.label,
-    minHeight: 48,
-    textAlignVertical: 'center',
-    paddingTop: space.sm,
+    fontVariant: ['tabular-nums'],
   },
-  addDay: { minHeight: 48, justifyContent: 'center' },
-  addMore: { minHeight: 48, justifyContent: 'center' },
-  addDayText: { color: color.green, ...typography.label },
-  addDayMuted: { color: color.muted, ...typography.label },
-  budget: { color: color.muted, ...typography.micro },
+  weekEntries: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: space.xs,
+  },
+  weekEntry: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xxs,
+    maxWidth: '100%',
+  },
+  weekEntryText: { color: color.text, ...typography.label, flexShrink: 1 },
+  mutedText: { color: color.muted },
+  todayText: { color: color.green },
   legend: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    gap: space.md,
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: space.sm,
   },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: space.xxs },
   legendText: { color: color.muted, ...typography.micro },
-  calendarCard: { padding: space.sm, gap: space.xs },
-  calendarSelected: { backgroundColor: color.raised, borderColor: color.line },
-  calendarDots: {
-    flexDirection: 'row',
-    gap: space.xxs,
-    minHeight: space.xs,
-    alignItems: 'center',
-  },
-  calendarMore: { color: color.muted, ...typography.micro },
-  periodMeta: { color: color.muted, ...typography.label, textAlign: 'center' },
-  calendarRow: { flexDirection: 'row', gap: space.xxs },
-  modalScroll: { maxHeight: '90%', flexGrow: 0 },
-  header: {
-    minHeight: 48,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  periodNavigation: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: space.xs,
-  },
-  navButton: {
-    minWidth: 48,
-    minHeight: 48,
-    borderRadius: radius.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: color.surface,
-  },
-  navText: {
-    color: color.text,
-    fontSize: 32,
-    lineHeight: 36,
-    fontWeight: '400',
-  },
-  periodLabel: {
-    minHeight: 48,
+  sheetRow: { flexDirection: 'row', alignItems: 'center' },
+  sheetEntry: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  periodTitle: {
-    flexShrink: 1,
-    textAlign: 'center',
-    color: color.text,
-    ...typography.body,
-    fontWeight: '600',
-  },
-  stats: { flexDirection: 'row', gap: space.md, paddingVertical: space.sm },
-  struck: { textDecorationLine: 'line-through', color: color.muted },
-  pressed: { opacity: 0.72 },
-  calendarWeekdays: { flexDirection: 'row', gap: space.xxs },
-  calendarWeekday: {
-    flex: 1,
-    textAlign: 'center',
-    color: color.muted,
-    ...typography.micro,
-  },
-  calendarGrid: { gap: space.xxs },
-  calendarCell: {
-    flex: 1,
-    minHeight: 52,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: 'transparent',
-    paddingVertical: space.xxs,
-    alignItems: 'center',
-    gap: space.xxs,
-  },
-  calendarOutside: { opacity: 0.45 },
-  calendarToday: {
-    borderWidth: 1,
-    borderColor: color.green,
-    backgroundColor: color.greenSoft,
-  },
-  calendarNumber: {
-    color: color.text,
-    ...typography.label,
-    fontVariant: ['tabular-nums'],
-  },
-  mutedText: { color: color.muted },
-  undoRow: {
-    minHeight: 48,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: space.sm,
-  },
-  noticeAction: { marginTop: space.xs },
-  modalBackdrop: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(16,18,16,0.72)',
-  },
-  modalCard: {
-    backgroundColor: color.surface,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    padding: space.lg,
-    gap: space.md,
-  },
-  modalHeader: {
-    minHeight: 48,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  modalTitle: { color: color.text, ...typography.heading },
-  closeButton: {
-    minWidth: 48,
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  closeText: { color: color.text, fontSize: 30, lineHeight: 32 },
-  detailTitle: { color: color.text, ...typography.title },
-  detailMeta: { color: color.muted, ...typography.body },
-  detailStatus: { color: color.green, ...typography.label },
-  modalActions: { gap: space.sm },
-  moveChoice: {
     minHeight: 56,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    borderBottomWidth: 1,
-    borderBottomColor: color.line,
+    gap: space.sm,
+  },
+  sheetText: { flex: 1 },
+  sheetTitle: { color: color.text, ...typography.body },
+  sheetMeta: { color: color.muted, ...typography.label, fontWeight: '400' },
+  chevron: { color: color.muted, fontSize: 22 },
+  remove: {
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  removeText: { color: color.muted, fontSize: 24 },
+  sheetSection: {
+    color: color.muted,
+    ...typography.label,
+    marginTop: space.sm,
+  },
+  options: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs },
+  option: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs,
     paddingHorizontal: space.sm,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: color.line,
+    maxWidth: '100%',
   },
-  moveChoiceSelected: {
-    backgroundColor: color.greenSoft,
-    borderColor: color.green,
-  },
-  moveChoiceText: { color: color.text, ...typography.body },
-  moveChoiceMeta: { color: color.muted, ...typography.label },
+  optionText: { color: color.text, ...typography.label, flexShrink: 1 },
+  disabled: { opacity: 0.5 },
+  pressed: { opacity: 0.7 },
 });

@@ -13,7 +13,19 @@ jest.mock('../src/native', () => ({
   nativeCall: jest.fn(async () => ({})),
   normalizeRun: (raw: unknown) => raw,
   native: {
-      serverStatus: jest.fn(() => Promise.resolve({ state: 'off', url: null, scope: { runs: true, strength: true, coach: true, gps: false, health: false } })),
+    serverStatus: jest.fn(() =>
+      Promise.resolve({
+        state: 'off',
+        url: null,
+        scope: {
+          runs: true,
+          strength: true,
+          coach: true,
+          gps: false,
+          health: false,
+        },
+      }),
+    ),
     state: jest.fn(),
     saveSettings: jest.fn(),
     strength: jest.fn(async () => ({
@@ -38,6 +50,8 @@ import {
   localDateKey,
   addCalendarDays,
   normalizeSchedule,
+  setDayPlan,
+  weekdayOf,
   type ScheduledSession,
 } from '../src/domain/schedule';
 
@@ -54,15 +68,24 @@ const textContent = (node: TestRenderer.ReactTestInstance): string =>
 let tree: TestRenderer.ReactTestRenderer;
 const session = (): ScheduledSession => ({
   id: 'planned-run',
-  title: 'Locker 30',
+  title: 'Lauf',
   date: localDateKey(),
   kind: 'run',
-  minutes: 30,
   purpose: 'easy',
-  locked: false,
   status: 'planned',
-  effort: 'easy',
 });
+async function press(title: string) {
+  await act(async () => {
+    tree.root
+      .find(
+        node =>
+          node.props.title === title &&
+          typeof node.props.onPress === 'function',
+      )
+      .props.onPress();
+  });
+}
+const allText = () => tree.root.findAllByType(Text).map(textContent).join(' ');
 async function tap(label: string) {
   await act(async () => {
     tree.root
@@ -132,12 +155,12 @@ afterEach(async () => {
 it('saves calendar changes locally and restores them after reopening the app', async () => {
   await mount();
   await tap('Plan');
-  const next = {
-    ...normalizeSchedule(),
-    sessions: [session()],
-    availability: { [localDateKey()]: 45 },
-    routine: { days: [0, 4], minutes: 45 },
-  };
+  const next = setDayPlan(
+    normalizeSchedule(stored.settings.schedule),
+    addCalendarDays(localDateKey(), 1),
+    [{ kind: 'run' }],
+    localDateKey(),
+  );
   await act(async () => {
     await tree.root.findByType(PlanningScreen).props.onSave(next);
   });
@@ -165,12 +188,10 @@ it('leaves saved planning intact and rejects the caller on storage failure', asy
   expect(tree.root.findByType(PlanningScreen).props.state).toEqual(before);
 });
 
-it('links a started planned run to its recording without claiming completion', async () => {
+it('starts the run planned for today like any other run', async () => {
   await mount();
-  await tap('Plan');
-  await act(async () => {
-    await tree.root.findByType(PlanningScreen).props.onStartRun(session());
-  });
+  expect(allText()).toContain('Heute geplant');
+  await tap('Lauf starten');
   expect(nativeCall).toHaveBeenCalledWith(
     'startRun',
     // The run type is asked after the run, not taken from the plan.
@@ -178,85 +199,76 @@ it('links a started planned run to its recording without claiming completion', a
     'running',
     '{"kind":"none","version":3}',
   );
-  expect(stored.settings.schedule?.sessions[0]).toMatchObject({
-    activityId: 'recorded-run',
-    status: 'planned',
-  });
-  expect(
-    tree.root
-      .findAllByType(Text)
-      .some(node => node.props.children === 'Lauf läuft'),
-  ).toBe(true);
+  // Nothing is linked or marked: Plan finds the run by its day.
+  expect(stored.settings.schedule?.sessions[0]).toEqual(session());
+  expect(allText()).toContain('Lauf läuft');
 });
 
-it('keeps a failed activity link retryable without starting a second run', async () => {
+it('plans a template on its weekdays and notes the weekly plan from today on', async () => {
+  (native.strength as jest.Mock).mockResolvedValue({
+    templates: [
+      {
+        id: 'pull',
+        name: 'Pull',
+        days: [new Date().getDay()],
+        icon: 'handGrab',
+        exercises: [],
+        createdAt: 1,
+      },
+    ],
+    active: null,
+    history: [],
+  });
+  stored.settings.schedule = normalizeSchedule({ runDays: [] });
   await mount();
-  await tap('Plan');
-  (native.saveSettings as jest.Mock).mockRejectedValueOnce(
-    new Error('Speicher voll'),
-  );
-
-  await act(async () => {
-    await expect(
-      tree.root.findByType(PlanningScreen).props.onStartRun(session()),
-    ).rejects.toThrow('Planung');
-  });
-  expect(stored.settings.schedule?.sessions[0].activityId).toBeUndefined();
-  expect(
-    tree.root
-      .findAllByType(Text)
-      .some(node => textContent(node).includes('Öffne Planung')),
-  ).toBe(true);
-
-  await tap('Plan');
-  await act(async () => {
-    await tree.root.findByType(PlanningScreen).props.onStartRun(session());
-  });
-  expect(stored.settings.schedule?.sessions[0]).toMatchObject({
-    activityId: 'recorded-run',
-    status: 'planned',
-  });
-  expect(
-    (nativeCall as jest.Mock).mock.calls.filter(
-      ([method]) => method === 'startRun',
-    ),
-  ).toHaveLength(1);
+  expect(allText()).toContain('Heute geplant');
+  expect(allText()).toContain('Pull');
+  expect(stored.settings.schedule?.weeklyHistory).toEqual([
+    {
+      since: localDateKey(),
+      run: [],
+      strength: [{ templateId: 'pull', days: [weekdayOf(localDateKey())] }],
+    },
+  ]);
 });
 
-it('keeps the plan unlinked if recording permission is denied', async () => {
-  (nativeCall as jest.Mock).mockResolvedValue({ locationPermission: false });
-  await mount();
-  await tap('Plan');
-  await act(async () => {
-    await expect(
-      tree.root.findByType(PlanningScreen).props.onStartRun(session()),
-    ).rejects.toThrow('Standortfreigabe');
+it('takes a weekly workout off Today when the day was changed', async () => {
+  (native.strength as jest.Mock).mockResolvedValue({
+    templates: [
+      {
+        id: 'gym',
+        name: 'Beintraining',
+        days: [new Date().getDay()],
+        exercises: [],
+        createdAt: 1,
+      },
+    ],
+    active: null,
+    history: [],
   });
-  expect(stored.settings.schedule?.sessions[0].activityId).toBeUndefined();
-  expect(nativeCall).not.toHaveBeenCalledWith(
-    'startRun',
-    'unknown',
-    'running',
-    '{"kind":"none","version":3}',
+  stored.settings.schedule = setDayPlan(
+    normalizeSchedule(),
+    localDateKey(),
+    [],
+    localDateKey(),
   );
+  await mount();
+  expect(allText()).not.toContain('Heute geplant');
+  expect(allText()).toContain('Heute frei');
+  // Next week it is back.
+  expect(allText()).toContain('Als Nächstes: Beintraining');
 });
 
-it('opens development from planning using actual activity data', async () => {
+it('opens Development under All features with both goals apart', async () => {
   await mount();
-  await tap('Plan');
-  await act(async () =>
-    tree.root.findByType(PlanningScreen).props.onDevelopment(),
-  );
-  expect(tree.root.findByType(DevelopmentScreen).props.goal).toBe(
-    'Regelmäßig laufen',
-  );
-  expect(tree.root.findByType(DevelopmentScreen).props.runs).toEqual([]);
-  await act(async () =>
-    tree.root.findByType(DevelopmentScreen).props.onEditGoal(),
-  );
-  expect(
-    tree.root.find(node => node.props.accessibilityLabel === 'Planbeginn'),
-  ).toBeTruthy();
+  await tap('Einstellungen');
+  await press('Alle Funktionen');
+  await press('Entwicklung');
+  const screen = tree.root.findByType(DevelopmentScreen);
+  expect(screen.props.runs).toEqual([]);
+  expect(screen.props.prediction.goal).toBe('Regelmäßig laufen');
+  await act(async () => screen.props.onEditStrengthGoal());
+  expect(allText()).toContain('Ziel im Krafttraining');
 });
 
 it('does not let a slow refresh overwrite a newly saved calendar', async () => {
@@ -278,17 +290,19 @@ it('does not let a slow refresh overwrite a newly saved calendar', async () => {
       }),
   );
   await act(async () => activate('active'));
-  const changed = {
-    ...normalizeSchedule(),
-    sessions: [{ ...session(), minutes: 50 }],
-  };
+  const changed = setDayPlan(
+    normalizeSchedule(stored.settings.schedule),
+    localDateKey(),
+    [{ kind: 'strength', title: 'Neu' }],
+    localDateKey(),
+  );
   await act(async () => {
     await tree.root.findByType(PlanningScreen).props.onSave(changed);
   });
   await act(async () => resolveRead(stale));
   expect(
-    tree.root.findByType(PlanningScreen).props.state.sessions[0].minutes,
-  ).toBe(50);
+    tree.root.findByType(PlanningScreen).props.state.sessions[0].title,
+  ).toBe('Neu');
   listener.mockRestore();
 });
 
@@ -301,7 +315,6 @@ it('does not let a slow refresh erase a newly started recording', async () => {
       return { remove: jest.fn() };
     });
   await mount();
-  await tap('Plan');
   const stale = clone(stored);
   let resolveRead!: (value: AppState) => void;
   (native.state as jest.Mock).mockImplementationOnce(
@@ -311,46 +324,33 @@ it('does not let a slow refresh erase a newly started recording', async () => {
       }),
   );
   await act(async () => activate('active'));
-
-  await act(async () => {
-    await tree.root.findByType(PlanningScreen).props.onStartRun(session());
-  });
+  await tap('Lauf starten');
   await act(async () => resolveRead(stale));
-
-  expect(
-    tree.root
-      .findAllByType(Text)
-      .some(node => textContent(node).includes('Lauf läuft')),
-  ).toBe(true);
+  expect(allText()).toContain('Lauf läuft');
   listener.mockRestore();
 });
 
-it('uses the schedule goal as canonical and preserves its routine in profile saves', async () => {
+it('keeps the schedule goal canonical when the running goal is saved', async () => {
   const scheduleGoal = {
     name: '10 km im Herbst',
     startDate: localDateKey(),
   };
-  const currentSchedule = stored.settings.schedule!;
   stored.settings = {
     ...stored.settings,
     goal: 'Altes Ziel',
-    trainingDays: undefined,
     schedule: {
-      ...currentSchedule,
-      routine: { days: [2, 5], minutes: 30 },
+      ...normalizeSchedule(stored.settings.schedule),
+      runDays: [2, 5],
       goal: scheduleGoal,
     },
   };
-
   await mount();
-  await tap('Plan');
-  await act(async () =>
-    tree.root.findByType(PlanningScreen).props.onDevelopment(),
-  );
-  expect(tree.root.findByType(DevelopmentScreen).props.goal).toBe(
+  await tap('Einstellungen');
+  await press('Alle Funktionen');
+  await press('Entwicklung');
+  expect(tree.root.findByType(DevelopmentScreen).props.prediction.goal).toBe(
     scheduleGoal.name,
   );
-
   await act(async () =>
     tree.root.findByType(DevelopmentScreen).props.onEditGoal(),
   );
@@ -358,44 +358,8 @@ it('uses the schedule goal as canonical and preserves its routine in profile sav
     tree.root.find(node => node.props.accessibilityLabel === 'Dein Ziel').props
       .value,
   ).toBe(scheduleGoal.name);
-
-  const saveButton = tree.root.find(
-    node =>
-      node.props.title === 'Ziel speichern' &&
-      typeof node.props.onPress === 'function',
-  );
-  await act(async () => saveButton.props.onPress());
-
-  expect(stored.settings.schedule?.routine.days).toEqual([2, 5]);
+  await press('Ziel speichern');
+  expect(stored.settings.schedule?.runDays).toEqual([2, 5]);
   expect(stored.settings.schedule?.goal?.name).toBe(scheduleGoal.name);
   expect(stored.settings.goal).toBe(scheduleGoal.name);
-});
-
-it('does not resurrect a recurring strength workout after moving it into next week', async () => {
-  (native.strength as jest.Mock).mockResolvedValue({
-    templates: [
-      {
-        id: 'gym',
-        name: 'Beintraining',
-        days: [new Date().getDay()],
-        exercises: [],
-        createdAt: 1,
-      },
-    ],
-    active: null,
-    history: [],
-  });
-  stored.settings.schedule!.sessions.push({
-    ...session(),
-    id: 'planned-gym',
-    kind: 'strength',
-    templateId: 'gym',
-    title: 'Beintraining',
-    date: addCalendarDays(localDateKey(), 7),
-  });
-  await mount();
-  const text = tree.root.findAllByType(Text).map(textContent).join(' ');
-  expect(text).not.toContain('Beintraining');
-  // Today shows only the planned run; the moved strength session does not come back.
-  expect(text).toContain('Locker 30');
 });

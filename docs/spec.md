@@ -56,8 +56,8 @@ Violating one is a bug, not a trade-off.
 9. **Data leaves only for a reason.** External services only for optional Spotify
    playback/playlist access and GetSongBPM title/artist lookups (with personal
    credentials; no workout data), weather,
-   maps/elevation, and optionally OpenRouter with the user’s own key. No coordinates
-   or raw data to the LLM, no keys in logs or backups. Exception: the user may send
+   and maps/elevation. No coordinates or raw data to a language model, no keys in
+   logs or backups. Exception: the user may send
    a read-only copy of shared data to their own server. GPS and health values need
    their own release; raw samples and original files stay local.
 10. **The data belongs to the user.** Full backup, restore, and deletion without an
@@ -97,9 +97,9 @@ version goes into every derivation.
 ## Goals (optional)
 
 Each area has at most one goal, optionally with a date. A running goal with a
-distance and a time feeds goal times, build-up, and taper; a date makes them
-predictable. A goal is never judged: next to it, Runback shows only the estimate
-from actual runs.
+distance and a time feeds the goal times; a strength goal names an exercise, a
+load, and reps. A goal is never judged: next to it, Runback shows only the
+estimate from actual runs or the heaviest matching set of recent weeks.
 
 ## Scope
 

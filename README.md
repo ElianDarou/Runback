@@ -25,15 +25,13 @@ The default is the device language.
 - **Health Connect** read and (per run, explicitly) write.
 - **BLE sensors** for heart rate and running cadence.
 - **Weather** only once enabled, via Open-Meteo.
-- **OpenRouter** optional with your own key, for the training chat. The chat reads, it
-  writes nothing and decides nothing.
 - **Own server** optional, self-hosted, with a read-only copy of shared data — see
   [server/README.md](server/README.md).
 
 ## What you see in the app
 
 **Today** and **History** are fixed tabs. Up to two more active features
-can be pinned to the bar: Plan, Statistics, Routes,
+can be pinned to the bar: Plan, Progress, Statistics, Routes,
 Templates, or Soreness. Everything else is under **All features**.
 
 - **Today** — What do I do now? A week strip, today’s workout as a card with a start
@@ -41,14 +39,20 @@ Templates, or Soreness. Everything else is under **All features**.
   goal progress, reporting soreness, and the latest workouts.
 - **History** — What have I done? Workouts grouped by week with totals. Detail view with
   map, metrics, insights, feeling, and splits.
-- **Plan** — What is planned and what did I do? Week or month at a glance: done
-  workouts and planned ones side by side, add a workout, have a week suggested.
+- **Plan** — What is planned and what did I do? One screen with the month (or, less
+  prominent, the week): a small symbol per workout, gray when planned, green when done.
+  Tap a day to change just that day. Above it the period's workouts, time, and km, marked
+  ▲/▼ against the usual amount of the periods before.
+- **Progress** — How close am I to my goal? Running and strength training separately, each
+  with its own goal: for running the goal estimate from actual runs, for strength a load for
+  one exercise against your heaviest matching set of the last 12 weeks.
 - **Statistics** — How am I developing? Runs and strength training over weeks, personal
   bests, consistency, and body values.
 - **Settings** (gear icon in the header) — Features and navigation, All features,
   Voice & vibration (announcements, voice, cues while running and at the end of a rest),
   Devices & connections (watch, BLE, Health Connect, weather), Own server, Your data
-  (import, export, backup, delete), Calculations, Training chat. Language is here too.
+  (import, export, backup, delete), Calculations, Weekly plan (what repeats every week,
+  e.g. runs on Tuesday and Friday, the “Pull” template on Monday). Language is here too.
 
 Under **Features** you choose what Runback shows and when it asks: areas
 (running, strength training, cycling), soreness and how often it is asked (by default after
@@ -59,7 +63,7 @@ What is switched off disappears from the app; data is kept.
 
 Running and strength training are separate areas, each with its own optional goal and date;
 if you only do one, you see nothing of the other. A running goal with distance and time feeds
-goal times, build-up, and taper. Runback gives no training recommendations: after a run it
+the goal times; a strength goal names an exercise, a load, and reps. Runback gives no training recommendations: after a run it
 shows what the data contains, compared with your earlier runs. Details, data basis, and
 uncertainty are under “Details”.
 

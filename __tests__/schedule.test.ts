@@ -1,362 +1,251 @@
 import {
   addCalendarDays,
-  applyWeekSuggestion,
-  cancelSession,
+  currentWeekly,
+  isChangedDay,
   localDateKey,
-  moveSession,
   normalizeSchedule,
-  proposeMove,
+  plannedOn,
+  recordWeekly,
+  resetDay,
   scheduleTitle,
-  storedScheduleTitle,
-  serializeSchedule,
+  setDayPlan,
+  setRunDays,
   startOfWeek,
-  suggestWeek,
-  updateSession,
+  weekdayOf,
+  weeklyFor,
   type ScheduleState,
-  type ScheduledSession,
 } from '../src/domain/schedule';
 import { setLanguage } from '../src/domain/i18n';
 
-const TODAY = '2025-03-10';
+// 2026-10-12 is a Monday.
+const MONDAY = '2026-10-12';
+const empty = (): ScheduleState => normalizeSchedule(undefined);
+const pull = { id: 'pull', days: [1, 4] }; // Monday and Thursday, Sunday-based
+const push = { id: 'push', days: [2] }; // Tuesday
 
-const session = (
-  id: string,
-  date: string,
-  extra: Partial<ScheduledSession> = {},
-): ScheduledSession => ({
-  id,
-  date,
-  title: 'Lauf',
-  kind: 'run',
-  minutes: 30,
-  locked: false,
-  status: 'planned',
-  effort: 'easy',
-  ...extra,
-});
-
-const state = (overrides: Partial<ScheduleState> = {}): ScheduleState => ({
-  version: 1,
-  sessions: [],
-  availability: {},
-  routine: { days: [0, 2, 5], minutes: 30 },
-  ...overrides,
-});
-
-describe('Local calendar data', () => {
-  it('works with calendar days instead of millisecond days', () => {
-    expect(addCalendarDays('2024-03-30', 1)).toBe('2024-03-31');
-    expect(addCalendarDays('2024-03-30', 2)).toBe('2024-04-01');
-    expect(addCalendarDays('2024-10-26', 2)).toBe('2024-10-28');
-    expect(startOfWeek('2025-03-16')).toBe('2025-03-10');
-  });
-
-  it('formats a local date value without a UTC shift', () => {
-    const local = new Date(2025, 2, 10, 23, 59, 59);
-    expect(localDateKey(local)).toBe('2025-03-10');
+describe('schedule dates', () => {
+  it('works in local calendar days', () => {
+    expect(localDateKey(new Date(2026, 9, 12, 23, 30))).toBe(MONDAY);
+    expect(addCalendarDays(MONDAY, 7)).toBe('2026-10-19');
+    expect(addCalendarDays('2026-03-28', 2)).toBe('2026-03-30');
+    expect(startOfWeek('2026-10-18')).toBe(MONDAY);
+    expect(weekdayOf(MONDAY)).toBe(0);
+    expect(weekdayOf('2026-10-18')).toBe(6);
   });
 });
 
-describe('Schedule normalization and offline round trip', () => {
-  it('removes invalid entries, deduplicates ids and keeps links', () => {
-    const raw = {
-      version: 99,
-      routine: { days: [6, 0, 0, 8, -1], minutes: 45 },
-      availability: { '2025-03-11': 20, 'kein-datum': 10 },
+describe('normalizeSchedule', () => {
+  it('reads an older plan: keeps sessions and goal, drops time budgets', () => {
+    const state = normalizeSchedule({
+      version: 1,
+      routine: { days: [0, 2], minutes: 45 },
+      availability: { [MONDAY]: 30 },
       sessions: [
-        session('run-1', '2025-03-11', { activityId: 'native-run-1' }),
-        session('run-1', '2025-03-12'),
-        session('bad', '2025-02-30'),
+        {
+          id: 'a',
+          date: MONDAY,
+          kind: 'run',
+          title: 'Lauf',
+          minutes: 40,
+          locked: true,
+          status: 'planned',
+          purpose: 'easy',
+          activityId: 'run-1',
+        },
+        { id: 'a', date: MONDAY, kind: 'run' },
+        { id: 'broken', date: '2026-02-31', kind: 'run' },
       ],
-    };
-    const normalized = normalizeSchedule(raw);
-    expect(normalized.version).toBe(1);
-    expect(normalized.routine).toEqual({ days: [0, 6], minutes: 45 });
-    expect(normalized.sessions).toHaveLength(1);
-    expect(normalized.sessions[0].activityId).toBe('native-run-1');
-    expect(normalized.availability).toEqual({ '2025-03-11': 20 });
-  });
-
-  it('serializes deterministically as local, purely optional calendar data', () => {
-    const original = state({ sessions: [session('r', '2025-03-11')] });
-    const restored = normalizeSchedule(JSON.parse(serializeSchedule(original)));
-    expect(restored).toEqual(original);
-  });
-});
-
-describe('Week suggestion', () => {
-  it('neither proposes nor moves sessions of a switched-off area', () => {
-    const original = state({
-      availability: { '2025-03-11': 0 },
+      goal: { name: 'Halbmarathon', startDate: MONDAY, distanceKm: 21.1 },
+    });
+    expect(state).toEqual({
+      version: 2,
       sessions: [
-        session('strength', '2025-03-11', { kind: 'strength', title: 'Kraft' }),
+        {
+          id: 'a',
+          date: MONDAY,
+          kind: 'run',
+          title: 'Lauf',
+          status: 'planned',
+          purpose: 'easy',
+        },
+      ],
+      changedDays: [],
+      // The old routine meant available days, not runs: it is not carried over.
+      runDays: [],
+      weeklyHistory: [],
+      goal: { name: 'Halbmarathon', startDate: MONDAY, distanceKm: 21.1 },
+    });
+  });
+
+  it('ignores broken weekly values', () => {
+    const state = normalizeSchedule({
+      runDays: [1, 1, 9, -1, 'x', 3],
+      changedDays: ['2026-10-14', 'nope', '2026-10-14'],
+      weeklyHistory: [
+        { since: 'nope', run: [1] },
+        { since: MONDAY, run: [2], strength: [{ templateId: 'a', days: [] }] },
       ],
     });
-    // Both areas on: the session on a day without time moves.
+    expect(state.runDays).toEqual([1, 3]);
+    expect(state.changedDays).toEqual(['2026-10-14']);
+    expect(state.weeklyHistory).toEqual([
+      { since: MONDAY, run: [2], strength: [] },
+    ]);
+  });
+});
+
+describe('weekly plan', () => {
+  it('turns template days (Sunday-based) into Monday-based days', () => {
+    const state = setRunDays(empty(), [1, 4, 6]);
     expect(
-      suggestWeek(original, TODAY, { today: TODAY }).movedSessions.map(
-        item => item.id,
-      ),
-    ).toEqual(['strength']);
-    const runsOnly = suggestWeek(original, TODAY, {
-      today: TODAY,
-      kinds: ['run'],
+      currentWeekly(state, [pull, push, { id: 'free', days: [] }]),
+    ).toEqual({
+      run: [1, 4, 6],
+      strength: [
+        { templateId: 'pull', days: [0, 3] },
+        { templateId: 'push', days: [1] },
+      ],
     });
-    expect(runsOnly.addedSessions.map(item => item.kind)).toEqual([
-      'run',
-      'run',
-      'run',
-    ]);
-    expect(runsOnly.movedSessions).toEqual([]);
-    const strengthOnly = suggestWeek(original, TODAY, {
-      today: TODAY,
-      kinds: ['strength'],
-    });
-    expect(strengthOnly.addedSessions).toEqual([]);
   });
 
-  it('returns a preview and does not change the saved state', () => {
-    const original = state();
-    const suggestion = suggestWeek(original, TODAY, { today: TODAY });
-    expect(suggestion.weekStart).toBe(TODAY);
-    expect(suggestion.addedSessions).toHaveLength(3);
-    expect(suggestion.sessions.map(item => item.id)).toEqual([
-      'routine-2025-03-10-0',
-      'routine-2025-03-10-2',
-      'routine-2025-03-10-5',
-    ]);
-    expect(original.sessions).toEqual([]);
-  });
-
-  it('moves a session off an unavailable day within the week and creates no duplicate', () => {
-    const original = state({ availability: { '2025-03-12': 0 } });
-    const first = suggestWeek(original, TODAY, { today: TODAY });
-    const second = suggestWeek(original, TODAY, { today: TODAY });
-    expect(first.addedSessions.map(item => item.date)).toEqual([
-      '2025-03-10',
-      '2025-03-11',
-      '2025-03-15',
-    ]);
-    expect(first.addedSessions.map(item => item.id)).toEqual(
-      second.addedSessions.map(item => item.id),
-    );
-    expect(first.suggestions[0].date).toBe('2025-03-11');
-  });
-
-  it('respects a skipped exception and does not catch it up automatically', () => {
-    const original = state({
-      sessions: [session('skip-wed', '2025-03-12', { status: 'skipped' })],
-    });
-    const suggestion = suggestWeek(original, TODAY, { today: TODAY });
-    expect(suggestion.addedSessions.some(item => item.date === '2025-03-12')).toBe(
-      false,
-    );
-    expect(suggestion.addedSessions).toHaveLength(2);
-  });
-
-  it('becomes persistent only through an explicit apply and stays idempotent', () => {
-    const preview = suggestWeek(state(), TODAY, { today: TODAY });
-    const applied = applyWeekSuggestion(state(), preview, { today: TODAY });
-    const twice = applyWeekSuggestion(applied, preview, { today: TODAY });
-    expect(applied.sessions).toHaveLength(3);
-    expect(twice.sessions).toEqual(applied.sessions);
-  });
-
-  it('reflows an existing generated routine session from an unavailable day', () => {
-    const generated = session('routine-2025-03-10-2', '2025-03-12', {
-      origin: 'routine',
-      routineDay: 2,
-    });
-    const original = state({
-      availability: { '2025-03-12': 0 },
-      sessions: [generated],
-    });
-    const suggestion = suggestWeek(original, TODAY, {
-      today: TODAY,
-      days: [2],
-    });
-
-    expect(suggestion.movedSessions).toHaveLength(1);
-    expect(suggestion.moves[0]).toMatchObject({
-      id: generated.id,
-      from: '2025-03-12',
-      to: '2025-03-11',
-      reason: 'availability',
-    });
-    expect(suggestion.addedSessions).toHaveLength(0);
-    expect(suggestion.preview.sessions).toEqual([
-      expect.objectContaining({
-        id: generated.id,
-        date: '2025-03-11',
-        origin: 'routine',
-        routineDay: 2,
-      }),
-    ]);
-  });
-
-  it('uses one daily budget for run and strength sessions together', () => {
-    const original = state({
-      availability: {
-        '2025-03-10': 30,
-        '2025-03-11': 30,
+  it('plans each weekday from the weekly plan', () => {
+    const state = setRunDays(empty(), [1]);
+    const weekly = currentWeekly(state, [pull, push]);
+    expect(plannedOn(state, weekly, MONDAY, MONDAY)).toEqual([
+      {
+        key: 'weekly-pull',
+        kind: 'strength',
+        templateId: 'pull',
+        fromWeekly: true,
       },
-      sessions: [
-        session('routine-2025-03-10-strength-gym-0', '2025-03-10', {
-          kind: 'strength',
-          minutes: 20,
-          origin: 'routine',
-          routineDay: 0,
-          templateId: 'gym',
-        }),
-      ],
-    });
-    const suggestion = suggestWeek(original, TODAY, {
-      today: TODAY,
-      days: [0],
-      minutes: 20,
-      strengthTemplates: [
-        { id: 'gym', name: 'Gym', days: [1], minutes: 20 },
-      ],
-    });
-
-    expect(suggestion.addedSessions).toEqual([
-      expect.objectContaining({ kind: 'run', date: '2025-03-11', minutes: 20 }),
     ]);
-    const minutesByDate = suggestion.preview.sessions.reduce<Record<string, number>>(
-      (totals, item) => ({
-        ...totals,
-        [item.date]: (totals[item.date] || 0) + item.minutes,
-      }),
-      {},
+    expect(
+      plannedOn(state, weekly, '2026-10-13', MONDAY).map(item => item.key),
+    ).toEqual(['weekly-run', 'weekly-push']);
+    expect(plannedOn(state, weekly, '2026-10-14', MONDAY)).toEqual([]);
+  });
+
+  it('keeps past days on the plan that was in effect then', () => {
+    let state = setRunDays(empty(), [0]);
+    state = recordWeekly(state, currentWeekly(state, []), '2026-10-01');
+    const before = state;
+    // Same plan: nothing to note.
+    expect(recordWeekly(state, currentWeekly(state, []), '2026-10-05')).toBe(
+      before,
     );
-    expect(minutesByDate).toEqual({ '2025-03-10': 20, '2025-03-11': 20 });
-  });
-
-  it('keeps fixed and linked sessions in place during reflow', () => {
-    const fixed = session('fixed', '2025-03-11', {
-      locked: true,
-      origin: 'fixed',
-    });
-    const linked = session('linked', '2025-03-12', {
-      activityId: 'native-run-1',
-    });
-    const original = state({
-      availability: { '2025-03-11': 0, '2025-03-12': 0 },
-      sessions: [fixed, linked],
-    });
-    const suggestion = suggestWeek(original, TODAY, {
-      today: TODAY,
-      includeRoutine: false,
-    });
-
-    expect(suggestion.movedSessions).toEqual([]);
-    expect(suggestion.moves).toEqual([]);
-    expect(suggestion.preview.sessions).toEqual(original.sessions);
-  });
-
-  it('rejects applying a week preview after the state has changed', () => {
-    const original = state();
-    const preview = suggestWeek(original, TODAY, { today: TODAY });
-    const changed = state({ routine: { days: [1], minutes: 30 } });
-
-    const applied = applyWeekSuggestion(changed, preview, { today: TODAY });
-
-    expect(applied).toBe(changed);
-    expect(applied.sessions).toEqual([]);
-  });
-
-  it('does not create duplicate generated sessions on a repeated preview', () => {
-    const original = state();
-    const first = suggestWeek(original, TODAY, { today: TODAY });
-    const applied = applyWeekSuggestion(original, first, { today: TODAY });
-    const second = suggestWeek(applied, TODAY, { today: TODAY });
-
-    expect(second.addedSessions).toHaveLength(0);
-    expect(second.movedSessions).toHaveLength(0);
-    expect(new Set(second.preview.sessions.map(item => item.id)).size).toBe(
-      applied.sessions.length,
+    state = setRunDays(state, [2]);
+    state = recordWeekly(state, currentWeekly(state, []), MONDAY);
+    const weekly = currentWeekly(state, []);
+    // Monday 5 October: runs were on Mondays then.
+    expect(plannedOn(state, weekly, '2026-10-05', '2026-10-13')).toHaveLength(
+      1,
     );
-    expect(second.preview.sessions).toEqual(applied.sessions);
-  });
-});
-
-describe('Moving and conflicts', () => {
-  it('reports a fixed target date and suggests no silent move', () => {
-    const current = state({
-      sessions: [
-        session('move', '2025-03-11'),
-        session('fixed', '2025-03-13', { locked: true, origin: 'fixed' }),
-      ],
-    });
-    const proposal = proposeMove(current, 'move', '2025-03-13', { today: TODAY });
-    expect(proposal.allowed).toBe(false);
-    expect(proposal.conflicts.map(item => item.code)).toContain('locked_session');
-    expect(moveSession(current, 'move', '2025-03-13', { today: TODAY })).toEqual(
-      current,
+    expect(plannedOn(state, weekly, '2026-10-07', '2026-10-13')).toHaveLength(
+      0,
     );
-  });
-
-  it('detects hard sessions across the week boundary', () => {
-    const current = state({
-      sessions: [
-        session('sunday-hard', '2025-03-16', { effort: 'hard' }),
-        session('move', '2025-03-14', { effort: 'hard' }),
-      ],
-    });
-    const proposal = proposeMove(current, 'move', '2025-03-17', { today: TODAY });
-    expect(proposal.conflicts.map(item => item.code)).toContain('adjacent_hard');
-    expect(proposal.suggestions.some(item => item.date === '2025-03-18')).toBe(true);
-  });
-
-  it('moves an allowed date only after explicit application', () => {
-    const current = state({ sessions: [session('move', '2025-03-11')] });
-    const moved = moveSession(current, 'move', '2025-03-13', { today: TODAY });
-    expect(moved.sessions.find(item => item.id === 'move')?.date).toBe('2025-03-13');
-    expect(current.sessions[0].date).toBe('2025-03-11');
-  });
-});
-
-describe('Safe changes', () => {
-  it('keeps past sessions unchanged', () => {
-    const current = state({ sessions: [session('past', '2025-03-09')] });
-    expect(updateSession(current, 'past', { title: 'Geändert' }, { today: TODAY })).toBe(
-      current,
+    // From the change on, Wednesdays.
+    expect(plannedOn(state, weekly, '2026-10-14', '2026-10-13')).toHaveLength(
+      1,
     );
-    expect(cancelSession(current, 'past', { today: TODAY })).toBe(current);
+    expect(plannedOn(state, weekly, '2026-10-19', '2026-10-13')).toHaveLength(
+      0,
+    );
+    // Before the first note, nothing was planned.
+    expect(
+      weeklyFor(state, weekly, '2026-09-28', '2026-10-13'),
+    ).toBeUndefined();
   });
 
-  it('marks a future cancellation without creating a make-up session', () => {
-    const current = state({ sessions: [session('future', '2025-03-12')] });
-    const cancelled = cancelSession(current, 'future', { today: TODAY });
-    expect(cancelled.sessions).toEqual([
-      expect.objectContaining({ id: 'future', status: 'skipped' }),
+  it('replaces a second change on the same day', () => {
+    let state = recordWeekly(empty(), { run: [0], strength: [] }, MONDAY);
+    state = recordWeekly(state, { run: [1], strength: [] }, MONDAY);
+    expect(state.weeklyHistory).toEqual([
+      { since: MONDAY, run: [1], strength: [] },
     ]);
-    expect(cancelled.sessions).toHaveLength(1);
+    // Template order alone is no change.
+    const a = { templateId: 'a', days: [0] };
+    const b = { templateId: 'b', days: [2] };
+    const noted = recordWeekly(
+      state,
+      { run: [1], strength: [a, b] },
+      '2026-10-13',
+    );
+    expect(
+      recordWeekly(noted, { run: [1], strength: [b, a] }, '2026-10-14'),
+    ).toBe(noted);
+  });
+
+  it('does not note an empty plan without history', () => {
+    const state = empty();
+    expect(recordWeekly(state, { run: [], strength: [] }, MONDAY)).toBe(state);
   });
 });
 
-describe('schedule titles', () => {
+describe('changed days', () => {
+  it('replaces the weekly plan on one day only', () => {
+    const base = setRunDays(empty(), [0, 1]);
+    const weekly = currentWeekly(base, [pull]);
+    const state = setDayPlan(
+      base,
+      MONDAY,
+      [{ kind: 'strength', templateId: 'push', title: 'Push' }],
+      MONDAY,
+    );
+    expect(isChangedDay(state, MONDAY)).toBe(true);
+    expect(plannedOn(state, weekly, MONDAY, MONDAY)).toEqual([
+      {
+        key: `${MONDAY}-1`,
+        kind: 'strength',
+        templateId: 'push',
+        title: 'Push',
+        purpose: undefined,
+        fromWeekly: false,
+      },
+    ]);
+    // The next week stays as every week.
+    expect(
+      plannedOn(state, weekly, '2026-10-19', MONDAY).map(item => item.key),
+    ).toEqual(['weekly-run', 'weekly-pull']);
+  });
+
+  it('can empty a day and bring the weekly plan back', () => {
+    const base = setRunDays(empty(), [0]);
+    const weekly = currentWeekly(base, []);
+    const cleared = setDayPlan(base, MONDAY, [], MONDAY);
+    expect(plannedOn(cleared, weekly, MONDAY, MONDAY)).toEqual([]);
+    const reset = resetDay(cleared, MONDAY, MONDAY);
+    expect(reset.changedDays).toEqual([]);
+    expect(plannedOn(reset, weekly, MONDAY, MONDAY)).toHaveLength(1);
+  });
+
+  it('never changes the past', () => {
+    const base = setDayPlan(
+      empty(),
+      '2026-10-10',
+      [{ kind: 'run' }],
+      '2026-10-10',
+    );
+    expect(setDayPlan(base, '2026-10-10', [], MONDAY)).toBe(base);
+    expect(resetDay(base, '2026-10-10', MONDAY)).toBe(base);
+  });
+
+  it('treats an older skipped session as a changed day without plan', () => {
+    const state = normalizeSchedule({
+      sessions: [{ id: 's', date: MONDAY, kind: 'run', status: 'skipped' }],
+      runDays: [0],
+    });
+    expect(plannedOn(state, currentWeekly(state, []), MONDAY, MONDAY)).toEqual(
+      [],
+    );
+  });
+});
+
+describe('scheduleTitle', () => {
   afterEach(() => setLanguage('de'));
-
-  it('shows the localized default for the German stored defaults', () => {
-    expect(scheduleTitle({ title: 'Krafttraining' })).toBe('Krafttraining');
-    expect(scheduleTitle({ title: 'Lauf' })).toBe('Lauf');
+  it('shows stored German defaults in the active language', () => {
     setLanguage('en');
-    expect(scheduleTitle({ title: 'Krafttraining' })).toBe('Strength training');
     expect(scheduleTitle({ title: 'Lauf' })).toBe('Run');
-  });
-
-  it('shows titles the user typed as they are', () => {
-    setLanguage('en');
-    expect(scheduleTitle({ title: 'Morning hills' })).toBe('Morning hills');
-    expect(scheduleTitle({ title: 'Morgenlauf' })).toBe('Morgenlauf');
-  });
-
-  it('stores a localized default back as the German value', () => {
-    expect(storedScheduleTitle('Krafttraining')).toBe('Krafttraining');
-    setLanguage('en');
-    expect(storedScheduleTitle('Strength training')).toBe('Krafttraining');
-    expect(storedScheduleTitle('Run')).toBe('Lauf');
-    expect(storedScheduleTitle('Morning hills')).toBe('Morning hills');
+    expect(scheduleTitle({ title: 'Krafttraining' })).toBe('Strength training');
+    expect(scheduleTitle({ title: 'Pull' })).toBe('Pull');
   });
 });

@@ -148,8 +148,13 @@ export interface TemplateExercise {
 export interface WorkoutTemplate {
   id: string;
   name: string;
-  /** Weekdays 0 (Sunday) to 6, as in `Date.getDay`. Empty means: no fixed day. */
+  /**
+   * Weekdays 0 (Sunday) to 6, as in `Date.getDay`. Empty means: no fixed day.
+   * These days are the template's part of the weekly plan.
+   */
   days: number[];
+  /** Calendar symbol, a `TemplateIcon` name; see `templateIcon`. */
+  icon?: string;
   exercises: TemplateExercise[];
   createdAt: number;
   importSource?: {
@@ -661,9 +666,9 @@ export function referenceSet(
     const exercise = session.exercises.find(
       candidate => candidate.exerciseId === exerciseId,
     );
-    const set = exercise?.sets.filter(
-      candidate => isSetCompleted(candidate),
-    )[setIndex];
+    const set = exercise?.sets.filter(candidate => isSetCompleted(candidate))[
+      setIndex
+    ];
     if (set && (set.actualWeightKg || set.actualReps || set.actualSeconds)) {
       return set;
     }

@@ -3,12 +3,10 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { regionLabel, type RegionId } from '../domain/regions';
 import {
   buildReport,
-  fromStructured,
   parseSoreness,
   type SorenessParse,
   type SorenessQuestion,
   type SorenessReport,
-  type StructuredSorenessItem,
 } from '../domain/sorenessInput';
 import { quote, tr } from '../domain/i18n';
 import { BodyMap, type BodyView } from './BodyMap';
@@ -28,12 +26,6 @@ import { Button, color, radius, space, type } from './components';
 
 export interface TranscriptResult {
   text: string;
-  /**
-   * Optional structured fields from the switchable OpenRouter pass. They go
-   * through the same lexicon as spoken input; anything not found there is
-   * discarded (ground rule 6).
-   */
-  structured?: StructuredSorenessItem[];
 }
 
 export interface SorenessCaptureProps {
@@ -152,24 +144,8 @@ export function SorenessCapture({
       const result = await onTranscribe();
       setTranscript(result.text || '');
       setUsedVoice(true);
-      // The rule-based path always takes precedence. Structured fields from
-      // OpenRouter only fill what it left open.
       const rules = parseSoreness(result.text || '');
-      if (result.structured && result.structured.length) {
-        const checked = fromStructured(result.structured, result.text || '');
-        const ruleIds = new Set(rules.proposals.map(entry => entry.regionId));
-        absorb({
-          ...rules,
-          // Structured proposals may fill gaps, never replace parsed regions.
-          proposals: [
-            ...rules.proposals,
-            ...checked.proposals.filter(entry => !ruleIds.has(entry.regionId)),
-          ],
-          questions: [...rules.questions, ...checked.questions],
-        });
-      } else {
-        absorb(rules);
-      }
+      absorb(rules);
       if (rules.nothingToday) {
         setNotice(
           tr(
@@ -213,9 +189,7 @@ export function SorenessCapture({
     onSave(buildReport(values, now, source, transcript));
   }, [now, onSave, transcript, usedTap, usedVoice, values]);
 
-  const pendingLabel = pending
-    .map(regionLabel)
-    .join(tr(' und ', ' and '));
+  const pendingLabel = pending.map(regionLabel).join(tr(' und ', ' and '));
 
   return (
     <View style={styles.screen}>
@@ -328,7 +302,9 @@ export function SorenessCapture({
                   ))}
                   <Chip
                     label={tr('beide', 'both')}
-                    onPress={() => answerQuestion(question, question.candidates)}
+                    onPress={() =>
+                      answerQuestion(question, question.candidates)
+                    }
                   />
                 </>
               ) : question.kind === 'region' ? (
@@ -431,7 +407,10 @@ export function SorenessCapture({
               onPress={confirm}
               title={
                 answered.length
-                  ? tr(`Speichern (${answered.length})`, `Save (${answered.length})`)
+                  ? tr(
+                      `Speichern (${answered.length})`,
+                      `Save (${answered.length})`,
+                    )
                   : tr('Speichern', 'Save')
               }
             />
@@ -470,11 +449,19 @@ const styles = StyleSheet.create({
   subtitle: { color: color.muted, ...type.label },
   link: { minHeight: 44, justifyContent: 'center' },
   linkText: { color: color.green, ...type.label, fontWeight: '600' },
-  skip: { minHeight: 44, justifyContent: 'center', paddingHorizontal: space.xs },
+  skip: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: space.xs,
+  },
   skipText: { color: color.muted, ...type.label, fontWeight: '600' },
   pressed: { opacity: 0.72 },
   scroll: { flex: 1 },
-  content: { paddingHorizontal: space.ml, paddingBottom: space.lg, gap: space.md },
+  content: {
+    paddingHorizontal: space.ml,
+    paddingBottom: space.lg,
+    gap: space.md,
+  },
   summary: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs },
   summaryChip: {
     minHeight: 44,

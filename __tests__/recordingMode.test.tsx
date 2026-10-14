@@ -11,7 +11,19 @@ jest.mock('../src/native', () => {
     nativeCall: jest.fn(async () => ({})),
     normalizeRun,
     native: {
-      serverStatus: jest.fn(() => Promise.resolve({ state: 'off', url: null, scope: { runs: true, strength: true, coach: true, gps: false, health: false } })),
+      serverStatus: jest.fn(() =>
+        Promise.resolve({
+          state: 'off',
+          url: null,
+          scope: {
+            runs: true,
+            strength: true,
+            coach: true,
+            gps: false,
+            health: false,
+          },
+        }),
+      ),
       state: jest.fn(),
       run: jest.fn(),
       saveSettings: jest.fn(),
@@ -110,14 +122,11 @@ const finished = (overrides: Partial<Run>): Run => ({
 });
 const plannedRun = (): ScheduledSession => ({
   id: 'planned-run',
-  title: 'Locker 30',
+  title: 'Lauf',
   date: localDateKey(),
   kind: 'run',
-  minutes: 30,
   purpose: 'easy',
-  locked: false,
   status: 'planned',
-  effort: 'easy',
 });
 
 beforeEach(() => {
@@ -213,7 +222,8 @@ describe('Free recording on Today', () => {
       sessions: [plannedRun()],
     };
     await mount();
-    expect(screenText()).toContain('Locker 30');
+    expect(screenText()).toContain('Heute geplant');
+    expect(screenText()).toContain('Locker');
     expect(findPressable('Lauf starten')).toBeTruthy();
     expect(findPressable('Stattdessen etwas anderes starten')).toBeTruthy();
     expect(screenText()).not.toContain('Radfahren');
@@ -229,8 +239,8 @@ describe('Free recording on Today', () => {
       'running',
       '{"kind":"none","version":3}',
     );
-    // A free recording is not linked to the appointment.
-    expect(stored.settings.schedule?.sessions[0].activityId).toBeUndefined();
+    // The plan itself stays as it was.
+    expect(stored.settings.schedule?.sessions[0]).toEqual(plannedRun());
   });
 
   it('sets how far and what to run by with chips and keeps the last choice', async () => {
@@ -508,7 +518,7 @@ it('previews a next-run pace and a race goal without changing persisted settings
     await tap('Heute');
     await tap('Einstellungen');
     await tap('Alle Funktionen');
-    await tapText('Vorhaben je Bereich');
+    await tapText('Ziel je Bereich');
     await tapText('Zielzeiten');
   };
   await mount();
@@ -696,7 +706,9 @@ describe('Run type after the run', () => {
     stored.runs = [recorded()];
     await mount();
     await openRun();
-    (native.feedback as jest.Mock).mockRejectedValueOnce(new Error('Storage unavailable'));
+    (native.feedback as jest.Mock).mockRejectedValueOnce(
+      new Error('Storage unavailable'),
+    );
     await tap('OK');
     expect(screenText()).toContain('Wie war der Lauf?');
     expect(screenText()).toContain('Storage unavailable');
