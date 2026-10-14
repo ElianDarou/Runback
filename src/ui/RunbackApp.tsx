@@ -733,6 +733,7 @@ export function RunbackApp() {
   const [historyView, setHistoryView] = useState<HistoryView>('units');
   const [templatesParent, setTemplatesParent] = useState<Page>('main');
   const [settingsWrites, setSettingsWrites] = useState(0);
+  const failedNote = useRef('');
   // Strength templates read from the phone; until then their days are unknown.
   const [templatesLoaded, setTemplatesLoaded] = useState(false);
   const [developmentArea, setDevelopmentArea] = useState<
@@ -1899,15 +1900,22 @@ export function RunbackApp() {
   const persistTemplates = (next: WorkoutTemplate[]) => {
     const previous = strengthRef.current.templates;
     setStrength(current => ({ ...current, templates: next }));
-    // A failed save takes the change back, so the weekly plan noted for today
-    // follows the stored templates again.
+    // A failed save shows the stored templates again, so the weekly plan
+    // noted for today follows what is really saved.
     void native.saveStrengthTemplates(next).catch(e => {
-      setStrength(current =>
-        current.templates === next
-          ? { ...current, templates: previous }
-          : current,
-      );
       setError(e.message);
+      native
+        .strength()
+        .then(stored =>
+          setStrength(current => ({ ...current, templates: stored.templates })),
+        )
+        .catch(() =>
+          setStrength(current =>
+            current.templates === next
+              ? { ...current, templates: previous }
+              : current,
+          ),
+        );
     });
   };
   // The whole weekly plan, also of a hidden area: Plan filters for display,
@@ -1940,7 +1948,17 @@ export function RunbackApp() {
       currentWeekly(latest, templatesLoaded ? strength.templates : undefined),
       todayKey,
     );
-    if (next !== latest) persist({ schedule: next }).catch(() => {});
+    if (next === latest) return;
+    // One attempt per change: a failing store must not be written in a loop.
+    const key = JSON.stringify(next.weeklyHistory);
+    if (failedNote.current === key) return;
+    persist({ schedule: next })
+      .then(() => {
+        failedNote.current = '';
+      })
+      .catch(() => {
+        failedNote.current = key;
+      });
   }, [
     persist,
     loaded,

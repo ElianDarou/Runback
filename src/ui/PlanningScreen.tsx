@@ -996,7 +996,9 @@ const styles = StyleSheet.create({
   },
   cell: {
     flex: 1,
-    padding: space.xxs,
+    // Narrow sides so two symbols fit per row on a 360 dp phone.
+    paddingVertical: space.xxs,
+    paddingHorizontal: 1,
     gap: 2,
     alignItems: 'center',
     borderWidth: 1,
