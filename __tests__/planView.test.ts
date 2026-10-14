@@ -178,10 +178,19 @@ describe('planView', () => {
         runningMeters: 20,
       }),
     ];
-    const byDate = planEntriesByDate([], activities);
-    expect(byDate['2025-03-10']).toHaveLength(1);
+    // Even linked to a plan, it does not carry the plan out.
+    const byDate = planEntriesByDate(
+      [session({ activityId: 'r1' })],
+      activities,
+    );
+    expect(byDate['2025-03-10']).toEqual([
+      expect.objectContaining({ type: 'recorded' }),
+      expect.objectContaining({ type: 'planned', status: 'planned' }),
+    ]);
     expect(planSummary(['2025-03-10'], byDate, activities)).toMatchObject({
       done: 0,
+      planned: 1,
+      plannedDone: 0,
       seconds: undefined,
       runningMeters: undefined,
     });

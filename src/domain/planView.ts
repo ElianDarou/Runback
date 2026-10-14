@@ -60,9 +60,12 @@ export function linkedActivity(
   activities: PlanActivity[],
 ): PlanActivity | undefined {
   if (!session.activityId) return undefined;
+  // A false start does not carry out a plan; it shows on its own day.
   return activities.find(
     activity =>
-      activity.kind === session.kind && matches(activity, session.activityId),
+      activity.kind === session.kind &&
+      !activity.falseStart &&
+      matches(activity, session.activityId),
   );
 }
 
