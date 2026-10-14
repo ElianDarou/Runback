@@ -1227,8 +1227,9 @@ export function WorkoutIcon({
   size?: 'small' | 'medium' | 'large';
   selected?: boolean;
 }) {
-  const box = size === 'small' ? 20 : size === 'medium' ? 32 : 44;
-  const glyph = size === 'small' ? 13 : size === 'medium' ? 18 : 24;
+  // Small fits two per row in a month cell on a 360 dp wide phone.
+  const box = size === 'small' ? 18 : size === 'medium' ? 32 : 44;
+  const glyph = size === 'small' ? 12 : size === 'medium' ? 18 : 24;
   const stroke =
     state === 'planned' || (state === 'plain' && !selected)
       ? color.muted
