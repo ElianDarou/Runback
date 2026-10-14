@@ -16,7 +16,7 @@ spec.loader.exec_module(selection)
 class SelectionTests(unittest.TestCase):
     def test_documents_and_site_do_not_build_apps_or_server(self):
         self.assertEqual(selection.select_checks([
-            "README.md", "AGENTS.md", "docs/spec.md", "site/en.html",
+            "README.md", "AGENTS.md", "CODING_STANDARDS.md", "docs/spec.md", "site/en.html",
             "site/shots/export.webp", "tools/site-demo/gen.py",
         ]), {"android": False, "server": False})
 

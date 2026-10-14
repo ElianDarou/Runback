@@ -14,6 +14,9 @@ Read before making changes:
 - [docs/glossary.md](docs/glossary.md) — which words the user sees and what
   they are called in code (German and English).
 
+For review, read [CODING_STANDARDS.md](CODING_STANDARDS.md) for the cross-file
+failure scenarios to check.
+
 ## Structure
 
 - `src/domain/` — pure TypeScript logic, versioned, without UI and without
@@ -59,5 +62,7 @@ Read before making changes:
 - **Tests for every domain change.** Pure logic in `src/domain/` has a Jest test
   next to it; Kotlin parsers and math have JUnit tests.
 
-Before finishing: `npm run typecheck`, `npm test -- --runInBand`, and for Kotlin
-changes `./gradlew :core:testDebugUnitTest :app:testDebugUnitTest`.
+Before finishing: install dependencies with `npm ci` if needed, then run
+`npm run check`. For Kotlin changes, use `npm run check -- --android` instead;
+it also tests core, phone and watch and runs Android lint. See the Development
+section in `README.md` for prerequisites and standalone build commands.

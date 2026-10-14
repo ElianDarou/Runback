@@ -9,7 +9,7 @@ import subprocess
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DOCUMENTS = {"README.md", "AGENTS.md"}
+DOCUMENTS = {"README.md", "AGENTS.md", "CODING_STANDARDS.md"}
 
 
 def select_checks(paths):
