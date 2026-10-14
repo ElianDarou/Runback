@@ -423,7 +423,7 @@ describe('PlanningScreen', () => {
     expect(text).toContain('Lauf · 5,00 km · 30:00 · ohne Plan');
     // Two recorded runs, one of two planned sessions done, 10 km in total.
     expect(text).toContain('1 von 2 geplanten Einheiten erledigt');
-    expect(text).toContain('10,0');
+    expect(text).toContain('10,00');
     expect(text).toContain('1:00 h');
     expect(text).not.toContain('Ohne Plan trainiert');
     unmount(tree);

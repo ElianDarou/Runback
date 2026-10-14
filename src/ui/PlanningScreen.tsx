@@ -32,7 +32,7 @@ import {
   type PlanStatus,
   type PlanSummary,
 } from '../domain/planView';
-import { isRun, sportNoun } from '../domain/sport';
+import { isAccidentalRun, isRun, sportNoun } from '../domain/sport';
 import type { RunPurpose } from '../domain/types';
 import { RUN_PURPOSES, runTitle } from '../domain/runTitle';
 import { buildUpWeek } from '../domain/buildUp';
@@ -429,6 +429,7 @@ function runActivity(run: Run): PlanActivity {
     distanceMeters: run.distanceMeters > 0 ? run.distanceMeters : undefined,
     runningMeters:
       isRun(run) && run.distanceMeters > 0 ? run.distanceMeters : undefined,
+    falseStart: isAccidentalRun(run),
   };
 }
 
@@ -474,8 +475,8 @@ function totalTime(seconds: number | undefined): string {
 
 function kilometers(meters: number): string {
   return numberFormat({
-    minimumFractionDigits: meters < 100_000 ? 1 : 0,
-    maximumFractionDigits: meters < 100_000 ? 1 : 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(meters / 1000);
 }
 
@@ -1230,6 +1231,7 @@ export function PlanningScreen({
                 activityKindLabel(activity),
                 activityMeta(activity),
                 activity.finished ? '' : statusLabel('started'),
+                activity.falseStart ? tr('Fehlstart', 'false start') : '',
                 entry.plannedFor
                   ? tr(
                       `für den Plan am ${dateLabel(

@@ -28,6 +28,8 @@ export interface PlanActivity {
   runningMeters?: number;
   /** Strength only: confirmed sets. */
   sets?: number;
+  /** A false start: stays visible but does not count as training. */
+  falseStart?: boolean;
 }
 
 export type PlanStatus = 'planned' | 'skipped' | 'started' | 'done';
@@ -171,7 +173,7 @@ export function planSummary(
   let seconds: number | undefined;
   let runningMeters: number | undefined;
   activities.forEach(activity => {
-    if (!activity.finished) return;
+    if (!activity.finished || activity.falseStart) return;
     if (!inPeriod.has(localDateKey(new Date(activity.startTime)))) return;
     done += 1;
     if (activity.durationSeconds !== undefined) {

@@ -168,4 +168,22 @@ describe('planView', () => {
       runningMeters: undefined,
     });
   });
+
+  it('shows a false start but does not count it as training', () => {
+    const activities = [
+      run({
+        falseStart: true,
+        durationSeconds: 10,
+        distanceMeters: 20,
+        runningMeters: 20,
+      }),
+    ];
+    const byDate = planEntriesByDate([], activities);
+    expect(byDate['2025-03-10']).toHaveLength(1);
+    expect(planSummary(['2025-03-10'], byDate, activities)).toMatchObject({
+      done: 0,
+      seconds: undefined,
+      runningMeters: undefined,
+    });
+  });
 });
