@@ -732,6 +732,7 @@ export function RunbackApp() {
   const [purposeSkipped, setPurposeSkipped] = useState<string[]>([]);
   const [historyView, setHistoryView] = useState<HistoryView>('units');
   const [templatesParent, setTemplatesParent] = useState<Page>('main');
+  const [settingsWrites, setSettingsWrites] = useState(0);
   // Strength templates read from the phone; until then their days are unknown.
   const [templatesLoaded, setTemplatesLoaded] = useState(false);
   const [developmentArea, setDevelopmentArea] = useState<
@@ -998,6 +999,8 @@ export function RunbackApp() {
     } finally {
       settingsWritePending.current = false;
       settingsRevision.current += 1;
+      // Lets work that waited for this write (the weekly-plan note) run.
+      setSettingsWrites(count => count + 1);
     }
   }, []);
   const save = (patch: Partial<Settings>) => {
@@ -1894,8 +1897,18 @@ export function RunbackApp() {
   // Plans stay user artifacts: only what the user explicitly confirmed here is
   // written (T-6).
   const persistTemplates = (next: WorkoutTemplate[]) => {
+    const previous = strengthRef.current.templates;
     setStrength(current => ({ ...current, templates: next }));
-    void native.saveStrengthTemplates(next).catch(e => setError(e.message));
+    // A failed save takes the change back, so the weekly plan noted for today
+    // follows the stored templates again.
+    void native.saveStrengthTemplates(next).catch(e => {
+      setStrength(current =>
+        current.templates === next
+          ? { ...current, templates: previous }
+          : current,
+      );
+      setError(e.message);
+    });
   };
   // The whole weekly plan, also of a hidden area: Plan filters for display,
   // but a day edit must keep what the other area had planned.
@@ -1932,6 +1945,7 @@ export function RunbackApp() {
     persist,
     loaded,
     busy,
+    settingsWrites,
     templatesLoaded,
     features.planning.enabled,
     schedule,
@@ -3143,6 +3157,7 @@ export function RunbackApp() {
       showStrength={showStrength}
       showRunning={showRunning}
       templatesLoaded={templatesLoaded}
+      strengthHistoryAvailable={strengthHistoryAvailable}
     />
   );
   const openFunction = (id: FeatureId) => {
@@ -3947,7 +3962,7 @@ export function RunbackApp() {
       ...(showRunning && planWeekly.run.length
         ? [`${tr('Lauf', 'Run')} ${days(planWeekly.run)}`]
         : []),
-      ...planWeekly.strength.map(entry => {
+      ...(showStrength ? planWeekly.strength : []).map(entry => {
         const name =
           strength.templates.find(item => item.id === entry.templateId)?.name ??
           tr('Krafttraining', 'Strength training');

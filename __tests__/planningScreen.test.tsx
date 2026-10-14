@@ -338,6 +338,27 @@ describe('PlanningScreen', () => {
     expect(text).toContain('gegenüber den ersten 3 Tagen der 4 Wochen davor');
   });
 
+  it('says when strength sessions are missing instead of comparing', () => {
+    const runs = [
+      completedRun('a', '2025-03-10'),
+      ...['2025-03-03', '2025-02-24', '2025-02-17', '2025-02-10'].map(date =>
+        completedRun(`w${date}`, date),
+      ),
+    ];
+    const { tree } = renderPlanning(normalizeSchedule(), {
+      runs,
+      strengthHistoryAvailable: false,
+    });
+    press(tree, 'Wochenansicht zeigen');
+    const text = screenText(tree);
+    expect(text).toContain('Krafteinheiten sind gerade nicht geladen');
+    expect(text).not.toContain('▲ ▼');
+    act(() => dayCell(tree, 'Dienstag, 11. März').props.onPress());
+    expect(screenText(tree)).toContain(
+      'Kein Lauf; Krafteinheiten sind nicht geladen.',
+    );
+  });
+
   it('keeps a failed save visible and shows the saved plan again', async () => {
     const state = normalizeSchedule();
     const { tree, onSave } = renderPlanning(state);

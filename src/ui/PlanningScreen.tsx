@@ -75,6 +75,11 @@ export interface PlanningScreenProps {
   showRunning?: boolean;
   /** False until the templates are read; their weekly days are unknown then. */
   templatesLoaded?: boolean;
+  /**
+   * False when the strength sessions did not load: strength training is then
+   * unknown, not absent, and nothing is compared.
+   */
+  strengthHistoryAvailable?: boolean;
 }
 
 type ViewMode = 'week' | 'month';
@@ -229,6 +234,7 @@ export function PlanningScreen({
   showStrength = true,
   showRunning = true,
   templatesLoaded = true,
+  strengthHistoryAvailable = true,
 }: PlanningScreenProps) {
   const today = localDateKey(new Date(now));
   const [shown, setShown] = useState<ScheduleState>(state);
@@ -346,12 +352,15 @@ export function PlanningScreen({
     periodStart,
     containsToday ? today : periodEnd,
   );
-  const usual = compareWithUsual({
-    activities,
-    kind: view,
-    start: periodStart,
-    today,
-  });
+  const strengthMissing = showStrength && !strengthHistoryAvailable;
+  const usual = strengthMissing
+    ? undefined
+    : compareWithUsual({
+        activities,
+        kind: view,
+        start: periodStart,
+        today,
+      });
 
   const navigate = (amount: number) => {
     if (view === 'month') setMonth(current => shiftMonth(current, amount));
@@ -443,7 +452,19 @@ export function PlanningScreen({
               )
             : null}
         </View>
-        {usual ? (
+        {strengthMissing ? (
+          <Text style={styles.compareNote}>
+            {showRunning
+              ? tr(
+                  'Krafteinheiten sind gerade nicht geladen; die Summen zeigen nur Läufe.',
+                  'Strength sessions are not loaded right now; the totals show runs only.',
+                )
+              : tr(
+                  'Krafteinheiten sind gerade nicht geladen.',
+                  'Strength sessions are not loaded right now.',
+                )}
+          </Text>
+        ) : usual ? (
           <Text style={styles.compareNote}>
             {usual.partial
               ? tr(
@@ -717,6 +738,16 @@ export function PlanningScreen({
           <Copy muted>
             {editable
               ? tr('Nichts geplant.', 'Nothing planned.')
+              : strengthMissing && showRunning
+              ? tr(
+                  'Kein Lauf; Krafteinheiten sind nicht geladen.',
+                  'No run; strength sessions are not loaded.',
+                )
+              : strengthMissing
+              ? tr(
+                  'Krafteinheiten sind nicht geladen.',
+                  'Strength sessions are not loaded.',
+                )
               : tr('Kein Training.', 'No workout.')}
           </Copy>
         )}
