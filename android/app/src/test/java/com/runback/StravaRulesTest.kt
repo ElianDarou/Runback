@@ -40,7 +40,7 @@ class StravaRulesTest {
     @Test fun `summary-only activities use measured duration and never invent distance or health values`() {
         val run = run().put("durationSeconds", 2.5).put("avgHeartRate", 130)
         val fields = StravaRules.summaryFields(run, "run", "Run", "Run")
-        assertEquals("2", fields["elapsed_time"])
+        assertEquals("3", fields["elapsed_time"])
         assertEquals("1970-01-01T00:00:02Z", fields["start_date_local"])
         assertFalse(fields.containsKey("distance"))
         assertFalse(fields.keys.any { it.contains("heart") || it.contains("latitude") })

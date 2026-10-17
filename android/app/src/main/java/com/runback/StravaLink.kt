@@ -57,8 +57,8 @@ object StravaLink {
             .put("clientId", value.optString("clientId")).put("connected", value.optString("refreshToken").isNotBlank())
             .put("enabled", value.optBoolean("enabled")).put("gps", value.optBoolean("gps")).put("health", value.optBoolean("health"))
             .put("athleteId", value.optString("athleteId")).put("problem", value.optString("problem"))
-            .put("lastSuccessAt", rows.mapNotNull { row -> row.optLong("successAt").takeIf { it > 0 } }.maxOrNull() ?: JSONObject.NULL)
-            .put("uploaded", rows.count { it.optString("state") == "complete" })
+            .put("lastSuccessAt", rows.filterNot { it.optBoolean("confirmedByUser") }.mapNotNull { row -> row.optLong("successAt").takeIf { it > 0 } }.maxOrNull() ?: JSONObject.NULL)
+            .put("uploaded", rows.count { it.optString("state") == "complete" && !it.optBoolean("confirmedByUser") })
             .put("pending", rows.count { it.optString("state") in listOf("retry", "processing") })
             .put("unknown", rows.count { it.optString("state") in listOf("unknown", "sending") })
             .put("failed", rows.count { it.optString("state") == "failed" })
@@ -123,8 +123,12 @@ object StravaLink {
         WorkManager.getInstance(context).cancelUniqueWork("runback-strava-now")
         WorkManager.getInstance(context).cancelUniqueWork("runback-strava-periodic")
     }
+    private fun cleanFiles(context: Context) {
+        context.cacheDir.listFiles()?.filter { it.name.startsWith("strava-") && it.name.endsWith(".fit") }?.forEach { it.delete() }
+    }
     fun disconnect(context: Context, forgetHistory: Boolean = false): JSONObject = synchronized(gate) {
         cancelAuthorization(); cancelWork(context)
+        cleanFiles(context)
         val secrets = StravaSecrets(context)
         // Keep account-scoped receipts, even after reconnecting, without retaining credentials.
         secrets.save(JSONObject().put("uploads", if (forgetHistory) JSONObject() else secrets.read().optJSONObject("uploads") ?: JSONObject()))
@@ -155,6 +159,7 @@ object StravaLink {
     }
 
     fun sync(context: Context): JSONObject = synchronized(gate) {
+        cleanFiles(context)
         val secrets = StravaSecrets(context)
         val options = secrets.read()
         if (!options.optBoolean("enabled") || options.optString("refreshToken").isBlank()) return@synchronized status(context)

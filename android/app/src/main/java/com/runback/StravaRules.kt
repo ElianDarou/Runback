@@ -29,8 +29,9 @@ object StravaRules {
         val end = value.getLong("endTime")
         val seconds = if (kind == "strength") (end - start) / 1000.0 else value.getDouble("durationSeconds")
         require(start > 0 && end > start && seconds.isFinite() && seconds >= 1)
+        // Manual activities have no separate timer field; preserve the actual elapsed window.
         val fields = mutableMapOf("name" to name.take(200), "sport_type" to sport,
-            "start_date_local" to java.time.Instant.ofEpochMilli(start).toString(), "elapsed_time" to seconds.toLong().toString())
+            "start_date_local" to java.time.Instant.ofEpochMilli(start).toString(), "elapsed_time" to ((end - start) / 1000).toString())
         if (kind != "strength") value.optDouble("distanceMeters", Double.NaN).takeIf { it.isFinite() && it >= 0 }?.let { fields["distance"] = it.toString() }
         return fields
     }

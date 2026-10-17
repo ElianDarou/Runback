@@ -217,7 +217,7 @@ export function StravaSettings() {
                   </Notice>
                 ) : null}
                 <Row
-                  title={tr('Übertragen', 'Uploaded')}
+                  title={tr('Von Strava bestätigt', 'Confirmed by Strava')}
                   subtitle={numberFormat().format(status.uploaded)}
                 />
                 {status.pending > 0 ? (
