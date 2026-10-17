@@ -7,7 +7,7 @@ import org.json.JSONObject
 import java.io.File
 import java.util.Date
 
-/** An exchange copy, never an edit to originals; samples are already end-corrected by RunStore. */
+/** An exchange copy, never an edit to originals; samples are clipped to the supplied corrected end. */
 object StravaExport {
     fun write(file: File, value: JSONObject, kind: String, samples: JSONArray, gps: Boolean, health: Boolean): Int {
         val start = value.optLong("startTime")
@@ -53,10 +53,12 @@ object StravaExport {
                     val sets = exercises.optJSONObject(i)?.optJSONArray("sets") ?: continue
                     for (j in 0 until sets.length()) {
                         val set = sets.optJSONObject(j) ?: continue
-                        if (set.optBoolean("skipped") || !(set.optBoolean("completed") || set.has("completedAt"))) continue
+                        val completedAt = set.optLong("completedAt").takeIf { it > 0 }
+                        if (set.optBoolean("skipped") || !(set.optBoolean("completed") || completedAt != null) ||
+                            (completedAt != null && completedAt !in start..end)) continue
                         encoder.write(SetMesg().apply {
                             setType = SetType.ACTIVE
-                            set.optLong("completedAt").takeIf { it in start..end }?.let { timestamp = DateTime(Date(it)) }
+                            completedAt?.let { timestamp = DateTime(Date(it)) }
                             set.optDouble("actualReps", Double.NaN).takeIf { it.isFinite() && it >= 0 && it < 65535 }?.let { repetitions = it.toInt() }
                             set.optDouble("actualWeightKg", Double.NaN).takeIf { it.isFinite() && it >= 0 && it < 6553 }?.let { weight = it.toFloat() }
                             set.optDouble("actualSeconds", Double.NaN).takeIf { it.isFinite() && it >= 0 }?.let { duration = it.toFloat() }

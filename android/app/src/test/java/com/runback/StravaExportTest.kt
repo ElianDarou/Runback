@@ -46,6 +46,8 @@ class StravaExportTest {
             .put(JSONObject().put("completed", true).put("actualReps", 8).put("actualWeightKg", 30))
             .put(JSONObject().put("completed", true))
             .put(JSONObject().put("planned", JSONObject().put("reps", 12).put("weightKg", 80)))
+            .put(JSONObject().put("completedAt", JSONObject.NULL).put("planned", JSONObject().put("reps", 12)))
+            .put(JSONObject().put("completed", true).put("completedAt", start + 70_000).put("actualReps", 12))
             .put(JSONObject().put("completed", true).put("skipped", true)))))
         val (_, sessions, sets) = decode(value, "strength", JSONArray())
         assertEquals(Sport.TRAINING, sessions[0].sport)

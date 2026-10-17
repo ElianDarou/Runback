@@ -202,7 +202,8 @@ object StravaLink {
                 sendingValue = value; sendingKind = kind
                 val file = File.createTempFile("strava-", ".fit", context.cacheDir)
                 try {
-                    val samples = if (kind == "strength") JSONArray() else store.rawSamples(id, corrected = true)
+                    // The writer clips originals to this snapshot's end, even if the user edits it meanwhile.
+                    val samples = if (kind == "strength") JSONArray() else store.rawSamples(id)
                     val measuredMessages = StravaExport.write(file, value, kind, samples, options.optBoolean("gps"), options.optBoolean("health"))
                     val name = if (kind == "strength") value.optString("name").takeIf { it.isNotBlank() }?.let(DisplayNames::session) ?: Lang.tr("Krafttraining", "Strength training")
                         else value.optString("name").takeIf { it.isNotBlank() } ?: if (StravaRules.sport(value) == "Ride") Lang.tr("Radfahrt", "Ride") else Lang.tr("Lauf", "Run")
@@ -227,8 +228,11 @@ object StravaLink {
                 val receipt = retryRows.optJSONObject(key) ?: continue
                 if (receipt.optString("state") != "retry") continue
                 val id = receipt.optString("id")
-                if (receipt.optString("kind") == "strength") store.strengthSession(id)?.let { send(it, "strength", retry = true) }
-                else if (store.runStatus(id) == "completed") send(store.detail(id), "run", retry = true)
+                val kind = if (receipt.optString("kind") == "strength") "strength" else "run"
+                val value = if (kind == "strength") store.strengthSession(id)
+                    else if (store.runStatus(id) == "completed") store.detail(id) else null
+                if (value == null) secrets.update { it.optJSONObject("uploads")?.optJSONObject(athlete)?.remove(key) }
+                else send(value, kind, retry = true)
             }
             var offset = 0
             var reachedOlder = false

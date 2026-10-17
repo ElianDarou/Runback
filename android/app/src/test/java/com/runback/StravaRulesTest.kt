@@ -8,6 +8,7 @@ class StravaRulesTest {
     private fun run() = JSONObject("""{"id":"r1","status":"completed","source":"phone","sport":"running","startTime":2000,"endTime":5000}""")
     @Test fun `automatic uploads exclude plans imports old recordings and unsupported sports`() {
         assertTrue(StravaRules.eligible(run(), "run", 1000))
+        assertTrue(StravaRules.eligible(run().put("sport", "cycling"), "run", 1000))
         assertTrue(StravaRules.eligible(run().put("source", "wear_os"), "run", 1000))
         assertFalse(StravaRules.eligible(run(), "run", 3000))
         assertFalse(StravaRules.eligible(run(), "run", 0))

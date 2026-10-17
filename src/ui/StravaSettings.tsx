@@ -142,8 +142,8 @@ export function StravaSettings() {
             </Badge>
             <Copy muted>
               {tr(
-                'Übertrage neue, abgeschlossene Läufe und Krafttrainings automatisch in dein Strava-Konto.',
-                'Automatically upload new, completed runs and strength sessions to your Strava account.',
+                'Übertrage neue, abgeschlossene Läufe, Fahrten und Krafttrainings automatisch in dein Strava-Konto.',
+                'Automatically upload new, completed runs, rides, and strength sessions to your Strava account.',
               )}
             </Copy>
             {status.connected ? (
@@ -179,8 +179,8 @@ export function StravaSettings() {
                 />
                 <CheckRow
                   title={tr(
-                    'Herzfrequenz beim Laufen mitsenden',
-                    'Include heart rate from runs',
+                    'Herzfrequenz bei Läufen und Fahrten mitsenden',
+                    'Include heart rate from runs and rides',
                   )}
                   checked={status.health}
                   disabled={busy}
