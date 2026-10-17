@@ -41,6 +41,7 @@ class MainApplication : Application(), ReactApplication {
       WearController.publishPhoneSamples(this, runId, sequence, samples)
     }
     RecordingService.controlSink = RecordingControlSink { action, runId, commandId ->
+      if (action == RecordingService.FINISH) runCatching { StravaLink.request(this) }
       val session = RunStore(this).active()
       WearController.publishControl(
         this,
@@ -55,6 +56,7 @@ class MainApplication : Application(), ReactApplication {
     DisplayNames.restore(RunStore(this))
     RecordingService.musicSink = { run -> MusicController.get(this).onRun(run) }
     ServerLink.start(this)
+    runCatching { StravaLink.start(this) }
     WearController.retryPending(this)
     loadReactNative(this)
   }

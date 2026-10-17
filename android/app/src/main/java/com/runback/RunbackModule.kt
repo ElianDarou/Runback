@@ -98,6 +98,25 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     @ReactMethod fun syncServer(promise: Promise) = serverTask(promise) { ServerLink.sync(context) }
     @ReactMethod fun disconnectServer(promise: Promise) = serverTask(promise) { ServerLink.disconnect(context) }
 
+    private fun stravaResult(promise: Promise, value: JSONObject?, error: Exception?) {
+        if (error == null) promise.resolve(value.toString())
+        else promise.reject("STRAVA_ERROR", (if (error is IllegalArgumentException || error is IllegalStateException) error.message else null)
+            ?: Lang.tr("Strava-Aktion fehlgeschlagen; prüfe Verbindung und Zugangsdaten.", "Strava action failed; check your connection and credentials."))
+    }
+    private fun stravaTask(promise: Promise, block: () -> JSONObject) = StravaLink.operation({ value, error -> stravaResult(promise, value, error) }, block)
+    @ReactMethod fun getStravaStatus(promise: Promise) = task(promise) { StravaLink.status(context) }
+    @ReactMethod fun configureStrava(clientId: String, clientSecret: String, promise: Promise) = stravaTask(promise) { StravaLink.configure(context, clientId.trim(), clientSecret.trim()) }
+    @ReactMethod fun setStravaOptions(enabled: Boolean, gps: Boolean, health: Boolean, promise: Promise) = stravaTask(promise) { StravaLink.setOptions(context, enabled, gps, health) }
+    @ReactMethod fun disconnectStrava(promise: Promise) = stravaTask(promise) { StravaLink.disconnect(context) }
+    @ReactMethod fun syncStrava(promise: Promise) = stravaTask(promise) { StravaLink.sync(context) }
+    @ReactMethod fun retryStravaUpload(key: String, promise: Promise) = stravaTask(promise) { StravaLink.retry(context, key) }
+    @ReactMethod fun confirmExistingStravaUpload(key: String, promise: Promise) = stravaTask(promise) { StravaLink.confirmExisting(context, key) }
+    @ReactMethod fun cancelStravaAuthorization(promise: Promise) = task(promise) { StravaLink.cancelAuthorization(); JSONObject() }
+    @ReactMethod fun authorizeStrava(promise: Promise) {
+        val activity = context.currentActivity ?: run { promise.reject("STRAVA_ERROR", Lang.tr("Öffne zuerst Runback.", "Open Runback first.")); return }
+        StravaLink.authorize(context, activity) { value, error -> stravaResult(promise, value, error) }
+    }
+
     private fun capabilities(): JSONObject {
         val sensors = context.getSystemService(SensorManager::class.java)
         return JSONObject()
@@ -188,6 +207,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     @ReactMethod fun clearAllData(promise: Promise) = task(promise) {
         check(store.active() == null) { Lang.tr("Beende zuerst die laufende Aufzeichnung.", "Finish the running recording first.") }
         MusicController.get(context).disconnect()
+        StravaLink.disconnect(context, forgetHistory = true)
         importer.cancel(); store.clearAllData(); MotionSessions.deleteFiles(context); state()
     }
     @ReactMethod fun deleteAllData(promise: Promise) = clearAllData(promise)
@@ -604,6 +624,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
             if (code != Activity.RESULT_OK || uri == null) promise.resolve("{\"cancelled\":true}")
             else task(promise) {
                 check(store.active() == null) { Lang.tr("Beende zuerst die Aufzeichnung.", "Finish the recording first.") }
+                StravaLink.disconnect(context)
                 val restored = context.contentResolver.openInputStream(uri)!!.use(store::restore)
                 // An older backup may still carry the chat history.
                 RemovedChat.clean(context, store)
@@ -844,6 +865,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     }
 
     override fun invalidate() {
+        StravaLink.cancelAuthorization()
         importer.cancel()
         context.runOnUiQueueThread {
             val promise = speechPromise
