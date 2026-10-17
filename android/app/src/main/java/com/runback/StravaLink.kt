@@ -226,14 +226,17 @@ object StravaLink {
                 else if (store.runStatus(id) == "completed") send(store.detail(id), "run", retry = true)
             }
             var offset = 0
+            var reachedOlder = false
             do {
                 val runs = store.listRuns(500, offset)
                 for (i in 0 until runs.length()) {
+                    if (count >= 10) break
                     val run = runs.getJSONObject(i)
+                    if (run.optLong("startTime") < options.optLong("since")) { reachedOlder = true; break }
                     if (StravaRules.eligible(run, "run", options.optLong("since"))) send(store.detail(run.getString("id")), "run")
                 }
                 offset += runs.length()
-            } while (runs.length() == 500 && count < 10)
+            } while (runs.length() == 500 && count < 10 && !reachedOlder)
             for (id in store.strengthSessionIds()) { if (count >= 10) break; store.strengthSession(id)?.let { send(it, "strength") } }
             secrets.update { it.remove("problem") }
         } catch (error: Exception) {

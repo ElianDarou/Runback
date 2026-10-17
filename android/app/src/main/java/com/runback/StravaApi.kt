@@ -56,7 +56,7 @@ class StravaApi(private val secrets: StravaSecrets) {
         } finally { connection.disconnect() }
     }
 
-    fun authorize(activity: Activity): JSONObject {
+    fun authorize(activity: Activity) {
         val initial = secrets.read()
         val client = initial.optString("clientId")
         require(client.matches(Regex("[1-9][0-9]{0,19}")) && initial.optString("clientSecret").isNotBlank()) {
@@ -102,7 +102,6 @@ class StravaApi(private val secrets: StravaSecrets) {
                 putTokens(current, tokens)
                 current.put("athleteId", athleteId).put("enabled", false).remove("problem")
             }
-            return secrets.read()
         } finally { if (authSocket === socket) authSocket = null; socket.close() }
     }
 

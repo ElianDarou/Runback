@@ -11,7 +11,7 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-/** No credential enters SQLite, the React state, backups, server payloads or logs. */
+/** Stored credentials never enter SQLite, bridge responses, backups, server payloads or logs. */
 class StravaSecrets(context: Context) {
     companion object { private val lock = Any() }
     private val prefs = context.getSharedPreferences("runback_strava_secrets", Context.MODE_PRIVATE)
