@@ -1,3 +1,4 @@
+import type { challengeCalendar } from '../domain/challenges';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -41,6 +42,7 @@ import {
   Button,
   Copy,
   Notice,
+  Row,
   Sheet,
   Title,
   WorkoutIcon,
@@ -60,6 +62,7 @@ import {
 export type { ScheduleState } from '../domain/schedule';
 
 export interface PlanningScreenProps {
+  challengeDays?: ReturnType<typeof challengeCalendar>;
   state: ScheduleState;
   onSave: (next: ScheduleState) => Promise<void>;
   templates: WorkoutTemplate[];
@@ -224,6 +227,7 @@ const toneWord = (tone: UsualTone): string =>
 
 export function PlanningScreen({
   state,
+  challengeDays = {},
   onSave,
   templates,
   runs,
@@ -486,6 +490,12 @@ export function PlanningScreen({
       fullDateLabel(date),
       date === today ? tr('heute', 'today') : '',
       ...entries.map(entryLabel),
+      ...(challengeDays[date] ?? []).map(
+        entry =>
+          `${entry.name}: ${numberFormat().format(
+            entry.total,
+          )} / ${numberFormat().format(entry.target)}`,
+      ),
     ]
       .filter(Boolean)
       .join(', ');
@@ -517,6 +527,13 @@ export function PlanningScreen({
         >
           {dateOf(date).getDate()}
         </Text>
+        {(challengeDays[date] ?? []).length ? (
+          <Text numberOfLines={1} style={styles.moreCount}>
+            {(challengeDays[date] ?? [])
+              .map(entry => numberFormat().format(entry.total))
+              .join(' · ')}
+          </Text>
+        ) : null}
         <View style={styles.cellIcons}>
           {shownEntries.map((entry, index) => (
             <WorkoutIcon
@@ -566,6 +583,12 @@ export function PlanningScreen({
           </Text>
         </View>
         <View style={styles.weekEntries}>
+          {(challengeDays[date] ?? []).map(entry => (
+            <Text key={entry.id} style={styles.weekEntryText}>
+              {entry.name}: {numberFormat().format(entry.total)} /{' '}
+              {numberFormat().format(entry.target)}
+            </Text>
+          ))}
           {entries.map((entry, entryIndex) => (
             <View key={entryIndex} style={styles.weekEntry}>
               <WorkoutIcon name={entryIcon(entry)} state={entry.state} />
@@ -665,6 +688,15 @@ export function PlanningScreen({
         }`}
         onClose={() => setOpenDay(null)}
       >
+        {(challengeDays[date] ?? []).map(entry => (
+          <Row
+            key={entry.id}
+            title={entry.name}
+            subtitle={`${numberFormat().format(
+              entry.total,
+            )} / ${numberFormat().format(entry.target)}`}
+          />
+        ))}
         {entries.length ? (
           entries.map((entry, index) => {
             const activity = entry.activity;

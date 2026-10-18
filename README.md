@@ -39,6 +39,9 @@ Templates, or Soreness. Everything else is under **All features**.
   goal progress, reporting soreness, and the latest workouts.
 - **History** — What have I done? Workouts grouped by week with totals. Detail view with
   map, metrics, insights, feeling, and splits.
+- **Challenges** (optional, off by default) — Set daily count goals, log amounts with
+  custom quick buttons on Today, and review totals and goal-day streaks. Plan shows
+  the recorded counts on each day.
 - **Plan** — What is planned and what did I do? One screen with the month (or, less
   prominent, the week): a small symbol per workout, gray when planned, green when done.
   Tap a day to change just that day. Above it the period's workouts, time, and km, marked

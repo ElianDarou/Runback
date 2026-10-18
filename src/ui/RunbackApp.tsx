@@ -1,3 +1,9 @@
+import {
+  normalizeChallenges,
+  challengeCalendar,
+  type Challenges,
+} from '../domain/challenges';
+import { ChallengesView } from './Challenges';
 import { ServerSettings } from './ServerSettings';
 import { ConnectionMark } from './components';
 import {
@@ -802,6 +808,14 @@ export function RunbackApp() {
       }),
     [settings.features, settings.showHeartRate],
   );
+  const challenges = useMemo(
+    () => normalizeChallenges(settings.challenges),
+    [settings.challenges],
+  );
+  const challengeDays = useMemo(
+    () => (features.challenges.enabled ? challengeCalendar(challenges) : {}),
+    [challenges, features.challenges.enabled],
+  );
   const tabs = useMemo(() => visibleTabs(features), [features]);
   const homeSections = useMemo(() => visibleHomeSections(features), [features]);
   const showRunning = features.areas.running;
@@ -1004,6 +1018,20 @@ export function RunbackApp() {
   }, []);
   const save = (patch: Partial<Settings>) => {
     void action(() => persist(patch));
+  };
+  const changeChallenges = (
+    update: (current: Challenges) => Challenges,
+    onSaved?: () => void,
+  ) => {
+    void action(async () => {
+      await persist({
+        challenges: update(
+          normalizeChallenges(stateRef.current.settings.challenges),
+        ),
+      });
+      setNow(Date.now());
+      onSaved?.();
+    });
   };
   /** The goal for the next run, with its values remembered per kind. */
   const persistRunTarget = (target: RunTarget) =>
@@ -2594,6 +2622,16 @@ export function RunbackApp() {
       <Title>{tr('Heute', 'Today')}</Title>
       {homeSections.includes('week') ? weekStrip() : null}
       {renderHero()}
+      {homeSections.includes('challenges') ? (
+        <ChallengesView
+          state={challenges}
+          now={now}
+          disabled={busy || !loaded}
+          onChange={changeChallenges}
+          compact
+          onOpen={() => switchTab('challenges')}
+        />
+      ) : null}
       {!settings.features && settings.onboardedAt ? (
         <Row
           title={tr(
@@ -3145,6 +3183,7 @@ export function RunbackApp() {
   const renderPlan = () => (
     <PlanningScreen
       state={schedule}
+      challengeDays={challengeDays}
       onSave={saveSchedule}
       templates={strength.templates}
       runs={runs}
@@ -5073,6 +5112,13 @@ export function RunbackApp() {
     )
   ) : tab === 'development' ? (
     renderDevelopment()
+  ) : tab === 'challenges' ? (
+    <ChallengesView
+      state={challenges}
+      now={now}
+      disabled={busy || !loaded}
+      onChange={changeChallenges}
+    />
   ) : tab === 'templates' ? (
     renderTemplates()
   ) : tab === 'soreness' ? (

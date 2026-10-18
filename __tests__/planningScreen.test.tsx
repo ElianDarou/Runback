@@ -371,3 +371,26 @@ describe('PlanningScreen', () => {
     );
   });
 });
+
+describe('challenge calendar', () => {
+  it('shows independent counts on their recorded days across the month boundary and opens their goals', () => {
+    const { tree } = renderPlanning(undefined, {
+      challengeDays: {
+        '2025-02-28': [
+          { id: 'push', name: 'Liegestütze', total: 100, target: 100 },
+        ],
+        '2025-03-01': [
+          { id: 'push', name: 'Liegestütze', total: 20, target: 100 },
+          { id: 'squat', name: 'Kniebeugen', total: 5, target: 50 },
+        ],
+      },
+    });
+    const cell = dayCell(tree, 'Samstag, 1. März');
+    expect(cell.props.accessibilityLabel).toContain('Liegestütze: 20 / 100');
+    expect(cell.props.accessibilityLabel).toContain('Kniebeugen: 5 / 50');
+    act(() => cell.props.onPress());
+    expect(screenText(tree)).toContain('20 / 100');
+    expect(screenText(tree)).toContain('5 / 50');
+    act(() => tree.unmount());
+  });
+});

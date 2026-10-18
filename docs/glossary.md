@@ -6,6 +6,7 @@ product. Code names are identifiers and stay as they are.
 
 | German UI word | English UI word | Code name | Purpose |
 | --- | --- | --- | --- |
+| Challenges | Challenges | `challenges` | Optional daily count goals with manual entries and goal-day streaks. |
 | Heute | Today | `today` | Tab: the start screen for the next workout. |
 | Verlauf | History | `history` | Tab: past workouts. |
 | Plan | Plan | `plan` | Tab: planning (optional feature). One page without scrolling: the month (or the week) with a symbol per planned and done workout. |
