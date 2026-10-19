@@ -1,4 +1,5 @@
 import { ServerSettings } from './ServerSettings';
+import { StravaSettings } from './StravaSettings';
 import { ConnectionMark } from './components';
 import {
   serverMark,
@@ -331,6 +332,7 @@ type Page =
   | 'templates'
   | 'muscle-map'
   | 'server'
+  | 'strava'
   | 'music'
   | 'settings'
   | 'devices'
@@ -362,6 +364,7 @@ interface Trail {
 const PARENT_PAGE: Partial<Record<Page, Page>> = {
   devices: 'settings',
   server: 'settings',
+  strava: 'settings',
   music: 'features',
   'run-audio': 'sound',
   sound: 'settings',
@@ -4066,6 +4069,14 @@ export function RunbackApp() {
           onPress={() => openPage('server')}
         />
         <Row
+          title="Strava"
+          subtitle={tr(
+            'Abgeschlossene Einheiten automatisch übertragen',
+            'Automatically upload completed sessions',
+          )}
+          onPress={() => openPage('strava')}
+        />
+        <Row
           title={tr('Deine Daten', 'Your data')}
           subtitle={tr(
             `${counted(
@@ -5030,6 +5041,8 @@ export function RunbackApp() {
       enabled={features.music.enabled}
       onToggle={enabled => changeFeatures({ ...features, music: { enabled } })}
     />
+  ) : page === 'strava' ? (
+    <StravaSettings />
   ) : page === 'server' ? (
     <ServerSettings
       key={serverStatus?.url ?? 'off'}

@@ -81,6 +81,7 @@ object StrengthWorkout {
 
     /** Session finished or discarded: `strength_active` is already deleted. */
     fun ended(context: Context, store: RunStore, sessionId: String?) {
+        runCatching { StravaLink.request(context) }
         sync(context, sessionId)
         if (sessionId != null && store.getDocument(WATCH)?.optString("sessionId") == sessionId) store.deleteDocument(WATCH)
     }

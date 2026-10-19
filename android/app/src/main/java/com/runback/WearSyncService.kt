@@ -329,6 +329,7 @@ class WearSyncService : WearableListenerService() {
                 val importedId = store.importSession(temporary)
                 require(importedId == id) { Lang.tr("Die Übertragung enthält einen anderen Lauf", "The transfer contains a different run") }
                 store.putDocument("wearImport_$id", JSONObject().put("sha256", expected).put("importedAt", System.currentTimeMillis()))
+                runCatching { StravaLink.request(this) }
             }
             val ack = PutDataMapRequest.create("/runback/acks/$id")
             ack.dataMap.putString("runId", id)

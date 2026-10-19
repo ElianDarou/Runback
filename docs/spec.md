@@ -60,6 +60,10 @@ Violating one is a bug, not a trade-off.
    logs or backups. Exception: the user may send
    a read-only copy of shared data to their own server. GPS and health values need
    their own release; raw samples and original files stay local.
+   The user may also connect their personal Strava account and enable automatic
+   uploads of new, completed Runback recordings. Route and health values each
+   require a separate release. Only an exchange copy leaves the phone; personal
+   API credentials and tokens stay encrypted locally, outside backups and logs.
 10. **The data belongs to the user.** Full backup, restore, and deletion without an
     account.
 11. **The training purpose wins.** A better metric is not a success if the actual
