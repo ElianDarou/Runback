@@ -33,6 +33,19 @@ failure scenarios to check.
   from `tools/site-demo/gen.py`. German is in `index.html`, English in `en.html`;
   always change both.
 
+## Appetize in Codex Cloud
+
+For mobile device testing, read `.agents/skills/appetize/SKILL.md`.
+Use Node 24 or later, run `npm ci` if dependencies are missing, then
+`npm run setup:e2e`. This installs the browser when needed; the CLI and skill
+are included in the repository setup. Use `npm run appetize -- <command>`
+so the CLI is available without global PATH changes and uses the cloud proxy.
+Run device tests with `npm run test:e2e`. The configuration detects the cloud's
+Chromium and HTTPS proxy automatically. `APPETIZE_BUILD_ID` selects another
+uploaded Runback build. Uploads and private targets require
+`APPETIZE_API_TOKEN` from environment settings; never put tokens in tracked
+files or logs. See `e2e/README.md` for coverage and setup.
+
 ## How to work here
 
 - **The code is the documentation.** Do not write implementation reports in
