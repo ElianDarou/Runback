@@ -32,13 +32,25 @@ import {
   type EdgeInsets,
 } from 'react-native-safe-area-context';
 import type { RoutePoint } from '../native';
-import { percentSign, tr } from '../domain/i18n';
+import { dateFormat, percentSign, tr } from '../domain/i18n';
+import { localDateKey } from '../domain/schedule';
 import {
   TEMPLATE_ICONS,
   iconLabel,
   type TemplateIcon,
   type TrainingIcon,
 } from '../domain/trainingIcons';
+import {
+  dateOf,
+  firstOfMonth,
+  monthTitle,
+  monthWeeks,
+  pickRangeDay,
+  rangePosition,
+  shiftMonth,
+  weekdayShort,
+  type DayRange,
+} from './calendar';
 import { ICON_PATHS } from './iconPaths';
 
 /**
@@ -705,6 +717,187 @@ export function Input({
       {...props}
       style={[s.input, props.multiline && s.inputMultiline, props.style]}
     />
+  );
+}
+
+/** "5. Okt. 2026" / "Oct 5, 2026". */
+const rangeDayLabel = (key: string) =>
+  dateFormat({ day: 'numeric', month: 'short', year: 'numeric' }).format(
+    dateOf(key),
+  );
+
+/**
+ * A period of whole days, chosen in a calendar: the first tap sets the start,
+ * the second the end. Days after today can't be chosen. With `emptyLabel`,
+ * no period is a valid choice too (e.g. “all sessions”).
+ */
+export function DateRangeField({
+  label,
+  value,
+  onChange,
+  emptyLabel,
+  disabled = false,
+}: {
+  label: string;
+  value: { start: string; end: string } | null;
+  onChange: (value: { start: string; end: string } | null) => void;
+  emptyLabel?: string;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<DayRange | null>(value);
+  const [today, setToday] = useState(() => localDateKey());
+  const [month, setMonth] = useState(() => firstOfMonth(today));
+  const weeks = useMemo(() => monthWeeks(month), [month]);
+  const show = () => {
+    const now = localDateKey();
+    setToday(now);
+    setDraft(value);
+    setMonth(firstOfMonth(value?.end ?? now));
+    setOpen(true);
+  };
+  const text = value
+    ? value.start === value.end
+      ? rangeDayLabel(value.start)
+      : `${rangeDayLabel(value.start)} – ${rangeDayLabel(value.end)}`
+    : emptyLabel ?? tr('Zeitraum wählen', 'Choose a period');
+  const step = !draft
+    ? tr('Tippe auf den ersten Tag.', 'Tap the first day.')
+    : !draft.end
+    ? tr('Tippe auf den letzten Tag.', 'Tap the last day.')
+    : draft.start === draft.end
+    ? rangeDayLabel(draft.start)
+    : `${rangeDayLabel(draft.start)} – ${rangeDayLabel(draft.end)}`;
+  const thisMonth = firstOfMonth(today);
+  const arrow = (symbol: string, to: number, enabled: boolean) => (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={
+        to < 0
+          ? tr('Vorheriger Monat', 'Previous month')
+          : tr('Nächster Monat', 'Next month')
+      }
+      accessibilityState={{ disabled: !enabled }}
+      disabled={!enabled}
+      onPress={() => setMonth(current => shiftMonth(current, to))}
+      style={({ pressed }) => [
+        s.iconButton,
+        !enabled && s.disabled,
+        pressed && s.pressed,
+      ]}
+    >
+      <Text style={s.chevron}>{symbol}</Text>
+    </Pressable>
+  );
+  return (
+    <>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${label}: ${text}`}
+        accessibilityState={{ disabled }}
+        disabled={disabled}
+        onPress={show}
+        style={({ pressed }) => [
+          s.input,
+          s.rangeField,
+          disabled && s.disabled,
+          pressed && s.pressed,
+        ]}
+      >
+        <Text style={value ? s.rangeFieldText : s.rangeFieldEmpty}>{text}</Text>
+      </Pressable>
+      <Sheet visible={open} title={label} onClose={() => setOpen(false)}>
+        <Text accessibilityLiveRegion="polite" style={s.rowSubtitle}>
+          {step}
+        </Text>
+        <View style={s.calendarHeader}>
+          {arrow('‹', -1, true)}
+          <Text accessibilityRole="header" style={s.rowTitle}>
+            {monthTitle(month)}
+          </Text>
+          {arrow('›', 1, month < thisMonth)}
+        </View>
+        <View style={s.calendarWeek}>
+          {weekdayShort().map(day => (
+            <Text key={day} style={s.calendarWeekday}>
+              {day}
+            </Text>
+          ))}
+        </View>
+        {weeks.map(week => (
+          <View key={week[0]} style={s.calendarWeek}>
+            {week.map(day => {
+              if (firstOfMonth(day) !== month)
+                return <View key={day} style={s.calendarDay} />;
+              const position = rangePosition(draft, day);
+              const edge =
+                position === 'start' ||
+                position === 'end' ||
+                position === 'single';
+              const future = day > today;
+              const name = rangeDayLabel(day);
+              return (
+                <Pressable
+                  key={day}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    position === 'start'
+                      ? tr(`${name}, Beginn`, `${name}, start`)
+                      : position === 'end'
+                      ? tr(`${name}, Ende`, `${name}, end`)
+                      : name
+                  }
+                  accessibilityState={{
+                    selected: position !== undefined,
+                    disabled: future,
+                  }}
+                  disabled={future}
+                  onPress={() =>
+                    setDraft(current => pickRangeDay(current, day))
+                  }
+                  style={({ pressed }) => [
+                    s.calendarDay,
+                    position === 'inside' && s.calendarInside,
+                    edge && s.calendarEdge,
+                    future && s.disabled,
+                    pressed && s.pressed,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      s.calendarDayText,
+                      edge && s.chipTextSelected,
+                      day === today && s.calendarToday,
+                    ]}
+                  >
+                    {dateOf(day).getDate()}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ))}
+        <Button
+          title={tr('Zeitraum übernehmen', 'Use period')}
+          disabled={!draft?.end}
+          onPress={() => {
+            if (!draft?.end) return;
+            onChange({ start: draft.start, end: draft.end });
+            setOpen(false);
+          }}
+        />
+        {emptyLabel && (value || draft) ? (
+          <Button
+            secondary
+            title={emptyLabel}
+            onPress={() => {
+              onChange(null);
+              setOpen(false);
+            }}
+          />
+        ) : null}
+      </Sheet>
+    </>
   );
 }
 
@@ -2111,6 +2304,38 @@ export const s = StyleSheet.create({
     minHeight: 52,
   },
   inputMultiline: { minHeight: 96, textAlignVertical: 'top' },
+  rangeField: { justifyContent: 'center' },
+  rangeFieldText: { color: color.text, ...type.body },
+  rangeFieldEmpty: { color: color.muted, ...type.body },
+  calendarHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  calendarWeek: { flexDirection: 'row', gap: space.xxs },
+  calendarWeekday: {
+    flex: 1,
+    textAlign: 'center',
+    color: color.muted,
+    ...type.micro,
+  },
+  calendarDay: {
+    flex: 1,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  calendarInside: { backgroundColor: color.greenSoft },
+  calendarEdge: { backgroundColor: color.greenSoft, borderColor: color.green },
+  calendarDayText: {
+    color: color.text,
+    ...type.label,
+    fontVariant: ['tabular-nums'],
+  },
+  calendarToday: { textDecorationLine: 'underline' },
   notice: {
     backgroundColor: color.raised,
     borderRadius: radius.sm,

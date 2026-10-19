@@ -99,7 +99,7 @@ import {
   type RouteCoordinate,
 } from '../domain/routes';
 
-import { runExportRange } from './runExportRange';
+import { exportRange } from './exportRange';
 import { dateToInput, inputToDate } from './dateInput';
 import { DeviceSettings } from './DeviceSettings';
 import { WearRecordingRow } from './WearRecordingRow';
@@ -209,6 +209,7 @@ import {
   native,
   nativeCall,
   normalizeRun,
+  STRENGTH_EXPORT_BATCH,
   type AppState,
   type Run,
   type Settings,
@@ -236,11 +237,11 @@ import {
   Card,
   ChipGroup,
   Copy,
+  DateRangeField,
   Disclosure,
   EmptyState,
   Field,
   Icon,
-  Input,
   Notice,
   Route,
   RouteOpenActions,
@@ -715,8 +716,14 @@ export function RunbackApp() {
     undefined,
   );
   const [exportSelection, setExportSelection] = useState<string[] | null>(null);
-  const [exportFrom, setExportFrom] = useState('');
-  const [exportTo, setExportTo] = useState('');
+  const [runExportPeriod, setRunExportPeriod] = useState<{
+    start: string;
+    end: string;
+  } | null>(null);
+  const [strengthExportPeriod, setStrengthExportPeriod] = useState<{
+    start: string;
+    end: string;
+  } | null>(null);
   const [exportProgress, setExportProgress] = useState('');
   const [unitFilter, setUnitFilter] = useState<UnitFilter>('all');
   const [busy, setBusy] = useState(false);
@@ -975,35 +982,32 @@ export function RunbackApp() {
     setWorkoutOpen(Boolean(nextStrength.active));
     setSorenessOpen(false);
   }, []);
-  const action = useCallback(
-    async (fn: () => Promise<void>) => {
-      if (busyRef.current) {
-        return;
-      }
+  const action = useCallback(async (fn: () => Promise<void>) => {
+    if (busyRef.current) {
+      return;
+    }
+    stateGeneration.current += 1;
+    busyRef.current = true;
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      await fn();
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : tr(
+              'Die Aktion konnte nicht abgeschlossen werden. Bitte erneut versuchen.',
+              'The action could not be completed. Try again.',
+            ),
+      );
+    } finally {
       stateGeneration.current += 1;
-      busyRef.current = true;
-      setBusy(true);
-      setError('');
-      setMessage('');
-      try {
-        await fn();
-      } catch (e) {
-        setError(
-          e instanceof Error
-            ? e.message
-            : tr(
-                'Die Aktion konnte nicht abgeschlossen werden. Bitte erneut versuchen.',
-                'The action could not be completed. Try again.',
-              ),
-        );
-      } finally {
-        stateGeneration.current += 1;
-        busyRef.current = false;
-        setBusy(false);
-      }
-    },
-    [],
-  );
+      busyRef.current = false;
+      setBusy(false);
+    }
+  }, []);
   const persist = useCallback(async (patch: Partial<Settings>) => {
     const updated = { ...stateRef.current.settings, ...patch };
     settingsRevision.current += 1;
@@ -1046,20 +1050,17 @@ export function RunbackApp() {
       ),
     });
 
-  const openGoogleMaps = useCallback(
-    async (points: RouteCoordinate[]) => {
-      const url = googleMapsDirectionsUrl(points);
-      if (!url)
-        throw new Error(
-          tr(
-            'Diese Route kann nicht geöffnet werden.',
-            'This route cannot be opened.',
-          ),
-        );
-      await Linking.openURL(url);
-    },
-    [],
-  );
+  const openGoogleMaps = useCallback(async (points: RouteCoordinate[]) => {
+    const url = googleMapsDirectionsUrl(points);
+    if (!url)
+      throw new Error(
+        tr(
+          'Diese Route kann nicht geöffnet werden.',
+          'This route cannot be opened.',
+        ),
+      );
+    await Linking.openURL(url);
+  }, []);
 
   const openCoMaps = useCallback(async (points: RouteCoordinate[]) => {
     await native.openRouteFile(points, 'comaps');
@@ -1068,17 +1069,12 @@ export function RunbackApp() {
   // the analysis as JSON, and the 5-second time series as CSV. Kotlin writes
   // the time series straight into the export cache; if it or the timeline is
   // missing, only that part is missing — the rest is still shared.
-  const prepareRunExport = async (
+  const prepareRunExport = (
     run: Run,
     analysis: RunAnalysis | null,
     current: AppState,
+    timeline: RunTimeline | null,
   ) => {
-    let timeline: RunTimeline | null = null;
-    try {
-      timeline = await native.runTimeline(run.id);
-    } catch {
-      timeline = null;
-    }
     const sameSport = current.runs.filter(
       other => normalizeSport(other.sport) === normalizeSport(run.sport),
     );
@@ -1107,7 +1103,16 @@ export function RunbackApp() {
         );
       const current = stateRef.current;
       const archive = await native.beginRunArchive();
+      // One native call per run reads run, timeline and time series together.
+      // The next run is already requested while this report is written, so
+      // Kotlin derives while JS builds; the single native worker keeps order.
+      const load = (id: string) => {
+        const pending = native.runExport(archive, id);
+        pending.catch(() => {});
+        return pending;
+      };
       try {
+        let next = load(ids[0]);
         for (const [index, id] of ids.entries()) {
           setExportProgress(
             tr(
@@ -1117,12 +1122,14 @@ export function RunbackApp() {
               }`,
             ),
           );
-          const run = await native.run(id);
+          const { run, timeline } = await next;
+          if (index + 1 < ids.length) next = load(ids[index + 1]);
           const analysis = analyzeRun(run);
-          const { names, input } = await prepareRunExport(
+          const { names, input } = prepareRunExport(
             run,
             analysis,
             current,
+            timeline,
           );
           await native.appendRunArchive(archive, id, {
             markdown: {
@@ -1155,10 +1162,12 @@ export function RunbackApp() {
 
   const shareRun = (run: Run, analysis: RunAnalysis | null) => {
     void action(async () => {
-      const { names, input } = await prepareRunExport(
+      const timeline = await native.runTimeline(run.id).catch(() => null);
+      const { names, input } = prepareRunExport(
         run,
         analysis,
         stateRef.current,
+        timeline,
       );
       const files: { fileName: string; mimeType: string; content?: string }[] =
         [
@@ -1191,24 +1200,36 @@ export function RunbackApp() {
       );
     });
   };
-  // All strength sessions recorded in Runback as one ZIP, without imports.
-  // One call per session; Kotlin appends to the files and only packs at the
-  // end. The README comes first, its content last (with the counts).
-  // Kotlin adds the watch motion data when packing; it stays native.
-  const shareStrength = () => {
+  // Strength sessions recorded in Runback as one ZIP, without imports: all, or
+  // those starting in the chosen period. Sessions come in batches with their
+  // heart rate, the next batch already requested while this one is appended;
+  // Kotlin appends to the files and only packs at the end. The README comes
+  // first, its content last (with the counts). Kotlin adds the watch motion
+  // data of the same sessions when packing; it stays native.
+  const shareStrength = (period: { start: string; end: string } | null) => {
     void action(async () => {
-      const ids = await native.recordedStrengthSessionIds();
-      if (!ids.length)
-        throw new Error(
-          tr(
-            'Zeichne zuerst eine Krafteinheit auf.',
-            'Record a strength session first.',
-          ),
+      const range = period ? exportRange(period.start, period.end) : undefined;
+      const ids = await native.recordedStrengthSessionIds(range);
+      const none = () =>
+        new Error(
+          range
+            ? tr(
+                'Im Zeitraum gibt es keine aufgezeichnete Krafteinheit.',
+                'There is no recorded strength session in this period.',
+              )
+            : tr(
+                'Zeichne zuerst eine Krafteinheit auf.',
+                'Record a strength session first.',
+              ),
         );
+      if (!ids.length) throw none();
       const files = STRENGTH_EXPORT_FILES;
       const headers = strengthExportHeaders();
       const settings = stateRef.current.settings;
-      const motion = await native.motionStatus().catch(() => undefined);
+      // The watch's count covers all sessions; for a period it is unknown here.
+      const motion = range
+        ? undefined
+        : await native.motionStatus().catch(() => undefined);
       const summary = {
         exportedAt: Date.now(),
         sessions: 0,
@@ -1220,6 +1241,15 @@ export function RunbackApp() {
         goal: settings.strengthGoal,
         goalTargetDate: settings.strengthGoalTargetDate,
       };
+      const batches: string[][] = [];
+      for (let i = 0; i < ids.length; i += STRENGTH_EXPORT_BATCH)
+        batches.push(ids.slice(i, i + STRENGTH_EXPORT_BATCH));
+      const load = (batch: string[]) => {
+        const pending = native.strengthExportBatch(batch);
+        pending.catch(() => {});
+        return pending;
+      };
+      const exported: string[] = [];
       const archive = await native.beginExportArchive('runback-krafttraining');
       try {
         await native.appendExportArchive(archive, {
@@ -1230,46 +1260,59 @@ export function RunbackApp() {
           [files.heart]: headers.heart,
           [files.jsonl]: '',
         });
-        for (const [index, id] of ids.entries()) {
+        let next = load(batches[0]);
+        let done = 0;
+        for (const [index, batch] of batches.entries()) {
           setExportProgress(
             tr(
-              `${index + 1} von ${ids.length} Einheiten`,
-              `${index + 1} of ${ids.length} ${
+              `${done + batch.length} von ${ids.length} Einheiten`,
+              `${done + batch.length} of ${ids.length} ${
                 ids.length === 1 ? 'session' : 'sessions'
               }`,
             ),
           );
-          const session = await native.strengthSession(id);
-          if (!isRecordedStrengthSession(session)) continue;
-          const heart = await native.strengthHeart(id).catch(() => undefined);
-          const chunk = strengthExportChunk(session, heart);
+          const items = await next;
+          if (index + 1 < batches.length) next = load(batches[index + 1]);
+          done += batch.length;
+          const parts = {
+            log: '',
+            sessions: '',
+            sets: '',
+            heart: '',
+            jsonl: '',
+          };
+          for (const { id, session, heart } of items) {
+            if (!isRecordedStrengthSession(session)) continue;
+            const chunk = strengthExportChunk(session, heart);
+            parts.log += chunk.log;
+            parts.sessions += chunk.sessions;
+            parts.sets += chunk.sets;
+            parts.heart += chunk.heart;
+            parts.jsonl += chunk.jsonl;
+            exported.push(id);
+            summary.sessions += 1;
+            summary.sets += chunk.setCount;
+            summary.heartSessions += chunk.heartSessions;
+            summary.firstStart ??= session.startTime;
+            summary.lastStart = session.startTime;
+          }
+          if (!parts.jsonl) continue;
           await native.appendExportArchive(archive, {
-            [files.log]: chunk.log,
-            [files.sessions]: chunk.sessions,
-            [files.sets]: chunk.sets,
-            [files.heart]: chunk.heart,
-            [files.jsonl]: chunk.jsonl,
+            [files.log]: parts.log,
+            [files.sessions]: parts.sessions,
+            [files.sets]: parts.sets,
+            [files.heart]: parts.heart,
+            [files.jsonl]: parts.jsonl,
           });
-          summary.sessions += 1;
-          summary.sets += chunk.setCount;
-          summary.heartSessions += chunk.heartSessions;
-          summary.firstStart ??= session.startTime;
-          summary.lastStart = session.startTime;
         }
-        if (!summary.sessions)
-          throw new Error(
-            tr(
-              'Zeichne zuerst eine Krafteinheit auf.',
-              'Record a strength session first.',
-            ),
-          );
+        if (!summary.sessions) throw none();
         await native.appendExportArchive(archive, {
           [files.readme]: strengthExportReadme(summary),
         });
         await native.shareExportArchive(
           archive,
           tr('Krafttraining teilen', 'Share strength training'),
-          { includeMotion: true },
+          { includeMotion: true, motionIds: range ? exported : undefined },
         );
       } finally {
         setExportProgress('');
@@ -4450,36 +4493,28 @@ export function RunbackApp() {
           title={tr('Laufberichte exportieren', 'Export run reports')}
           subtitle={tr('Zeitraum als ZIP teilen', 'Share a period as ZIP')}
         >
-          <Field label={tr('Von', 'From')}>
-            <Input
-              label={tr('Von (TT.MM.JJJJ)', 'From (DD.MM.YYYY)')}
-              placeholder={tr('TT.MM.JJJJ', 'DD.MM.YYYY')}
-              value={exportFrom}
-              onChangeText={setExportFrom}
-              editable={!busy}
-              keyboardType="numbers-and-punctuation"
-            />
-          </Field>
           <Field
-            label={tr('Bis', 'To')}
+            label={tr('Zeitraum', 'Period')}
             hint={tr('Beide Tage zählen mit.', 'Both days are included.')}
           >
-            <Input
-              label={tr('Bis (TT.MM.JJJJ)', 'To (DD.MM.YYYY)')}
-              placeholder={tr('TT.MM.JJJJ', 'DD.MM.YYYY')}
-              value={exportTo}
-              onChangeText={setExportTo}
-              editable={!busy}
-              keyboardType="numbers-and-punctuation"
+            <DateRangeField
+              label={tr('Zeitraum', 'Period')}
+              value={runExportPeriod}
+              onChange={setRunExportPeriod}
+              disabled={busy}
             />
           </Field>
           <Button
             secondary
             title={tr('Läufe als ZIP exportieren', 'Export runs as ZIP')}
-            disabled={busy || !exportFrom || !exportTo}
+            disabled={busy || !runExportPeriod}
             onPress={() =>
               shareRuns(async () => {
-                const range = runExportRange(exportFrom, exportTo);
+                if (!runExportPeriod) return [];
+                const range = exportRange(
+                  runExportPeriod.start,
+                  runExportPeriod.end,
+                );
                 return native.runIdsInRange(range.from, range.until);
               })
             }
@@ -4488,8 +4523,8 @@ export function RunbackApp() {
         <Disclosure
           title={tr('Krafttraining exportieren', 'Export strength training')}
           subtitle={tr(
-            'Alle aufgezeichneten Einheiten als ZIP teilen',
-            'Share all recorded sessions as ZIP',
+            'Aufgezeichnete Einheiten als ZIP teilen',
+            'Share recorded sessions as ZIP',
           )}
         >
           <Copy muted>
@@ -4498,6 +4533,18 @@ export function RunbackApp() {
               'Sets, heart rate, training log, and watch motion data for spreadsheets or a language model. Imports are not included.',
             )}
           </Copy>
+          <Field
+            label={tr('Zeitraum', 'Period')}
+            hint={tr('Beide Tage zählen mit.', 'Both days are included.')}
+          >
+            <DateRangeField
+              label={tr('Zeitraum', 'Period')}
+              value={strengthExportPeriod}
+              onChange={setStrengthExportPeriod}
+              emptyLabel={tr('Alle Einheiten', 'All sessions')}
+              disabled={busy}
+            />
+          </Field>
           <Button
             secondary
             title={tr(
@@ -4505,7 +4552,7 @@ export function RunbackApp() {
               'Export strength training as ZIP',
             )}
             disabled={busy}
-            onPress={shareStrength}
+            onPress={() => shareStrength(strengthExportPeriod)}
           />
         </Disclosure>
         <Disclosure

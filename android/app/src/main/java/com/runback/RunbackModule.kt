@@ -38,6 +38,7 @@ import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.Executors
 import java.util.UUID
+import kotlin.math.ceil
 
 /** All raw sensor and archive processing stays on native worker threads. */
 class RunbackModule(private val context: ReactApplicationContext) : ReactContextBaseJavaModule(context) {
@@ -175,13 +176,12 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         }
     }
     @ReactMethod fun stopMusic(promise: Promise) = task(promise) { MusicController.get(context).stopUser() }
-    @ReactMethod fun getRun(id: String, promise: Promise) = task(promise) {
-        store.detail(id).apply {
-            put("route", optJSONArray("geometry") ?: JSONArray())
-            val feedback = optJSONObject("feedback") ?: JSONObject()
-            if (feedback.has("rpe")) put("rpe", feedback.get("rpe"))
-            if (feedback.has("note")) put("note", feedback.get("note"))
-        }
+    @ReactMethod fun getRun(id: String, promise: Promise) = task(promise) { runForBridge(store.detail(id)) }
+    private fun runForBridge(detail: JSONObject) = detail.apply {
+        put("route", optJSONArray("geometry") ?: JSONArray())
+        val feedback = optJSONObject("feedback") ?: JSONObject()
+        if (feedback.has("rpe")) put("rpe", feedback.get("rpe"))
+        if (feedback.has("note")) put("note", feedback.get("note"))
     }
     @ReactMethod fun getRoute(id: String, maxPoints: Int, promise: Promise) = task(promise) {
         val source = store.detail(id).optJSONArray("geometry") ?: JSONArray()
@@ -731,6 +731,18 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         analysisArchives[id] = RunAnalysisArchive(File(exportDirectory(), "runback-berichte-$id.zip"))
         JSONObject().put("id", id)
     }
+    /**
+     * Everything the run report needs in one call: the run as from `getRun` and
+     * the timeline as from `getRunTimeline`. The 5 s CSV comes from the same
+     * derivation and waits in the archive until `appendRunArchive`.
+     */
+    @ReactMethod fun getRunExport(id: String, runId: String, timelineRows: Int, promise: Promise) = task(promise) {
+        val archive = analysisArchives[id] ?: error(Lang.tr("Der Export ist nicht mehr verfügbar.", "The export is no longer available."))
+        val (detail, csv) = store.exportDetail(runId)
+        archive.keepTimeseries(runId, csv)
+        JSONObject().put("run", runForBridge(detail))
+            .put("timeline", runCatching { store.timeline(runId, timelineRows) }.getOrNull() ?: JSONObject.NULL)
+    }
     @ReactMethod fun appendRunArchive(id: String, runId: String, filesJson: String, promise: Promise) = task(promise) {
         val archive = analysisArchives[id] ?: error(Lang.tr("Der Export ist nicht mehr verfügbar.", "The export is no longer available."))
         val input = JSONObject(filesJson)
@@ -742,7 +754,7 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
             files[safeExportName(entry.getString("fileName"), "runback-$key.txt")] = content
         }
         // As with the single report: without motion data, the report and analysis are kept.
-        val csv = runCatching { store.timeseriesCsv(runId) }.getOrNull()
+        val csv = archive.takeTimeseries(runId) ?: runCatching { store.timeseriesCsv(runId) }.getOrNull()
         if (csv != null && csv.count { it == '\n' } > 1) {
             files[safeExportName(input.getString("timeseries"), "runback-timeseries.csv")] = csv
         }
@@ -782,12 +794,16 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         JSONObject().put("discarded", true)
     }
     // `includeMotion`: the watch's motion data as folder `bewegungsdaten/` (strength export; the folder name is kept).
-    @ReactMethod fun shareExportArchive(id: String, title: String, includeMotion: Boolean, promise: Promise) {
+    // `motionIdsJson`: a JSON array limits it to these sessions; empty means all.
+    @ReactMethod fun shareExportArchive(id: String, title: String, includeMotion: Boolean, motionIdsJson: String, promise: Promise) {
         worker.execute {
             try {
                 val archive = exportArchives[id] ?: error(Lang.tr("Der Export ist nicht mehr verfügbar.", "The export is no longer available."))
                 val file = archive.finish { zip ->
-                    if (includeMotion) MotionSessions.exportInto(context, store, zip, "bewegungsdaten/")
+                    val only = motionIdsJson.takeIf { it.isNotBlank() }?.let { json ->
+                        JSONArray(json).let { ids -> (0 until ids.length()).mapTo(HashSet()) { ids.getString(it) } }
+                    }
+                    if (includeMotion) MotionSessions.exportInto(context, store, zip, "bewegungsdaten/", only)
                 }
                 exportArchives.remove(id)
                 shareUris(listOf(FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)), "application/zip", title, promise)
@@ -797,8 +813,29 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
     @ReactMethod fun recordedStrengthSessionIds(promise: Promise) = task(promise) {
         JSONObject().put("ids", JSONArray(store.strengthSessionIds()))
     }
+    @ReactMethod fun recordedStrengthSessionIdsInRange(from: Double, until: Double, promise: Promise) = task(promise) {
+        require(from.isFinite() && until.isFinite() && from < until) { Lang.tr("Ungültiger Zeitraum.", "Invalid time range.") }
+        JSONObject().put("ids", JSONArray(store.strengthSessionIds(ceil(from).toLong(), ceil(until).toLong())))
+    }
+    /**
+     * Sessions and heart rate for the strength export, several per call instead
+     * of two calls per session. Heart rate is the bounded summary as from
+     * `getStrengthHeart`; a missing one stays `null`.
+     */
+    @ReactMethod fun getStrengthExportBatch(idsJson: String, promise: Promise) = task(promise) {
+        val ids = JSONArray(idsJson)
+        require(ids.length() <= STRENGTH_EXPORT_BATCH) { Lang.tr("Zu viele Einheiten auf einmal.", "Too many sessions at once.") }
+        JSONObject().put("items", JSONArray().apply {
+            for (index in 0 until ids.length()) {
+                val id = ids.getString(index)
+                val session = store.strengthSession(id) ?: continue
+                put(JSONObject().put("id", id).put("session", session)
+                    .put("heart", runCatching { MotionSessions.heart(context, store, id) }.getOrNull() ?: JSONObject.NULL))
+            }
+        })
+    }
     @ReactMethod fun runIdsInRange(from: Double, until: Double, promise: Promise) = task(promise) {
-        JSONObject().put("ids", runIdsForExport(from, until, store::listRuns))
+        JSONObject().put("ids", runIdsForExport(from, until, store::listRunsBetween))
     }
 
     @ReactMethod fun bleStatus(promise: Promise) = task(promise) { BleSensors.get(context).status() }
@@ -889,5 +926,9 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
         mainHandler.post { voicePreview?.shutdown(); voicePreview = null }
         super.invalidate()
     }
-    companion object { private const val DOCUMENT_REQUEST = 8241; private const val PERMISSION_REQUEST = 8242 }
+    companion object {
+        private const val DOCUMENT_REQUEST = 8241; private const val PERMISSION_REQUEST = 8242
+        /** Sessions per `getStrengthExportBatch`; heart summaries keep each answer bounded. */
+        internal const val STRENGTH_EXPORT_BATCH = 25
+    }
 }

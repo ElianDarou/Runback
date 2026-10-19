@@ -16,6 +16,7 @@ jest.mock('../src/native', () => {
     capabilities: {},
   };
   return {
+    STRENGTH_EXPORT_BATCH: 25,
     nativeCall: jest.fn(() => Promise.resolve({})),
     native: {
       serverStatus: jest.fn(() =>
@@ -50,6 +51,20 @@ jest.mock('../src/native', () => {
         Promise.resolve({ rows: [], stepSeconds: 60 }),
       ),
       run: jest.fn(() => Promise.resolve(null)),
+      // Like Kotlin's getRunExport: the run as from `run`, plus the timeline.
+      runExport: jest.fn(async (_archive: string, id: string) => ({
+        run: await jest.requireMock('../src/native').native.run(id),
+        timeline: { rows: [], stepSeconds: 60 },
+      })),
+      strengthExportBatch: jest.fn(async (ids: string[]) => {
+        const mock = jest.requireMock('../src/native').native;
+        const items = [];
+        for (const id of ids) {
+          const session = await mock.strengthSession(id);
+          if (session) items.push({ id, session, heart: undefined });
+        }
+        return items;
+      }),
       saveSettings: jest.fn(() => Promise.resolve()),
       feedback: jest.fn(() => Promise.resolve()),
       strength: jest.fn(() => Promise.resolve(emptyStrengthState())),
@@ -100,6 +115,7 @@ import { parseStrongCsvPreview } from '../src/domain/vendorImports';
 import { importedStrengthSession } from '../src/domain/strengthImports';
 
 const DAY = 86400000;
+import { dateFormat } from '../src/domain/i18n';
 function textContent(node: TestRenderer.ReactTestInstance): string {
   return node.children
     .map(child =>
@@ -180,6 +196,34 @@ const tapText = async (
   await act(async () => {
     node.props.onPress();
   });
+};
+
+/** Opens the period field, goes back to the month and taps the first and last day. */
+const pickPeriod = async (
+  tree: TestRenderer.ReactTestRenderer,
+  first: Date,
+  last: Date,
+) => {
+  const field = tree.root.find(
+    item =>
+      typeof item.props?.onPress === 'function' &&
+      typeof item.props?.accessibilityLabel === 'string' &&
+      item.props.accessibilityLabel.startsWith('Zeitraum:'),
+  );
+  await act(async () => field.props.onPress());
+  const now = new Date();
+  const back =
+    (now.getFullYear() - last.getFullYear()) * 12 +
+    now.getMonth() -
+    last.getMonth();
+  for (let i = 0; i < back; i++) await tap(tree, 'Vorheriger Monat');
+  const day = (date: Date) =>
+    dateFormat({ day: 'numeric', month: 'short', year: 'numeric' }).format(
+      date,
+    );
+  await tap(tree, day(first));
+  await tap(tree, day(last));
+  await tap(tree, 'Zeitraum übernehmen');
 };
 
 describe('Today', () => {
@@ -1235,16 +1279,7 @@ describe('Export run reports together', () => {
     await tap(tree, 'Einstellungen');
     await tap(tree, 'Deine Daten');
     await tap(tree, 'Laufberichte exportieren');
-    const input = (label: string) =>
-      tree.root.findAll(
-        node =>
-          node.props.accessibilityLabel === label &&
-          typeof node.props.onChangeText === 'function',
-      )[0];
-    await act(async () => {
-      input('Von (TT.MM.JJJJ)').props.onChangeText('01.10.2026');
-      input('Bis (TT.MM.JJJJ)').props.onChangeText('02.10.2026');
-    });
+    await pickPeriod(tree, new Date(2026, 9, 1), new Date(2026, 9, 2));
     jest
       .mocked(native.runIdsInRange)
       .mockResolvedValueOnce(['old-run', 'second']);
@@ -1253,33 +1288,62 @@ describe('Export run reports together', () => {
       new Date(2026, 9, 1).getTime(),
       new Date(2026, 9, 3).getTime(),
     );
-    expect(native.run).toHaveBeenCalledWith('old-run');
+    expect(native.runExport).toHaveBeenCalledWith('archive', 'old-run');
     expect(native.appendRunArchive).toHaveBeenCalledTimes(2);
+    expect(
+      jest.mocked(native.appendRunArchive).mock.calls.map(call => call[1]),
+    ).toEqual(['old-run', 'second']);
     await act(async () => tree.unmount());
   });
 
-  it('rejects invalid and empty ranges before creating an archive', async () => {
+  it('stops and discards the archive when the next run fails while one is written', async () => {
     const tree = await setup();
     await tap(tree, 'Einstellungen');
     await tap(tree, 'Deine Daten');
     await tap(tree, 'Laufberichte exportieren');
-    const input = (label: string) =>
-      tree.root.findAll(
+    await pickPeriod(tree, new Date(2026, 9, 1), new Date(2026, 9, 1));
+    jest
+      .mocked(native.runIdsInRange)
+      .mockResolvedValueOnce(['first', 'gone', 'second']);
+    const load = jest.mocked(native.runExport).getMockImplementation()!;
+    jest
+      .mocked(native.runExport)
+      .mockImplementation((archive, id) =>
+        id === 'gone'
+          ? Promise.reject(new Error('Lauf nicht gefunden'))
+          : load(archive, id),
+      );
+    await tap(tree, 'Läufe als ZIP exportieren');
+    expect(screenText(tree)).toContain('Lauf nicht gefunden');
+    expect(
+      jest.mocked(native.appendRunArchive).mock.calls.map(call => call[1]),
+    ).toEqual(['first']);
+    expect(native.runExport).not.toHaveBeenCalledWith('archive', 'second');
+    expect(native.shareRunArchive).not.toHaveBeenCalled();
+    expect(native.discardRunArchive).toHaveBeenCalledWith('archive');
+    jest.mocked(native.runExport).mockImplementation(load);
+    await act(async () => tree.unmount());
+  });
+
+  it('needs a period and says when it holds no run', async () => {
+    const tree = await setup();
+    await tap(tree, 'Einstellungen');
+    await tap(tree, 'Deine Daten');
+    await tap(tree, 'Laufberichte exportieren');
+    const button = () =>
+      tree.root.find(
         node =>
-          node.props.accessibilityLabel === label &&
-          typeof node.props.onChangeText === 'function',
-      )[0];
-    await act(async () => {
-      input('Von (TT.MM.JJJJ)').props.onChangeText('31.02.2026');
-      input('Bis (TT.MM.JJJJ)').props.onChangeText('02.10.2026');
-    });
+          node.props.title === 'Läufe als ZIP exportieren' &&
+          typeof node.props.onPress === 'function',
+      );
+    expect(button().props.disabled).toBe(true);
+    await pickPeriod(tree, new Date(2026, 9, 2), new Date(2026, 9, 1));
+    expect(button().props.disabled).toBe(false);
     await tap(tree, 'Läufe als ZIP exportieren');
-    expect(native.runIdsInRange).not.toHaveBeenCalled();
-    expect(native.beginRunArchive).not.toHaveBeenCalled();
-    await act(async () =>
-      input('Von (TT.MM.JJJJ)').props.onChangeText('01.10.2026'),
+    expect(native.runIdsInRange).toHaveBeenCalledWith(
+      new Date(2026, 9, 1).getTime(),
+      new Date(2026, 9, 3).getTime(),
     );
-    await tap(tree, 'Läufe als ZIP exportieren');
     expect(screenText(tree)).toContain('Wähle mindestens einen Lauf');
     expect(native.beginRunArchive).not.toHaveBeenCalled();
     await act(async () => tree.unmount());
@@ -1342,13 +1406,14 @@ describe('Export strength training', () => {
     expect(native.beginExportArchive).toHaveBeenCalledWith(
       'runback-krafttraining',
     );
+    expect(native.recordedStrengthSessionIds).toHaveBeenCalledWith(undefined);
+    expect(native.strengthExportBatch).toHaveBeenCalledWith(['a', 'b']);
     const calls = jest.mocked(native.appendExportArchive).mock.calls;
-    expect(calls).toHaveLength(4);
+    expect(calls).toHaveLength(3);
     expect(Object.keys(calls[0][1])[0]).toBe('README.md');
-    expect(calls[1][1]['sets.csv']).toContain('a,');
-    expect(calls[2][1]['sets.csv']).toContain('b,');
-    expect(calls[3][1]['README.md']).toContain('2 Einheiten, 2 Sätze');
-    expect(calls[3][1]['README.md']).toContain(
+    expect(calls[1][1]['sets.csv']).toMatch(/^a,[^]*\nb,/);
+    expect(calls[2][1]['README.md']).toContain('2 Einheiten, 2 Sätze');
+    expect(calls[2][1]['README.md']).toContain(
       'Bewegungsdaten der Uhr aus 1 Einheiten',
     );
     expect(native.shareExportArchive).toHaveBeenCalledWith(
@@ -1357,6 +1422,32 @@ describe('Export strength training', () => {
       { includeMotion: true },
     );
     expect(native.discardExportArchive).toHaveBeenCalledWith('export');
+    jest.mocked(native.strengthSession).mockReset();
+    await act(async () => tree.unmount());
+  });
+
+  it('exports only the chosen period, with the motion data of the same sessions', async () => {
+    const start = new Date(2026, 9, 1, 18).getTime();
+    jest.mocked(native.recordedStrengthSessionIds).mockResolvedValueOnce(['a']);
+    jest
+      .mocked(native.strengthSession)
+      .mockImplementation(id => Promise.resolve(session(id, start)));
+    const tree = await open();
+    await pickPeriod(tree, new Date(2026, 9, 1), new Date(2026, 9, 1));
+    await tap(tree, 'Krafttraining als ZIP exportieren');
+    expect(native.recordedStrengthSessionIds).toHaveBeenCalledWith({
+      from: new Date(2026, 9, 1).getTime(),
+      until: new Date(2026, 9, 2).getTime(),
+    });
+    const calls = jest.mocked(native.appendExportArchive).mock.calls;
+    expect(calls.at(-1)?.[1]['README.md']).toContain(
+      'Bewegungsdaten der Uhr, falls aufgezeichnet',
+    );
+    expect(native.shareExportArchive).toHaveBeenCalledWith(
+      'export',
+      'Krafttraining teilen',
+      { includeMotion: true, motionIds: ['a'] },
+    );
     jest.mocked(native.strengthSession).mockReset();
     await act(async () => tree.unmount());
   });

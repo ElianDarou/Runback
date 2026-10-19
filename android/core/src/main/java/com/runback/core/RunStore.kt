@@ -81,6 +81,16 @@ class RunStore(context: Context) : DocumentStore {
             while (it.moveToNext()) result.put(present(JSONObject(it.getString(0))))
         }; result
     }
+    /**
+     * Runs starting in `[from, until)`, newest first. Filters on the `start`
+     * column, so runs outside the period are neither parsed nor presented.
+     */
+    fun listRunsBetween(from: Long, until: Long): JSONArray = locked {
+        val result = JSONArray()
+        db.rawQuery("SELECT json FROM runs WHERE start>=? AND start<? ORDER BY start DESC", arrayOf(from.toString(), until.toString())).use {
+            while (it.moveToNext()) result.put(present(JSONObject(it.getString(0))))
+        }; result
+    }
     fun active(): JSONObject? = locked { activeId()?.let { present(read(it)) } }
     private fun newRun(purpose: String, source: String, sport: String, target: JSONObject? = null, id: String? = null): JSONObject {
         check(app.filesDir.usableSpace > 32L * 1024 * 1024) {
@@ -468,14 +478,13 @@ class RunStore(context: Context) : DocumentStore {
      * at a pause. Grade and elevation gain come from RunElevation, never from two
      * neighboring points.
      */
-    private fun derive(id: String): JSONObject {
+    private fun derive(id: String, derived: DerivedSeries = deriveSeries(id, read(id))): JSONObject {
         val geometry = JSONArray(); val segments = JSONArray(); val series = JSONArray(); val gapList = JSONArray()
         val run = read(id)
         val startTime = run.optLong("startTime")
         val points = ArrayList<JSONObject>()
         points.addAll(selectedSamples(id, "gps").map { JSONObject(it.values.toString()).put("time", it.time) })
         val cuts = cuts(id)
-        val derived = deriveSeries(id, run)
         val elevationGrid = (derived.elevation as? RunElevation.Outcome.Available)?.result?.grid
         val gridMs = RunPhases.GRID_SECONDS * 1000L
         fun altitudeAt(time: Long): Double? = elevationGrid?.getOrNull(((time - startTime) / gridMs).toInt())
@@ -655,9 +664,16 @@ class RunStore(context: Context) : DocumentStore {
         val wind = if (mps != null && mps.isFinite() && fromDeg != null && fromDeg.isFinite()) RunSeries.Wind(mps, fromDeg) else null
         RunSeries.json(RunSeries.build(derived.start, derived.phases.rows, derived.gps, wind, maxRows = maxRows.coerceIn(60, 2000), armSwing = armSwingSpans(id)), wind)
     }
-    fun detail(id: String): JSONObject = locked {
-        val derived = derive(id)
+    fun detail(id: String): JSONObject = locked { detailOf(id, derive(id)) }
+    private fun detailOf(id: String, derived: JSONObject) =
         present(read(id)).put("geometry",derived.getJSONArray("geometry")).put("series",derived.getJSONArray("series")).put("events",events(id))
+    /**
+     * Detail and the 5 s CSV (as `timeseriesCsv`) from one derivation: the
+     * export reads and derives the raw samples once per run instead of twice.
+     */
+    fun exportDetail(id: String): Pair<JSONObject, String> = locked {
+        val series = deriveSeries(id, read(id))
+        detailOf(id, derive(id, series)) to RunPhases.csv(series.phases.rows)
     }
     /** Limited time course for export and display; raw samples never leave the store. */
     fun timeline(id: String, maxRows: Int = 120): JSONObject = locked {
@@ -747,10 +763,14 @@ class RunStore(context: Context) : DocumentStore {
             }
         }
     }
-    /** All sessions recorded in Runback, oldest first; without imports and without a limit. */
-    fun strengthSessionIds(): List<String> = locked {
+    /**
+     * All sessions recorded in Runback, oldest first; without imports and without
+     * a limit. With `from`/`until`, only those starting in `[from, until)`.
+     */
+    fun strengthSessionIds(from: Long = Long.MIN_VALUE, until: Long = Long.MAX_VALUE): List<String> = locked {
         val sessions = getDocument("strength_index")?.optJSONArray("sessions") ?: JSONArray()
         (0 until sessions.length()).mapNotNull { sessions.optJSONObject(it) }
+            .filter { it.optLong("startTime").let { start -> start >= from && start < until } }
             .sortedWith(compareBy<JSONObject> { it.optLong("startTime") }.thenBy { it.optString("id") })
             .map { it.optString("id") }.filter { it.isNotBlank() }.distinct()
     }
