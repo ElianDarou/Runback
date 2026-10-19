@@ -66,6 +66,13 @@ class WearSyncService : WearableListenerService() {
         StrengthWorkout.publishTemplates(this)
     }
 
+    /** The watch declares `runback_watch`; this arrives when it comes in reach, unlike `onPeerConnected` on newer Play services. */
+    override fun onCapabilityChanged(info: CapabilityInfo) {
+        if (info.name != WearProtocol.WATCH_CAPABILITY || info.nodes.isEmpty()) return
+        WearController.retryPending(this)
+        worker.execute { MotionSessions.retryPending(this) }
+    }
+
     private fun handleWatchControl(event: MessageEvent) {
         var action = "unknown"
         var runId = ""
