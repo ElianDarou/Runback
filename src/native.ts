@@ -153,6 +153,15 @@ export async function routeCall<T = unknown>(
   const result = await routeModule[method](...args);
   return (typeof result === 'string' ? JSON.parse(result) : result) as T;
 }
+/** Matches `RunbackModule.STRENGTH_EXPORT_BATCH`. */
+export const STRENGTH_EXPORT_BATCH = 25;
+
+const readTimeline = (raw: any): RunTimeline => ({
+  version: raw?.version,
+  stepSeconds: Number(raw?.stepSeconds) || 60,
+  rows: Array.isArray(raw?.rows) ? raw.rows : [],
+});
+
 export const native = {
   musicStatus: () => nativeCall<MusicStatus>('getMusicStatus'),
   configureMusic: (config: MusicConfig, clientId: string, bpmKey: string) =>
@@ -204,6 +213,26 @@ export const native = {
   async beginRunArchive(): Promise<string> {
     return (await nativeCall<{ id: string }>('beginRunArchive')).id;
   },
+  /**
+   * Run and timeline for the report in one call. Kotlin derives the samples
+   * once and keeps the 5-second CSV for the following `appendRunArchive`.
+   */
+  async runExport(
+    archive: string,
+    runId: string,
+    timelineRows = 120,
+  ): Promise<{ run: Run; timeline: RunTimeline | null }> {
+    const raw = await nativeCall<any>(
+      'getRunExport',
+      archive,
+      runId,
+      timelineRows,
+    );
+    return {
+      run: normalizeRun(raw.run),
+      timeline: raw.timeline ? readTimeline(raw.timeline) : null,
+    };
+  },
   async appendRunArchive(
     id: string,
     runId: string,
@@ -228,17 +257,21 @@ export const native = {
   async appendExportArchive(id: string, files: Record<string, string>) {
     await nativeCall('appendExportArchive', id, JSON.stringify(files));
   },
-  /** `includeMotion`: Kotlin adds the motion data as the folder `bewegungsdaten/`. */
+  /**
+   * `includeMotion`: Kotlin adds the motion data as the folder `bewegungsdaten/`;
+   * `motionIds` limits it to these sessions.
+   */
   async shareExportArchive(
     id: string,
     title: string,
-    options: { includeMotion?: boolean } = {},
+    options: { includeMotion?: boolean; motionIds?: string[] } = {},
   ) {
     await nativeCall(
       'shareExportArchive',
       id,
       title,
       options.includeMotion === true,
+      options.motionIds ? JSON.stringify(options.motionIds) : '',
     );
   },
   async motionStatus(): Promise<MotionStatus> {
@@ -247,10 +280,41 @@ export const native = {
   async discardExportArchive(id: string) {
     await nativeCall('discardExportArchive', id);
   },
-  /** Strength sessions recorded in Runback, oldest first, without imports. */
-  async recordedStrengthSessionIds(): Promise<string[]> {
-    return (await nativeCall<{ ids: string[] }>('recordedStrengthSessionIds'))
-      .ids;
+  /**
+   * Strength sessions recorded in Runback, oldest first, without imports.
+   * With a range, only those starting in `[from, until)`.
+   */
+  async recordedStrengthSessionIds(range?: {
+    from: number;
+    until: number;
+  }): Promise<string[]> {
+    const result = range
+      ? await nativeCall<{ ids: string[] }>(
+          'recordedStrengthSessionIdsInRange',
+          range.from,
+          range.until,
+        )
+      : await nativeCall<{ ids: string[] }>('recordedStrengthSessionIds');
+    return result.ids;
+  },
+  /**
+   * Sessions with their heart rate for the export, at most
+   * `STRENGTH_EXPORT_BATCH` per call. Missing sessions are left out.
+   */
+  async strengthExportBatch(
+    ids: string[],
+  ): Promise<
+    { id: string; session: StrengthSession; heart?: StrengthHeart }[]
+  > {
+    const raw = await nativeCall<any>(
+      'getStrengthExportBatch',
+      JSON.stringify(ids),
+    );
+    return (Array.isArray(raw?.items) ? raw.items : []).map((item: any) => ({
+      id: String(item.id),
+      session: strengthSessionFromBridge(item.session),
+      heart: readStrengthHeart(item.heart),
+    }));
   },
   async state(): Promise<AppState> {
     const raw = await nativeCall<any>('getState');
@@ -272,12 +336,7 @@ export const native = {
   },
   /** Limited time course (aggregates per window) for the run report. */
   async runTimeline(id: string, maxRows = 120): Promise<RunTimeline> {
-    const raw = await nativeCall<any>('getRunTimeline', id, maxRows);
-    return {
-      version: raw?.version,
-      stepSeconds: Number(raw?.stepSeconds) || 60,
-      rows: Array.isArray(raw?.rows) ? raw.rows : [],
-    };
+    return readTimeline(await nativeCall<any>('getRunTimeline', id, maxRows));
   },
   /** Display series for the detail page charts (RunSeries, ≤ maxRows rows). */
   async runSeries(id: string, maxRows = 600): Promise<RunSeries> {

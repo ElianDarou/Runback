@@ -2,6 +2,7 @@ package com.runback
 
 import com.runback.core.Lang
 import java.io.File
+import java.util.zip.Deflater
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -28,6 +29,8 @@ internal class ExportArchive(val file: File) {
     fun finish(extra: (ZipOutputStream) -> Unit = {}): File {
         check(names.isNotEmpty()) { Lang.tr("Nichts zu exportieren.", "Nothing to export.") }
         ZipOutputStream(file.outputStream().buffered(64 * 1024)).use { zip ->
+            // Fastest compression: the motion CSVs are large, and the default level costs several times the time.
+            zip.setLevel(Deflater.BEST_SPEED)
             names.forEach { name ->
                 zip.putNextEntry(ZipEntry(name))
                 File(parts, name).inputStream().use { it.copyTo(zip) }

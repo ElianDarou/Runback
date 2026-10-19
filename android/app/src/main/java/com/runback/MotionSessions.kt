@@ -370,9 +370,12 @@ object MotionSessions {
             } ?: JSONObject.NULL)
     }
 
-    /** Appends the motion data as a folder to the strength export; without motion data, the export stays unchanged. */
-    fun exportInto(context: Context, store: RunStore, zip: ZipOutputStream, directory: String): Int {
-        val sessions = ids(store).mapNotNull { id ->
+    /**
+     * Appends the motion data as a folder to the strength export; without motion data, the export stays unchanged.
+     * `only` limits it to these sessions (the chosen period); `null` exports all.
+     */
+    fun exportInto(context: Context, store: RunStore, zip: ZipOutputStream, directory: String, only: Set<String>? = null): Int {
+        val sessions = ids(store).filter { only == null || it in only }.mapNotNull { id ->
             val doc = store.getDocument(key(id))?.takeIf(::hasMotion) ?: return@mapNotNull null
             val file = rawFile(context, id)
             val raw: (() -> InputStream)? = if (file.exists()) ({ GZIPInputStream(file.inputStream(), 64 * 1024) }) else null

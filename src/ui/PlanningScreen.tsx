@@ -39,6 +39,14 @@ import {
 } from '../domain/schedule';
 import { templateIcon, type TrainingIcon } from '../domain/trainingIcons';
 import {
+  dateOf,
+  firstOfMonth,
+  monthNames,
+  monthWeeks,
+  shiftMonth,
+  weekdayShort,
+} from './calendar';
+import {
   Button,
   Copy,
   Notice,
@@ -87,57 +95,6 @@ export interface PlanningScreenProps {
 
 type ViewMode = 'week' | 'month';
 
-// Labels are built per call: the language can change at runtime.
-const weekdayShort = () =>
-  getLanguage() === 'en'
-    ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-    : ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
-
-const monthNames = () =>
-  getLanguage() === 'en'
-    ? [
-        'January',
-        'February',
-        'March',
-        'April',
-        'May',
-        'June',
-        'July',
-        'August',
-        'September',
-        'October',
-        'November',
-        'December',
-      ]
-    : [
-        'Januar',
-        'Februar',
-        'März',
-        'April',
-        'Mai',
-        'Juni',
-        'Juli',
-        'August',
-        'September',
-        'Oktober',
-        'November',
-        'Dezember',
-      ];
-
-const dateOf = (key: string): Date => {
-  const [year, month, day] = key.split('-').map(Number);
-  return new Date(year, month - 1, day);
-};
-
-const firstOfMonth = (key: string) => `${key.slice(0, 7)}-01`;
-
-const shiftMonth = (first: string, months: number): string => {
-  const date = dateOf(first);
-  return localDateKey(
-    new Date(date.getFullYear(), date.getMonth() + months, 1),
-  );
-};
-
 function fullDateLabel(key: string): string {
   return dateFormat({
     weekday: 'long',
@@ -148,16 +105,6 @@ function fullDateLabel(key: string): string {
 
 function shortDateLabel(key: string): string {
   return dateFormat({ day: 'numeric', month: 'short' }).format(dateOf(key));
-}
-
-/** The six or five weeks that show a month, Monday first. */
-function monthWeeks(first: string): string[][] {
-  const start = startOfWeek(first);
-  const next = shiftMonth(first, 1);
-  const weeks: string[][] = [];
-  for (let monday = start; monday < next; monday = addCalendarDays(monday, 7))
-    weeks.push(Array.from({ length: 7 }, (_, i) => addCalendarDays(monday, i)));
-  return weeks;
 }
 
 /** "28:14" or "1:02:05"; unknown stays "–". */

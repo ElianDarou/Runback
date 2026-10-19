@@ -3,8 +3,8 @@
 Design rules for all Runback surfaces. Tokens (`color`, `space`,
 `radius`, `type`) and building blocks (`Button`, `Card`, `Section`, `Row`,
 `ChipGroup`, `Segmented`, `Stepper`, `Stat`, `StackedBar`, `Field`, `Notice`,
-`EmptyState`, `Badge`, `Progress`, `Disclosure`, `Sheet`, `CheckRow`) live exclusively in
-`src/ui/components.tsx`. No screen invents its own colors, sizes, or
+`EmptyState`, `Badge`, `Progress`, `Disclosure`, `Sheet`, `CheckRow`,
+`DateRangeField`) live exclusively in `src/ui/components.tsx`. No screen invents its own colors, sizes, or
 variants — whoever needs something new adds it there.
 
 ## Principles

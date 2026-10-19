@@ -17,15 +17,14 @@ class RunExportSelectionTest {
         ))
         assertEquals("[\"start\",\"last\"]", runIdsForExport(10.0, 20.0) { _, _ -> runs }.toString())
     }
-    @Test fun readsBeyondFirstThousandWithoutLimitingExport() {
-        val offsets = mutableListOf<Int>()
-        val ids = runIdsForExport(10.0, 20.0) { limit, offset ->
-            assertEquals(1000, limit)
-            offsets.add(offset)
-            JSONArray((offset until minOf(offset + limit, 2001)).map { run("run-$it", 15.0) })
+    @Test fun asksTheStoreOnlyForThePeriodWithoutLimit() {
+        var asked: Pair<Long, Long>? = null
+        val ids = runIdsForExport(10.0, 20.5) { from, until ->
+            asked = from to until
+            JSONArray((0 until 2001).map { run("run-$it", 15.0) })
         }
+        assertEquals(10L to 21L, asked)
         assertEquals(2001, ids.length())
-        assertEquals(listOf(0, 1000, 2000), offsets)
         assertEquals("run-2000", ids.getString(2000))
     }
     @Test fun rejectsInvalidRangesAndAllowsEmptyResults() {
