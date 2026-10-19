@@ -19,8 +19,9 @@ import type { SorenessReport } from './sorenessInput';
  * Statistics.
  * v5: Planning has no week suggestion and no month switch anymore; Goals is
  * shown as Development and can be pinned as a tab.
+ * v6: Optional daily count challenges, with a configurable Today block.
  */
-export const FEATURES_VERSION = 5 as const;
+export const FEATURES_VERSION = 6 as const;
 
 export type SorenessPrompt =
   | 'never'
@@ -28,7 +29,7 @@ export type SorenessPrompt =
   | 'daily'
   | 'training_days'
   | 'weekly';
-export type HomeSection = 'week' | 'goal' | 'body' | 'recent';
+export type HomeSection = 'week' | 'goal' | 'body' | 'recent' | 'challenges';
 export type RecordingMetric = 'distance' | 'pace' | 'heartRate' | 'target';
 export type RecordingPrimary = 'duration' | 'distance' | 'heartRate';
 export type AfterRun = 'detail' | 'feeling' | 'home';
@@ -40,7 +41,8 @@ export type OptionalTab =
   | 'statistics'
   | 'routes'
   | 'templates'
-  | 'soreness';
+  | 'soreness'
+  | 'challenges';
 export type Tab = 'today' | 'history' | OptionalTab;
 /**
  * Tab ids before the English rename and the removed Coach; saved navigation
@@ -62,7 +64,8 @@ export type FeatureId =
   | 'templates'
   | 'soreness'
   | 'goals'
-  | 'music';
+  | 'music'
+  | 'challenges';
 /**
  * Feature list in settings and home. Titles and descriptions are getters so
  * they follow the active language at read time, not at import time.
@@ -73,6 +76,16 @@ export const FEATURE_CATALOG: readonly {
   readonly description: string;
   readonly tab?: OptionalTab;
 }[] = [
+  {
+    id: 'challenges',
+    get title() {
+      return tr('Challenges', 'Challenges');
+    },
+    get description() {
+      return tr('Eigene Tagesziele zählen', 'Track your own daily count goals');
+    },
+    tab: 'challenges',
+  },
   {
     id: 'planning',
     get title() {
@@ -165,6 +178,7 @@ const OPTIONAL_TABS: OptionalTab[] = [
   'routes',
   'templates',
   'soreness',
+  'challenges',
 ];
 
 export interface FeatureSettings {
@@ -179,6 +193,7 @@ export interface FeatureSettings {
   };
   home: { sections: HomeSection[] };
   goals: { enabled: boolean };
+  challenges: { enabled: boolean };
   music: { enabled: boolean };
   templates: { enabled: boolean };
   navigation: { tabs: OptionalTab[] };
@@ -205,7 +220,13 @@ export interface FeatureSettings {
   statistics: { enabled: boolean; modules: StatsModule[] };
 }
 
-export const HOME_SECTIONS: HomeSection[] = ['week', 'goal', 'body', 'recent'];
+export const HOME_SECTIONS: HomeSection[] = [
+  'week',
+  'goal',
+  'body',
+  'recent',
+  'challenges',
+];
 export const RECORDING_METRICS: RecordingMetric[] = [
   'distance',
   'pace',
@@ -243,6 +264,7 @@ export const DEFAULT_FEATURES: FeatureSettings = {
   home: { sections: [...HOME_SECTIONS] },
   planning: { enabled: true },
   goals: { enabled: true },
+  challenges: { enabled: false },
   music: { enabled: false },
   templates: { enabled: true },
   navigation: { tabs: ['plan', 'statistics'] },
@@ -304,6 +326,7 @@ export function normalizeFeatures(
       home: { sections: [...d.home.sections] },
       planning: { ...d.planning },
       goals: { ...d.goals },
+      challenges: { ...d.challenges },
       music: { ...d.music },
       templates: { ...d.templates },
       navigation: { tabs: [...d.navigation.tabs] },
@@ -326,6 +349,7 @@ export function normalizeFeatures(
   const running = bool(areas.running, d.areas.running);
   const strengthArea = bool(areas.strength, d.areas.strength);
   const restSeconds = Number(strength.defaultRestSeconds);
+  const challenges = isRecord(raw.challenges) ? raw.challenges : {};
   const goals = isRecord(raw.goals) ? raw.goals : {};
   const music = isRecord(raw.music) ? raw.music : {};
   const templates = isRecord(raw.templates) ? raw.templates : {};
@@ -349,6 +373,7 @@ export function normalizeFeatures(
         : { ...d.areas },
     sports: { cycling: bool(sports.cycling, d.sports.cycling) },
     goals: { enabled: bool(goals.enabled, d.goals.enabled) },
+    challenges: { enabled: bool(challenges.enabled, d.challenges.enabled) },
     music: { enabled: bool(music.enabled, d.music.enabled) },
     templates: { enabled: bool(templates.enabled, d.templates.enabled) },
     navigation: { tabs: navigationTabs },
@@ -359,7 +384,13 @@ export function normalizeFeatures(
       voice: bool(soreness.voice, d.soreness.voice),
     },
     home: {
-      sections: subset(home.sections, HOME_SECTIONS, d.home.sections),
+      sections: subset(
+        Array.isArray(home.sections) && Number(raw.version ?? 0) < 6
+          ? [...home.sections, 'challenges']
+          : home.sections,
+        HOME_SECTIONS,
+        d.home.sections,
+      ),
     },
     planning: { enabled: bool(planning.enabled, d.planning.enabled) },
     recording: {
@@ -473,6 +504,8 @@ export function pinnedTabs(features: FeatureSettings): OptionalTab[] {
 /** Visible name of a tab in the active language. */
 export function tabLabel(tab: Tab): string {
   switch (tab) {
+    case 'challenges':
+      return tr('Challenges', 'Challenges');
     case 'today':
       return tr('Heute', 'Today');
     case 'history':
@@ -523,6 +556,8 @@ export function availableHomeSections(
 ): HomeSection[] {
   return HOME_SECTIONS.filter(section => {
     switch (section) {
+      case 'challenges':
+        return features.challenges.enabled;
       case 'week':
         return features.planning.enabled;
       case 'body':
@@ -641,6 +676,8 @@ export function afterRunLabel(value: AfterRun): string {
 /** Name of a home section, in the active language. */
 export function homeSectionLabel(value: HomeSection): string {
   switch (value) {
+    case 'challenges':
+      return tr('Challenges', 'Challenges');
     case 'week':
       return tr('Wochenleiste', 'Week bar');
     case 'goal':

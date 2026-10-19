@@ -37,7 +37,7 @@ variants — whoever needs something new adds it there.
 
 **Today** and **History** remain fixed tabs; up to two more active features
 can be pinned in their own order: **Plan**, **Progress**,
-**Statistics**, **Routes**, **Templates**, or **Soreness**. Free slots stay
+**Statistics**, **Routes**, **Templates**, **Challenges**, or **Soreness**. Free slots stay
 free until the user fills them. Switching a feature off removes its slot; switching
 it on pins nothing automatically.
 

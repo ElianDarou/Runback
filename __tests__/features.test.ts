@@ -73,7 +73,7 @@ describe('normalizeFeatures', () => {
     });
     expect(next.soreness.enabled).toBe(false);
     expect(next.soreness.prompt).toBe('weekly');
-    expect(next.home.sections).toEqual(['week', 'recent']);
+    expect(next.home.sections).toEqual(['week', 'recent', 'challenges']);
     expect(next.statistics.modules).toEqual(['records']);
     expect(next.strength.defaultRestSeconds).toBe(90);
   });
@@ -260,7 +260,7 @@ describe('Features and navigation v2', () => {
     });
     expect(f).not.toHaveProperty('coach');
     expect(f).not.toHaveProperty('recommendations');
-    expect(f.home.sections).toEqual(['week', 'recent']);
+    expect(f.home.sections).toEqual(['week', 'recent', 'challenges']);
     expect(f.navigation.tabs).toEqual(['plan', 'statistics']);
     expect(
       normalizeFeatures({ navigation: { tabs: ['statistics', 'coach'] } })
@@ -359,5 +359,36 @@ describe('optional music', () => {
     expect(featureEnabled(music, 'music')).toBe(true);
     expect(availableTabs(music)).toEqual(availableTabs(defaults));
     expect(withFeature(music, 'music', false).music.enabled).toBe(false);
+  });
+});
+
+describe('optional challenges', () => {
+  it('is off by default, joins Today when enabled, and can be hidden without disabling the feature', () => {
+    const original = normalizeFeatures(undefined);
+    expect(original.challenges.enabled).toBe(false);
+    expect(visibleHomeSections(original)).not.toContain('challenges');
+    const enabled = withFeature(original, 'challenges', true);
+    expect(visibleHomeSections(enabled)).toContain('challenges');
+    expect(visibleTabs(enabled)).not.toContain('challenges');
+    const pinned = withNavigation(enabled, ['challenges']);
+    expect(visibleTabs(pinned)).toContain('challenges');
+    const hidden = withFeature(pinned, 'challenges', false);
+    expect(visibleHomeSections(hidden)).not.toContain('challenges');
+    expect(visibleTabs(hidden)).not.toContain('challenges');
+    expect(withFeature(hidden, 'challenges', true).navigation.tabs).toEqual([]);
+    expect(
+      visibleHomeSections({ ...enabled, home: { sections: [] } }),
+    ).not.toContain('challenges');
+  });
+  it('adds the new block to old settings once and retains an explicit choice in v6', () => {
+    const migrated = normalizeFeatures({
+      version: 5,
+      home: { sections: ['recent'] },
+    });
+    expect(migrated.home.sections).toEqual(['recent', 'challenges']);
+    expect(
+      normalizeFeatures({ ...migrated, home: { sections: ['recent'] } }).home
+        .sections,
+    ).toEqual(['recent']);
   });
 });

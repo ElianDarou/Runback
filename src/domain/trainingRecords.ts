@@ -1,3 +1,4 @@
+import type { Challenges } from './challenges';
 import type { GaitPlacement, RunSummary, RunPurpose, Sport } from './types';
 import type { ScheduleState } from './schedule';
 import type { StrengthTarget } from './strengthGoal';
@@ -21,6 +22,7 @@ export interface Preset {
 }
 export interface Settings {
   schedule?: ScheduleState;
+  challenges?: Challenges;
   goal?: string;
   goalTargetDate?: string;
   /** Goal distance in km and goal time in seconds for the running goal (`domain/raceGoal`). */

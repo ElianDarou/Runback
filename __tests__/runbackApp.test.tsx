@@ -78,6 +78,7 @@ import { FEATURES_VERSION } from '../src/domain/features';
 import { RunbackApp } from '../src/ui/RunbackApp';
 import { native, nativeCall } from '../src/native';
 import {
+  Button,
   CheckRow,
   ChipGroup,
   color,
@@ -731,6 +732,105 @@ describe('Features', () => {
       settings: { onboardedAt: 1, features, ...extra } as any,
       capabilities: {},
     });
+
+  it('creates a custom challenge, logs from Today, undoes mistakes and retains data while the feature is hidden', async () => {
+    withFeatures({ challenges: { enabled: true } });
+    const tree = await render();
+    try {
+      await tap(tree, 'Challenges öffnen');
+      await tap(tree, 'Challenge erstellen');
+      await act(async () => {
+        tree.root
+          .findAllByType(TextInput)
+          .find(input => input.props.accessibilityLabel === 'Challenge-Name')!
+          .props.onChangeText('Liegestütze');
+        tree.root
+          .findAllByType(TextInput)
+          .find(input => input.props.accessibilityLabel === 'Schnellbuttons')!
+          .props.onChangeText('1, 5, 20');
+      });
+      await tap(tree, 'Challenge speichern');
+      expect(settingsSaved().challenges?.items[0]).toMatchObject({
+        name: 'Liegestütze',
+        target: 100,
+        steps: [1, 5, 20],
+      });
+      await tap(tree, 'Heute');
+      await tap(tree, 'Liegestütze: 20 hinzufügen');
+      expect(screenText(tree)).toContain('20 von 100');
+      await tap(tree, 'Liegestütze: 5 hinzufügen');
+      expect(screenText(tree)).toContain('25 von 100');
+      await tap(tree, 'Letzte 5 zurücknehmen');
+      expect(screenText(tree)).toContain('20 von 100');
+      await tap(tree, 'Einstellungen');
+      await tap(tree, 'Funktionen');
+      await flip(tree, 'Challenges');
+      expect(settingsSaved().challenges?.items[0].days[0].entries).toHaveLength(
+        1,
+      );
+      await tap(tree, 'Heute');
+      expect(screenText(tree)).not.toContain('Liegestütze');
+      await tap(tree, 'Einstellungen');
+      await tap(tree, 'Funktionen');
+      await flip(tree, 'Challenges');
+      await tap(tree, 'Heute');
+      expect(screenText(tree)).toContain('20 von 100');
+    } finally {
+      await act(async () => tree.unmount());
+    }
+  });
+
+  it('publishes challenge counts only after durable saves and keeps the previous count on failure', async () => {
+    withFeatures(
+      { challenges: { enabled: true } },
+      {
+        challenges: {
+          version: 1,
+          items: [
+            {
+              id: 'push',
+              name: 'Liegestütze',
+              target: 100,
+              steps: [1, 5, 10],
+              days: [],
+              archived: false,
+              showOnHome: true,
+            },
+          ],
+        },
+      },
+    );
+    const tree = await render();
+    let complete!: () => void;
+    jest.mocked(native.saveSettings).mockImplementationOnce(
+      () =>
+        new Promise<void>(resolve => {
+          complete = resolve;
+        }),
+    );
+    try {
+      await tap(tree, 'Liegestütze: 10 hinzufügen');
+      expect(screenText(tree)).toContain('0 von 100');
+      expect(
+        tree.root
+          .findAllByType(Button)
+          .filter(item => item.props.label === 'Liegestütze: 5 hinzufügen')
+          .every(item => item.props.disabled),
+      ).toBe(true);
+      await act(async () => complete());
+      expect(screenText(tree)).toContain('10 von 100');
+      jest
+        .mocked(native.saveSettings)
+        .mockRejectedValueOnce(new Error('Speichern fehlgeschlagen'));
+      await tap(tree, 'Liegestütze: 5 hinzufügen');
+      expect(screenText(tree)).toContain('10 von 100');
+      expect(screenText(tree)).toContain('Speichern fehlgeschlagen');
+      await tap(tree, 'Liegestütze: 5 hinzufügen');
+      expect(screenText(tree)).toContain('15 von 100');
+    } finally {
+      await act(async () => tree.unmount());
+    }
+  });
 
   it('asks about soreness only when the setting asks for it', async () => {
     // Default: after strength training. Without a strength session, no prompt.

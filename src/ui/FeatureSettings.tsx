@@ -365,7 +365,7 @@ export function FeatureSettings({
           )}
         </Copy>
         <Section title={tr('Training begleiten', 'Support training')}>
-          {functionRows(['planning', 'goals', 'music'])}
+          {functionRows(['planning', 'goals', 'challenges', 'music'])}
         </Section>
         <Section title={tr('Auswerten und vorbereiten', 'Analyze and prepare')}>
           {functionRows(['statistics', 'routes', 'templates', 'soreness'])}
@@ -515,6 +515,14 @@ export function FeatureSettings({
             </>
           ) : null}
         </Section>
+      ) : null}
+      {screen === 'challenges' && features.challenges.enabled ? (
+        <Copy muted>
+          {tr(
+            'Öffne Challenges unter Alle Funktionen oder setze sie in die Navigation.',
+            'Open Challenges under All features or put them in the navigation.',
+          )}
+        </Copy>
       ) : null}
       {screen === 'planning' && features.planning.enabled ? (
         <Copy muted>
