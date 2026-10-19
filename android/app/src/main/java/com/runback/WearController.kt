@@ -9,6 +9,7 @@ import com.google.android.gms.wearable.Wearable
 import com.runback.core.RawSample
 import com.runback.core.RecordingService
 import com.runback.core.WearControlOutbox
+import com.runback.core.WearLateJoin
 import com.runback.core.RunStore
 import com.runback.core.WearProtocol
 import androidx.wear.remote.interactions.RemoteActivityHelper
@@ -27,6 +28,7 @@ object WearController {
     private val sequenceLock = Any()
     private val retryLock = Any()
     private var retryScheduled = false
+    private val lateJoin = WearLateJoin()
 
     fun sendCommand(
         context: Context,
@@ -78,12 +80,14 @@ object WearController {
         val errors = JSONArray()
         val payload = WearProtocol.control(action, runId, purpose, sport, target, routePlanId, resolvedCommandId, resolvedSequence)
         val sourceNodeId = localNodeId(context)
-        val remoteActivity = if (allowRemoteActivity) RemoteActivityHelper(context, remoteActivityExecutor) else null
-        val remoteIntent = if (allowRemoteActivity) Intent(
-            Intent.ACTION_VIEW,
-            controlUri(action, runId, purpose, sport, routePlanId, target, resolvedCommandId, resolvedSequence, sourceNodeId),
-        ).addCategory(Intent.CATEGORY_BROWSABLE)
-            .setComponent(ComponentName("com.runback", "com.runback.wear.MainActivity")) else null
+        val remoteActivity by lazy { RemoteActivityHelper(context, remoteActivityExecutor) }
+        val remoteIntent by lazy {
+            Intent(
+                Intent.ACTION_VIEW,
+                controlUri(action, runId, purpose, sport, routePlanId, target, resolvedCommandId, resolvedSequence, sourceNodeId),
+            ).addCategory(Intent.CATEGORY_BROWSABLE)
+                .setComponent(ComponentName("com.runback", "com.runback.wear.MainActivity"))
+        }
         nodes.forEach { node ->
             var remoteDelivered = false
             var messageDelivered = false
@@ -93,8 +97,13 @@ object WearController {
                 messageDelivered = true
             }
             catch (error: Exception) { lastError = error }
-            if (allowRemoteActivity) {
-                try { remoteActivity!!.startRemoteActivity(remoteIntent!!, node.id).get(5, TimeUnit.SECONDS); remoteDelivered = true }
+            // A watch that was out of reach at the start joins on a retry: its recording starts only from the foreground.
+            if (lateJoin.opensApp(action, resolvedCommandId, node.id, allowRemoteActivity)) {
+                try {
+                    remoteActivity.startRemoteActivity(remoteIntent, node.id).get(5, TimeUnit.SECONDS)
+                    remoteDelivered = true
+                    lateJoin.markOpened(resolvedCommandId, node.id)
+                }
                 catch (error: Exception) { lastError = error }
             }
             if (remoteDelivered || messageDelivered) sent++
@@ -147,8 +156,9 @@ object WearController {
             pending.forEach { command ->
                 val action = command.optString("action")
                 val runId = command.optString("runId")
+                val runStatus = runId.takeIf { it.isNotBlank() }?.let(store::runStatus)
                 if (System.currentTimeMillis() - command.optLong("updatedAt", 0L) > 24L * 60L * 60L * 1000L ||
-                    runId.isBlank() || store.runStatus(runId) == null
+                    runStatus == null || WearLateJoin.startExpired(action, runStatus)
                 ) {
                     WearControlOutbox.remove(store, runId, action, command.optString("commandId"), command.optLong("sequence", 0L))
                     return@forEach

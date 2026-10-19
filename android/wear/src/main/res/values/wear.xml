@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:keep="@array/android_wear_capabilities">
+    <!-- WearProtocol.WATCH_CAPABILITY: the phone sends waiting recording commands as soon as this watch is in reach. -->
+    <string-array name="android_wear_capabilities" translatable="false">
+        <item>runback_watch</item>
+    </string-array>
+</resources>

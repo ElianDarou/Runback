@@ -182,6 +182,8 @@ object WearProtocol {
 
     /** Capability of the phone app (res/values/wear.xml); the watch sends waiting data when it appears. */
     const val PHONE_CAPABILITY = "runback_phone"
+    /** Capability of the watch app (wear res/values/wear.xml); the phone sends waiting commands when it appears. */
+    const val WATCH_CAPABILITY = "runback_watch"
     private val ID_PATTERN = Regex("[A-Za-z0-9_-]{1,100}")
     /** Switches the watch sends with a start; the phone checks them against each other (`MotionSessions`). */
     val CAPTURE_KEYS = listOf("heartRate", "motion", "autoSets", "autoConfirm")
