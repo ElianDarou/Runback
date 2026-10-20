@@ -203,13 +203,15 @@ const pickPeriod = async (
   tree: TestRenderer.ReactTestRenderer,
   first: Date,
   last: Date,
+  /** The export page lists runs first, then strength training. */
+  index = 0,
 ) => {
-  const field = tree.root.find(
+  const field = tree.root.findAll(
     item =>
       typeof item.props?.onPress === 'function' &&
       typeof item.props?.accessibilityLabel === 'string' &&
       item.props.accessibilityLabel.startsWith('Zeitraum:'),
-  );
+  )[index];
   await act(async () => field.props.onPress());
   const now = new Date();
   const back =
@@ -248,6 +250,7 @@ describe('Today', () => {
       .find(item => textContent(item) === '●')!;
     expect(mark.props.style.color).toBe(color.danger);
     await tap(tree, 'Einstellungen · Server Nicht erreichbar');
+    await tap(tree, 'Deine Daten');
     await tap(tree, 'Eigener Server');
     expect(screenText(tree)).toContain('Nicht erreichbar');
     expect(screenText(tree)).toContain(
@@ -276,6 +279,7 @@ describe('Today', () => {
       .find(item => textContent(item) === '●')!;
     expect(mark.props.style.color).toBe(color.green);
     await tap(tree, 'Einstellungen · Server Aktuell');
+    await tap(tree, 'Deine Daten');
     expect(screenText(tree)).toContain('Eigener Server');
     await act(async () => tree.unmount());
   });
@@ -427,6 +431,7 @@ describe('Development', () => {
     const tree = await render();
     expect(tabLabels(tree)).toEqual(['Heute', 'Plan', 'Statistik', 'Verlauf']);
     await tap(tree, 'Einstellungen');
+    await tap(tree, 'Darstellung');
     await tap(tree, 'Alle Funktionen');
     await tapText(tree, 'Ziel je Bereich');
     expect(screenText(tree)).toContain('10 km');
@@ -492,7 +497,8 @@ describe('Template management', () => {
     let tree = await render();
     try {
       await tap(tree, 'Einstellungen');
-      await tap(tree, 'Vorlagen verwalten');
+      await tap(tree, 'Training');
+      await tap(tree, 'Vorlagen');
       await tap(tree, 'Push');
       await tap(tree, 'Vorschlag löschen');
       expect(native.saveSettings).not.toHaveBeenCalled();
@@ -523,7 +529,8 @@ describe('Template management', () => {
       });
       tree = await render();
       await tap(tree, 'Einstellungen');
-      await tap(tree, 'Vorlagen verwalten');
+      await tap(tree, 'Training');
+      await tap(tree, 'Vorlagen');
       expect(screenText(tree)).not.toContain('Push');
       expect(screenText(tree)).toContain('Pull');
       expect(screenText(tree)).toContain('Meine Vorlage');
@@ -547,7 +554,8 @@ describe('Template management', () => {
     const tree = await render();
     try {
       await tap(tree, 'Einstellungen');
-      await tap(tree, 'Vorlagen verwalten');
+      await tap(tree, 'Training');
+      await tap(tree, 'Vorlagen');
       expect(screenText(tree)).toContain('Vorlagen');
       expect(screenText(tree)).not.toContain('Laufvorlagen');
       expect(screenText(tree)).toContain('Oberkörper');
@@ -583,8 +591,8 @@ describe('Template management', () => {
         jest.mocked(native.saveStrengthTemplates).mock.calls.at(-1)![0],
       ).toEqual([duplicated[1]]);
       await tap(tree, 'Zurück');
-      expect(screenText(tree)).toContain('Geräte & Verbindungen');
-      expect(screenText(tree)).toContain('Vorlagen verwalten');
+      expect(screenText(tree)).toContain('Stimme & Vibration');
+      expect(screenText(tree)).toContain('Wochenplan');
       await tap(tree, 'Wochenplan');
       await tap(tree, 'Vorlagen');
       expect(screenText(tree)).toContain(duplicated[1].name);
@@ -623,7 +631,8 @@ describe('Template management', () => {
     try {
       expect(tabLabels(tree)).not.toContain('Plan');
       await tap(tree, 'Einstellungen');
-      await tap(tree, 'Vorlagen verwalten');
+      await tap(tree, 'Training');
+      await tap(tree, 'Vorlagen');
       // Stored run templates stay in the settings but are not offered anymore.
       expect(screenText(tree)).not.toContain('Feierabend');
       expect(screenText(tree)).toContain('Neuen Plan anlegen');
@@ -631,8 +640,8 @@ describe('Template management', () => {
       await act(async () => {
         expect(back()).toBe(true);
       });
-      expect(screenText(tree)).toContain('Vorlagen verwalten');
-      expect(screenText(tree)).toContain('Geräte & Verbindungen');
+      expect(screenText(tree)).toContain('Vorlagen');
+      expect(screenText(tree)).toContain('Stimme & Vibration');
     } finally {
       await act(async () => tree.unmount());
       backSpy.mockRestore();
@@ -641,15 +650,109 @@ describe('Template management', () => {
 });
 
 describe('Settings list', () => {
+  it('splits your data into one page per task and returns to it', async () => {
+    const tree = await render();
+    try {
+      await tap(tree, 'Einstellungen');
+      await tap(tree, 'Deine Daten');
+      const text = screenText(tree);
+      for (const title of [
+        'Import',
+        'Export',
+        'Backup',
+        'Daten löschen',
+        'Geräte & Sensoren',
+        'Health Connect',
+        'Wetter',
+        'Strava',
+        'Eigener Server',
+      ])
+        expect(text).toContain(title);
+      expect(text).not.toContain('Dateien importieren');
+      await tap(tree, 'Import');
+      expect(screenText(tree)).toContain('Dateien importieren');
+      expect(screenText(tree)).not.toContain('Backup exportieren');
+      await tap(tree, 'Zurück');
+      await tap(tree, 'Backup');
+      expect(screenText(tree)).toContain('Backup wiederherstellen');
+      expect(screenText(tree)).not.toContain('Dateien importieren');
+      await tap(tree, 'Zurück');
+      await tap(tree, 'Daten löschen');
+      expect(screenText(tree)).toContain('Alle lokalen Daten löschen');
+      await tap(tree, 'Zurück');
+      await tap(tree, 'Wetter');
+      expect(screenText(tree)).toContain('Wetter ergänzen');
+      expect(screenText(tree)).not.toContain('Bluetooth-Sensoren');
+      await tap(tree, 'Zurück');
+      await tap(tree, 'Zurück');
+      expect(screenText(tree)).toContain('Über Runback');
+    } finally {
+      await act(async () => tree.unmount());
+    }
+  });
+
+  it('keeps the language at the end of Display', async () => {
+    const tree = await render();
+    try {
+      await tap(tree, 'Einstellungen');
+      expect(screenText(tree)).not.toContain('Deutsch');
+      await tap(tree, 'Darstellung');
+      const text = screenText(tree);
+      expect(text.indexOf('Sprache')).toBeGreaterThan(
+        text.indexOf('Alle Funktionen'),
+      );
+      expect(text).toContain('Navigationsleiste');
+    } finally {
+      await act(async () => tree.unmount());
+    }
+  });
+
+  it('always lists weekly plan, templates and voice under Training and returns there from recording', async () => {
+    jest.mocked(native.state).mockResolvedValueOnce({
+      runs: [],
+      recording: null,
+      settings: {
+        onboardedAt: 1,
+        features: {
+          planning: { enabled: false },
+          templates: { enabled: false },
+        },
+      } as any,
+      capabilities: {},
+    });
+    const tree = await render();
+    try {
+      await tap(tree, 'Einstellungen');
+      await tap(tree, 'Training');
+      const text = screenText(tree);
+      expect(text).toContain('Wochenplan');
+      expect(text).toContain('Vorlagen');
+      expect(text).toContain('Stimme & Vibration');
+      expect(text).toContain('Musik');
+      await tap(tree, 'Aufzeichnung');
+      expect(screenText(tree)).toContain('Groß angezeigt');
+      await tap(tree, 'Zurück');
+      expect(screenText(tree)).toContain('Sportarten & Funktionen');
+    } finally {
+      await act(async () => tree.unmount());
+    }
+  });
+
   it('has calculations and the weekly plan, but no chat and no setup entry', async () => {
     const tree = await render();
     try {
       await tap(tree, 'Einstellungen');
       const text = screenText(tree);
-      expect(text).toContain('Rechenweg');
-      expect(text).toContain('Wochenplan');
+      expect(text).toContain('Training');
+      expect(text).toContain('Darstellung');
+      expect(text).toContain('Deine Daten');
+      expect(text).toContain('Über Runback');
       expect(text).not.toContain('Trainingschat');
       expect(text).not.toContain('Einrichtung erneut öffnen');
+      await tap(tree, 'Training');
+      expect(screenText(tree)).toContain('Wochenplan');
+      await tap(tree, 'Zurück');
+      await tap(tree, 'Über Runback');
       await tap(tree, 'Rechenweg');
       expect(screenText(tree)).toContain('Wie Runback rechnet');
       expect(screenText(tree)).not.toContain('OpenRouter');
@@ -674,6 +777,7 @@ describe('Settings list', () => {
     const tree = await render();
     try {
       await tap(tree, 'Einstellungen');
+      await tap(tree, 'Training');
       await tap(tree, 'Stimme & Vibration');
       const text = screenText(tree);
       expect(text).toContain('Systemstimme');
@@ -807,7 +911,8 @@ describe('Features', () => {
       await tap(tree, 'Letzte 5 zurücknehmen');
       expect(screenText(tree)).toContain('20 von 100');
       await tap(tree, 'Einstellungen');
-      await tap(tree, 'Funktionen');
+      await tap(tree, 'Training');
+      await tap(tree, 'Sportarten & Funktionen');
       await flip(tree, 'Challenges');
       expect(settingsSaved().challenges?.items[0].days[0].entries).toHaveLength(
         1,
@@ -815,7 +920,8 @@ describe('Features', () => {
       await tap(tree, 'Heute');
       expect(screenText(tree)).not.toContain('Liegestütze');
       await tap(tree, 'Einstellungen');
-      await tap(tree, 'Funktionen');
+      await tap(tree, 'Training');
+      await tap(tree, 'Sportarten & Funktionen');
       await flip(tree, 'Challenges');
       await tap(tree, 'Heute');
       expect(screenText(tree)).toContain('20 von 100');
@@ -937,7 +1043,8 @@ describe('Features', () => {
   it('switches features immediately and saves them in the settings', async () => {
     const tree = await render();
     await tap(tree, 'Einstellungen');
-    await tapText(tree, 'Funktionen');
+    await tap(tree, 'Training');
+    await tap(tree, 'Sportarten & Funktionen');
     expect(screenText(tree)).toContain('deine Daten bleiben');
     await flip(tree, 'Planung');
     expect(settingsSaved().features?.planning.enabled).toBe(false);
@@ -964,13 +1071,8 @@ describe('Features', () => {
     const tree = await render();
     expect(tabLabels(tree)).toEqual(['Heute', 'Verlauf']);
     await tap(tree, 'Einstellungen');
-    await tapText(tree, 'Funktionen');
-    const switchSettings = async (value: 'main' | 'navigation') => {
-      await act(async () =>
-        tree.root.findByType(Segmented).props.onChange(value),
-      );
-    };
-    await switchSettings('navigation');
+    await tap(tree, 'Darstellung');
+    await tap(tree, 'Navigationsleiste');
     const choose = async (title: string, checked: boolean) => {
       await act(async () =>
         tree.root
@@ -996,11 +1098,13 @@ describe('Features', () => {
       ),
     ).toHaveLength(0);
     await tap(tree, 'Einstellungen');
+    await tap(tree, 'Darstellung');
     await tap(tree, 'Alle Funktionen');
     await tapText(tree, 'Muskelkater');
     expect(screenText(tree)).toContain('Muskelkater melden');
     expect(tabLabels(tree)).not.toContain('Muskelkater');
     await tap(tree, 'Einstellungen');
+    await tap(tree, 'Darstellung');
     await tap(tree, 'Alle Funktionen');
     await tapText(tree, 'Ziel je Bereich');
     expect(screenText(tree)).toContain('Noch kein Ziel festgelegt');
@@ -1010,10 +1114,8 @@ describe('Features', () => {
   it('replaces only the chosen slot and keeps the change after a restart', async () => {
     const tree = await render();
     await tap(tree, 'Einstellungen');
-    await tapText(tree, 'Funktionen');
-    await act(async () =>
-      tree.root.findByType(Segmented).props.onChange('navigation'),
-    );
+    await tap(tree, 'Darstellung');
+    await tap(tree, 'Navigationsleiste');
     await act(async () =>
       tree.root
         .findAllByType(CheckRow)
@@ -1060,6 +1162,7 @@ describe('Features', () => {
         .props.onClose(),
     );
     await tap(tree, 'Einstellungen');
+    await tap(tree, 'Darstellung');
     await tap(tree, 'Alle Funktionen');
     expect(screenText(tree)).toContain(
       'Keine optionale Funktion eingeschaltet',
@@ -1278,7 +1381,7 @@ describe('Export run reports together', () => {
     const tree = await setup();
     await tap(tree, 'Einstellungen');
     await tap(tree, 'Deine Daten');
-    await tap(tree, 'Laufberichte exportieren');
+    await tap(tree, 'Export');
     await pickPeriod(tree, new Date(2026, 9, 1), new Date(2026, 9, 2));
     jest
       .mocked(native.runIdsInRange)
@@ -1300,7 +1403,7 @@ describe('Export run reports together', () => {
     const tree = await setup();
     await tap(tree, 'Einstellungen');
     await tap(tree, 'Deine Daten');
-    await tap(tree, 'Laufberichte exportieren');
+    await tap(tree, 'Export');
     await pickPeriod(tree, new Date(2026, 9, 1), new Date(2026, 9, 1));
     jest
       .mocked(native.runIdsInRange)
@@ -1329,7 +1432,7 @@ describe('Export run reports together', () => {
     const tree = await setup();
     await tap(tree, 'Einstellungen');
     await tap(tree, 'Deine Daten');
-    await tap(tree, 'Laufberichte exportieren');
+    await tap(tree, 'Export');
     const button = () =>
       tree.root.find(
         node =>
@@ -1387,7 +1490,7 @@ describe('Export strength training', () => {
     const tree = await render();
     await tap(tree, 'Einstellungen');
     await tap(tree, 'Deine Daten');
-    await tap(tree, 'Krafttraining exportieren');
+    await tap(tree, 'Export');
     return tree;
   };
 
@@ -1433,7 +1536,7 @@ describe('Export strength training', () => {
       .mocked(native.strengthSession)
       .mockImplementation(id => Promise.resolve(session(id, start)));
     const tree = await open();
-    await pickPeriod(tree, new Date(2026, 9, 1), new Date(2026, 9, 1));
+    await pickPeriod(tree, new Date(2026, 9, 1), new Date(2026, 9, 1), 1);
     await tap(tree, 'Krafttraining als ZIP exportieren');
     expect(native.recordedStrengthSessionIds).toHaveBeenCalledWith({
       from: new Date(2026, 9, 1).getTime(),
@@ -1609,6 +1712,7 @@ describe('Strength history after import', () => {
     try {
       await tap(tree, 'Einstellungen');
       await tap(tree, 'Deine Daten');
+      await tap(tree, 'Import');
       await tap(tree, 'Dateien importieren');
       expect(native.commitImport).not.toHaveBeenCalled();
       await tap(tree, '1 Eintrag übernehmen');

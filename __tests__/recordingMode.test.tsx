@@ -517,6 +517,7 @@ it('previews a next-run pace and a race goal without changing persisted settings
   const openGoalTimes = async () => {
     await tap('Heute');
     await tap('Einstellungen');
+    await tap('Darstellung');
     await tap('Alle Funktionen');
     await tapText('Ziel je Bereich');
     await tapText('Zielzeiten');

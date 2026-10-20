@@ -21,7 +21,6 @@ import {
   sorenessPromptLabel,
   statsModuleLabel,
   availableHomeSections,
-  visibleHomeSections,
   withArea,
   tabLabel,
   type Area,
@@ -34,7 +33,6 @@ import {
   Button,
   Card,
   CheckRow,
-  Segmented,
   Sheet,
   ChipGroup,
   Copy,
@@ -57,9 +55,6 @@ export function FeatureSettings({
   screen = 'main',
   disabled = false,
   onChange,
-  onOpenHomeSections,
-  onOpenNavigation,
-  onOpenMain,
   onOpenDetails,
 }: {
   features: Features;
@@ -72,9 +67,6 @@ export function FeatureSettings({
     | 'strength';
   disabled?: boolean;
   onChange: (next: Features) => void;
-  onOpenHomeSections: () => void;
-  onOpenNavigation: () => void;
-  onOpenMain: () => void;
   onOpenDetails: (screen: FeatureId | 'recording' | 'strength') => void;
 }) {
   const [replacement, setReplacement] = useState<OptionalTab | null>(null);
@@ -154,17 +146,6 @@ export function FeatureSettings({
   }
 
   const selected = pinnedTabs(features);
-  const navigationTabs = (
-    <Segmented
-      label={tr('Einstellungen bearbeiten', 'Edit settings')}
-      options={[
-        { value: 'main', label: tr('Funktionen', 'Features') },
-        { value: 'navigation', label: tr('Navigation', 'Navigation') },
-      ]}
-      value={screen === 'navigation' ? 'navigation' : 'main'}
-      onChange={value => (value === 'main' ? onOpenMain() : onOpenNavigation())}
-    />
-  );
   if (screen === 'navigation') {
     const choose = (tab: OptionalTab, checked: boolean) => {
       if (!checked)
@@ -180,10 +161,9 @@ export function FeatureSettings({
     };
     return (
       <>
-        <Title>{tr('Navigation', 'Navigation')}</Title>
-        {navigationTabs}
+        <Title>{tr('Navigationsleiste', 'Tab bar')}</Title>
         <Card>
-          <Copy>{visibleTabs(features).join(' · ')}</Copy>
+          <Copy>{visibleTabs(features).map(tabLabel).join(' · ')}</Copy>
           <Copy muted>
             {tr(
               `${selected.length} von 2 eigenen Plätzen belegt.`,
@@ -356,8 +336,7 @@ export function FeatureSettings({
       });
     return (
       <>
-        <Title>{tr('Funktionen', 'Features')}</Title>
-        {navigationTabs}
+        <Title>{tr('Sportarten & Funktionen', 'Sports & features')}</Title>
         <Copy muted>
           {tr(
             'Schalte ein, was du nutzen möchtest; deine Daten bleiben erhalten.',
@@ -396,35 +375,6 @@ export function FeatureSettings({
           <Copy muted>
             {tr('Ein Bereich bleibt immer an.', 'One area always stays on.')}
           </Copy>
-        </Section>
-        <Section title={tr('Anzeige und Training', 'Display and training')}>
-          <Row
-            title={tr('Heute gestalten', 'Customize Today')}
-            subtitle={tr(
-              `${visibleHomeSections(features).length} Blöcke sichtbar`,
-              `${visibleHomeSections(features).length} ${
-                visibleHomeSections(features).length === 1 ? 'block' : 'blocks'
-              } visible`,
-            )}
-            onPress={onOpenHomeSections}
-          />
-          {recordsSomething ? (
-            <Row
-              title={tr('Aufzeichnung', 'Recording')}
-              subtitle={tr(
-                'Kennzahlen und Laufvorgaben',
-                'Metrics and run targets',
-              )}
-              onPress={() => onOpenDetails('recording')}
-            />
-          ) : null}
-          {strength ? (
-            <Row
-              title={tr('Krafttraining einstellen', 'Set up strength training')}
-              subtitle={tr('Pausen und Satzangaben', 'Rest and set details')}
-              onPress={() => onOpenDetails('strength')}
-            />
-          ) : null}
         </Section>
       </>
     );

@@ -16,7 +16,7 @@ product. Code names are identifiers and stay as they are.
 | Geänderter Tag | Changed day | `changedDays`, `setDayPlan` | A day edited in Plan: it keeps exactly its own workouts, the weekly plan no longer applies to it. “Wie jede Woche” / “As every week” undoes it. Only today and later. |
 | Symbol | Symbol | `TemplateIcon`, `WorkoutIcon` | Calendar symbol of a workout: fixed for runs and rides, chosen per strength template from one icon set (Tabler Icons). |
 | Mehr / weniger als üblich | More / less than usual | `compareWithUsual` | Workouts, time, and km of the shown week or month against the median of the up to six periods before (a running period day for day); ▲ green, ▼ red, from three earlier periods with recordings. |
-| Rechenweg | Calculations | `models` | Settings page: what Runback calculates locally and which models are locked. |
+| Rechenweg | Calculations | `models` | Settings page under About Runback: what Runback calculates locally and which models are locked. |
 | Statistik | Statistics | `statistics` | Tab: statistics (optional feature). |
 | Routen | Routes | `routes` | Tab: routes (optional feature). |
 | Vorlagen | Templates | `templates` | Tab: workout templates (optional feature). |
