@@ -1109,16 +1109,17 @@ export function RunbackApp() {
     };
     return { names, input };
   };
-  const shareRuns = (getIds: () => Promise<string[]>) => {
+  const shareRuns = (
+    getIds: () => Promise<string[]>,
+    empty = () =>
+      tr(
+        'Wähle mindestens einen Lauf im Zeitraum oder in der Liste.',
+        'Choose at least one run in the period or in the list.',
+      ),
+  ) => {
     void action(async () => {
       const ids = [...new Set(await getIds())];
-      if (!ids.length)
-        throw new Error(
-          tr(
-            'Wähle mindestens einen Lauf im Zeitraum oder in der Liste.',
-            'Choose at least one run in the period or in the list.',
-          ),
-        );
+      if (!ids.length) throw new Error(empty());
       const current = stateRef.current;
       const archive = await native.beginRunArchive();
       // One native call per run reads run, timeline and time series together.
@@ -4670,7 +4671,10 @@ export function RunbackApp() {
       <Title>{tr('Export', 'Export')}</Title>
       <Section title={tr('Laufberichte', 'Run reports')}>
         <Copy muted>
-          {tr('Zeitraum als ZIP teilen.', 'Share a period as ZIP.')}
+          {tr(
+            'Alle Läufe oder einen Zeitraum als ZIP teilen.',
+            'Share all runs or a period as ZIP.',
+          )}
         </Copy>
         <Field
           label={tr('Zeitraum', 'Period')}
@@ -4680,22 +4684,34 @@ export function RunbackApp() {
             label={tr('Zeitraum', 'Period')}
             value={runExportPeriod}
             onChange={setRunExportPeriod}
+            emptyLabel={tr('Alle Läufe', 'All runs')}
             disabled={busy}
           />
         </Field>
         <Button
           secondary
           title={tr('Läufe als ZIP exportieren', 'Export runs as ZIP')}
-          disabled={busy || !runExportPeriod}
+          disabled={busy}
           onPress={() =>
-            shareRuns(async () => {
-              if (!runExportPeriod) return [];
-              const range = exportRange(
-                runExportPeriod.start,
-                runExportPeriod.end,
-              );
-              return native.runIdsInRange(range.from, range.until);
-            })
+            shareRuns(
+              async () => {
+                // Without a period: every stored run, first to last.
+                const range = runExportPeriod
+                  ? exportRange(runExportPeriod.start, runExportPeriod.end)
+                  : {
+                      from: Number.MIN_SAFE_INTEGER,
+                      until: Number.MAX_SAFE_INTEGER,
+                    };
+                return native.runIdsInRange(range.from, range.until);
+              },
+              runExportPeriod
+                ? undefined
+                : () =>
+                    tr(
+                      'Zeichne oder importiere zuerst einen Lauf.',
+                      'Record or import a run first.',
+                    ),
+            )
           }
         />
       </Section>

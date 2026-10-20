@@ -1428,20 +1428,30 @@ describe('Export run reports together', () => {
     await act(async () => tree.unmount());
   });
 
-  it('needs a period and says when it holds no run', async () => {
+  it('exports all stored runs by default', async () => {
     const tree = await setup();
     await tap(tree, 'Einstellungen');
     await tap(tree, 'Deine Daten');
     await tap(tree, 'Export');
-    const button = () =>
-      tree.root.find(
-        node =>
-          node.props.title === 'Läufe als ZIP exportieren' &&
-          typeof node.props.onPress === 'function',
-      );
-    expect(button().props.disabled).toBe(true);
+    expect(screenText(tree)).toContain('Alle Läufe');
+    await tap(tree, 'Läufe als ZIP exportieren');
+    expect(native.runIdsInRange).toHaveBeenCalledWith(
+      Number.MIN_SAFE_INTEGER,
+      Number.MAX_SAFE_INTEGER,
+    );
+    expect(screenText(tree)).toContain(
+      'Zeichne oder importiere zuerst einen Lauf.',
+    );
+    expect(native.beginRunArchive).not.toHaveBeenCalled();
+    await act(async () => tree.unmount());
+  });
+
+  it('says when the chosen period holds no run', async () => {
+    const tree = await setup();
+    await tap(tree, 'Einstellungen');
+    await tap(tree, 'Deine Daten');
+    await tap(tree, 'Export');
     await pickPeriod(tree, new Date(2026, 9, 2), new Date(2026, 9, 1));
-    expect(button().props.disabled).toBe(false);
     await tap(tree, 'Läufe als ZIP exportieren');
     expect(native.runIdsInRange).toHaveBeenCalledWith(
       new Date(2026, 9, 1).getTime(),
