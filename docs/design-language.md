@@ -42,13 +42,21 @@ free until the user fills them. Switching a feature off removes its slot; switch
 it on pins nothing automatically.
 
 The gear icon opens Settings; if an own server is set up,
-a dot appears to its left: green connected, red unreachable. In Settings, **All features** also opens active features that have no tab.
-Under **Features**, the
-user decides what is active; under **Navigation**, what is in the bar.
+a dot appears to its left: green connected, red unreachable. Settings holds four
+groups, and each row opens a page that does one thing:
+
+- **Training**: Sports & features (what is active), Recording, Strength training,
+  Weekly plan, Templates, Voice & vibration, Music.
+- **Display**: Today page, Tab bar (what is in the bar), All features (also opens
+  active features that have no tab), and the language at the end.
+- **Your data**: Import, Export, Backup, and Delete data; then the connections —
+  Devices & sensors, Health Connect, Weather, Strava, Own server.
+- **About Runback**: Calculations.
+
+Rows stay listed even when the feature behind them is off.
 **Progress** (Entwicklung) holds the goal of each area and opens under All features
 unless it is pinned. The weekly plan is set in Settings, single days in Plan.
 Templates have shared management that stays usable even without planning.
-Devices and data remain in Settings.
 
 Plan is the one page that does not scroll: the month fills the screen below the
 header, every workout is a small symbol — gray outlined when planned, green on a

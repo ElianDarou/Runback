@@ -271,6 +271,7 @@ it('takes a weekly workout off Today when the day was changed', async () => {
 it('opens Development under All features with both goals apart', async () => {
   await mount();
   await tap('Einstellungen');
+  await press('Darstellung');
   await press('Alle Funktionen');
   await press('Entwicklung');
   const screen = tree.root.findByType(DevelopmentScreen);
@@ -355,6 +356,7 @@ it('keeps the schedule goal canonical when the running goal is saved', async () 
   };
   await mount();
   await tap('Einstellungen');
+  await press('Darstellung');
   await press('Alle Funktionen');
   await press('Entwicklung');
   expect(tree.root.findByType(DevelopmentScreen).props.prediction.goal).toBe(

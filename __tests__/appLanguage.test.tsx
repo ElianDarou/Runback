@@ -135,6 +135,12 @@ describe('app language', () => {
     );
     await tapWhere(
       tree,
+      item =>
+        item.props.accessibilityRole === 'button' &&
+        item.findAll(child => child.props?.children === 'Display').length > 0,
+    );
+    await tapWhere(
+      tree,
       item => item.props.accessibilityRole === 'radio' && item.props.accessibilityLabel === 'Deutsch',
     );
     expect(getLanguage()).toBe('de');

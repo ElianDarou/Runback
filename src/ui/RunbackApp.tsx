@@ -342,8 +342,17 @@ type Page =
   | 'strava'
   | 'music'
   | 'settings'
+  | 'settings-training'
+  | 'settings-display'
+  | 'settings-about'
   | 'devices'
+  | 'health-connect'
+  | 'weather'
   | 'data'
+  | 'data-import'
+  | 'data-export'
+  | 'data-backup'
+  | 'data-delete'
   | 'vendor-import'
   | 'imports'
   | 'models'
@@ -369,25 +378,34 @@ interface Trail {
   record: StrengthRecord | null;
 }
 const PARENT_PAGE: Partial<Record<Page, Page>> = {
-  devices: 'settings',
-  server: 'settings',
-  strava: 'settings',
-  music: 'features',
-  'run-audio': 'sound',
-  sound: 'settings',
+  'settings-training': 'settings',
+  'settings-display': 'settings',
+  'settings-about': 'settings',
   data: 'settings',
-  models: 'settings',
-  'plan-settings': 'settings',
-  features: 'settings',
-  'features-home': 'features',
-  'features-navigation': 'features',
+  features: 'settings-training',
   'features-detail': 'features',
-  'all-functions': 'settings',
+  'plan-settings': 'settings-training',
+  sound: 'settings-training',
+  'run-audio': 'sound',
+  music: 'settings-training',
+  'features-home': 'settings-display',
+  'features-navigation': 'settings-display',
+  'all-functions': 'settings-display',
   development: 'all-functions',
   goal: 'development',
   'strength-goal': 'development',
-  'vendor-import': 'data',
-  imports: 'data',
+  'data-import': 'data',
+  'data-export': 'data',
+  'data-backup': 'data',
+  'data-delete': 'data',
+  'vendor-import': 'data-import',
+  imports: 'data-import',
+  devices: 'data',
+  'health-connect': 'data',
+  weather: 'data',
+  strava: 'data',
+  server: 'data',
+  models: 'settings-about',
 };
 type HistoryView = 'units' | 'stats';
 /** How often a change is retried on a newer state from the watch or a notification. */
@@ -1742,7 +1760,12 @@ export function RunbackApp() {
     }
     setTrail([]);
     const toStart = page === 'run-audio' && runAudioFromStart;
-    const parent = PARENT_PAGE[page] ?? 'main';
+    // Recording and strength details open from Training, not from Features.
+    const parent =
+      page === 'features-detail' &&
+      (featureDetail === 'recording' || featureDetail === 'strength')
+        ? 'settings-training'
+        : PARENT_PAGE[page] ?? 'main';
     setPage(
       page === 'templates'
         ? templatesParent
@@ -2742,8 +2765,8 @@ export function RunbackApp() {
         <EmptyState
           title={tr('Noch keine Einheit', 'No workouts yet')}
           copy={tr(
-            'Dein erster Lauf und dein erstes Krafttraining erscheinen hier. Vorhandene Historie importierst du in den Einstellungen unter „Deine Daten“.',
-            'Your first run and first strength session appear here. Import existing history in Settings under “Your data”.',
+            'Dein erster Lauf und dein erstes Krafttraining erscheinen hier. Vorhandene Historie importierst du in den Einstellungen unter Deine Daten › Import.',
+            'Your first run and first strength session appear here. Import existing history in Settings under Your data › Import.',
           )}
         />
       )}
@@ -4075,6 +4098,140 @@ export function RunbackApp() {
   const renderSettings = () => (
     <>
       <Title>{tr('Einstellungen', 'Settings')}</Title>
+      <View>
+        <Row
+          title={tr('Training', 'Training')}
+          subtitle={tr(
+            'Funktionen, Aufzeichnung, Plan, Stimme, Musik',
+            'Features, recording, plan, voice, music',
+          )}
+          onPress={() => openPage('settings-training')}
+        />
+        <Row
+          title={tr('Darstellung', 'Display')}
+          subtitle={tr(
+            'Heute, Navigation, Sprache',
+            'Today, navigation, language',
+          )}
+          onPress={() => openPage('settings-display')}
+        />
+        <Row
+          title={tr('Deine Daten', 'Your data')}
+          subtitle={tr(
+            `${counted(
+              runs.length,
+              'Aufzeichnung',
+              'Aufzeichnungen',
+            )} · Import, Backup, Geräte, Server`,
+            `${counted(
+              runs.length,
+              'recording',
+              'recordings',
+            )} · import, backup, devices, server`,
+          )}
+          trailing={<ConnectionMark mark={serverMark(serverStatus)} />}
+          onPress={() => openPage('data')}
+        />
+        <Row
+          title={tr('Über Runback', 'About Runback')}
+          subtitle={tr('Rechenweg', 'Calculations')}
+          onPress={() => openPage('settings-about')}
+        />
+      </View>
+    </>
+  );
+
+  const renderTrainingSettings = () => (
+    <>
+      <Title>{tr('Training', 'Training')}</Title>
+      <View>
+        <Row
+          title={tr('Sportarten & Funktionen', 'Sports & features')}
+          subtitle={tr(
+            'Was Runback zeigt und wann es fragt',
+            'What Runback shows and when it asks',
+          )}
+          onPress={() => openPage('features')}
+        />
+        {showRunning || features.sports.cycling ? (
+          <Row
+            title={tr('Aufzeichnung', 'Recording')}
+            subtitle={tr(
+              'Kennzahlen und Laufvorgaben',
+              'Metrics and run targets',
+            )}
+            onPress={() => {
+              setFeatureDetail('recording');
+              openPage('features-detail');
+            }}
+          />
+        ) : null}
+        {showStrength ? (
+          <Row
+            title={tr('Krafttraining', 'Strength training')}
+            subtitle={tr('Pausen und Satzangaben', 'Rest and set details')}
+            onPress={() => {
+              setFeatureDetail('strength');
+              openPage('features-detail');
+            }}
+          />
+        ) : null}
+        <Row
+          title={tr('Wochenplan', 'Weekly plan')}
+          subtitle={weeklyPlanSummary()}
+          onPress={() => openPage('plan-settings')}
+        />
+        <Row
+          title={tr('Vorlagen', 'Templates')}
+          subtitle={tr(
+            'Verwalte deine Kraftvorlagen',
+            'Manage your strength templates',
+          )}
+          onPress={() => openPage('templates')}
+        />
+        <Row
+          title={tr('Stimme & Vibration', 'Voice & vibration')}
+          subtitle={tr(
+            'Stimme, Ansagen und Signale beim Training',
+            'Voice, announcements, and signals while training',
+          )}
+          onPress={() => openPage('sound')}
+        />
+        <Row
+          title={tr('Musik', 'Music')}
+          subtitle={features.music.enabled ? tr('An', 'On') : tr('Aus', 'Off')}
+          onPress={() => openPage('music')}
+        />
+      </View>
+    </>
+  );
+
+  const renderDisplaySettings = () => (
+    <>
+      <Title>{tr('Darstellung', 'Display')}</Title>
+      <View>
+        <Row
+          title={tr('Startseite „Heute“', 'Today page')}
+          subtitle={tr(
+            'Welche Blöcke auf Heute stehen',
+            'Which blocks appear on Today',
+          )}
+          onPress={() => openPage('features-home')}
+        />
+        <Row
+          title={tr('Navigationsleiste', 'Tab bar')}
+          subtitle={visibleTabs(features).map(tabLabel).join(' · ')}
+          onPress={() => openPage('features-navigation')}
+        />
+        <Row
+          title={tr('Alle Funktionen', 'All features')}
+          subtitle={tr(
+            'Auch Funktionen ohne eigenen Tab öffnen',
+            'Also open features without their own tab',
+          )}
+          onPress={() => openPage('all-functions')}
+        />
+      </View>
       <Section title={tr('Sprache', 'Language')}>
         <Segmented<Language>
           label={tr('Sprache', 'Language')}
@@ -4086,94 +4243,13 @@ export function RunbackApp() {
           onChange={next => save({ language: next })}
         />
       </Section>
+    </>
+  );
+
+  const renderAbout = () => (
+    <>
+      <Title>{tr('Über Runback', 'About Runback')}</Title>
       <View>
-        <Row
-          title={tr('Funktionen', 'Features')}
-          subtitle={tr(
-            'Was Runback zeigt und wann es fragt',
-            'What Runback shows and when it asks',
-          )}
-          onPress={() => openPage('features')}
-        />
-        <Row
-          title={tr('Alle Funktionen', 'All features')}
-          subtitle={tr(
-            'Auch Funktionen ohne eigenen Tab öffnen',
-            'Also open features without their own tab',
-          )}
-          onPress={() => openPage('all-functions')}
-        />
-        {showRunning || showStrength ? (
-          <Row
-            title={tr('Stimme & Vibration', 'Voice & vibration')}
-            subtitle={tr(
-              'Stimme, Ansagen und Signale beim Training',
-              'Voice, announcements, and signals while training',
-            )}
-            onPress={() => openPage('sound')}
-          />
-        ) : null}
-        {features.planning.enabled ? (
-          <Row
-            title={tr('Wochenplan', 'Weekly plan')}
-            subtitle={weeklyPlanSummary()}
-            onPress={() => openPage('plan-settings')}
-          />
-        ) : null}
-        {features.templates.enabled ? (
-          <Row
-            title={tr('Vorlagen verwalten', 'Manage templates')}
-            subtitle={tr(
-              'Verwalte deine Kraftvorlagen',
-              'Manage your strength templates',
-            )}
-            onPress={() => {
-              openPage('templates');
-            }}
-          />
-        ) : null}
-        <Row
-          title={tr('Geräte & Verbindungen', 'Devices & connections')}
-          subtitle={tr(
-            'Uhr, Sensoren, Health Connect, Wetter',
-            'Watch, sensors, Health Connect, weather',
-          )}
-          onPress={() => openPage('devices')}
-        />
-        <Row
-          title={tr('Eigener Server', 'Own server')}
-          subtitle={
-            serverStatus
-              ? serverStateLabel(serverStatus)
-              : tr('Status wird geladen', 'Loading status')
-          }
-          trailing={<ConnectionMark mark={serverMark(serverStatus)} />}
-          onPress={() => openPage('server')}
-        />
-        <Row
-          title="Strava"
-          subtitle={tr(
-            'Abgeschlossene Einheiten automatisch übertragen',
-            'Automatically upload completed sessions',
-          )}
-          onPress={() => openPage('strava')}
-        />
-        <Row
-          title={tr('Deine Daten', 'Your data')}
-          subtitle={tr(
-            `${counted(
-              runs.length,
-              'Aufzeichnung',
-              'Aufzeichnungen',
-            )} · Import, Backup, Löschen`,
-            `${counted(
-              runs.length,
-              'recording',
-              'recordings',
-            )} · import, backup, delete`,
-          )}
-          onPress={() => openPage('data')}
-        />
         <Row
           title={tr('Rechenweg', 'Calculations')}
           subtitle={tr(
@@ -4421,20 +4497,106 @@ export function RunbackApp() {
     </>
   );
 
-  const renderDevices = () => (
+  const renderDevices = (screen: 'devices' | 'health' | 'weather') => (
     <DeviceSettings
+      key={screen}
+      screen={screen}
       capabilities={state.capabilities}
       settings={settings}
       save={save}
       refresh={refresh}
     />
   );
-  // Importing is the main thing; export, backup, and delete are side paths and
-  // stay collapsed.
+  // One task per page: the hub names each, the page does only that.
   const renderData = () => (
     <>
       <Title>{tr('Deine Daten', 'Your data')}</Title>
-      <Section title={tr('Importieren', 'Import')}>
+      <Section title={tr('Daten verwalten', 'Manage data')}>
+        <Row
+          title={tr('Import', 'Import')}
+          subtitle={tr(
+            'Dateien, andere Apps, Health Connect',
+            'Files, other apps, Health Connect',
+          )}
+          onPress={() => openPage('data-import')}
+        />
+        <Row
+          title={tr('Export', 'Export')}
+          subtitle={tr(
+            'Läufe und Krafttraining als ZIP',
+            'Runs and strength training as ZIP',
+          )}
+          onPress={() => openPage('data-export')}
+        />
+        <Row
+          title="Backup"
+          subtitle={tr(
+            'Alle Originaldaten und Einstellungen sichern',
+            'Back up all original data and settings',
+          )}
+          onPress={() => openPage('data-backup')}
+        />
+        <Row
+          title={tr('Daten löschen', 'Delete data')}
+          subtitle={tr(
+            `${counted(
+              runs.length,
+              'Aufzeichnung',
+              'Aufzeichnungen',
+            )} auf diesem Telefon`,
+            `${counted(runs.length, 'recording', 'recordings')} on this phone`,
+          )}
+          onPress={() => openPage('data-delete')}
+        />
+      </Section>
+      <Section title={tr('Verbindungen', 'Connections')}>
+        <Row
+          title={tr('Geräte & Sensoren', 'Devices & sensors')}
+          subtitle={tr(
+            'Telefon, Uhr, Bluetooth-Sensoren',
+            'Phone, watch, Bluetooth sensors',
+          )}
+          onPress={() => openPage('devices')}
+        />
+        <Row
+          title="Health Connect"
+          subtitle={tr(
+            'Leseberechtigungen und Import',
+            'Read permissions and import',
+          )}
+          onPress={() => openPage('health-connect')}
+        />
+        <Row
+          title={tr('Wetter', 'Weather')}
+          subtitle={settings.weatherEnabled ? tr('An', 'On') : tr('Aus', 'Off')}
+          onPress={() => openPage('weather')}
+        />
+        <Row
+          title="Strava"
+          subtitle={tr(
+            'Abgeschlossene Einheiten automatisch übertragen',
+            'Automatically upload completed sessions',
+          )}
+          onPress={() => openPage('strava')}
+        />
+        <Row
+          title={tr('Eigener Server', 'Own server')}
+          subtitle={
+            serverStatus
+              ? serverStateLabel(serverStatus)
+              : tr('Status wird geladen', 'Loading status')
+          }
+          trailing={<ConnectionMark mark={serverMark(serverStatus)} />}
+          onPress={() => openPage('server')}
+        />
+      </Section>
+    </>
+  );
+
+  const renderDataImport = () => (
+    <>
+      <Title>{tr('Import', 'Import')}</Title>
+      <Section title={tr('Dateien', 'Files')}>
         <Button
           title={tr('Dateien importieren', 'Import files')}
           onPress={runImport}
@@ -4471,6 +4633,8 @@ export function RunbackApp() {
               ))}
           </>
         ) : null}
+      </Section>
+      <Section title={tr('Andere Quellen', 'Other sources')}>
         <Row
           title={tr('Aus anderen Apps', 'From other apps')}
           subtitle={tr(
@@ -4480,6 +4644,16 @@ export function RunbackApp() {
           onPress={() => openPage('vendor-import')}
         />
         <Row
+          title="Health Connect"
+          subtitle={tr(
+            'Was andere Apps nach Health Connect schreiben',
+            'What other apps write to Health Connect',
+          )}
+          onPress={() => openPage('health-connect')}
+        />
+      </Section>
+      <Section title={tr('Verlauf', 'History')}>
+        <Row
           title={tr('Deine Importe', 'Your imports')}
           subtitle={tr(
             'Frühere Importe ansehen oder löschen',
@@ -4488,165 +4662,181 @@ export function RunbackApp() {
           onPress={() => openPage('imports')}
         />
       </Section>
+    </>
+  );
+
+  const renderDataExport = () => (
+    <>
+      <Title>{tr('Export', 'Export')}</Title>
+      <Section title={tr('Laufberichte', 'Run reports')}>
+        <Copy muted>
+          {tr('Zeitraum als ZIP teilen.', 'Share a period as ZIP.')}
+        </Copy>
+        <Field
+          label={tr('Zeitraum', 'Period')}
+          hint={tr('Beide Tage zählen mit.', 'Both days are included.')}
+        >
+          <DateRangeField
+            label={tr('Zeitraum', 'Period')}
+            value={runExportPeriod}
+            onChange={setRunExportPeriod}
+            disabled={busy}
+          />
+        </Field>
+        <Button
+          secondary
+          title={tr('Läufe als ZIP exportieren', 'Export runs as ZIP')}
+          disabled={busy || !runExportPeriod}
+          onPress={() =>
+            shareRuns(async () => {
+              if (!runExportPeriod) return [];
+              const range = exportRange(
+                runExportPeriod.start,
+                runExportPeriod.end,
+              );
+              return native.runIdsInRange(range.from, range.until);
+            })
+          }
+        />
+      </Section>
+      <Section title={tr('Krafttraining', 'Strength training')}>
+        <Copy muted>
+          {tr(
+            'Sätze, Puls, Trainingslog und Bewegungsdaten der Uhr für Tabellen oder ein Sprachmodell. Importe fehlen.',
+            'Sets, heart rate, training log, and watch motion data for spreadsheets or a language model. Imports are not included.',
+          )}
+        </Copy>
+        <Field
+          label={tr('Zeitraum', 'Period')}
+          hint={tr('Beide Tage zählen mit.', 'Both days are included.')}
+        >
+          <DateRangeField
+            label={tr('Zeitraum', 'Period')}
+            value={strengthExportPeriod}
+            onChange={setStrengthExportPeriod}
+            emptyLabel={tr('Alle Einheiten', 'All sessions')}
+            disabled={busy}
+          />
+        </Field>
+        <Button
+          secondary
+          title={tr(
+            'Krafttraining als ZIP exportieren',
+            'Export strength training as ZIP',
+          )}
+          disabled={busy}
+          onPress={() => shareStrength(strengthExportPeriod)}
+        />
+      </Section>
+    </>
+  );
+
+  const renderDataBackup = () => (
+    <>
+      <Title>Backup</Title>
+      <Copy muted>
+        {tr(
+          'Sichert alle Originaldaten und Einstellungen in einer Datei.',
+          'Saves all original data and settings in one file.',
+        )}
+      </Copy>
       <View style={styles.sectionGap}>
-        <Disclosure
-          title={tr('Laufberichte exportieren', 'Export run reports')}
-          subtitle={tr('Zeitraum als ZIP teilen', 'Share a period as ZIP')}
-        >
-          <Field
-            label={tr('Zeitraum', 'Period')}
-            hint={tr('Beide Tage zählen mit.', 'Both days are included.')}
-          >
-            <DateRangeField
-              label={tr('Zeitraum', 'Period')}
-              value={runExportPeriod}
-              onChange={setRunExportPeriod}
-              disabled={busy}
-            />
-          </Field>
-          <Button
-            secondary
-            title={tr('Läufe als ZIP exportieren', 'Export runs as ZIP')}
-            disabled={busy || !runExportPeriod}
-            onPress={() =>
-              shareRuns(async () => {
-                if (!runExportPeriod) return [];
-                const range = exportRange(
-                  runExportPeriod.start,
-                  runExportPeriod.end,
-                );
-                return native.runIdsInRange(range.from, range.until);
-              })
-            }
-          />
-        </Disclosure>
-        <Disclosure
-          title={tr('Krafttraining exportieren', 'Export strength training')}
-          subtitle={tr(
-            'Aufgezeichnete Einheiten als ZIP teilen',
-            'Share recorded sessions as ZIP',
-          )}
-        >
-          <Copy muted>
-            {tr(
-              'Sätze, Puls, Trainingslog und Bewegungsdaten der Uhr für Tabellen oder ein Sprachmodell. Importe fehlen.',
-              'Sets, heart rate, training log, and watch motion data for spreadsheets or a language model. Imports are not included.',
-            )}
-          </Copy>
-          <Field
-            label={tr('Zeitraum', 'Period')}
-            hint={tr('Beide Tage zählen mit.', 'Both days are included.')}
-          >
-            <DateRangeField
-              label={tr('Zeitraum', 'Period')}
-              value={strengthExportPeriod}
-              onChange={setStrengthExportPeriod}
-              emptyLabel={tr('Alle Einheiten', 'All sessions')}
-              disabled={busy}
-            />
-          </Field>
-          <Button
-            secondary
-            title={tr(
-              'Krafttraining als ZIP exportieren',
-              'Export strength training as ZIP',
-            )}
-            disabled={busy}
-            onPress={() => shareStrength(strengthExportPeriod)}
-          />
-        </Disclosure>
-        <Disclosure
-          title="Backup"
-          subtitle={tr(
-            'Alle Originaldaten und Einstellungen sichern',
-            'Back up all original data and settings',
-          )}
-        >
-          <Button
-            secondary
-            title={tr('Backup exportieren', 'Export backup')}
-            disabled={busy}
-            onPress={() => {
-              void action(async () => {
-                const result = await nativeCall<any>('exportBackup');
-                if (!result.cancelled) {
-                  setMessage(tr('Backup exportiert.', 'Backup exported.'));
-                }
-              });
-            }}
-          />
-          <Button
-            secondary
-            title={tr('Backup wiederherstellen', 'Restore backup')}
-            disabled={busy}
-            onPress={() =>
-              Alert.alert(
-                tr('Backup wiederherstellen?', 'Restore backup?'),
-                tr(
-                  'Wähle ein Runback-Backup. Bereits vorhandene Läufe bleiben erhalten und werden nicht doppelt angelegt.',
-                  'Choose a Runback backup. Runs that already exist stay and are not added twice.',
-                ),
-                [
-                  { text: tr('Zurück', 'Back'), style: 'cancel' },
-                  {
-                    text: tr('Backup wählen', 'Choose backup'),
-                    onPress: () => {
-                      void action(async () => {
-                        const result = await nativeCall<any>('restoreBackup');
-                        if (!result.cancelled) {
-                          await Promise.all([reloadTrainingState(), refresh()]);
-                          setMessage(
-                            result.message ||
-                              tr(
-                                'Backup wiederhergestellt.',
-                                'Backup restored.',
-                              ),
-                          );
-                        }
-                      });
-                    },
-                  },
-                ],
-              )
-            }
-          />
-        </Disclosure>
-        <Disclosure
-          title={tr('Daten löschen', 'Delete data')}
-          subtitle={tr('Alles auf diesem Telefon', 'Everything on this phone')}
-        >
-          <Button
-            danger
-            title={tr('Alle lokalen Daten löschen', 'Delete all local data')}
-            onPress={() =>
-              Alert.alert(
-                tr('Alle lokalen Daten löschen?', 'Delete all local data?'),
-                tr(
-                  'Alle Läufe, Originaldaten, Notizen und Einstellungen auf diesem Telefon werden dauerhaft gelöscht. Exportiere vorher ein Backup, wenn du sie behalten möchtest.',
-                  'All runs, original data, notes, and settings on this phone are deleted permanently. Export a backup first if you want to keep them.',
-                ),
-                [
-                  { text: tr('Behalten', 'Keep'), style: 'cancel' },
-                  {
-                    text: tr('Alles löschen', 'Delete everything'),
-                    style: 'destructive',
-                    onPress: () => {
-                      void action(async () => {
-                        await nativeCall('clearAllData');
+        <Button
+          secondary
+          title={tr('Backup exportieren', 'Export backup')}
+          disabled={busy}
+          onPress={() => {
+            void action(async () => {
+              const result = await nativeCall<any>('exportBackup');
+              if (!result.cancelled) {
+                setMessage(tr('Backup exportiert.', 'Backup exported.'));
+              }
+            });
+          }}
+        />
+        <Button
+          secondary
+          title={tr('Backup wiederherstellen', 'Restore backup')}
+          disabled={busy}
+          onPress={() =>
+            Alert.alert(
+              tr('Backup wiederherstellen?', 'Restore backup?'),
+              tr(
+                'Wähle ein Runback-Backup. Bereits vorhandene Läufe bleiben erhalten und werden nicht doppelt angelegt.',
+                'Choose a Runback backup. Runs that already exist stay and are not added twice.',
+              ),
+              [
+                { text: tr('Zurück', 'Back'), style: 'cancel' },
+                {
+                  text: tr('Backup wählen', 'Choose backup'),
+                  onPress: () => {
+                    void action(async () => {
+                      const result = await nativeCall<any>('restoreBackup');
+                      if (!result.cancelled) {
                         await Promise.all([reloadTrainingState(), refresh()]);
-                        setPage('main');
                         setMessage(
-                          tr('Lokale Daten gelöscht.', 'Local data deleted.'),
+                          result.message ||
+                            tr('Backup wiederhergestellt.', 'Backup restored.'),
                         );
-                      });
-                    },
+                      }
+                    });
                   },
-                ],
-              )
-            }
-          />
-        </Disclosure>
+                },
+              ],
+            )
+          }
+        />
       </View>
+    </>
+  );
+
+  const renderDataDelete = () => (
+    <>
+      <Title>{tr('Daten löschen', 'Delete data')}</Title>
+      <Section title={tr('Bewegungsdaten der Uhr', 'Watch motion data')}>
+        <Row
+          title={tr('Geräte & Sensoren', 'Devices & sensors')}
+          subtitle={tr(
+            'Bewegungsdaten dort löschen; Sätze und Puls bleiben',
+            'Delete motion data there; sets and heart rate stay',
+          )}
+          onPress={() => openPage('devices')}
+        />
+      </Section>
+      <Section
+        title={tr('Alles auf diesem Telefon', 'Everything on this phone')}
+      >
+        <Button
+          danger
+          title={tr('Alle lokalen Daten löschen', 'Delete all local data')}
+          onPress={() =>
+            Alert.alert(
+              tr('Alle lokalen Daten löschen?', 'Delete all local data?'),
+              tr(
+                'Alle Läufe, Originaldaten, Notizen und Einstellungen auf diesem Telefon werden dauerhaft gelöscht. Exportiere vorher ein Backup, wenn du sie behalten möchtest.',
+                'All runs, original data, notes, and settings on this phone are deleted permanently. Export a backup first if you want to keep them.',
+              ),
+              [
+                { text: tr('Behalten', 'Keep'), style: 'cancel' },
+                {
+                  text: tr('Alles löschen', 'Delete everything'),
+                  style: 'destructive',
+                  onPress: () => {
+                    void action(async () => {
+                      await nativeCall('clearAllData');
+                      await Promise.all([reloadTrainingState(), refresh()]);
+                      setPage('main');
+                      setMessage(
+                        tr('Lokale Daten gelöscht.', 'Local data deleted.'),
+                      );
+                    });
+                  },
+                },
+              ],
+            )
+          }
+        />
+      </Section>
     </>
   );
 
@@ -5111,9 +5301,6 @@ export function RunbackApp() {
       }
       disabled={busy}
       onChange={changeFeatures}
-      onOpenHomeSections={() => openPage('features-home')}
-      onOpenNavigation={() => openPage('features-navigation')}
-      onOpenMain={() => openPage('features')}
       onOpenDetails={screen => {
         if (screen === 'music') openPage('music');
         else {
@@ -5137,10 +5324,28 @@ export function RunbackApp() {
     />
   ) : page === 'settings' ? (
     renderSettings()
+  ) : page === 'settings-training' ? (
+    renderTrainingSettings()
+  ) : page === 'settings-display' ? (
+    renderDisplaySettings()
+  ) : page === 'settings-about' ? (
+    renderAbout()
   ) : page === 'devices' ? (
-    renderDevices()
+    renderDevices('devices')
+  ) : page === 'health-connect' ? (
+    renderDevices('health')
+  ) : page === 'weather' ? (
+    renderDevices('weather')
   ) : page === 'data' ? (
     renderData()
+  ) : page === 'data-import' ? (
+    renderDataImport()
+  ) : page === 'data-export' ? (
+    renderDataExport()
+  ) : page === 'data-backup' ? (
+    renderDataBackup()
+  ) : page === 'data-delete' ? (
+    renderDataDelete()
   ) : page === 'vendor-import' ? (
     renderVendorImport()
   ) : page === 'imports' ? (
