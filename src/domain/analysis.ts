@@ -18,8 +18,11 @@ import { fixed, tr } from './i18n';
  * v3: Observation only; the analysis no longer derives a recommendation.
  */
 export const MODEL_VERSION = 'runback-rules-3.0.0';
-/** Data-quality rules; 2: gaps per segment take effect (gapSeconds from distance model 3.0). */
-export const QUALITY_VERSION = 'runback-quality-2';
+/**
+ * Data-quality rules; 2: gaps per segment take effect (gapSeconds from distance model 3.0).
+ * 3: GPS gaps no longer make a segment's heart rate unusable; they only limit pace.
+ */
+export const QUALITY_VERSION = 'runback-quality-3';
 export const PACING_METHOD = 'pacing-fade-v2';
 export const MAX_SEGMENTS = 500;
 /** Ascent plus descent per distance up to which a segment counts as flat. */
@@ -231,12 +234,14 @@ export function assessQuality(run: RunSummary): QualityReport {
         id,
       );
     }
+    // Heart rate rule: a plausible mean (35–230 bpm), no suspected cadence lock,
+    // at least 3 min long, and not a pause or interval recovery. A GPS gap does
+    // not count: the heart rate sensor keeps measuring without GPS.
     if (
       hrOK &&
       !segmentLock &&
       timeOK &&
       s.durationSeconds >= 180 &&
-      !hasGap &&
       s.phase !== 'pause' &&
       s.phase !== 'recovery'
     ) {

@@ -28,6 +28,31 @@ const run = (overrides: Partial<RunSummary> = {}): RunSummary => ({
 });
 
 describe('domain rules', () => {
+  it('keeps heart rate usable when segments have GPS gaps', () => {
+    // 28.10.: a 22 s GPS gap in km 1 and gaps while walking left no
+    // usable heart rate segment despite 99.97 % heart rate coverage.
+    const withGap = (id: string, gapSeconds: number) => ({
+      ...segment(330, id),
+      avgHeartRate: 160,
+      avgCadence: 172,
+      gapSeconds,
+    });
+    const result = analyzeRun(
+      run({
+        avgHeartRate: 160,
+        segments: [withGap('s1', 22), withGap('s2', 8), withGap('s3', 12)],
+      }),
+    );
+    expect(result.quality.heartRateUsable).toBe(true);
+    expect(result.quality.usableHeartRateSegmentIds).toEqual([
+      's1',
+      's2',
+      's3',
+    ]);
+    // Pace stays limited by the gaps.
+    expect(result.quality.usablePaceSegmentIds).toEqual([]);
+  });
+
   it('describes the pace split as an observation, without a recommendation', () => {
     const result = analyzeRun(run());
 
