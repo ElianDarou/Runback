@@ -187,6 +187,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener {
                         val routePlanId = intent.getStringExtra("routePlanId")
                         recordingSource = source
                         startedByPeer = !syncPeers
+                        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).cancel(AUTO_FINISH_NOTIFICATION_ID)
                         nextSampleSequence = 0L
                         val requestedTarget = RunTargetGuidance.parse(intent.getStringExtra("target"))
                         val session = if (routePlanId.isNullOrBlank()) {
@@ -265,6 +266,11 @@ class RecordingService : Service(), SensorEventListener, LocationListener {
 
     private fun checkAutoFinish() {
         if (recording) return
+        // The setting lives on the phone: while both record, the phone decides and tells the watch.
+        if (!speaksHere()) {
+            scheduleAutoFinish()
+            return
+        }
         val limit = RunAutoFinish.limitMinutes(store.settings())
         val since = store.activePausedSince() ?: return
         if (!RunAutoFinish.due(since, System.currentTimeMillis(), limit)) {
@@ -276,7 +282,9 @@ class RecordingService : Service(), SensorEventListener, LocationListener {
         val finished = store.finishAfterPause(limit, commandId) ?: return
         routeSpeech?.stop()
         store.clearRouteAssignment(finishedId)
-        publishControl(FINISH, finishedId, commandId)
+        // Always tell the other device: a service started remotely otherwise never publishes.
+        runCatching { controlSink?.publish(FINISH, finishedId, commandId) }
+            .onFailure { Log.w(TAG, "Could not queue the automatic end", it) }
         publishMusicState()
         showAutoFinished(finishedId, finished.optString("sport"), limit)
         shutdown()
@@ -305,7 +313,8 @@ class RecordingService : Service(), SensorEventListener, LocationListener {
         (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).cancel(AUTO_FINISH_NOTIFICATION_ID)
         val session = runId?.let { store.reopenAutoFinished(it) }
         if (session == null) {
-            shutdown()
+            // An old notification must not stop a recording that started since.
+            if (store.active() == null) shutdown() else updateNotification()
             return
         }
         activeId = session.getString("id")
