@@ -72,6 +72,8 @@ class RecordingService : Service(), SensorEventListener, LocationListener {
     private var runIntervals: RunIntervals? = null
     private var cueOutput = "both"
     private var latestGuidanceGpsAt = 0L
+    /** Started by the other device: that one speaks (`CueOwner`). */
+    private var startedByPeer = false
 
     override fun onCreate() {
         super.onCreate()
@@ -184,6 +186,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener {
                         val sport = intent.getStringExtra("sport") ?: "running"
                         val routePlanId = intent.getStringExtra("routePlanId")
                         recordingSource = source
+                        startedByPeer = !syncPeers
                         nextSampleSequence = 0L
                         val requestedTarget = RunTargetGuidance.parse(intent.getStringExtra("target"))
                         val session = if (routePlanId.isNullOrBlank()) {
@@ -578,11 +581,12 @@ class RecordingService : Service(), SensorEventListener, LocationListener {
     }
 
     private fun deliverGoalCue(runId: String, cue: GoalCue, version: Int) {
-        runCatching {
+        val speaks = speaksHere()
+        if (speaks) runCatching {
             store.addEvent(runId, "goal_cue", JSONObject()
                 .put("code", cue.code).put("message", cue.message).put("model_version", version))
         }
-        if ((cueOutput == "voice" || cueOutput == "both") && routeSpeechReady) {
+        if ((cueOutput == "voice" || cueOutput == "both") && routeSpeechReady && speaks) {
             mainHandler.post {
                 routeSpeech?.speak(cue.message, TextToSpeech.QUEUE_ADD, "runback-goal-${cue.code}")
             }
@@ -598,6 +602,9 @@ class RecordingService : Service(), SensorEventListener, LocationListener {
             getSystemService(Vibrator::class.java)?.vibrate(VibrationEffect.createWaveform(pattern, -1))
         }
     }
+
+    private fun speaksHere(): Boolean =
+        CueOwner.speaksHere(recordingSource, activeId, startedByPeer, runCatching { store.getDocument("wearLinkStatus") }.getOrNull())
 
     private fun maybeGuideHeartRate() {
         val guidance = targetGuidance ?: return
@@ -626,7 +633,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener {
         // Felt even when music drowns the voice; one short double pulse, unlike goal cues.
         if (announcer.vibrate) getSystemService(Vibrator::class.java)
             ?.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 80, 100, 80), -1))
-        if (routeSpeechReady && routeSpeech?.isSpeaking != true) {
+        if (routeSpeechReady && routeSpeech?.isSpeaking != true && speaksHere()) {
             mainHandler.post {
                 routeSpeech?.speak(text, TextToSpeech.QUEUE_ADD, "runback-progress")
             }
@@ -636,13 +643,14 @@ class RecordingService : Service(), SensorEventListener, LocationListener {
 
     private fun deliverTargetCue(cue: TargetCue) {
         val guidance = targetGuidance ?: return
-        activeId?.let { runId ->
+        val speaks = speaksHere()
+        if (speaks) activeId?.let { runId ->
             runCatching {
                 store.addEvent(runId, "target_cue", JSONObject()
                     .put("code", cue.code).put("message", cue.message).put("model_version", RunTargetGuidance.VERSION))
             }
         }
-        if (guidance.wantsVoice() && routeSpeechReady && routeSpeech?.isSpeaking != true) {
+        if (guidance.wantsVoice() && routeSpeechReady && routeSpeech?.isSpeaking != true && speaks) {
             mainHandler.post {
                 routeSpeech?.speak(cue.message, TextToSpeech.QUEUE_ADD, "runback-target-${cue.code}")
             }
@@ -838,7 +846,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener {
     }
 
     private fun speakRoute(text: String) {
-        if (!routeSpeechReady || text.isBlank()) return
+        if (!routeSpeechReady || text.isBlank() || !speaksHere()) return
         mainHandler.post {
             routeSpeech?.speak(text, TextToSpeech.QUEUE_FLUSH, "runback-route-service")
         }
