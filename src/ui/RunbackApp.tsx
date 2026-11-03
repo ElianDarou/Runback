@@ -765,6 +765,9 @@ export function RunbackApp() {
   // Today: sport, run type, template, and goal are picked when starting, not
   // kept on the page. The sheet remembers its kind.
   const [startSheet, setStartSheet] = useState<StartKind | null>(null);
+  const [gpsWarmup, setGpsWarmup] = useState<'searching' | 'ready' | null>(
+    null,
+  );
   const [startTemplateId, setStartTemplateId] = useState<string | null>(null);
   // Add run types afterwards: one run at a time; skipped ones stay open.
   const [purposeSheet, setPurposeSheet] = useState(false);
@@ -951,6 +954,35 @@ export function RunbackApp() {
     ? chosenSport
     : sports[0] ?? 'running';
   const words = sportWords(sport);
+  // While the start sheet of a run or ride is open, the phone already searches
+  // GPS, so the recording does not begin with a gap. Only a status: starting
+  // without GPS stays possible (treadmill, indoors).
+  const warmGps = startSheet === 'run';
+  useEffect(() => {
+    if (!warmGps) return;
+    let live = true;
+    const poll = async (method: string) => {
+      try {
+        const status = await nativeCall<{ state?: string } | null>(method);
+        if (!live) return;
+        setGpsWarmup(
+          status?.state === 'ready' || status?.state === 'searching'
+            ? status.state
+            : null,
+        );
+      } catch {
+        if (live) setGpsWarmup(null);
+      }
+    };
+    void poll('startGpsWarmup');
+    const timer = setInterval(() => void poll('getGpsWarmup'), 1000);
+    return () => {
+      live = false;
+      clearInterval(timer);
+      setGpsWarmup(null);
+      nativeCall('stopGpsWarmup').catch(() => undefined);
+    };
+  }, [warmGps]);
   const runTarget = normalizeRunTarget(settings.runTarget);
   const runTargetMemory = normalizeRunTargetMemory(settings.runTargetMemory);
   const runAnnouncements = normalizeRunAnnouncementSettings(
@@ -2929,6 +2961,24 @@ export function RunbackApp() {
           ) : null}
         </>
       )}
+      {startSheet === 'run' && gpsWarmup ? (
+        <Row
+          title={tr('GPS', 'GPS')}
+          subtitle={
+            gpsWarmup === 'ready'
+              ? tr('GPS bereit', 'GPS ready')
+              : tr(
+                  'Sucht Signal. Warte kurz für einen genauen Start.',
+                  'Searching for a signal. Wait a moment for an accurate start.',
+                )
+          }
+          trailing={
+            <Text style={styles.greenText}>
+              {gpsWarmup === 'ready' ? '✓' : ''}
+            </Text>
+          }
+        />
+      ) : null}
       <Button
         title={
           startSheet === 'strength'

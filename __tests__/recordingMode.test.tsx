@@ -216,6 +216,27 @@ describe('Free recording on Today', () => {
     expect(findPressable('Radfahrt beenden')).toBeTruthy();
   });
 
+  it('searches GPS while the run start sheet is open and says when it is ready', async () => {
+    let state = 'searching';
+    (nativeCall as jest.Mock).mockImplementation(async (method: string) =>
+      method === 'startGpsWarmup' || method === 'getGpsWarmup'
+        ? { state }
+        : {},
+    );
+    await mount();
+    await tap('Lauf starten');
+    expect(nativeCall).toHaveBeenCalledWith('startGpsWarmup');
+    expect(screenText()).toContain('Sucht Signal');
+    state = 'ready';
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 1100));
+    });
+    expect(screenText()).toContain('GPS bereit');
+    // Starting stays possible either way; the search ends with the sheet.
+    await tap('Aufzeichnung starten');
+    expect(nativeCall).toHaveBeenCalledWith('stopGpsWarmup');
+  });
+
   it('puts the planned run first and keeps a free recording one tap away', async () => {
     stored.settings.schedule = {
       ...normalizeSchedule(),

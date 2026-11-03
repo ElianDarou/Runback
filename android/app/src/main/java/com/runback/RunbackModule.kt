@@ -301,6 +301,10 @@ class RunbackModule(private val context: ReactApplicationContext) : ReactContext
 
     // Motion data from strength training: status and delete; exported
     // with the strength export (shareExportArchive). JS only sees counters.
+    /** GPS search while the start sheet of a run is open (`GpsWarmup`); only state and accuracy. */
+    @ReactMethod fun startGpsWarmup(promise: Promise) = task(promise) { GpsWarmup.start(context) }
+    @ReactMethod fun getGpsWarmup(promise: Promise) = task(promise) { GpsWarmup.status() }
+    @ReactMethod fun stopGpsWarmup(promise: Promise) = task(promise) { GpsWarmup.stop(); JSONObject.NULL }
     @ReactMethod fun getMotionStatus(promise: Promise) = task(promise) { MotionSessions.status(context, store) }
     /** What the watch measured and transferred for a strength session; `null` without a watch. */
     @ReactMethod fun getStrengthWatch(id: String, promise: Promise) = task(promise) { MotionSessions.watchInfo(context, store, id) ?: JSONObject.NULL }
