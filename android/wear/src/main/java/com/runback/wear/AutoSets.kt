@@ -138,9 +138,20 @@ class AutoSets(
         review = Review(id, t, set.count, set.uncertain, set.count, 0, false, decideAt, Status.OPEN, title = targetTitle,
             endedAt = System.currentTimeMillis() - (SystemClock.elapsedRealtimeNanos() - set.endNanos) / 1_000_000L)
         decideAt?.let { scheduleAuto(id, it) }
+        later(REMIND_AFTER_MS) { remindIfOpen(id) }
         alert()
         notifyReview()
         listener?.invoke()
+    }
+
+    /** Still not confirmed after a while: vibrate and show the question again. */
+    private fun remindIfOpen(id: String) {
+        val current = review ?: return
+        if (current.id != id || current.status != Status.OPEN) return
+        alert()
+        cancelReview()
+        notifyReview()
+        later(REMIND_AFTER_MS) { remindIfOpen(id) }
     }
 
     private fun scheduleAuto(id: String, at: Long) {
@@ -294,6 +305,8 @@ class AutoSets(
         const val AUTO_CONFIRM_MS = 12_000L
         /** After −/+ it waits longer; then the set count applies. */
         const val AFTER_TOUCH_MS = 30_000L
+        /** An open question reminds again after this time, until it is answered. */
+        const val REMIND_AFTER_MS = 3 * 60_000L
         private const val CHANNEL = "runback_sets"
         private const val NOTIFICATION_ID = 4312
 

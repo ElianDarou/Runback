@@ -42,9 +42,11 @@ class AutoSetsTest {
         timerEnabled: (Long) -> Boolean = { restTimer },
     ): JSONObject {
         val events = mutableListOf<JSONObject>()
+        val scheduled = mutableListOf<Long>()
+        // Without auto-confirm only the reminder is scheduled, nothing is sent.
         val sets = AutoSets(RuntimeEnvironment.getApplication(), "session-1", hasGyro = true, autoConfirm = false,
             log = { _, event -> events += event },
-            later = { _, _ -> error("Without auto-confirm nothing is scheduled to be sent") })
+            later = { delay, _ -> scheduled += delay })
         var current = session(restSeconds)
         val random = Random(7)
         try {
@@ -69,6 +71,8 @@ class AutoSetsTest {
                 sets.tick()
             }
             assertEquals(listOf(SetDetectionLog.DETECTED), events.map { it.getString("type") })
+            // 31.10.: a detected bench press set stayed unconfirmed for the whole session.
+            assertEquals(listOf(AutoSets.REMIND_AFTER_MS), scheduled)
             assertNotNull(AutoSets.review)
             assertEquals("next", AutoSets.review!!.target.setId)
             assertEquals(8, AutoSets.review!!.reps)
