@@ -228,6 +228,42 @@ class RunStore(context: Context) : DocumentStore {
             present(read(id))
         }
     }
+    /** Start of the open pause of the active run, or null while it records. */
+    fun activePausedSince(): Long? = locked {
+        val id = activeId() ?: return@locked null
+        if (read(id).optString("status") == "recording") return@locked null
+        val all = events(id)
+        RunAutoFinish.openPauseSince((0 until all.length()).mapNotNull { index ->
+            all.optJSONObject(index)?.let { Pair(it.optString("type"), it.optLong("at")) }
+        })
+    }
+    /** Ends the active run after a long pause; the end stays at the start of the pause. */
+    fun finishAfterPause(limitMinutes: Int, commandId: String): JSONObject? = locked {
+        val id = activeId() ?: return@locked null
+        transaction {
+            val run = read(id); run.put("status", "completed"); run.remove("_tick"); write(run)
+            addEvent(id, "finish", JSONObject().put("commandId", commandId).put("auto", true).put("pauseMinutes", limitMinutes))
+            derive(id)
+            present(read(id))
+        }
+    }
+    /**
+     * Undoes an automatic end: the run is paused again. Only the run's last event may be
+     * the automatic end, and no other recording may be active.
+     */
+    fun reopenAutoFinished(id: String): JSONObject? = locked {
+        if (activeId() != null) return@locked null
+        val run = runCatching { read(id) }.getOrNull() ?: return@locked null
+        val all = events(id)
+        val last = all.optJSONObject(all.length() - 1)
+        if (run.optString("status") != "completed" || last?.optString("type") != "finish" ||
+            last.optJSONObject("data")?.optBoolean("auto") != true) return@locked null
+        transaction {
+            run.put("status", "paused"); write(run)
+            addEvent(id, "reopen", JSONObject())
+            present(read(id))
+        }
+    }
     fun resume(commandId: String? = null): JSONObject? = locked {
         val id = activeId() ?: return@locked null
         val run = read(id)

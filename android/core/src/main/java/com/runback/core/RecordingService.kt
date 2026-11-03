@@ -160,6 +160,10 @@ class RecordingService : Service(), SensorEventListener, LocationListener {
                     return@post
                 }
                 intent.getStringExtra("source")?.let { recordingSource = it }
+                if (intent.action == REOPEN) {
+                    reopenAutoFinished(intent.getStringExtra("runId"))
+                    return@post
+                }
                 if (intent.action != START) {
                     val active = store.active()
                     activeId = active?.optString("id")?.takeIf { it.isNotBlank() }
@@ -206,6 +210,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener {
                         activeId?.let { store.checkpoint(it) }
                         updateNotification()
                         activeId?.let { publishControl(PAUSE, it, commandId) }
+                        scheduleAutoFinish()
                     }
                     RESUME -> {
                         val session = store.resume(commandId)
@@ -217,6 +222,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener {
                             loadRouteGuidance(null, activeId)
                             loadTargetGuidance(session, resumed = true)
                             if (recording) beginListening()
+                            if (recording) worker.removeCallbacks(autoFinishCheck)
                             updateNotification()
                             activeId?.let { publishControl(RESUME, it, commandId) }
                         }
@@ -239,6 +245,71 @@ class RecordingService : Service(), SensorEventListener, LocationListener {
             }
         }
         return START_STICKY
+    }
+
+    private val autoFinishCheck = Runnable {
+        try { checkAutoFinish() } catch (error: Exception) { Log.w(TAG, "Automatic end failed", error) }
+    }
+
+    /**
+     * Checks once a minute while paused. The device may sleep through a check; the end
+     * stays at the start of the pause anyway, so a late check only delays it.
+     */
+    private fun scheduleAutoFinish() {
+        worker.removeCallbacks(autoFinishCheck)
+        worker.postDelayed(autoFinishCheck, AUTO_FINISH_CHECK_MS)
+    }
+
+    private fun checkAutoFinish() {
+        if (recording) return
+        val limit = RunAutoFinish.limitMinutes(store.settings())
+        val since = store.activePausedSince() ?: return
+        if (!RunAutoFinish.due(since, System.currentTimeMillis(), limit)) {
+            if (limit > 0) scheduleAutoFinish()
+            return
+        }
+        val finishedId = activeId ?: return
+        val commandId = UUID.randomUUID().toString()
+        val finished = store.finishAfterPause(limit, commandId) ?: return
+        routeSpeech?.stop()
+        store.clearRouteAssignment(finishedId)
+        publishControl(FINISH, finishedId, commandId)
+        publishMusicState()
+        showAutoFinished(finishedId, finished.optString("sport"), limit)
+        shutdown()
+    }
+
+    private fun showAutoFinished(runId: String, sport: String, limit: Int) {
+        val undo = PendingIntent.getForegroundService(this, 3,
+            Intent(this, RecordingService::class.java).setAction(REOPEN).putExtra("runId", runId),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val builder = Notification.Builder(this, CHANNEL)
+            .setSmallIcon(android.R.drawable.ic_media_pause)
+            .setContentTitle("Runback")
+            .setContentText(Lang.tr("${sportNoun(sport)} nach $limit min Pause beendet.", "${sportNoun(sport)} ended after a $limit min pause."))
+            .setAutoCancel(true)
+            .setCategory(Notification.CATEGORY_WORKOUT)
+            .setColor(0xff7ee2a8.toInt())
+            .addAction(Notification.Action.Builder(null, Lang.tr("Rückgängig", "Undo"), undo).build())
+        packageManager.getLaunchIntentForPackage(packageName)?.let { open ->
+            builder.setContentIntent(PendingIntent.getActivity(this, 0, open, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
+        }
+        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(AUTO_FINISH_NOTIFICATION_ID, builder.build())
+    }
+
+    /** Undo from the notification: the run is paused again and can be resumed or ended. */
+    private fun reopenAutoFinished(runId: String?) {
+        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).cancel(AUTO_FINISH_NOTIFICATION_ID)
+        val session = runId?.let { store.reopenAutoFinished(it) }
+        if (session == null) {
+            shutdown()
+            return
+        }
+        activeId = session.getString("id")
+        session.optString("source").takeIf { it.isNotBlank() }?.let { recordingSource = it }
+        recording = false
+        updateNotification()
+        scheduleAutoFinish()
     }
 
     private fun beginListening() {
@@ -1008,6 +1079,10 @@ class RecordingService : Service(), SensorEventListener, LocationListener {
         const val PAUSE = "com.runback.recording.PAUSE"
         const val RESUME = "com.runback.recording.RESUME"
         const val FINISH = "com.runback.recording.FINISH"
+        /** Undo of an automatic end; only from the notification. */
+        private const val REOPEN = "com.runback.recording.REOPEN"
+        private const val AUTO_FINISH_NOTIFICATION_ID = 732
+        private const val AUTO_FINISH_CHECK_MS = 60_000L
         private const val TAG = "RunbackRecording"
         private const val CHANNEL = "runback_recording"
         private const val NOTIFICATION_ID = 731

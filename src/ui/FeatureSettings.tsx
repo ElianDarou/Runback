@@ -11,6 +11,9 @@ import {
   type FeatureId,
   type OptionalTab,
   AFTER_RUN_OPTIONS,
+  AUTO_FINISH_OPTIONS,
+  type AutoFinishMinutes,
+  autoFinishLabel,
   RECORDING_PRIMARIES,
   REST_SECONDS_OPTIONS,
   SORENESS_PROMPTS,
@@ -568,6 +571,30 @@ export function FeatureSettings({
                 }))}
                 value={features.recording.afterRun}
                 onChange={afterRun => patch('recording', { afterRun })}
+                disabled={disabled}
+              />
+            </Field>
+            <Field
+              label={tr(
+                'Nach langer Pause beenden',
+                'End after a long pause',
+              )}
+            >
+              <ChipGroup
+                label={tr(
+                  'Nach wie vielen Minuten Pause die Aufzeichnung endet',
+                  'After how many minutes of pause the recording ends',
+                )}
+                options={AUTO_FINISH_OPTIONS.map(value => ({
+                  value: String(value),
+                  label: autoFinishLabel(value),
+                }))}
+                value={String(features.recording.autoFinishMinutes)}
+                onChange={value =>
+                  patch('recording', {
+                    autoFinishMinutes: Number(value) as AutoFinishMinutes,
+                  })
+                }
                 disabled={disabled}
               />
             </Field>

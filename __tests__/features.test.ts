@@ -52,6 +52,26 @@ describe('normalizeFeatures', () => {
     ).toBe(false);
   });
 
+  it('ends a paused recording after 30 minutes unless chosen otherwise', () => {
+    expect(normalizeFeatures(undefined).recording.autoFinishMinutes).toBe(30);
+    expect(
+      normalizeFeatures({ recording: { autoFinishMinutes: 0 } }).recording
+        .autoFinishMinutes,
+    ).toBe(0);
+    expect(
+      normalizeFeatures({ recording: { autoFinishMinutes: 60 } }).recording
+        .autoFinishMinutes,
+    ).toBe(60);
+    expect(
+      normalizeFeatures({ recording: { autoFinishMinutes: 7 } }).recording
+        .autoFinishMinutes,
+    ).toBe(30);
+    expect(
+      normalizeFeatures({ recording: { autoFinishMinutes: '60' } }).recording
+        .autoFinishMinutes,
+    ).toBe(30);
+  });
+
   it('returns the default for missing or broken input', () => {
     expect(normalizeFeatures(undefined)).toEqual(DEFAULT_FEATURES);
     expect(normalizeFeatures('unsinn')).toEqual(DEFAULT_FEATURES);

@@ -204,6 +204,11 @@ export interface FeatureSettings {
     targets: boolean;
     routes: boolean;
     afterRun: AfterRun;
+    /**
+     * A paused recording ends after this many minutes; 0 = never. Kotlin reads it
+     * (`RunAutoFinish`); the end stays at the start of the pause.
+     */
+    autoFinishMinutes: AutoFinishMinutes;
   };
   strength: {
     restTimer: boolean;
@@ -252,6 +257,8 @@ export const RECORDING_PRIMARIES: RecordingPrimary[] = [
   'distance',
   'heartRate',
 ];
+export const AUTO_FINISH_OPTIONS = [0, 15, 30, 60, 120] as const;
+export type AutoFinishMinutes = (typeof AUTO_FINISH_OPTIONS)[number];
 export const REST_SECONDS_OPTIONS = [60, 90, 120, 180] as const;
 const MIN_REST_SECONDS = 0;
 const MAX_REST_SECONDS = 600;
@@ -274,6 +281,7 @@ export const DEFAULT_FEATURES: FeatureSettings = {
     targets: true,
     routes: true,
     afterRun: 'detail',
+    autoFinishMinutes: 30,
   },
   strength: {
     restTimer: true,
@@ -411,6 +419,11 @@ export function normalizeFeatures(
         AFTER_RUN_OPTIONS,
         d.recording.afterRun,
       ),
+      autoFinishMinutes: AUTO_FINISH_OPTIONS.includes(
+        recording.autoFinishMinutes as AutoFinishMinutes,
+      )
+        ? (recording.autoFinishMinutes as AutoFinishMinutes)
+        : d.recording.autoFinishMinutes,
     },
     strength: {
       restTimer: bool(strength.restTimer, d.strength.restTimer),
@@ -672,6 +685,10 @@ export function afterRunLabel(value: AfterRun): string {
     case 'home':
       return tr('Direkt zurück zu Heute', 'Straight back to Today');
   }
+}
+/** Option label for the automatic end after a pause, in the active language. */
+export function autoFinishLabel(value: AutoFinishMinutes): string {
+  return value === 0 ? tr('Nie', 'Never') : `${value} min`;
 }
 /** Name of a home section, in the active language. */
 export function homeSectionLabel(value: HomeSection): string {
