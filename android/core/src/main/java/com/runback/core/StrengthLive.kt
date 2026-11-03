@@ -106,6 +106,17 @@ object StrengthLive {
         return null
     }
 
+    /** Like `lastWeightKg` in strength.ts: the newest weight used for the exercise if the reference has none. */
+    fun lastWeightKg(history: List<JSONObject>, exerciseId: String, position: Int): Double? {
+        referenceSet(history, exerciseId, position)?.number("actualWeightKg")?.takeIf { it > 0 }?.let { return it }
+        for (session in history) {
+            val exercise = exercises(session).firstOrNull { it.optString("exerciseId") == exerciseId } ?: continue
+            val weighted = sets(exercise).filter { isCompleted(it) && (it.number("actualWeightKg") ?: 0.0) > 0 }
+            if (weighted.isNotEmpty()) return weighted[minOf(position, weighted.size - 1)].number("actualWeightKg")
+        }
+        return null
+    }
+
     /** What the app would write into the input field for this set. */
     fun prefill(history: List<JSONObject>, exercise: JSONObject, set: JSONObject): Prefill {
         val position = sets(exercise).indexOfFirst { it.optString("id") == set.optString("id") }
@@ -113,7 +124,8 @@ object StrengthLive {
         val reference = if (position >= 0) referenceSet(history, exercise.optString("exerciseId"), position) else null
         val timed = planned.optString("kind") == "timed"
         return Prefill(
-            weightKg = set.number("actualWeightKg") ?: planned.number("weightKg") ?: reference?.number("actualWeightKg"),
+            weightKg = set.number("actualWeightKg") ?: planned.number("weightKg")
+                ?: if (position >= 0) lastWeightKg(history, exercise.optString("exerciseId"), position) else null,
             reps = if (timed) set.whole("actualReps") ?: planned.whole("reps")
                 else set.whole("actualReps") ?: planned.whole("reps") ?: reference?.whole("actualReps"),
             seconds = if (timed) set.whole("actualSeconds") ?: planned.whole("seconds") ?: reference?.whole("actualSeconds")

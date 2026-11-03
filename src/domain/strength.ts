@@ -677,6 +677,34 @@ export function referenceSet(
 }
 
 /**
+ * Weight to prefill: the comparable set's weight, else the newest weight ever
+ * used for this exercise. A recent set saved without weight must not hide the
+ * weight of the sessions before it. Only a preset, never an actual value.
+ */
+export function lastWeightKg(
+  history: StrengthSession[],
+  exerciseId: string,
+  setIndex: number,
+): number | undefined {
+  const reference = referenceSet(history, exerciseId, setIndex);
+  if (reference?.actualWeightKg) return reference.actualWeightKg;
+  for (const session of history) {
+    const sets = (
+      session.exercises.find(candidate => candidate.exerciseId === exerciseId)
+        ?.sets ?? []
+    ).filter(
+      candidate =>
+        isSetCompleted(candidate) &&
+        typeof candidate.actualWeightKg === 'number' &&
+        candidate.actualWeightKg > 0,
+    );
+    const set = sets[Math.min(setIndex, sets.length - 1)];
+    if (set) return set.actualWeightKg;
+  }
+  return undefined;
+}
+
+/**
  * Short form of the last comparable performance, e.g. `80 kg × 8`.
  * From the history, so training shows what it builds on.
  */

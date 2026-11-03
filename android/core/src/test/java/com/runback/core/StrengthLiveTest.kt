@@ -79,6 +79,19 @@ class StrengthLiveTest {
         assertEquals(6_000L, decoded.getLong("endedAt"))
     }
 
+    @Test fun prefillFindsTheLastWeightBehindASetWithoutWeight() {
+        val row = exercise("seated_cable_row", "Row", set("a", planned(reps = 12)))
+        val withoutWeight = session(exercise("seated_cable_row", "Row",
+            set("x", planned(), 10L).put("actualReps", 16)))
+        val weighted = session(exercise("seated_cable_row", "Row",
+            set("y", planned(), 5L).put("actualReps", 12).put("actualWeightKg", 45.0)))
+        val next = StrengthLive.apply(session(row), command(StrengthLive.COMPLETE_SET, "setId" to "a"),
+            50_000L, listOf(withoutWeight, weighted))!!
+        val done = next.getJSONArray("exercises").getJSONObject(0).getJSONArray("sets").getJSONObject(0)
+        assertEquals(45.0, done.getDouble("actualWeightKg"), 0.0)
+        assertEquals(12, done.getInt("actualReps"))
+    }
+
     @Test fun completeSetWithoutAnyValueLeavesValuesUnknown() {
         val free = exercise("row", "Row", set("a", JSONObject().put("kind", "normal").put("loadKind", "kg")))
         val next = StrengthLive.apply(session(free), command(StrengthLive.COMPLETE_SET), 5_000L, emptyList())!!

@@ -29,6 +29,7 @@ import {
   type StrengthSession,
   type WorkoutTemplate,
   isAccidentalStrengthSession,
+  lastWeightKg,
 } from '../src/domain/strength';
 import { strengthActivity } from '../src/domain/planView';
 import { strengthSession } from './fixtures/strengthSessions';
@@ -696,5 +697,37 @@ describe('isAccidentalStrengthSession', () => {
     expect(
       isAccidentalStrengthSession(empty(2, { endTime: undefined })),
     ).toBe(false);
+  });
+});
+
+describe('lastWeightKg', () => {
+  const start = new Date(2026, 9, 1, 18).getTime();
+  const DAY_MS = 24 * 3600 * 1000;
+  const row = (at: number, weightKg?: number) =>
+    strengthSession(`row-${at}`, start + at * DAY_MS, [
+      [
+        'seated_cable_row',
+        'Rudern am Kabel sitzend',
+        [
+          { weightKg, reps: 12, at: 5 },
+          { weightKg, reps: 10, at: 8 },
+        ],
+      ],
+    ]);
+
+  it('finds the last weight behind a set saved without weight', () => {
+    // 30.10.: rows saved with reps only must not hide the 45 kg from before.
+    const history = [row(29), row(20, 45)];
+    expect(referenceSet(history, 'seated_cable_row', 0)?.actualWeightKg).toBe(
+      undefined,
+    );
+    expect(lastWeightKg(history, 'seated_cable_row', 0)).toBe(45);
+    // A later set than ever done takes the last weighted set.
+    expect(lastWeightKg(history, 'seated_cable_row', 4)).toBe(45);
+  });
+
+  it('stays unknown without any weight', () => {
+    expect(lastWeightKg([row(29)], 'seated_cable_row', 0)).toBeUndefined();
+    expect(lastWeightKg([], 'seated_cable_row', 0)).toBeUndefined();
   });
 });

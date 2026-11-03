@@ -20,6 +20,7 @@ import {
   formatWeight,
   referenceLabel,
   referenceSet,
+  lastWeightKg,
   restRemaining,
   sessionProgress,
   type LoggedSet,
@@ -676,11 +677,16 @@ export function WorkoutScreen({
               current.exerciseId,
               position,
             );
-            return previous
+            const weightKg = lastWeightKg(
+              history,
+              current.exerciseId,
+              position,
+            );
+            return previous || weightKg !== undefined
               ? {
-                  weightKg: previous.actualWeightKg,
-                  reps: previous.actualReps,
-                  seconds: previous.actualSeconds,
+                  weightKg,
+                  reps: previous?.actualReps,
+                  seconds: previous?.actualSeconds,
                 }
               : null;
           })
