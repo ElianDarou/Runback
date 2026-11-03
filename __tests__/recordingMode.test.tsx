@@ -229,7 +229,7 @@ describe('Free recording on Today', () => {
     expect(screenText()).toContain('Sucht Signal');
     state = 'ready';
     await act(async () => {
-      await new Promise(resolve => setTimeout(resolve, 1100));
+      await new Promise<void>(resolve => setTimeout(resolve, 1100));
     });
     expect(screenText()).toContain('GPS bereit');
     // Starting stays possible either way; the search ends with the sheet.
