@@ -960,7 +960,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener {
             null, if (paused) Lang.tr("Fortsetzen", "Resume") else Lang.tr("Pause", "Pause"), actionIntent(if (paused) RESUME else PAUSE, 1)
         ).build())
         builder.addAction(Notification.Action.Builder(null, Lang.tr("Beenden", "End"), actionIntent(FINISH, 2)).build())
-        return builder.build()
+        return WearWorkoutNotification.attach(this, NOTIFICATION_ID, builder.build())
     }
 
     private fun actionIntent(action: String, requestCode: Int): PendingIntent = PendingIntent.getForegroundService(

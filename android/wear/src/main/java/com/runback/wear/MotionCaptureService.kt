@@ -28,6 +28,7 @@ import com.runback.core.MotionFormat
 import com.runback.core.RepProfiles
 import com.runback.core.SetDetector
 import com.runback.core.StrengthHeart
+import com.runback.core.WearWorkoutNotification
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedOutputStream
@@ -333,13 +334,15 @@ class MotionCaptureService : Service(), SensorEventListener {
         val open = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        return Notification.Builder(this, CHANNEL)
+        val notification = Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_runback)
             .setContentTitle(Lang.tr("Krafttraining", "Strength training"))
             .setContentText(Lang.tr("Aufzeichnung läuft", "Recording"))
             .setContentIntent(open)
             .setOngoing(true)
+            .setCategory(Notification.CATEGORY_WORKOUT)
             .build()
+        return WearWorkoutNotification.attach(this, NOTIFICATION_ID, notification)
     }
 
     companion object {

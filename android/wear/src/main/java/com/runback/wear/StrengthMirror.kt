@@ -23,6 +23,7 @@ import com.runback.core.RestCue
 import com.runback.core.RunStore
 import com.runback.core.StrengthLive
 import com.runback.core.WearProtocol
+import com.runback.core.WearWorkoutNotification
 import org.json.JSONObject
 import java.util.concurrent.Executors
 import java.util.Calendar
@@ -253,7 +254,7 @@ object StrengthMirror {
                 command(if (paused) StrengthLive.RESUME_REST else StrengthLive.PAUSE_REST, state)))
             builder.addAction(action(context, Lang.tr("Pause überspringen", "Skip rest"), 3, command(StrengthLive.SKIP_REST, state)))
         }
-        manager.notify(NOTIFICATION_ID, builder.build())
+        manager.notify(NOTIFICATION_ID, WearWorkoutNotification.attach(context, NOTIFICATION_ID, builder.build()))
     }
 
     private fun action(context: Context, label: String, requestCode: Int, command: JSONObject): Notification.Action {
