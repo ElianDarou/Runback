@@ -20,7 +20,8 @@ import { tr } from './i18n';
  * Only what was ticked off is counted; planned values never appear as actual
  * values. Without a basis there is `undefined` instead of a number.
  */
-export const STRENGTH_SESSION_VERSION = 'strength-session-v2';
+/** v3: sets ticked off in a batch no longer count for set intervals. */
+export const STRENGTH_SESSION_VERSION = 'strength-session-v3';
 const DAY = 24 * 60 * 60 * 1000;
 /** Comparison window for "your recent sessions". */
 export const SESSION_COMPARISON_DAYS = 120;
@@ -34,6 +35,34 @@ export const MAX_SET_GAP_SECONDS = 15 * 60;
 
 const done = (set: LoggedSet) =>
   isSetCompleted(set) && !set.skipped;
+
+/**
+ * Ticks closer together than this were made in a batch after the fact: the
+ * tick time is not the end of the set, so intervals and heart rate around it
+ * would be wrong.
+ */
+export const BATCH_TICK_SECONDS = 10;
+
+/** Sets whose tick lies within `BATCH_TICK_SECONDS` of another tick in the session. */
+export function batchTickedSetIds(session: StrengthSession): Set<string> {
+  const ticks = session.exercises
+    .flatMap(exercise => exercise.sets)
+    .filter(set => done(set) && finite(set.completedAt))
+    .sort((a, b) => (a.completedAt as number) - (b.completedAt as number));
+  const batched = new Set<string>();
+  for (let index = 1; index < ticks.length; index += 1) {
+    const before = ticks[index - 1];
+    const set = ticks[index];
+    if (
+      ((set.completedAt as number) - (before.completedAt as number)) / 1000 <
+      BATCH_TICK_SECONDS
+    ) {
+      batched.add(before.id);
+      batched.add(set.id);
+    }
+  }
+  return batched;
+}
 
 /** Duration from start to end; without an end it is unknown, not 0. */
 export function sessionDurationSeconds(
@@ -202,6 +231,7 @@ export interface SetGaps {
 export function setGaps(session: StrengthSession): SetGaps {
   const gaps: number[] = [];
   const planned: number[] = [];
+  const batched = batchTickedSetIds(session);
   for (const exercise of session.exercises) {
     const completed = exercise.sets
       .filter(set => done(set) && finite(set.completedAt))
@@ -211,7 +241,12 @@ export function setGaps(session: StrengthSession): SetGaps {
         ((completed[index].completedAt as number) -
           (completed[index - 1].completedAt as number)) /
         1000;
-      if (seconds <= 0 || seconds > MAX_SET_GAP_SECONDS) {
+      if (
+        seconds <= 0 ||
+        seconds > MAX_SET_GAP_SECONDS ||
+        batched.has(completed[index].id) ||
+        batched.has(completed[index - 1].id)
+      ) {
         continue;
       }
       gaps.push(seconds);

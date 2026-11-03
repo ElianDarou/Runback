@@ -165,6 +165,7 @@ object StrengthMirror {
                     command.optString("templateId").takeIf { it.isNotBlank() },
                     if (command.has("reps")) command.getInt("reps") else null,
                     command.optString("detectionId").takeIf { it.isNotBlank() },
+                    if (command.has("endedAt")) command.getLong("endedAt") else null,
                     command.optJSONObject("capture"),
                 )
                 val nodes = Tasks.await(Wearable.getNodeClient(app).connectedNodes, 5, TimeUnit.SECONDS)

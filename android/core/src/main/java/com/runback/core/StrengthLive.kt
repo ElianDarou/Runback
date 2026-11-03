@@ -225,7 +225,10 @@ object StrengthLive {
         val counted = if (command.has("reps")) command.optInt("reps", -1).takeIf { it in 0..WearProtocol.MAX_REPS } else null
         (counted ?: values.reps)?.let { set.put("actualReps", it) }
         values.seconds?.let { set.put("actualSeconds", it) }
-        set.put("completedAt", now).put("skipped", false)
+        // A set the watch detected ended when the detection ended, even if it was confirmed later.
+        val start = session.number("startTime")?.toLong() ?: 0L
+        val endedAt = command.number("endedAt")?.toLong()?.takeIf { it in start..now }
+        set.put("completedAt", endedAt ?: now).put("skipped", false)
         clearRest(session)
         val rest = set.optJSONObject("planned")?.number("restSeconds")
         if (rest != null && rest > 0) session.put("restStartedAt", now).put("restSeconds", rest)

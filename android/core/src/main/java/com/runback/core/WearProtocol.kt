@@ -105,8 +105,8 @@ object WearProtocol {
      * Running strength session from the phone on the watch (StrengthLive). The phone
      * stores the state as a DataItem and sends `alert` at the end of a rest; the watch
      * reports with `seen` that it shows the session, and sends commands. A set that the
-     * watch detected comes as `complete_set` with `reps` (confirmed count)
-     * and `detectionId`.
+     * watch detected comes as `complete_set` with `reps` (confirmed count),
+     * `detectionId` and `endedAt` (end of the detected set, Unix ms).
      */
     const val STRENGTH_STATE_PATH = "/runback/strength/state"
     const val STRENGTH_COMMAND_PATH = "/runback/strength/command"
@@ -124,6 +124,7 @@ object WearProtocol {
         templateId: String? = null,
         reps: Int? = null,
         detectionId: String? = null,
+        endedAt: Long? = null,
         /** Only with `start_session`: what the watch records in this session (`CAPTURE_KEYS`). */
         capture: JSONObject? = null,
     ): ByteArray {
@@ -140,6 +141,7 @@ object WearProtocol {
                 templateId?.let { put("templateId", it) }
                 reps?.let { put("reps", it) }
                 detectionId?.let { put("detectionId", it) }
+                endedAt?.let { put("endedAt", it) }
                 capture?.let { requested ->
                     require(action == StrengthLive.START_SESSION) { "Capture only belongs to a start" }
                     put("capture", JSONObject().apply { CAPTURE_KEYS.forEach { key -> put(key, requested.optBoolean(key)) } })
@@ -159,6 +161,7 @@ object WearProtocol {
         if (payload.has("templateId")) require(payload.optString("templateId").length in 1..200) { "Invalid template" }
         if (payload.has("reps")) require(payload.optInt("reps", -1) in 0..MAX_REPS) { "Invalid reps" }
         if (payload.has("detectionId")) require(payload.optString("detectionId").matches(ID_PATTERN)) { "Invalid detection" }
+        if (payload.has("endedAt")) require(payload.optLong("endedAt", 0L) > 0L) { "Invalid set end" }
         if (payload.has("capture")) {
             val capture = payload.optJSONObject("capture")
             require(payload.optString("action") == StrengthLive.START_SESSION && capture != null &&

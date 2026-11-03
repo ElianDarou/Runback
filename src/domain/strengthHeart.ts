@@ -2,6 +2,7 @@ import { median } from './inference';
 import type { StrengthSession } from './strength';
 import { sourceName } from './importReview';
 import { tr } from './i18n';
+import { batchTickedSetIds } from './strengthSession';
 
 /**
  * Strength heart rate, from the watch's display series (Kotlin
@@ -14,7 +15,11 @@ import { tr } from './i18n';
  * advance around the tick-off apply (see constants), and a recovery only
  * counts when the next set certainly had not started yet.
  */
-export const STRENGTH_HEART_INSIGHTS_VERSION = 'strength-heart-insights-v1';
+/**
+ * v2: sets ticked off in a batch get no heart rate values, a recovery needs a
+ * next set that was not ticked in a batch, and a negative drop stays unknown.
+ */
+export const STRENGTH_HEART_INSIGHTS_VERSION = 'strength-heart-insights-v2';
 /** The set peak is the highest window from 30 s before to 15 s after the tick-off. */
 export const SET_PEAK_BEFORE_SECONDS = 30;
 export const SET_PEAK_AFTER_SECONDS = 15;
@@ -118,8 +123,10 @@ export interface SetHeart {
   exerciseIndex: number;
   completedAt: number;
   peakBpm?: number;
-  /** Drop in the first rest minute, in beats; positive = fell. */
+  /** Drop in the first rest minute, in beats; never negative. */
   recoveryBpm?: number;
+  /** Ticked off in a batch (`BATCH_TICK_SECONDS`): no heart rate values. */
+  batched?: boolean;
 }
 
 export interface ExerciseHeart {
@@ -158,6 +165,7 @@ export function sessionHeartInsight(
   session: StrengthSession,
   heart: StrengthHeart,
 ): SessionHeartInsight {
+  const batched = batchTickedSetIds(session);
   // Per-minute averages from imports carry no heart rate at the end of a set and no recovery.
   const completed = (isWatchHeart(heart) ? session.exercises : [])
     .flatMap((exercise, exerciseIndex) =>
@@ -171,6 +179,10 @@ export function sessionHeartInsight(
     )
     .sort((a, b) => a.completedAt - b.completedAt);
   const sets: SetHeart[] = completed.map((set, index) => {
+    // The tick of a batch is not the end of the set: no peak, no recovery.
+    if (batched.has(set.setId)) {
+      return { ...set, batched: true };
+    }
     const at = (set.completedAt - heart.startTime) / 1000;
     const around = windowValues(
       heart,
@@ -180,8 +192,11 @@ export function sessionHeartInsight(
     const peakBpm = around.length ? Math.max(...around) : undefined;
     const next = completed[index + 1];
     const gap = next ? (next.completedAt - set.completedAt) / 1000 : Infinity;
+    // A batch-ticked next set may have started long before its tick.
     const later =
-      peakBpm !== undefined && gap >= RECOVERY_MIN_GAP_SECONDS
+      peakBpm !== undefined &&
+      gap >= RECOVERY_MIN_GAP_SECONDS &&
+      !(next && batched.has(next.setId))
         ? windowValues(
             heart,
             at + RECOVERY_AFTER_SECONDS - heart.stepSeconds / 2,
@@ -194,8 +209,9 @@ export function sessionHeartInsight(
     return {
       ...set,
       peakBpm,
+      // A rise is not a recovery: the window then reached into the next set.
       recoveryBpm:
-        peakBpm !== undefined && after !== undefined
+        peakBpm !== undefined && after !== undefined && peakBpm - after >= 0
           ? peakBpm - after
           : undefined,
     };

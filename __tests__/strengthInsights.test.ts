@@ -9,6 +9,7 @@ import {
   type StrengthHeart,
 } from '../src/domain/strengthHeart';
 import {
+  batchTickedSetIds,
   exerciseBreakdown,
   exerciseComparison,
   rateE1RM,
@@ -227,6 +228,54 @@ describe('heart rate in a session', () => {
     expect(insight.medianRecoveryBpm).toBe(30);
     expect(insight.recoverySets).toBe(3);
     expect(insight.byExercise[0]).toMatchObject({ peakBpm: 140, sets: 4 });
+  });
+
+  it('leaves sets ticked off in a batch out of heart rate and set intervals', () => {
+    // session-mv3fextb: three rows ticked within one second at 32.3 min.
+    const batch = strengthSession('b', START, [
+      [
+        'seated_cable_row',
+        'Rudern am Kabel sitzend',
+        [
+          { weightKg: 50, reps: 10, at: 2 },
+          { weightKg: 50, reps: 10, at: 32.3 },
+          { weightKg: 50, reps: 10, at: 32.3 + 0.5 / 60 },
+          { weightKg: 50, reps: 10, at: 32.3 + 1 / 60 },
+        ],
+      ],
+    ]);
+    const ids = batch.exercises[0].sets.map(set => set.id);
+    expect([...batchTickedSetIds(batch)]).toEqual(ids.slice(1));
+    // Only the gap from set 1 to set 2 would remain, but set 2 is in the batch.
+    expect(setGaps(batch).gaps).toEqual([]);
+    const insight = sessionHeartInsight(batch, heart);
+    expect(insight.sets.map(set => set.batched === true)).toEqual([
+      false,
+      true,
+      true,
+      true,
+    ]);
+    expect(insight.sets.slice(1).map(set => set.peakBpm)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ]);
+    // The next set was ticked in a batch: it may have run during the rest minute.
+    expect(insight.sets[0].recoveryBpm).toBeUndefined();
+  });
+
+  it('never reports a rise as recovery', () => {
+    const rising: StrengthHeart = {
+      ...heart,
+      values: heart.values.map((value, index) =>
+        index * 5 + 2.5 >= 2 * 60 + 50 && index * 5 + 2.5 <= 2 * 60 + 70
+          ? 175
+          : value,
+      ),
+    };
+    const insight = sessionHeartInsight(session, rising);
+    expect(insight.sets[0].peakBpm).toBe(140);
+    expect(insight.sets[0].recoveryBpm).toBeUndefined();
   });
 
   it('stays silent with fewer than three sets', () => {

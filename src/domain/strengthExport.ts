@@ -21,6 +21,8 @@ import {
   type StrengthHeart,
 } from './strengthHeart';
 import {
+  BATCH_TICK_SECONDS,
+  batchTickedSetIds,
   exerciseBreakdown,
   sessionDurationSeconds,
   setGaps,
@@ -41,8 +43,10 @@ import {
  * 2: The watch's motion data lives in the `bewegungsdaten/` folder (Kotlin
  * `MotionExport`, its own `manifest.json`). The folder name is a file name
  * inside the export and stays German.
+ * 3: `ticked_in_batch` marks sets ticked off in a batch; they carry no set
+ * interval and no heart rate values.
  */
-export const STRENGTH_EXPORT_VERSION = 'runback-strength-export-2';
+export const STRENGTH_EXPORT_VERSION = 'runback-strength-export-3';
 export const STRENGTH_EXPORT_MOTION_DIRECTORY = 'bewegungsdaten';
 
 export const STRENGTH_EXPORT_FILES = {
@@ -118,6 +122,7 @@ const SET_COLUMNS = [
   'e1rm_kg',
   'heart_peak_bpm',
   'heart_recovery_bpm',
+  'ticked_in_batch',
 ];
 
 const HEART_COLUMNS = [
@@ -197,23 +202,31 @@ interface SetRecord {
   volumeKg?: number;
   e1rmKg?: number;
   heart?: SetHeart;
+  tickedInBatch?: boolean;
 }
 
 function setRecords(
   session: StrengthSession,
   heartBySet: Map<string, SetHeart>,
 ): SetRecord[] {
+  const batched = batchTickedSetIds(session);
   return session.exercises.flatMap((exercise, exerciseIndex) => {
     // Set interval as in `setGaps`: ticking off to ticking off the same exercise.
-    const times = exercise.sets
+    const ticked = exercise.sets
       .filter(set => done(set) && finite(set.completedAt))
-      .map(set => set.completedAt as number)
-      .sort((a, b) => a - b);
+      .sort((a, b) => (a.completedAt as number) - (b.completedAt as number));
     return exercise.sets.map((set, setIndex) => {
       const at =
         done(set) && finite(set.completedAt) ? set.completedAt : undefined;
+      const previous =
+        at === undefined
+          ? undefined
+          : ticked.filter(other => (other.completedAt as number) < at).pop();
+      // A batch tick is not the end of the set; its interval would be invented.
       const before =
-        at === undefined ? undefined : times.filter(t => t < at).pop();
+        previous && !batched.has(set.id) && !batched.has(previous.id)
+          ? (previous.completedAt as number)
+          : undefined;
       return {
         exerciseIndex,
         setIndex,
@@ -229,6 +242,7 @@ function setRecords(
         volumeKg: round(setVolume(set), 1),
         e1rmKg: setE1rm(set),
         heart: heartBySet.get(set.id),
+        tickedInBatch: at === undefined ? undefined : batched.has(set.id),
       };
     });
   });
@@ -402,6 +416,7 @@ export function strengthExportChunk(
         record.e1rmKg,
         record.heart?.peakBpm,
         round(record.heart?.recoveryBpm, 1),
+        record.tickedInBatch,
       ]);
     })
     .join('');
@@ -479,6 +494,7 @@ export function strengthExportChunk(
             e1rmKg: record.e1rmKg,
             heartPeakBpm: record.heart?.peakBpm,
             heartRecoveryBpm: round(record.heart?.recoveryBpm, 1),
+            tickedInBatch: record.tickedInBatch,
           })),
       };
     }),
@@ -706,7 +722,8 @@ ${motion}
 - \`volume_kg\`: Gewicht × Wiederholungen eines abgehakten Satzes, wie in der App (auch Aufwärmsätze).
 - \`e1rm_kg\`: geschätztes Maximum nach Epley (Gewicht × (1 + Wdh./30)), nur für Arbeitssätze mit Last in kg und höchstens ${MAX_REPS_FOR_E1RM} Wiederholungen. Schätzung, keine Messung.
 - \`muscle_groups\`: Hauptgruppen laut Übungskatalog, mit \`;\` getrennt; leer, wenn der Katalog die Übung nicht kennt.
-- \`heart_peak_bpm\`: höchster Puls von 30 s vor bis 15 s nach dem Abhaken. \`heart_recovery_bpm\`: Abfall in der Minute danach, nur wenn der nächste Satz frühestens 2 min später kam. Beides nur mit Puls von der Uhr.
+- \`heart_peak_bpm\`: höchster Puls von 30 s vor bis 15 s nach dem Abhaken. \`heart_recovery_bpm\`: Abfall in der Minute danach, nur wenn der nächste Satz frühestens 2 min später kam und nicht gesammelt abgehakt wurde; ein Anstieg bleibt leer. Beides nur mit Puls von der Uhr.
+- \`ticked_in_batch\`: weniger als ${BATCH_TICK_SECONDS} s neben einem anderen Abhaken, also gesammelt nachgetragen. Solche Sätze haben keinen Satzabstand und keine Pulswerte.
 
 ## Spalten in sessions.csv
 
@@ -759,7 +776,8 @@ ${motion}
 - \`volume_kg\`: weight × reps of a ticked-off set, as in the app (including warm-up sets).
 - \`e1rm_kg\`: estimated max by Epley (weight × (1 + reps/30)), only for working sets with load in kg and at most ${MAX_REPS_FOR_E1RM} reps. An estimate, not a measurement.
 - \`muscle_groups\`: main groups per the exercise catalog, separated by \`;\`; empty if the catalog does not know the exercise.
-- \`heart_peak_bpm\`: highest heart rate from 30 s before to 15 s after ticking off. \`heart_recovery_bpm\`: drop in the minute after, only if the next set came at least 2 min later. Both only with heart rate from the watch.
+- \`heart_peak_bpm\`: highest heart rate from 30 s before to 15 s after ticking off. \`heart_recovery_bpm\`: drop in the minute after, only if the next set came at least 2 min later and was not ticked off in a batch; a rise stays empty. Both only with heart rate from the watch.
+- \`ticked_in_batch\`: less than ${BATCH_TICK_SECONDS} s next to another tick, so ticked off afterwards in a batch. Such sets have no set interval and no heart rate values.
 
 ## Columns in sessions.csv
 

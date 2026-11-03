@@ -135,7 +135,8 @@ class AutoSets(
         val id = "d-" + UUID.randomUUID().toString().replace("-", "").take(16)
         log(SystemClock.elapsedRealtimeNanos(), SetDetectionLog.detected(id, t, set))
         val decideAt = if (autoConfirm) SystemClock.elapsedRealtime() + AUTO_CONFIRM_MS else null
-        review = Review(id, t, set.count, set.uncertain, set.count, 0, false, decideAt, Status.OPEN, title = targetTitle)
+        review = Review(id, t, set.count, set.uncertain, set.count, 0, false, decideAt, Status.OPEN, title = targetTitle,
+            endedAt = System.currentTimeMillis() - (SystemClock.elapsedRealtimeNanos() - set.endNanos) / 1_000_000L)
         decideAt?.let { scheduleAuto(id, it) }
         alert()
         notifyReview()
@@ -192,6 +193,8 @@ class AutoSets(
         val command = JSONObject().put("action", StrengthLive.COMPLETE_SET).put("sessionId", sessionId)
             .put("setId", current.target.setId).put("exerciseIndex", current.target.exerciseIndex)
             .put("reps", reps).put("detectionId", current.id)
+            // Confirmed later than the set ended: the set's time is its end, not the tap.
+            .put("endedAt", current.endedAt)
         StrengthMirror.send(context, command) { delivered ->
             later(0L) {
                 val now = review ?: return@later
@@ -277,6 +280,8 @@ class AutoSets(
         val logged: Decision? = null,
         /** Exercise as the user sees it. */
         val title: String = target.exerciseName,
+        /** End of the detected set on the wall clock (Unix ms). */
+        val endedAt: Long = 0L,
     )
 
     data class Decision(val reps: Int?, val byUser: Boolean)

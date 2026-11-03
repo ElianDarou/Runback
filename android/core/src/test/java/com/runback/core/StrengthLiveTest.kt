@@ -61,6 +61,24 @@ class StrengthLiveTest {
         assertEquals(8, odd.getJSONArray("exercises").getJSONObject(0).getJSONArray("sets").getJSONObject(0).getInt("actualReps"))
     }
 
+    @Test fun aDetectedSetConfirmedLaterEndsWhenTheDetectionEnded() {
+        val bench = exercise("bench", "Bench press", set("a", planned(reps = 8, weight = 60.0)))
+        val next = StrengthLive.apply(session(bench),
+            command(StrengthLive.COMPLETE_SET, "setId" to "a", "reps" to 7, "detectionId" to "d-1", "endedAt" to 6_000L),
+            90_000L, emptyList())!!
+        val done = next.getJSONArray("exercises").getJSONObject(0).getJSONArray("sets").getJSONObject(0)
+        assertEquals(6_000L, done.getLong("completedAt"))
+        // An end before the session or in the future is not believed.
+        for (implausible in listOf(500L, 95_000L)) {
+            val other = StrengthLive.apply(session(bench),
+                command(StrengthLive.COMPLETE_SET, "setId" to "a", "endedAt" to implausible), 90_000L, emptyList())!!
+            assertEquals(90_000L, other.getJSONArray("exercises").getJSONObject(0).getJSONArray("sets").getJSONObject(0).getLong("completedAt"))
+        }
+        val decoded = WearProtocol.decodeStrengthCommand(WearProtocol.strengthCommand(
+            StrengthLive.COMPLETE_SET, "session-1", setId = "a", reps = 7, detectionId = "d-1", endedAt = 6_000L))
+        assertEquals(6_000L, decoded.getLong("endedAt"))
+    }
+
     @Test fun completeSetWithoutAnyValueLeavesValuesUnknown() {
         val free = exercise("row", "Row", set("a", JSONObject().put("kind", "normal").put("loadKind", "kg")))
         val next = StrengthLive.apply(session(free), command(StrengthLive.COMPLETE_SET), 5_000L, emptyList())!!
