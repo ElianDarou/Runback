@@ -227,6 +227,8 @@ class RunTargetGuidance private constructor(
     companion object {
         /** 3: goal (distance or time), intervals, and an explicit pace mode; see src/domain/runTarget.ts. */
         const val VERSION = 3
+        /** Rules behind a cue, stored with it. 4: pace cues need 30 s of deviation and repeat at most once a minute. */
+        const val CUE_VERSION = 4
         private const val MAX_ACCURACY_M = 20.0
         private const val MAX_FIX_AGE_MS = 10_000L
         private const val START_GRACE_MS = 30_000L

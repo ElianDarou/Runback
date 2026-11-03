@@ -656,7 +656,7 @@ class RecordingService : Service(), SensorEventListener, LocationListener {
         if (speaks) activeId?.let { runId ->
             runCatching {
                 store.addEvent(runId, "target_cue", JSONObject()
-                    .put("code", cue.code).put("message", cue.message).put("model_version", RunTargetGuidance.VERSION))
+                    .put("code", cue.code).put("message", cue.message).put("model_version", RunTargetGuidance.CUE_VERSION))
             }
         }
         if (guidance.wantsVoice() && routeSpeechReady && routeSpeech?.isSpeaking != true && speaks) {
