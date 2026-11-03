@@ -77,9 +77,10 @@ Password-protected ZIPs are not supported — extract them first.
 
 - **Not runs:** walks, bike rides, and other sports are not created as runs. The sport
   in the file decides first; if it is missing, the pace decides (between 1.5 and 6.5 m/s
-  counts as running).
-- **Duplicates:** the same run from several sources (same start time and duration) is
-  created only once and counts as evidence only once.
+  counts as running). A named activity that is not a run ("Aerobic Workout", "Sport")
+  without a distance is not created.
+- **Duplicates:** the same run from several sources (start within one minute, or same
+  start time and duration) is created only once and counts as evidence only once.
 - **Files that are too large:** 64 MB per activity, 512 MB per archive unpacked,
   150,000 samples per activity. Anything above that is counted and skipped — split the
   archive and import again.

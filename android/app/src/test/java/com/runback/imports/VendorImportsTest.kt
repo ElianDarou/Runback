@@ -74,6 +74,25 @@ class VendorImportsTest {
         assertTrue(VendorImports.acceptAsRun(null, 0.0, 3600.0))
     }
 
+    @Test fun namedNonRunningActivitiesWithoutDistanceAreNotRuns() {
+        // Fitbit logs gym classes with a duration but 0 m; they are not runs.
+        assertFalse(VendorImports.acceptAsRun("Aerobic Workout", 0.0, 2700.0))
+        assertFalse(VendorImports.acceptAsRun("Sport", 0.0, 3600.0))
+        assertFalse(VendorImports.acceptAsRun("Bootcamp", 0.0, 1800.0))
+        // A named activity with a running pace still counts.
+        assertTrue(VendorImports.acceptAsRun("Sport", 5000.0, 1500.0))
+    }
+
+    @Test fun fitbitExerciseJsonSkipsWorkoutsWithoutDistance() {
+        val json = """[
+            {"logId":1,"activityName":"Aerobic Workout","startTime":"2026-10-02T18:00:00Z","activeDuration":2700000},
+            {"logId":2,"activityName":"Run","startTime":"2026-10-07T07:00:00Z","activeDuration":1800000,"distance":5.1,"distanceUnit":"Kilometer"}
+        ]"""
+        val parsed = VendorImports.parseFitbitExerciseJson(json)
+        assertEquals(listOf("Run"), parsed.runs.map { it.name })
+        assertEquals(1, parsed.skipped)
+    }
+
     @Test fun knownSportBeatsThePaceWindow() {
         assertTrue(VendorImports.acceptAsRun("Running", 5000.0, 3600.0))
         assertFalse(VendorImports.acceptAsRun("Walking", 5000.0, 1500.0))

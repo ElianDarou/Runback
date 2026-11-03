@@ -12,7 +12,6 @@ import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
-import kotlin.math.abs
 
 data class RawSample(val time: Long, val kind: String, val values: JSONObject)
 data class WellnessRow(val id: String = "", val kind: String, val time: Long, val endTime: Long = 0L,
@@ -978,30 +977,12 @@ class RunStore(context: Context) : DocumentStore {
         transaction { putDocument("feedback_$id",feedback); addEvent(id,"feedback",value) }
     }
     private fun findDuplicateRunId(start: Long, durationSeconds: Double): String? {
-        val duration = durationSeconds.coerceAtLeast(0.0)
-        val end = start + (duration * 1000.0).toLong()
-        val queryStart = start - MAX_RUN_DURATION_MS
-        val queryEnd = end + MAX_RUN_DURATION_MS
+        val end = start + (durationSeconds.coerceAtLeast(0.0) * 1000.0).toLong()
         db.rawQuery("SELECT id,start,json FROM runs WHERE start BETWEEN ? AND ?",
-            arrayOf(queryStart.toString(), queryEnd.toString())).use { rows ->
+            arrayOf((start - MAX_RUN_DURATION_MS).toString(), (end + MAX_RUN_DURATION_MS).toString())).use { rows ->
             while (rows.moveToNext()) {
-                val otherStart = rows.getLong(1)
-                val other = JSONObject(rows.getString(2))
-                val otherDuration = other.optLong("durationMs", 0L).coerceAtLeast(0L) / 1000.0
-                val otherEnd = otherStart + (otherDuration * 1000.0).toLong()
-                val startDiff = abs(otherStart - start) / 1000.0
-                val durationDiff = abs(otherDuration - duration)
-                if (duration <= 0.0 && otherDuration <= 0.0) {
-                    if (startDiff <= 10.0) return rows.getString(0)
-                    continue
-                }
-                val sameStart = startDiff <= 120.0 &&
-                    durationDiff <= maxOf(120.0, maxOf(duration, otherDuration) * 0.20)
-                val overlap = maxOf(0L, minOf(end, otherEnd) - maxOf(start, otherStart)) / 1000.0
-                val intervalMatch = duration > 0.0 && otherDuration > 0.0 &&
-                    overlap >= minOf(duration, otherDuration) * 0.75 &&
-                    durationDiff <= maxOf(180.0, maxOf(duration, otherDuration) * 0.20)
-                if (sameStart || intervalMatch) return rows.getString(0)
+                val otherDuration = JSONObject(rows.getString(2)).optLong("durationMs", 0L) / 1000.0
+                if (RunDuplicates.sameActivity(start, durationSeconds, rows.getLong(1), otherDuration)) return rows.getString(0)
             }
         }
         return null

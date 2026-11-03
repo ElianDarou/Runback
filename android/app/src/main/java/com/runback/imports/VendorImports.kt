@@ -121,13 +121,16 @@ object VendorImports {
     /**
      * Import filter: a known sport decides alone, otherwise the pace window.
      * This keeps walks and bike rides out of the run history, so they distort
-     * neither paces nor statistics.
+     * neither paces nor statistics. A named activity that is not recognizably
+     * a run ("Aerobic Workout", "Sport", "Bootcamp") needs a running pace as
+     * evidence; without a distance it is not a run.
      */
     fun acceptAsRun(activityType: String?, distanceMeters: Double, durationSeconds: Double): Boolean =
         when (isRunningActivityType(activityType)) {
             true -> true
             false -> false
-            null -> plausibleRunSpeed(distanceMeters, durationSeconds)
+            null -> if (!activityType.isNullOrBlank() && !(distanceMeters > 0 && durationSeconds > 0)) false
+                else plausibleRunSpeed(distanceMeters, durationSeconds)
         }
 
     // Mi Fitness exports can exceed 60,000 context rows; aggregation keeps the
