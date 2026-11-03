@@ -21,6 +21,8 @@ object GpsWarmup : LocationListener {
     private const val MAX_RUN_MS = 5 * 60_000L
     private val main = Handler(Looper.getMainLooper())
     private var manager: LocationManager? = null
+    /** False once stopped, also by the timeout, so the sheet does not keep saying "searching". */
+    @Volatile private var active = false
     @Volatile private var lastFixAt: Long? = null
     @Volatile private var accuracy: Double? = null
     private val timeout = Runnable { stop() }
@@ -32,6 +34,7 @@ object GpsWarmup : LocationListener {
         val locations = app.getSystemService(LocationManager::class.java)
         if (locations == null || !locations.isProviderEnabled(LocationManager.GPS_PROVIDER))
             return JSONObject().put("state", "unavailable")
+        active = true
         main.post {
             if (manager == null) {
                 runCatching { locations.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1_000L, 0f, this, Looper.getMainLooper()) }
@@ -44,6 +47,7 @@ object GpsWarmup : LocationListener {
     }
 
     fun stop() {
+        active = false
         main.post {
             main.removeCallbacks(timeout)
             manager?.let { runCatching { it.removeUpdates(this) } }
@@ -54,6 +58,7 @@ object GpsWarmup : LocationListener {
     }
 
     fun status(): JSONObject {
+        if (!active) return JSONObject().put("state", "off")
         val state = GpsReadiness.state(lastFixAt, accuracy, SystemClock.elapsedRealtime())
         return JSONObject().put("state", state).apply { accuracy?.let { put("accuracyM", it) } }
     }

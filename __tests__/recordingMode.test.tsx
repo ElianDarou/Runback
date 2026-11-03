@@ -232,6 +232,13 @@ describe('Free recording on Today', () => {
       await new Promise<void>(resolve => setTimeout(resolve, 1100));
     });
     expect(screenText()).toContain('GPS bereit');
+    // After the native timeout there is no search left to report.
+    state = 'off';
+    await act(async () => {
+      await new Promise<void>(resolve => setTimeout(resolve, 1100));
+    });
+    expect(screenText()).not.toContain('GPS bereit');
+    expect(screenText()).not.toContain('Sucht Signal');
     // Starting stays possible either way; the search ends with the sheet.
     await tap('Aufzeichnung starten');
     expect(nativeCall).toHaveBeenCalledWith('stopGpsWarmup');
