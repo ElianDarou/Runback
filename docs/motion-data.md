@@ -167,6 +167,8 @@ Ticking off is a **weak label**:
 pip install numpy pandas
 python tools/motion/runback_motion.py runback-krafttraining.zip
 python tools/motion/runback_motion.py export.zip --windows fenster.npz
+# Detected vs. final count over several exports, with a reliability table per confidence
+python tools/motion/runback_motion.py export-1.zip export-2.zip --detections
 ```
 
 ```python

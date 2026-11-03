@@ -7,6 +7,7 @@ format: docs/motion-data.md.
 
     python tools/motion/runback_motion.py runback-krafttraining.zip
     python tools/motion/runback_motion.py export.zip --windows windows.npz
+    python tools/motion/runback_motion.py export-1.zip export-2.zip --detections
 
 Dependencies: numpy, pandas.
 """
@@ -115,6 +116,41 @@ def _add_labels(session: Session) -> None:
             labels[group.index[i]] = "batch"
             labels[group.index[i + 1]] = "batch"
     sets["label"] = labels
+
+
+# Confidence bins for the reliability table: does a higher confidence mean a correct count more often?
+CONFIDENCE_BINS = [0.0, 0.4, 0.6, 0.8, 1.0001]
+
+
+def detection_bias(sessions: list[Session]) -> dict:
+    """Detected vs. final count over all decided watch detections.
+
+    `bias` is final minus detected (positive: the watch counted too few).
+    `reliability` lists per confidence bin how often the detected count was
+    kept unchanged. Rejected detections have no final count and are left out.
+    """
+    frames = [s.detections for s in sessions if s.detections is not None and "final_reps" in s.detections]
+    rows = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    if rows.empty:
+        return {"detections": 0}
+    rows = rows[(rows["kind"] == "detected")].dropna(subset=["detected_reps", "final_reps"])
+    if rows.empty:
+        return {"detections": 0}
+    diff = rows["final_reps"].astype(float) - rows["detected_reps"].astype(float)
+    bins = pd.cut(rows["confidence"].astype(float), CONFIDENCE_BINS, right=False)
+    reliability = [
+        {"from": float(interval.left), "to": min(1.0, float(interval.right)), "detections": int(len(part)),
+         "kept": float((part == 0).mean()) if len(part) else float("nan")}
+        for interval, part in diff.groupby(bins, observed=False)
+    ]
+    return {
+        "detections": int(len(diff)),
+        "bias": float(diff.mean()),
+        "too_few": float((diff > 0).mean()),
+        "too_many": float((diff < 0).mean()),
+        "kept": float((diff == 0).mean()),
+        "reliability": reliability,
+    }
 
 
 def resample(session: Session, rate_hz: float = 50.0) -> pd.DataFrame:
@@ -304,10 +340,15 @@ def windows(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("export", help="ZIP exported from the app")
+    parser.add_argument("exports", nargs="+", help="ZIP exported from the app (several for --detections)")
     parser.add_argument("--windows", help="save windows as .npz (X, y, groups)")
+    parser.add_argument("--detections", action="store_true", help="detected vs. final count over all exports")
     args = parser.parse_args()
-    sessions = load_export(args.export)
+    sessions = [session for path in args.exports for session in load_export(path)]
+    if args.detections:
+        result = detection_bias(sessions)
+        print(json.dumps(result, indent=2))
+        return
     for s in sessions:
         done = s.sets.dropna(subset=["completed_ms"]) if "completed_ms" in s.sets else s.sets
         minutes = (s.accel["t_ms"].iloc[-1] - s.accel["t_ms"].iloc[0]) / 60000 if s.has_motion else float("nan")

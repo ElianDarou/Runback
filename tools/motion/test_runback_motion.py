@@ -104,6 +104,28 @@ class RunbackMotionTest(unittest.TestCase):
         self.assertEqual([s.id for s in sessions], ["session-demo"])
         self.assertEqual(len(sessions[0].accel), len(self.session.accel))
 
+    def test_detection_bias_and_reliability(self):
+        import pandas as pd
+        # Corrections all go up, as in the October exports (3 → 7, 5 → 9 …).
+        detections = pd.DataFrame({
+            "kind": ["detected"] * 5 + ["closed"],
+            "detected_reps": [3, 5, 5, 16, 12, None],
+            "final_reps": [7, 9, 8, 16, 12, None],
+            "confidence": [0.52, 0.68, 0.67, 0.28, 0.47, None],
+        })
+        session = rm.Session("s", {}, self.session.accel, self.session.gyro, self.session.sets,
+                             self.session.events, detections=detections)
+        result = rm.detection_bias([session])
+        self.assertEqual(result["detections"], 5)
+        self.assertAlmostEqual(result["bias"], 2.2)
+        self.assertAlmostEqual(result["too_few"], 0.6)
+        self.assertAlmostEqual(result["too_many"], 0.0)
+        by_bin = {row["from"]: row for row in result["reliability"]}
+        self.assertEqual(by_bin[0.0]["detections"], 1)
+        self.assertEqual(by_bin[0.0]["kept"], 1.0)
+        self.assertEqual(by_bin[0.6]["detections"], 2)
+        self.assertEqual(by_bin[0.6]["kept"], 0.0)
+
     def test_rejects_other_zip(self):
         other = Path(self.dir.name) / "other.zip"
         with zipfile.ZipFile(other, "w") as archive:
