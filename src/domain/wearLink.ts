@@ -167,18 +167,30 @@ export function strengthWatchLive(
     case 'error':
       return { state: 'failed', hint: info.watch.message };
     case 'disconnected':
-      return { state: 'disconnected' };
+      // Without a hint the session ran without heart rate and nobody noticed.
+      return {
+        state: 'disconnected',
+        hint: tr(
+          'Verbinde die Uhr, um Puls und Bewegung zu messen.',
+          'Connect the watch to measure heart rate and motion.',
+        ),
+      };
     case 'recording':
       break;
-    default:
-      // `sent` or `waiting`: Android did not allow the start in the background.
+    default: {
+      // `sent` or `waiting`: Android did not allow the start in the background,
+      // or the watch has not answered the start for a while.
+      const unanswered =
+        info.watch.updatedAt !== undefined &&
+        now - info.watch.updatedAt > STRENGTH_WATCH_SILENCE_MS;
       return {
         state: 'starting',
         hint:
-          info.watch.status === 'waiting'
+          info.watch.status === 'waiting' || unanswered
             ? tr('Öffne Runback auf der Uhr.', 'Open Runback on the watch.')
             : undefined,
       };
+    }
   }
   const live = info.live;
   // Older watches report nothing live; then the confirmed start stays.

@@ -158,11 +158,24 @@ describe('strength watch', () => {
   });
 
   it('separates starting, failed and disconnected', () => {
-    expect(strengthWatchLive(info({ watch: { status: 'sent' } }), now)).toEqual(
-      {
-        state: 'starting',
-      },
-    );
+    expect(
+      strengthWatchLive(
+        info({ watch: { status: 'sent', updatedAt: now - 5_000 } }),
+        now,
+      ),
+    ).toEqual({ state: 'starting' });
+    // 27.10.: the watch never answered the start; the session ran without data.
+    expect(
+      strengthWatchLive(
+        info({
+          watch: {
+            status: 'sent',
+            updatedAt: now - STRENGTH_WATCH_SILENCE_MS - 1,
+          },
+        }),
+        now,
+      ),
+    ).toEqual({ state: 'starting', hint: 'Öffne Runback auf der Uhr.' });
     expect(
       strengthWatchLive(info({ watch: { status: 'waiting' } }), now),
     ).toEqual({ state: 'starting', hint: 'Öffne Runback auf der Uhr.' });
@@ -181,9 +194,11 @@ describe('strength watch', () => {
       hint: 'Erlaube Runback auf der Uhr den Pulssensor.',
     });
     expect(
-      strengthWatchLive(info({ watch: { status: 'disconnected' } }), now)
-        ?.state,
-    ).toBe('disconnected');
+      strengthWatchLive(info({ watch: { status: 'disconnected' } }), now),
+    ).toEqual({
+      state: 'disconnected',
+      hint: 'Verbinde die Uhr, um Puls und Bewegung zu messen.',
+    });
   });
 
   it('reports what reached the phone after the session', () => {
