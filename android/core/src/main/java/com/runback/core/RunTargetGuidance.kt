@@ -145,11 +145,13 @@ class RunTargetGuidance private constructor(
         } else {
             kotlin.math.abs(currentPace - paceSecondsPerKm) < PACE_INNER_TOLERANCE_SECONDS
         }
+        // Hysteresis: a deviation must last, and a repeat waits, even with a short interval;
+        // 11 × “slower” in 4 min (interval 10 s) was noise, not guidance.
         return evaluate(
             direction = if (inside) "inside" else direction,
             now = time,
-            requiredOutsideMs = intervalMs,
-            cooldownMs = intervalMs,
+            requiredOutsideMs = maxOf(intervalMs, PACE_MIN_OUTSIDE_MS),
+            cooldownMs = maxOf(intervalMs, PACE_MIN_REPEAT_MS),
             cue = if (direction == "too_fast") {
                 TargetCue("pace_too_fast", Lang.tr("langsamer", "slower"), false)
             } else {
@@ -234,6 +236,10 @@ class RunTargetGuidance private constructor(
         private const val PACE_WINDOW_M = 20.0
         private const val PACE_OUTER_TOLERANCE_SECONDS = 15.0
         private const val PACE_INNER_TOLERANCE_SECONDS = 10.0
+        /** A pace deviation must last this long before the first cue. */
+        const val PACE_MIN_OUTSIDE_MS = 30_000L
+        /** Shortest pause between two pace cues. */
+        const val PACE_MIN_REPEAT_MS = 60_000L
         private const val HEART_MAX_AGE_MS = 15_000L
         private const val HEART_HIGH_MARGIN = 3.0
         private const val HEART_LOW_MARGIN = 5.0

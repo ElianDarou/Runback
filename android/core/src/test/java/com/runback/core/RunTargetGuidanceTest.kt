@@ -111,20 +111,35 @@ class RunTargetGuidanceTest {
         }
         assertEquals("heart_rate_high", cue?.code)
     }
-    @Test fun configurableIntervalRepeatsCorrectionsAndWalkingStaysSilent() {
-        val guidance = RunTargetGuidance.pace(330.0, "range", intervalSeconds = 5)
+    @Test fun shortIntervalsStillRepeatAtMostOncePerMinuteAndWalkingStaysSilent() {
+        // 28.10.: with a 10 s interval “slower” came 11 times in under 4 minutes.
+        val guidance = RunTargetGuidance.pace(330.0, "range", intervalSeconds = 10)
         val cues = ArrayList<Pair<Int, TargetCue>>()
         var latitude = 52.0
-        for (second in 0..210) {
+        for (second in 0..330) {
             // 6:20/km is a fine correction, then walking and standing still.
-            val speed = when { second < 90 -> 2.65; second < 150 -> 1.3; else -> 0.0 }
+            val speed = when { second < 270 -> 2.65; second < 300 -> 1.3; else -> 0.0 }
             latitude += speed / 111195.0
             guidance.onLocation(second * 1000L + 1, latitude, 13.0, 5.0, second * 1000L)
                 ?.let { cues.add(second to it) }
         }
-        assertTrue(cues.size > 3)
-        assertTrue(cues.all { it.first < 90 && it.second.message == "schneller" })
-        assertTrue(cues.zipWithNext().all { (a, b) -> b.first - a.first >= 5 })
+        assertTrue(cues.size in 2..4)
+        assertTrue(cues.all { it.first < 270 && it.second.message == "schneller" })
+        assertTrue(cues.zipWithNext().all { (a, b) -> b.first - a.first >= 60 })
+    }
+
+    @Test fun aDeviationMustLastThirtySecondsBeforeTheFirstCue() {
+        val guidance = RunTargetGuidance.pace(330.0, "range", intervalSeconds = 5)
+        var latitude = 52.0
+        var first: Int? = null
+        for (second in 0..200) {
+            // On target first, then clearly too slow from second 100.
+            val speed = if (second < 100) 1000.0 / 330 else 2.65
+            latitude += speed / 111195.0
+            if (guidance.onLocation(second * 1000L + 1, latitude, 13.0, 5.0, second * 1000L) != null && first == null) first = second
+        }
+        assertNotNull(first)
+        assertTrue(first!! >= 130)
     }
 
     @Test fun perfectOnlyFollowsAccelerationIntoTheTarget() {

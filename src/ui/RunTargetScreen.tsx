@@ -723,10 +723,17 @@ export function RunTargetScreen({
           {shownKind === 'pace' || shownKind === 'heart_rate' ? (
             <Field
               label={tr('Abstand in Sekunden', 'Interval in seconds')}
-              hint={tr(
-                'Beim Gehen und Stehen bleiben Tempohinweise stumm.',
-                'Pace cues stay silent while you walk or stand.',
-              )}
+              hint={
+                shownKind === 'pace'
+                  ? tr(
+                      'Höchstens ein Tempohinweis pro Minute, nie beim Gehen oder Stehen.',
+                      'At most one pace cue per minute, never while you walk or stand.',
+                    )
+                  : tr(
+                      'Beim Gehen und Stehen bleiben Hinweise stumm.',
+                      'Cues stay silent while you walk or stand.',
+                    )
+              }
             >
               <Input
                 label={tr(
