@@ -97,6 +97,22 @@ const timeline: RunTimeline = {
       altitudeM: 42.1,
     },
     {
+      // 28.10.: few valid GPS seconds made 1:29 /km out of a 5–6 /km run.
+      elapsedSeconds: 150,
+      distanceMeters: 440,
+      stepDistanceMeters: 60,
+      gpsCoveredSeconds: 8,
+      avgHeartRate: 150,
+    },
+    {
+      // Enough seconds, but 2:00 /km is a GPS jump, not running.
+      elapsedSeconds: 180,
+      distanceMeters: 590,
+      stepDistanceMeters: 150,
+      gpsCoveredSeconds: 18,
+      avgHeartRate: 151,
+    },
+    {
       elapsedSeconds: 1260,
       distanceMeters: 3800,
       stepDistanceMeters: 0,
@@ -179,6 +195,8 @@ describe('buildRunReport', () => {
       '| 1:00 | 0,19 | 5:10 /km | 131 bpm | 168 | 41 m |',
     );
     expect(report).toContain('| 21:00 | 3,80 | – | 120 bpm | – | – |');
+    expect(report).toContain('| 2:30 | 0,44 | – | 150 bpm | – | – |');
+    expect(report).toContain('| 3:00 | 0,59 | – | 151 bpm | – | – |');
   });
 
   it('lists events without the internal feedback entries', () => {

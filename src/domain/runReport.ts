@@ -34,7 +34,13 @@ import { QUALITY_VERSION } from './analysis';
 import { dateFormat, locale, percentSign, quote, tr } from './i18n';
 
 /** 3: no recommendation, next step, focus, or adherence anymore. */
-export const RUN_REPORT_VERSION = 'runback-report-3';
+export const RUN_REPORT_VERSION = 'runback-report-4';
+/**
+ * report-4: a window pace needs at least 15 s with valid GPS steps, and a
+ * running pace faster than 2:30 /km counts as a GPS jump. Both show “–”.
+ */
+export const MIN_WINDOW_GPS_SECONDS = 15;
+export const MAX_WINDOW_RUN_SPEED_MPS = 1000 / 150;
 /** 2: the analysis block carries no state, next step, or recommendation. */
 export const RUN_ANALYSIS_EXPORT_VERSION = 'runback-analysis-2';
 
@@ -579,6 +585,7 @@ function timelineTable(
 ): string | undefined {
   if (!timeline.rows.length) return undefined;
   const pace = usesPace(normalizeSport(run.sport));
+  const runs = normalizeSport(run.sport) === 'running';
   const hasHeart = timeline.rows.some(r => r.avgHeartRate !== undefined);
   const hasCadence = timeline.rows.some(r => r.avgCadence !== undefined);
   const hasAltitude = timeline.rows.some(r => r.altitudeM !== undefined);
@@ -596,7 +603,10 @@ function timelineTable(
     const row = [
       formatDuration(r.elapsedSeconds),
       fmt(r.distanceMeters / 1000, 2),
-      r.stepDistanceMeters >= 50 && r.gpsCoveredSeconds > 0
+      r.stepDistanceMeters >= 50 &&
+      r.gpsCoveredSeconds >= MIN_WINDOW_GPS_SECONDS &&
+      (!runs ||
+        r.stepDistanceMeters / r.gpsCoveredSeconds <= MAX_WINDOW_RUN_SPEED_MPS)
         ? pace
           ? formatPace(r.stepDistanceMeters, r.gpsCoveredSeconds)
           : formatSpeed(r.stepDistanceMeters, r.gpsCoveredSeconds)
@@ -1336,10 +1346,10 @@ export function buildRunReport(input: RunReportInput): string {
         `## ${tr('Zeitverlauf', 'Time course')}\n\n${tr(
           `Fenster von je ${formatDuration(
             timeline.stepSeconds,
-          )} min (m:ss) seit dem Start, Pausen eingeschlossen. Tempo bezieht sich nur auf Sekunden mit gültigen GPS-Schritten im Fenster; Fenster ohne Messwerte fehlen. Die feine 5-s-Zeitreihe liegt in der CSV-Datei.`,
+          )} min (m:ss) seit dem Start, Pausen eingeschlossen. Tempo bezieht sich nur auf Sekunden mit gültigen GPS-Schritten im Fenster und braucht mindestens ${MIN_WINDOW_GPS_SECONDS} davon; schneller als 2:30 /km gilt als GPS-Sprung („–“). Fenster ohne Messwerte fehlen. Die feine 5-s-Zeitreihe liegt in der CSV-Datei.`,
           `Windows of ${formatDuration(
             timeline.stepSeconds,
-          )} min (m:ss) each since the start, pauses included. Pace only counts seconds with valid GPS steps in the window; windows without measurements are left out. The fine 5-second time series is in the CSV file.`,
+          )} min (m:ss) each since the start, pauses included. Pace only counts seconds with valid GPS steps in the window and needs at least ${MIN_WINDOW_GPS_SECONDS} of them; faster than 2:30 /km counts as a GPS jump (“–”). Windows without measurements are left out. The fine 5-second time series is in the CSV file.`,
         )}\n\n${rows}`,
       );
     }
