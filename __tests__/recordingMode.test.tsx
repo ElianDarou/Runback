@@ -470,13 +470,30 @@ describe('Recording features', () => {
     );
     await mount();
     expect(screenText()).toContain('5:30 /km');
-    await tap('Zieltempo 5 Sekunden langsamer');
-    expect(nativeCall).toHaveBeenCalledWith('setRunTargetPace', 335);
-    expect(screenText()).toContain('5:35 /km');
-    await tap('Zieltempo 5 Sekunden schneller');
-    await tap('Zieltempo 5 Sekunden schneller');
-    expect(nativeCall).toHaveBeenLastCalledWith('setRunTargetPace', 325);
-    expect(screenText()).toContain('5:25 /km');
+    jest.useFakeTimers();
+    try {
+      await tap('Zieltempo 5 Sekunden langsamer');
+      expect(screenText()).toContain('5:35 /km');
+      await tap('Zieltempo 5 Sekunden schneller');
+      await tap('Zieltempo 5 Sekunden schneller');
+      await tap('Zieltempo 5 Sekunden schneller');
+      // Shown at once, saved only after the taps settle: one change, not four.
+      expect(screenText()).toContain('5:20 /km');
+      expect(nativeCall).not.toHaveBeenCalledWith(
+        'setRunTargetPace',
+        expect.anything(),
+      );
+      await act(async () => {
+        jest.advanceTimersByTime(1500);
+      });
+    } finally {
+      jest.useRealTimers();
+    }
+    const saves = (nativeCall as jest.Mock).mock.calls.filter(
+      ([method]) => method === 'setRunTargetPace',
+    );
+    expect(saves).toEqual([['setRunTargetPace', 320]]);
+    expect(screenText()).toContain('5:20 /km');
     // The target for the next run stays unchanged.
     expect(native.saveSettings).not.toHaveBeenCalled();
   });

@@ -410,6 +410,8 @@ const PARENT_PAGE: Partial<Record<Page, Page>> = {
 type HistoryView = 'units' | 'stats';
 /** How often a change is retried on a newer state from the watch or a notification. */
 const MAX_SAVE_RETRIES = 3;
+/** Calm after the last tap before a changed target pace is saved as one change. */
+const TARGET_PACE_SETTLE_MS = 1500;
 type StartKind = 'run' | 'strength';
 const historyViewOptions = (): { value: HistoryView; label: string }[] => [
   { value: 'units', label: tr('Einheiten', 'Workouts') },
@@ -746,6 +748,16 @@ export function RunbackApp() {
   const [unitFilter, setUnitFilter] = useState<UnitFilter>('all');
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
+  /** Target pace tapped during the run but not saved yet (`changeTargetPace`). */
+  const [paceDraft, setPaceDraft] = useState<number | null>(null);
+  const pendingPace = useRef<number | null>(null);
+  const paceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (paceTimer.current) clearTimeout(paceTimer.current);
+    },
+    [],
+  );
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState('');
@@ -3033,22 +3045,57 @@ export function RunbackApp() {
   );
 
   // Plus and minus change only the target of this run; the saved default for
-  // the next run stays as the user chose it.
-  const changeTargetPace = (direction: 1 | -1) => {
+  // the next run stays as the user chose it. Taps show at once, but only the
+  // value after a short calm is saved, so 5:55 → 5:40 is one change, not four.
+  const savePendingPace = () => {
+    paceTimer.current = null;
+    if (busyRef.current) {
+      paceTimer.current = setTimeout(savePendingPace, TARGET_PACE_SETTLE_MS);
+      return;
+    }
     void action(async () => {
-      const target = stateRef.current.recording?.target;
-      if (target?.kind !== 'pace') return;
-      const next = stepTargetPace(target.secondsPerKm, direction);
-      if (next === null) return;
-      const updated = normalizeRun(await nativeCall('setRunTargetPace', next));
-      stateRef.current = { ...stateRef.current, recording: updated };
-      setState(stateRef.current);
+      const next = pendingPace.current;
+      const run = stateRef.current.recording;
+      if (next === null || run?.target?.kind !== 'pace') {
+        pendingPace.current = null;
+        setPaceDraft(null);
+        return;
+      }
+      try {
+        if (next !== run.target.secondsPerKm) {
+          const updated = normalizeRun(
+            await nativeCall('setRunTargetPace', next),
+          );
+          stateRef.current = { ...stateRef.current, recording: updated };
+          setState(stateRef.current);
+        }
+      } finally {
+        pendingPace.current = null;
+        setPaceDraft(null);
+      }
     });
+  };
+  const changeTargetPace = (direction: 1 | -1) => {
+    const target = stateRef.current.recording?.target;
+    if (target?.kind !== 'pace') return;
+    const next = stepTargetPace(
+      pendingPace.current ?? target.secondsPerKm,
+      direction,
+    );
+    if (next === null) return;
+    pendingPace.current = next;
+    setPaceDraft(next);
+    if (paceTimer.current) clearTimeout(paceTimer.current);
+    paceTimer.current = setTimeout(savePendingPace, TARGET_PACE_SETTLE_MS);
   };
   const renderRecording = () => {
     if (!recording) {
       return null;
     }
+    const shownTarget =
+      recording.target?.kind === 'pace' && paceDraft !== null
+        ? { ...recording.target, secondsPerKm: paceDraft }
+        : recording.target;
     const recordingWords = sportWords(recording.sport);
     const { primary, metrics } = features.recording;
     const secondary = [
@@ -3139,17 +3186,17 @@ export function RunbackApp() {
           />
         ) : null}
         {metrics.includes('target') &&
-        recording.target &&
-        hasRunTarget(recording.target) ? (
+        shownTarget &&
+        hasRunTarget(shownTarget) ? (
           <Row
             // What is left of the goal or the interval phase, above the goal itself.
             title={
-              targetProgressLabel(recording.target, recording) ??
+              targetProgressLabel(shownTarget, recording) ??
               tr('Laufziel', 'Run goal')
             }
-            subtitle={runTargetLabel(recording.target)}
+            subtitle={runTargetLabel(shownTarget)}
             trailing={
-              recording.target.kind === 'pace' ? (
+              shownTarget.kind === 'pace' ? (
                 <Stepper
                   decreaseLabel={tr(
                     `Zieltempo ${PACE_STEP_SECONDS} Sekunden schneller`,
@@ -3160,10 +3207,10 @@ export function RunbackApp() {
                     `Target pace ${PACE_STEP_SECONDS} seconds slower`,
                   )}
                   canDecrease={
-                    stepTargetPace(recording.target.secondsPerKm, -1) !== null
+                    stepTargetPace(shownTarget.secondsPerKm, -1) !== null
                   }
                   canIncrease={
-                    stepTargetPace(recording.target.secondsPerKm, 1) !== null
+                    stepTargetPace(shownTarget.secondsPerKm, 1) !== null
                   }
                   disabled={busy}
                   onDecrease={() => changeTargetPace(-1)}
