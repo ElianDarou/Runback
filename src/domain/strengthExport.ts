@@ -9,6 +9,7 @@ import {
   isSetCompleted,
   MAX_REPS_FOR_E1RM,
   displaySessionName,
+  isAccidentalStrengthSession,
   type LoggedSet,
   type PlannedSet,
   type StrengthSession,
@@ -44,7 +45,8 @@ import {
  * `MotionExport`, its own `manifest.json`). The folder name is a file name
  * inside the export and stays German.
  * 3: `ticked_in_batch` marks sets ticked off in a batch; they carry no set
- * interval and no heart rate values.
+ * interval and no heart rate values. `validity` marks a session started by
+ * accident (under a minute, no set).
  */
 export const STRENGTH_EXPORT_VERSION = 'runback-strength-export-3';
 export const STRENGTH_EXPORT_MOTION_DIRECTORY = 'bewegungsdaten';
@@ -90,6 +92,7 @@ const SESSION_COLUMNS = [
   'note',
   'model_version',
   'catalog_version',
+  'validity',
 ];
 
 const SET_COLUMNS = [
@@ -314,6 +317,8 @@ export function strengthExportChunk(
   const breakdown = exerciseBreakdown(session);
   const gaps = setGaps(session);
   const duration = sessionDurationSeconds(session);
+  // Like runs: a false start stays in the export, marked, but counts nowhere in the app.
+  const validity = isAccidentalStrengthSession(session) ? 'accidental' : 'valid';
   const count = (predicate: (set: LoggedSet) => boolean) =>
     records.filter(record => predicate(record.set)).length;
   const completed = count(done);
@@ -375,6 +380,7 @@ export function strengthExportChunk(
     session.note?.trim() || undefined,
     session.modelVersion,
     session.catalogVersion,
+    validity,
   ]);
 
   const infos = session.exercises.map(exercise =>
@@ -454,6 +460,7 @@ export function strengthExportChunk(
     note: session.note?.trim() || undefined,
     modelVersion: session.modelVersion,
     catalogVersion: session.catalogVersion,
+    validity,
     totals,
     heart: heartSummary,
     exercises: session.exercises.map((exercise, exerciseIndex) => {
@@ -733,6 +740,7 @@ ${motion}
 - \`heart_source\`: \`watch\` (Uhr) oder \`import:<Quelle>\` (Minutenmittel aus einem Import, ohne Satzwerte).
 - \`heart_coverage\`: Anteil der Zeitfenster mit Wert, 0–1. \`heart_clock_aligned\`: Uhr- und Handyzeit abgeglichen.
 - \`median_set_peak_bpm\`, \`median_recovery_bpm\`: Median ab drei Sätzen mit Wert.
+- \`validity\`: \`accidental\` bei einer Einheit unter einer Minute ohne abgehakten Satz; sie zählt in der App nirgends.
 
 ## Versionen
 
@@ -787,6 +795,7 @@ ${motion}
 - \`heart_source\`: \`watch\` or \`import:<source>\` (per-minute averages from an import, without set values).
 - \`heart_coverage\`: share of time windows with a value, 0–1. \`heart_clock_aligned\`: watch and phone clocks aligned.
 - \`median_set_peak_bpm\`, \`median_recovery_bpm\`: median from three sets with a value.
+- \`validity\`: \`accidental\` for a session under a minute without a ticked-off set; it counts nowhere in the app.
 
 ## Versions
 

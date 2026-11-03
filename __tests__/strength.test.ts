@@ -28,7 +28,10 @@ import {
   templateForDay,
   type StrengthSession,
   type WorkoutTemplate,
+  isAccidentalStrengthSession,
 } from '../src/domain/strength';
+import { strengthActivity } from '../src/domain/planView';
+import { strengthSession } from './fixtures/strengthSessions';
 import { setLanguage } from '../src/domain/i18n';
 import { CATALOG, catalogExercise, searchCatalog } from '../src/domain/catalog';
 import {
@@ -658,5 +661,40 @@ describe('Template for a weekday', () => {
     expect(templateForDay([template], 1)?.id).toBe('template-1');
     expect(templateForDay([template], 3)).toBeNull();
     expect(templateForDay([], 1)).toBeNull();
+  });
+});
+
+describe('isAccidentalStrengthSession', () => {
+  const start = new Date(2026, 9, 20, 18).getTime();
+  const empty = (seconds: number, overrides = {}) =>
+    strengthSession('s', start, [['free', 'Freies Training', []]], {
+      endTime: start + seconds * 1000,
+      ...overrides,
+    });
+
+  it('marks a session under a minute without a set as a false start', () => {
+    // session-muzlw7kg: "Freies Training", 2 s, 0 sets.
+    expect(isAccidentalStrengthSession(empty(2))).toBe(true);
+    expect(strengthActivity(empty(2)).falseStart).toBe(true);
+  });
+
+  it('keeps longer sessions, sessions with a set, and running or open ones', () => {
+    expect(isAccidentalStrengthSession(empty(60))).toBe(false);
+    expect(
+      isAccidentalStrengthSession(
+        strengthSession(
+          's',
+          start,
+          [['barbell_bench_press', 'Bankdrücken', [{ reps: 8, at: 0.5 }]]],
+          { endTime: start + 40_000 },
+        ),
+      ),
+    ).toBe(false);
+    expect(isAccidentalStrengthSession(empty(2, { status: 'active' }))).toBe(
+      false,
+    );
+    expect(
+      isAccidentalStrengthSession(empty(2, { endTime: undefined })),
+    ).toBe(false);
   });
 });

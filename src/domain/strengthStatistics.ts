@@ -4,6 +4,7 @@ import { muscleDistribution, type MuscleDistribution } from './muscleGroups';
 import { assessExerciseProgression } from './progression';
 import {
   displaySessionName,
+  isAccidentalStrengthSession,
   isSetCompleted,
   sessionProgress,
   type StrengthSession,
@@ -136,7 +137,8 @@ export function validStrengthSession(
     finite(session.startTime) &&
     session.startTime > 0 &&
     session.startTime <= now &&
-    Array.isArray(session.exercises)
+    Array.isArray(session.exercises) &&
+    !isAccidentalStrengthSession(session)
   );
 }
 

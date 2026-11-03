@@ -765,6 +765,25 @@ export function finishSession(
   };
 }
 
+/** As with runs (`ACCIDENTAL_MAX_SECONDS`): under a minute is not a session. */
+export const ACCIDENTAL_SESSION_MAX_SECONDS = 60;
+/**
+ * Started by accident: finished in under a minute without a single ticked-off
+ * set. It stays saved but counts nowhere, like a false start of a run. Without
+ * an end the duration is unknown, so it is not called accidental.
+ */
+export function isAccidentalStrengthSession(session: StrengthSession): boolean {
+  const end = session.endTime;
+  return (
+    session.status === 'finished' &&
+    typeof end === 'number' &&
+    Number.isFinite(end) &&
+    Number.isFinite(session.startTime) &&
+    (end - session.startTime) / 1000 < ACCIDENTAL_SESSION_MAX_SECONDS &&
+    sessionProgress(session).completedSets === 0
+  );
+}
+
 export function summarize(session: StrengthSession): SessionSummary {
   const { completedSets, volumeKg } = sessionProgress(session);
   return {

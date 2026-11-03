@@ -2,6 +2,7 @@ import type { Sport } from './types';
 import type { Run } from './trainingRecords';
 import {
   displaySessionName,
+  isAccidentalStrengthSession,
   summarize,
   type StrengthSession,
 } from './strength';
@@ -93,6 +94,7 @@ export function strengthActivity(session: StrengthSession): PlanActivity {
       ? Math.round((session.endTime! - session.startTime) / 1000)
       : undefined,
     sets: summarize(session).completedSets,
+    falseStart: isAccidentalStrengthSession(session),
   };
 }
 
