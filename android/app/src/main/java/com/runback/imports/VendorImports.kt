@@ -30,7 +30,8 @@ import org.json.JSONObject
  */
 object VendorImports {
     /** Bumped whenever import interpretation changes; carried into imported runs. */
-    const val IMPORT_VERSION = "vendor-import-v2"
+    /** v3: a named activity that is not a run needs a running pace; without a distance it is skipped. */
+    const val IMPORT_VERSION = "vendor-import-v3"
     const val STRONG_IMPORT_VERSION = "strong-import-v3"
 
     enum class Vendor {
